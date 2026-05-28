@@ -131,10 +131,12 @@ For OpenCL source execution, start with:
 - `src/backends/opencl/runtime/opencl_source_stage.*`
 - `src/backends/opencl/runtime/stage_factory.*`
 - `tests/unit/gfx_opencl_source_artifacts_test.cpp`
+- `tests/unit/gfx_opencl_source_artifact_verifier.hpp`
 - `tests/unit/gfx_activation_contract_cases.hpp`
 - `tests/unit/gfx_activation_opencl_contract_cases.cpp`
 - `tests/unit/gfx_eltwise_contract_cases.hpp`
 - `tests/unit/gfx_eltwise_opencl_contract_cases.cpp`
+- `tests/unit/gfx_reduction_kernel_contract_test.cpp`
 
 ## Adding Or Changing An Operation
 
@@ -170,7 +172,9 @@ Common operation families that need extra care:
 - OpenCL source artifacts with scalar ABI, static u32/f32 scalars, constants,
   chunking, and boolean output padding
 - OpenCL generated kernel units such as activation, elementwise, f32 MatMul,
-  and bounded f32/f16 Interpolate
+  bounded f32/f16 Interpolate, and f32 reduction
+- OpenCL reduction routes, where numeric f32 reductions and logical boolean
+  reductions use separate source ids but the same static axis metadata contract
 - generated activation `Swish` routes, where default/static beta and runtime
   scalar beta must keep the MLIR, Metal MSL, and OpenCL artifact contracts
   aligned
@@ -250,6 +254,12 @@ elementwise OpenCL changes, update `tests/unit/gfx_eltwise_contract_cases.hpp`,
 `tests/unit/gfx_eltwise_opencl_contract_cases.cpp`, and
 `tests/unit/gfx_eltwise_opencl_source_artifacts_test.cpp`.
 
+For reduction source-unit changes, update
+`tests/unit/gfx_reduction_kernel_contract_test.cpp` and the shared
+`tests/unit/gfx_opencl_source_artifact_verifier.hpp` helper. Keep numeric f32
+and logical boolean reduction source ids, entry points, static u32 metadata,
+kernel registry entries, and Metal/OpenCL artifact payloads aligned.
+
 ## Metal MPSRT And MSL
 
 Metal placement must stay coordinated across:
@@ -279,11 +289,13 @@ descriptor helpers in `src/mlir/gfx_apple_vendor_descriptors.*`, and
 express the new primitive. Do not rebuild vendor descriptors from request-time
 node checks.
 
-Generated Metal activation and elementwise paths are planned through
+Generated Metal activation, elementwise, and reduction paths are planned through
 `src/mlir/msl_codegen_apple_msl_activation.*` and
-`src/mlir/msl_codegen_apple_msl_eltwise.*`. Keep those source plans aligned
-with `src/backends/metal/compiler/metal_kernel_registry.cpp` and
-`metal_kernel_artifacts.cpp`. For `Swish`, keep static-beta and runtime-beta
+`src/mlir/msl_codegen_apple_msl_eltwise.*`, and
+`src/mlir/msl_codegen_apple_msl_reduction.*`. Keep those source plans aligned
+with `src/backends/metal/compiler/metal_kernel_registry.cpp`,
+`metal_kernel_artifacts.cpp`, and embedded helper source wrappers under
+`src/kernel_ir/metal_kernels/`. For `Swish`, keep static-beta and runtime-beta
 binding roles aligned with `src/mlir/mlir_builder_unary.cpp` and the OpenCL
 source artifact ABI.
 

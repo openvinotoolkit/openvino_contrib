@@ -125,11 +125,12 @@ ad-hoc backend switches when adding new Metal routes.
 
 Compiler-owned Metal payloads currently cover generated MSL units such as
 `ShapeOf`, `Range`, `Tile`, `Concat`, `Split`, `Slice`, activation, elementwise,
-and causal SDPA helper forms. MPS/MPSGraph vendor descriptor payloads are
-consumed by the `MpsrtVendorPrimitive` runtime stage for supported MatMul/GEMM,
-`Softmax`, Pool2D, Resize2D, and SDPA forms. Vendor selection remains
-contract-limited: if the descriptor, storage, or external-buffer ABI cannot be
-built, the route must be rejected or use another supported current route.
+numeric and logical reduction, and causal SDPA helper forms. MPS/MPSGraph vendor
+descriptor payloads are consumed by the `MpsrtVendorPrimitive` runtime stage for
+supported MatMul/GEMM, `Softmax`, Pool2D, Resize2D, and SDPA forms. Vendor
+selection remains contract-limited: if the descriptor, storage, or
+external-buffer ABI cannot be built, the route must be rejected or use another
+supported current route.
 
 ### OpenCL
 
@@ -148,10 +149,11 @@ Backend operation support and kernel-unit registration live under
 
 Embedded OpenCL source units live under `src/kernel_ir/opencl_kernels/`.
 Current named units include generated activation, elementwise, f32 MatMul, and
-f32/f16 Interpolate helpers, plus f32/f16 Softmax baseline helpers. The OpenCL
-compiler registry requires an explicit kernel unit for generated routes; there
-is no generic MLIR fallback for OpenCL operation support. Unsupported modes,
-axes, padding, shapes, or element types fail during support probing instead of
+f32/f16 Interpolate helpers, generated f32 reduction helpers, plus f32/f16
+Softmax and logical-bool reduction baseline helpers. The OpenCL compiler
+registry requires an explicit kernel unit for generated routes; there is no
+generic MLIR fallback for OpenCL operation support. Unsupported modes, axes,
+padding, shapes, or element types fail during support probing instead of
 falling through to a hidden runtime path.
 
 Generated activation artifacts cover the shared unary activation family and
@@ -174,6 +176,10 @@ MLIR is shared infrastructure, not a separate backend object. It is used for:
 Activation lowering keeps OpenCL and Metal source plans on the same operation
 contract. `Swish` beta is represented either as a static scalar payload or as a
 second scalar tensor input when the runtime-beta path is supported.
+
+Reduction lowering uses the same source-plan boundary. Numeric reductions cover
+the current f32 generated-kernel contract; logical reductions cover the current
+boolean contract. Both require static input/output shapes and constant axes.
 
 When adding or changing an op, keep support probing, lowering, backend source
 planning, runtime binding, and tests on the same contract.

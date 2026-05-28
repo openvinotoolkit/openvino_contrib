@@ -127,6 +127,11 @@ For OpenCL source-artifact changes:
   `tests/unit/gfx_eltwise_kernel_contract_test.cpp`, or
   `tests/unit/gfx_matmul_kernel_contract_test.cpp` when the generated source
   unit contract for those families changes
+- include `tests/unit/gfx_reduction_kernel_contract_test.cpp` when generated
+  f32 reduction, logical-bool reduction, reduction MLIR lowering, or backend
+  reduction kernel-unit routing changes
+- use `tests/unit/gfx_opencl_source_artifact_verifier.hpp` for reusable
+  OpenCL source-artifact assertions instead of duplicating role/scalar checks
 - keep reusable generated activation and elementwise case data in
   `tests/unit/gfx_activation_contract_cases.hpp`,
   `tests/unit/gfx_activation_opencl_contract_cases.cpp`,
@@ -151,6 +156,8 @@ For Metal placement or MPSRT changes:
   `tests/unit/gpu_backend_base_test.cpp`
 - cover compiler-owned generated MSL and MPS/MPSGraph `VendorDescriptor`
   payloads in `tests/unit/gpu_backend_base_test.cpp`
+- cover generated reduction MSL source plans and payload routing in
+  `tests/unit/gfx_reduction_kernel_contract_test.cpp`
 - cover request-time execution in `tests/backends/metal/gpu_backend_test.mm`
   when the route reaches encode time
 - use `tests/unit/memory_device_integration_test.mm` for Metal memory/device

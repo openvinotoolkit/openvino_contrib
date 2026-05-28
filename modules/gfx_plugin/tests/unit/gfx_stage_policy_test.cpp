@@ -19,8 +19,8 @@
 #include "mlir/msl_codegen_apple_msl_dispatch.hpp"
 #include "mlir/msl_codegen_apple_msl_ops.hpp"
 #include "mlir/msl_codegen_apple_msl_split.hpp"
-#include "openvino/op/batch_norm.hpp"
 #include "openvino/op/add.hpp"
+#include "openvino/op/batch_norm.hpp"
 #include "openvino/op/concat.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/convolution.hpp"
@@ -234,8 +234,8 @@ std::shared_ptr<const ov::Node> make_last_dim_log_softmax_node() {
 }
 
 std::shared_ptr<const ov::Node> make_batchnorm_node() {
-  auto input = std::make_shared<ov::op::v0::Parameter>(
-      ov::element::f16, ov::Shape{1, 4, 16, 16});
+  auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f16,
+                                                       ov::Shape{1, 4, 16, 16});
   auto gamma = ov::op::v0::Constant::create(ov::element::f16, ov::Shape{4},
                                             std::vector<float>(4, 1.f));
   auto beta = ov::op::v0::Constant::create(ov::element::f16, ov::Shape{4},
@@ -244,8 +244,8 @@ std::shared_ptr<const ov::Node> make_batchnorm_node() {
                                            std::vector<float>(4, 0.f));
   auto variance = ov::op::v0::Constant::create(ov::element::f16, ov::Shape{4},
                                                std::vector<float>(4, 1.f));
-  return std::make_shared<ov::op::v5::BatchNormInference>(
-      input, gamma, beta, mean, variance, 1e-5);
+  return std::make_shared<ov::op::v5::BatchNormInference>(input, gamma, beta,
+                                                          mean, variance, 1e-5);
 }
 
 std::shared_ptr<const ov::Node> make_last_dim_topk_node() {
@@ -462,36 +462,33 @@ TEST(
   EXPECT_TRUE(plan.conv.algorithm.multi_kernel_manifest.requires_output_reuse);
   EXPECT_TRUE(plan.conv.algorithm.multi_kernel_manifest
                   .requires_coarse_output_tile_preservation);
-  EXPECT_GT(plan.conv.algorithm.multi_kernel_manifest
-                .coarse_spatial_tile_elements,
-            0u);
+  EXPECT_GT(
+      plan.conv.algorithm.multi_kernel_manifest.coarse_spatial_tile_elements,
+      0u);
   EXPECT_GT(
       plan.conv.algorithm.multi_kernel_manifest.coarse_output_channel_block,
       0u);
-  EXPECT_EQ(plan.conv.algorithm.multi_kernel_manifest
-                .coarse_output_tile_elements,
-            plan.conv.algorithm.multi_kernel_manifest
-                    .coarse_spatial_tile_elements *
-                plan.conv.algorithm.multi_kernel_manifest
-                    .coarse_output_channel_block);
-  EXPECT_EQ(plan.conv.algorithm.workgroup_output_lanes,
-            plan.conv.algorithm.multi_kernel_manifest
-                .coarse_output_tile_elements);
+  EXPECT_EQ(
+      plan.conv.algorithm.multi_kernel_manifest.coarse_output_tile_elements,
+      plan.conv.algorithm.multi_kernel_manifest.coarse_spatial_tile_elements *
+          plan.conv.algorithm.multi_kernel_manifest
+              .coarse_output_channel_block);
+  EXPECT_EQ(
+      plan.conv.algorithm.workgroup_output_lanes,
+      plan.conv.algorithm.multi_kernel_manifest.coarse_output_tile_elements);
   ASSERT_GT(plan.conv.algorithm.workgroup_reduction_lanes, 1u);
-  EXPECT_EQ(plan.conv.algorithm.multi_kernel_manifest
-                .workgroup_output_tile_deficit,
-            0u);
-  EXPECT_EQ(plan.conv.algorithm.multi_kernel_manifest.partial_sum_elements,
-            0u);
+  EXPECT_EQ(
+      plan.conv.algorithm.multi_kernel_manifest.workgroup_output_tile_deficit,
+      0u);
+  EXPECT_EQ(plan.conv.algorithm.multi_kernel_manifest.partial_sum_elements, 0u);
   EXPECT_EQ(
       plan.conv.algorithm.multi_kernel_manifest.reduced_accumulator_elements,
       0u);
   EXPECT_EQ(
       plan.conv.algorithm.multi_kernel_manifest.owned_intermediate_elements,
       0u);
-  EXPECT_EQ(
-      plan.conv.algorithm.multi_kernel_manifest.owned_intermediate_bytes,
-      0u);
+  EXPECT_EQ(plan.conv.algorithm.multi_kernel_manifest.owned_intermediate_bytes,
+            0u);
   EXPECT_EQ(
       plan.conv.algorithm.multi_kernel_manifest.owned_intermediate_buffer_count,
       0u);
@@ -504,7 +501,7 @@ TEST(
   EXPECT_EQ(plan.conv.algorithm.multi_kernel_manifest
                 .workgroup_local_accumulator_bytes,
             plan.conv.algorithm.multi_kernel_manifest
-                .workgroup_local_accumulator_elements *
+                    .workgroup_local_accumulator_elements *
                 static_cast<uint64_t>(ov::element::f32.size()));
   EXPECT_GT(plan.conv.algorithm.multi_kernel_manifest
                 .workgroup_local_accumulator_bytes,
@@ -980,12 +977,12 @@ TEST(GfxStagePolicyTest, MetalIndexedMaxPoolDoesNotUseMpsPool2DPlacement) {
 TEST(GfxStagePolicyTest,
      MetalStandaloneBatchNormDoesNotAdvertiseMissingMpsPrimitive) {
   const auto batchnorm = make_batchnorm_node();
-  const auto plan = select_stage_optimization_plan(
-      nullptr, GpuBackend::Metal, "BatchNormInference", batchnorm,
-      ov::element::f16,
-      /*has_bias=*/false,
-      /*has_activation=*/false,
-      /*has_batchnorm=*/false, {});
+  const auto plan = select_stage_optimization_plan(nullptr, GpuBackend::Metal,
+                                                   "BatchNormInference",
+                                                   batchnorm, ov::element::f16,
+                                                   /*has_bias=*/false,
+                                                   /*has_activation=*/false,
+                                                   /*has_batchnorm=*/false, {});
 
   EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::AppleMsl);
   EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Buffer);
@@ -1007,9 +1004,8 @@ TEST(GfxStagePolicyTest,
                                               softmax_desc));
   EXPECT_EQ(softmax_desc.axis, 2u);
   EXPECT_EQ(softmax_desc.log_softmax, 0u);
-  EXPECT_FALSE(
-      gfx_apple_make_mps_softmax_desc(make_last_dim_log_softmax_node(),
-                                      softmax_desc));
+  EXPECT_FALSE(gfx_apple_make_mps_softmax_desc(make_last_dim_log_softmax_node(),
+                                               softmax_desc));
 
   GfxMpsrtTopKAbiDesc topk_desc{};
   ASSERT_TRUE(
@@ -2720,8 +2716,8 @@ TEST(GfxStagePolicyTest,
             0);
   EXPECT_EQ(concat_source_plan.binding.runtime_binding.operand_arg_indices[30],
             30);
-  const auto concat_external_abi = read_module_mpsrt_external_buffer_abi(
-      concat_source_plan.source.module);
+  const auto concat_external_abi =
+      read_module_mpsrt_external_buffer_abi(concat_source_plan.source.module);
   ASSERT_TRUE(concat_external_abi.valid);
   ASSERT_TRUE(concat_external_abi.has_buffer_count);
   ASSERT_TRUE(concat_external_abi.has_output_buffer_count);
@@ -2837,7 +2833,7 @@ TEST(GfxStagePolicyTest,
       reduce_plan.stage_manifest.custom_kernel.external_buffer_abi.valid);
   ASSERT_EQ(
       reduce_plan.stage_manifest.custom_kernel.external_buffer_abi.roles.size(),
-      9u);
+      10u);
   EXPECT_EQ(
       reduce_plan.stage_manifest.custom_kernel.external_buffer_abi.roles[0],
       GfxKernelBufferRole::TensorInput);
@@ -2850,7 +2846,10 @@ TEST(GfxStagePolicyTest,
   EXPECT_EQ(
       reduce_plan.stage_manifest.custom_kernel.external_buffer_abi.roles[3],
       GfxKernelBufferRole::ScalarParam);
-  for (size_t i = 4; i < reduce_plan.stage_manifest.custom_kernel
+  EXPECT_EQ(
+      reduce_plan.stage_manifest.custom_kernel.external_buffer_abi.roles[4],
+      GfxKernelBufferRole::ScalarParam);
+  for (size_t i = 5; i < reduce_plan.stage_manifest.custom_kernel
                              .external_buffer_abi.roles.size();
        ++i) {
     EXPECT_EQ(
@@ -3077,14 +3076,13 @@ TEST(GfxStagePolicyTest,
   EXPECT_EQ(
       scatter_elements_update_plan.stage_manifest.custom_kernel
           .external_buffer_abi.roles,
-      std::vector<GfxKernelBufferRole>({GfxKernelBufferRole::TensorInput,
-                                        GfxKernelBufferRole::TensorInput,
-                                        GfxKernelBufferRole::TensorInput,
-                                        GfxKernelBufferRole::TensorOutput,
-                                        GfxKernelBufferRole::RuntimeParams}));
+      std::vector<GfxKernelBufferRole>(
+          {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorInput,
+           GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
+           GfxKernelBufferRole::RuntimeParams}));
 
-  const auto scatter_nd_update_plan = make_gfx_custom_kernel_stage_plan(
-      "ScatterNDUpdate", "scatter_nd_update");
+  const auto scatter_nd_update_plan =
+      make_gfx_custom_kernel_stage_plan("ScatterNDUpdate", "scatter_nd_update");
   ASSERT_TRUE(scatter_nd_update_plan.valid);
   EXPECT_EQ(
       scatter_nd_update_plan.stage_manifest.custom_kernel.external_buffer_abi

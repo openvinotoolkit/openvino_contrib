@@ -102,6 +102,10 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/activation_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_kernel.cl
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/reduction_f32_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/reduction_f32_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/reduction_logical_bool_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/reduction_logical_bool_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f32_kernel.cl
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f32_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_kernel.cl
@@ -156,6 +160,8 @@ set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/kernel_ir/gfx_opencl_source_artifacts.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/activation_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/reduction_f32_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/reduction_logical_bool_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f32_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f32_kernel.cpp
@@ -216,6 +222,7 @@ set(GFX_RUNTIME_METAL_MSL_HEADERS
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl.hpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_activation.hpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_eltwise.hpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_reduction.hpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_ops.hpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_common.hpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_op_kinds.hpp
@@ -225,6 +232,7 @@ set(GFX_RUNTIME_METAL_MSL_HEADERS
     ${_gfx_src_dir}/mlir/msl_codegen.hpp
     ${_gfx_src_dir}/mlir/msl_codegen_matmul_metal.hpp
     ${_gfx_src_dir}/mlir/msl_codegen_matmul_mpsrt.hpp
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/reduction_kernels.hpp
 )
 
 set(GFX_RUNTIME_METAL_MSL_SOURCES
@@ -290,6 +298,7 @@ set(GFX_RUNTIME_METAL_MSL_SOURCES
     ${_gfx_src_dir}/mlir/topk_codegen.cpp
     ${_gfx_src_dir}/mlir/transpose_codegen.cpp
     ${_gfx_src_dir}/mlir/unary_codegen.cpp
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/reduction_kernels.cpp
 )
 
 set(GFX_RUNTIME_METAL_SOURCES
@@ -332,6 +341,9 @@ set(GFX_RUNTIME_METAL_HEADERS
     ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_topk_pack_u32_to_i64.metal
     ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_topk_stable_i64_indices_f16.metal
     ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_topk_stable_i64_indices_f32.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/reduction_f32_kernel.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/reduction_logical_bool_kernel.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/reduction_kernels.hpp
     ${_gfx_src_dir}/backends/metal/runtime/metal_command_encoder.hpp
     ${_gfx_src_dir}/backends/metal/codegen/metal_compiler.hpp
     ${_gfx_src_dir}/backends/metal/codegen/metal_codegen_backend.hpp

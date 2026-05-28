@@ -22,6 +22,8 @@
 #include "kernel_ir/opencl_kernels/interpolate_f16_kernel.hpp"
 #include "kernel_ir/opencl_kernels/interpolate_f32_kernel.hpp"
 #include "kernel_ir/opencl_kernels/matmul_f32_kernel.hpp"
+#include "kernel_ir/opencl_kernels/reduction_f32_kernel.hpp"
+#include "kernel_ir/opencl_kernels/reduction_logical_bool_kernel.hpp"
 #include "kernel_ir/opencl_kernels/softmax_f16_kernel.hpp"
 #include "kernel_ir/opencl_kernels/softmax_f32_kernel.hpp"
 #include "openvino/core/shape_util.hpp"
@@ -35,10 +37,10 @@
 #include "openvino/op/atan.hpp"
 #include "openvino/op/atanh.hpp"
 #include "openvino/op/broadcast.hpp"
-#include "openvino/op/concat.hpp"
-#include "openvino/op/constant.hpp"
 #include "openvino/op/ceiling.hpp"
 #include "openvino/op/clamp.hpp"
+#include "openvino/op/concat.hpp"
+#include "openvino/op/constant.hpp"
 #include "openvino/op/cos.hpp"
 #include "openvino/op/cosh.hpp"
 #include "openvino/op/divide.hpp"
@@ -64,16 +66,23 @@
 #include "openvino/op/negative.hpp"
 #include "openvino/op/power.hpp"
 #include "openvino/op/range.hpp"
+#include "openvino/op/reduce_l1.hpp"
+#include "openvino/op/reduce_l2.hpp"
 #include "openvino/op/reduce_logical_and.hpp"
 #include "openvino/op/reduce_logical_or.hpp"
+#include "openvino/op/reduce_max.hpp"
+#include "openvino/op/reduce_mean.hpp"
+#include "openvino/op/reduce_min.hpp"
+#include "openvino/op/reduce_prod.hpp"
+#include "openvino/op/reduce_sum.hpp"
 #include "openvino/op/relu.hpp"
 #include "openvino/op/round.hpp"
 #include "openvino/op/scatter_elements_update.hpp"
 #include "openvino/op/scatter_nd_update.hpp"
 #include "openvino/op/scatter_update.hpp"
 #include "openvino/op/shape_of.hpp"
-#include "openvino/op/sign.hpp"
 #include "openvino/op/sigmoid.hpp"
+#include "openvino/op/sign.hpp"
 #include "openvino/op/sin.hpp"
 #include "openvino/op/sinh.hpp"
 #include "openvino/op/slice.hpp"
@@ -81,16 +90,16 @@
 #include "openvino/op/softplus.hpp"
 #include "openvino/op/softsign.hpp"
 #include "openvino/op/split.hpp"
-#include "openvino/op/squared_difference.hpp"
 #include "openvino/op/sqrt.hpp"
+#include "openvino/op/squared_difference.hpp"
 #include "openvino/op/strided_slice.hpp"
 #include "openvino/op/subtract.hpp"
 #include "openvino/op/swish.hpp"
 #include "openvino/op/tan.hpp"
 #include "openvino/op/tanh.hpp"
 #include "openvino/op/tile.hpp"
-#include "openvino/op/util/scatter_elements_update_base.hpp"
 #include "openvino/op/util/binary_elementwise_arithmetic.hpp"
+#include "openvino/op/util/scatter_elements_update_base.hpp"
 #include "openvino/op/variadic_split.hpp"
 #include "openvino/util/common_util.hpp"
 
@@ -98,7 +107,7 @@ namespace ov {
 namespace gfx_plugin {
 namespace {
 
-constexpr const char* kOpenClBaselineSource = R"CLC(
+constexpr const char *kOpenClBaselineSource = R"CLC(
 static inline float gfx_unary_f32(float x, uint op) {
     switch (op) {
     case 16u: return fmax(x, 0.0f);
@@ -1403,7 +1412,7 @@ __kernel void gfx_opencl_baseline_concat4_f32(__global const float* src0,
 
 )CLC";
 
-constexpr const char* kOpenClTransposeF32Source = R"CLC(
+constexpr const char *kOpenClTransposeF32Source = R"CLC(
 __kernel void gfx_opencl_baseline_transpose_f32(__global const float* src,
                                                 __global float* dst,
                                                 uint count,
@@ -1447,7 +1456,7 @@ __kernel void gfx_opencl_baseline_transpose_f32(__global const float* src,
 }
 )CLC";
 
-constexpr const char* kOpenClSliceF32Source = R"CLC(
+constexpr const char *kOpenClSliceF32Source = R"CLC(
 __kernel void gfx_opencl_baseline_slice_f32(__global const float* src,
                                             __global float* dst,
                                             uint count,
@@ -1495,7 +1504,7 @@ __kernel void gfx_opencl_baseline_slice_f32(__global const float* src,
 }
 )CLC";
 
-constexpr const char* kOpenClRangeF32Source = R"CLC(
+constexpr const char *kOpenClRangeF32Source = R"CLC(
 __kernel void gfx_opencl_baseline_range_f32(__global const float* start,
                                             __global const float* stop,
                                             __global const float* step,
@@ -1510,7 +1519,7 @@ __kernel void gfx_opencl_baseline_range_f32(__global const float* start,
 }
 )CLC";
 
-constexpr const char* kOpenClTileF32Source = R"CLC(
+constexpr const char *kOpenClTileF32Source = R"CLC(
 __kernel void gfx_opencl_baseline_tile_f32(__global const float* src,
                                            __global float* dst,
                                            uint count,
@@ -1587,7 +1596,7 @@ __kernel void gfx_opencl_baseline_tile_dynamic_f32(__global const float* src,
 }
 )CLC";
 
-constexpr const char* kOpenClGatherF32I32Source = R"CLC(
+constexpr const char *kOpenClGatherF32I32Source = R"CLC(
 __kernel void gfx_opencl_baseline_gather_i32_f32(__global const float* data,
                                                  __global const int* indices,
                                                  __global float* dst,
@@ -1727,7 +1736,7 @@ __kernel void gfx_opencl_baseline_gather_nd_i32_f32(__global const float* data,
 }
 )CLC";
 
-constexpr const char* kOpenClGatherF32I64Source = R"CLC(
+constexpr const char *kOpenClGatherF32I64Source = R"CLC(
 __kernel void gfx_opencl_baseline_gather_i64_f32(__global const float* data,
                                                  __global const long* indices,
                                                  __global float* dst,
@@ -1867,7 +1876,7 @@ __kernel void gfx_opencl_baseline_gather_nd_i64_f32(__global const float* data,
 }
 )CLC";
 
-constexpr const char* kOpenClScatterF32I32Source = R"CLC(
+constexpr const char *kOpenClScatterF32I32Source = R"CLC(
 __kernel void gfx_opencl_baseline_scatter_update_i32_f32(__global const float* data,
                                                          __global const int* indices,
                                                          __global const float* updates,
@@ -2067,7 +2076,7 @@ __kernel void gfx_opencl_baseline_scatter_nd_i32_f32(__global const float* data,
 }
 )CLC";
 
-constexpr const char* kOpenClConcatSplitF32Source = R"CLC(
+constexpr const char *kOpenClConcatSplitF32Source = R"CLC(
 static inline uint gfx_concat_load_f32(__global const float* src,
                                        __private float* value,
                                        uint axis_idx,
@@ -2177,7 +2186,7 @@ __kernel void gfx_opencl_baseline_concat4_f32(__global const float* src0,
 
 )CLC";
 
-constexpr const char* kOpenClShapeOfSource = R"CLC(
+constexpr const char *kOpenClShapeOfSource = R"CLC(
 __kernel void gfx_opencl_baseline_shapeof_i32(__global const uchar* src,
                                               __global int* dst,
                                               uint count,
@@ -2221,7 +2230,7 @@ __kernel void gfx_opencl_baseline_shapeof_i64(__global const uchar* src,
 }
 )CLC";
 
-constexpr const char* kOpenClUnaryF32Source = R"CLC(
+constexpr const char *kOpenClUnaryF32Source = R"CLC(
 static inline float gfx_unary_f32(float x, uint op) {
     switch (op) {
     case 16u: return fmax(x, 0.0f);
@@ -2250,7 +2259,7 @@ __kernel void gfx_opencl_baseline_unary_f32(__global const float* src,
 }
 )CLC";
 
-constexpr const char* kOpenClBinaryScalarF32Source = R"CLC(
+constexpr const char *kOpenClBinaryScalarF32Source = R"CLC(
 static inline float gfx_binary_f32(float lhs, float rhs, uint op) {
     switch (op) {
     case 1u: return lhs + rhs;
@@ -2292,7 +2301,7 @@ __kernel void gfx_opencl_baseline_binary_scalar_f32(__global const float* lhs,
 }
 )CLC";
 
-constexpr const char* kOpenClBinaryConstF32Source = R"CLC(
+constexpr const char *kOpenClBinaryConstF32Source = R"CLC(
 static inline float gfx_binary_f32(float lhs, float rhs, uint op) {
     switch (op) {
     case 1u: return lhs + rhs;
@@ -2334,7 +2343,7 @@ __kernel void gfx_opencl_baseline_binary_const_f32(__global const float* tensor,
 }
 )CLC";
 
-constexpr const char* kOpenClCompareF32Source = R"CLC(
+constexpr const char *kOpenClCompareF32Source = R"CLC(
 static inline uchar gfx_compare_f32(float lhs, float rhs, uint op) {
     uint result = 0u;
     if (op == 32u) {
@@ -2380,7 +2389,7 @@ __kernel void gfx_opencl_baseline_compare_f32(__global const float* lhs,
 }
 )CLC";
 
-constexpr const char* kOpenClCompareBroadcastF32Source = R"CLC(
+constexpr const char *kOpenClCompareBroadcastF32Source = R"CLC(
 static inline uchar gfx_compare_f32(float lhs, float rhs, uint op) {
     uint result = 0u;
     if (op == 32u) {
@@ -2497,7 +2506,7 @@ __kernel void gfx_opencl_baseline_compare_broadcast_f32(__global const float* lh
 }
 )CLC";
 
-constexpr const char* kOpenClSelectF32Source = R"CLC(
+constexpr const char *kOpenClSelectF32Source = R"CLC(
 __kernel void gfx_opencl_baseline_select_f32(__global const uchar* cond,
                                              __global const float* then_data,
                                              __global const float* else_data,
@@ -2514,7 +2523,7 @@ __kernel void gfx_opencl_baseline_select_f32(__global const uchar* cond,
 }
 )CLC";
 
-constexpr const char* kOpenClSelectBroadcastF32Source = R"CLC(
+constexpr const char *kOpenClSelectBroadcastF32Source = R"CLC(
 __kernel void gfx_opencl_baseline_select_broadcast_f32(__global const uchar* cond,
                                                        __global const float* then_data,
                                                        __global const float* else_data,
@@ -2581,7 +2590,7 @@ __kernel void gfx_opencl_baseline_select_broadcast_f32(__global const uchar* con
 }
 )CLC";
 
-constexpr const char* kOpenClDynamicDataMovementF16Source = R"CLC(
+constexpr const char *kOpenClDynamicDataMovementF16Source = R"CLC(
 #define GFX_LOW_U32_SHAPE_VALUE(words, idx) ((words)[(idx) * 2u])
 #define GFX_LOAD_I32_SHAPE_VALUE(words, idx) ((int)GFX_LOW_U32_SHAPE_VALUE((words), (idx)))
 #define GFX_LOAD_BOOL_MASK(src, idx) \
@@ -3260,7 +3269,7 @@ __kernel void gfx_opencl_baseline_range_i64_unit(__global const uint* stop_words
 }
 )CLC";
 
-constexpr const char* kOpenClLogicalUnaryBoolSource = R"CLC(
+constexpr const char *kOpenClLogicalUnaryBoolSource = R"CLC(
 static inline uint gfx_load_bool(__global const uchar* src, uint idx) {
     const uint word = ((__global const uint*)src)[idx >> 2u];
     return ((word >> ((idx & 3u) * 8u)) & 255u) == 0u ? 0u : 1u;
@@ -3299,7 +3308,7 @@ __kernel void gfx_opencl_baseline_logical_unary_bool(__global const uchar* src,
 }
 )CLC";
 
-constexpr const char* kOpenClLogicalBinaryBoolSource = R"CLC(
+constexpr const char *kOpenClLogicalBinaryBoolSource = R"CLC(
 static inline uint gfx_load_bool(__global const uchar* src, uint idx) {
     const uint word = ((__global const uint*)src)[idx >> 2u];
     return ((word >> ((idx & 3u) * 8u)) & 255u) == 0u ? 0u : 1u;
@@ -3352,7 +3361,7 @@ __kernel void gfx_opencl_baseline_logical_binary_bool(__global const uchar* lhs,
 }
 )CLC";
 
-constexpr const char* kOpenClLogicalBinaryBroadcastBoolSource = R"CLC(
+constexpr const char *kOpenClLogicalBinaryBroadcastBoolSource = R"CLC(
 static inline uint gfx_load_bool(__global const uchar* src, uint idx) {
     const uint word = ((__global const uint*)src)[idx >> 2u];
     return ((word >> ((idx & 3u) * 8u)) & 255u) == 0u ? 0u : 1u;
@@ -3476,175 +3485,7 @@ __kernel void gfx_opencl_baseline_logical_binary_broadcast_bool(__global const u
 }
 )CLC";
 
-constexpr const char* kOpenClReduceLogicalBoolSource = R"CLC(
-static inline uint gfx_load_bool(__global const uchar* src, uint idx) {
-    const uint word = ((__global const uint*)src)[idx >> 2u];
-    return ((word >> ((idx & 3u) * 8u)) & 255u) == 0u ? 0u : 1u;
-}
-
-static inline uint gfx_reduce_output_coord(uint input_axis,
-                                           uint out_axis0,
-                                           uint out_axis1,
-                                           uint out_axis2,
-                                           uint out_axis3,
-                                           uint o0,
-                                           uint o1,
-                                           uint o2,
-                                           uint o3) {
-    if (out_axis0 == input_axis) {
-        return o0;
-    }
-    if (out_axis1 == input_axis) {
-        return o1;
-    }
-    if (out_axis2 == input_axis) {
-        return o2;
-    }
-    if (out_axis3 == input_axis) {
-        return o3;
-    }
-    return 0u;
-}
-
-static inline uint gfx_reduce_logical_bool_at(__global const uchar* src,
-                                              uint out_idx,
-                                              uint op,
-                                              uint out_rank,
-                                              uint in_dim0,
-                                              uint in_dim1,
-                                              uint in_dim2,
-                                              uint in_dim3,
-                                              uint out_dim1,
-                                              uint out_dim2,
-                                              uint out_dim3,
-                                              uint reduce_mask,
-                                              uint out_axis0,
-                                              uint out_axis1,
-                                              uint out_axis2,
-                                              uint out_axis3) {
-    uint o0 = 0u;
-    uint o1 = 0u;
-    uint o2 = 0u;
-    uint o3 = 0u;
-    if (out_rank == 1u) {
-        o0 = out_idx;
-    } else if (out_rank == 2u) {
-        o0 = out_idx / out_dim1;
-        o1 = out_idx - o0 * out_dim1;
-    } else if (out_rank == 3u) {
-        const uint plane0 = out_dim1 * out_dim2;
-        const uint rem0 = out_idx - (out_idx / plane0) * plane0;
-        o0 = out_idx / plane0;
-        o1 = rem0 / out_dim2;
-        o2 = rem0 - o1 * out_dim2;
-    } else if (out_rank == 4u) {
-        const uint plane0 = out_dim1 * out_dim2 * out_dim3;
-        const uint rem0 = out_idx - (out_idx / plane0) * plane0;
-        const uint plane1 = out_dim2 * out_dim3;
-        const uint rem1 = rem0 - (rem0 / plane1) * plane1;
-        o0 = out_idx / plane0;
-        o1 = rem0 / plane1;
-        o2 = rem1 / out_dim3;
-        o3 = rem1 - o2 * out_dim3;
-    }
-
-    const uint base0 = gfx_reduce_output_coord(0u, out_axis0, out_axis1, out_axis2, out_axis3,
-                                               o0, o1, o2, o3);
-    const uint base1 = gfx_reduce_output_coord(1u, out_axis0, out_axis1, out_axis2, out_axis3,
-                                               o0, o1, o2, o3);
-    const uint base2 = gfx_reduce_output_coord(2u, out_axis0, out_axis1, out_axis2, out_axis3,
-                                               o0, o1, o2, o3);
-    const uint base3 = gfx_reduce_output_coord(3u, out_axis0, out_axis1, out_axis2, out_axis3,
-                                               o0, o1, o2, o3);
-
-    const uint r0_count = (reduce_mask & 1u) != 0u ? in_dim0 : 1u;
-    const uint r1_count = (reduce_mask & 2u) != 0u ? in_dim1 : 1u;
-    const uint r2_count = (reduce_mask & 4u) != 0u ? in_dim2 : 1u;
-    const uint r3_count = (reduce_mask & 8u) != 0u ? in_dim3 : 1u;
-    uint acc = op == 64u ? 1u : 0u;
-    for (uint r0 = 0u; r0 < r0_count; ++r0) {
-        const uint c0 = (reduce_mask & 1u) != 0u ? r0 : base0;
-        for (uint r1 = 0u; r1 < r1_count; ++r1) {
-            const uint c1 = (reduce_mask & 2u) != 0u ? r1 : base1;
-            for (uint r2 = 0u; r2 < r2_count; ++r2) {
-                const uint c2 = (reduce_mask & 4u) != 0u ? r2 : base2;
-                for (uint r3 = 0u; r3 < r3_count; ++r3) {
-                    const uint c3 = (reduce_mask & 8u) != 0u ? r3 : base3;
-                    const uint input_offset = ((c0 * in_dim1 + c1) * in_dim2 + c2) * in_dim3 + c3;
-                    const uint v = gfx_load_bool(src, input_offset);
-                    if (op == 64u) {
-                        acc = acc & v;
-                    } else {
-                        acc = acc | v;
-                    }
-                }
-            }
-        }
-    }
-    return acc;
-}
-
-__kernel void gfx_opencl_baseline_reduce_logical_bool(__global const uchar* src,
-                                                      __global uchar* dst,
-                                                      uint count,
-                                                      uint op,
-                                                      uint rank,
-                                                      uint out_rank,
-                                                      uint in_dim0,
-                                                      uint in_dim1,
-                                                      uint in_dim2,
-                                                      uint in_dim3,
-                                                      uint out_dim0,
-                                                      uint out_dim1,
-                                                      uint out_dim2,
-                                                      uint out_dim3,
-                                                      uint reduce_mask,
-                                                      uint out_axis0,
-                                                      uint out_axis1,
-                                                      uint out_axis2,
-                                                      uint out_axis3) {
-    const uint word_idx = (uint)get_global_id(0);
-    const uint base = word_idx * 4u;
-    if (base >= count) {
-        return;
-    }
-    (void)rank;
-    (void)out_dim0;
-
-    uint packed = 0u;
-    if (base < count) {
-        packed |= gfx_reduce_logical_bool_at(src, base, op, out_rank,
-                                             in_dim0, in_dim1, in_dim2, in_dim3,
-                                             out_dim1, out_dim2, out_dim3,
-                                             reduce_mask, out_axis0, out_axis1,
-                                             out_axis2, out_axis3) << 0u;
-    }
-    if (base + 1u < count) {
-        packed |= gfx_reduce_logical_bool_at(src, base + 1u, op, out_rank,
-                                             in_dim0, in_dim1, in_dim2, in_dim3,
-                                             out_dim1, out_dim2, out_dim3,
-                                             reduce_mask, out_axis0, out_axis1,
-                                             out_axis2, out_axis3) << 8u;
-    }
-    if (base + 2u < count) {
-        packed |= gfx_reduce_logical_bool_at(src, base + 2u, op, out_rank,
-                                             in_dim0, in_dim1, in_dim2, in_dim3,
-                                             out_dim1, out_dim2, out_dim3,
-                                             reduce_mask, out_axis0, out_axis1,
-                                             out_axis2, out_axis3) << 16u;
-    }
-    if (base + 3u < count) {
-        packed |= gfx_reduce_logical_bool_at(src, base + 3u, op, out_rank,
-                                             in_dim0, in_dim1, in_dim2, in_dim3,
-                                             out_dim1, out_dim2, out_dim3,
-                                             reduce_mask, out_axis0, out_axis1,
-                                             out_axis2, out_axis3) << 24u;
-    }
-    ((__global uint*)dst)[word_idx] = packed;
-}
-)CLC";
-
-constexpr const char* kOpenClBinaryBroadcastF32Source = R"CLC(
+constexpr const char *kOpenClBinaryBroadcastF32Source = R"CLC(
 static inline float gfx_binary_f32(float lhs, float rhs, uint op) {
     switch (op) {
     case 1u: return lhs + rhs;
@@ -3727,7 +3568,7 @@ __kernel void gfx_opencl_baseline_binary_broadcast_f32(__global const float* lhs
 }
 )CLC";
 
-constexpr const char* kOpenClBinaryI32Source = R"CLC(
+constexpr const char *kOpenClBinaryI32Source = R"CLC(
 static inline int gfx_pow_i32_exact(int base, int exp) {
     if (exp < 0) {
         return (int)pow((float)base, (float)exp);
@@ -3865,7 +3706,7 @@ __kernel void gfx_opencl_baseline_binary_broadcast_i32(__global const int* lhs,
 }
 )CLC";
 
-constexpr const char* kOpenClBinaryF16Source = R"CLC(
+constexpr const char *kOpenClBinaryF16Source = R"CLC(
 #define GFX_LOAD_F16_BITS(src, idx) \
     (((idx) & 1u) == 0u ? ((src)[(idx) >> 1u] & 65535u) : (((src)[(idx) >> 1u] >> 16u) & 65535u))
 #define GFX_STORE_F16_PAIR(dst, word_idx, lo, hi) \
@@ -4089,523 +3930,552 @@ __kernel void gfx_opencl_baseline_binary_broadcast_f16(__global const uint* lhs,
 }
 )CLC";
 
-bool is_f32_tensor_type(const ov::element::Type& type) {
-    return type == ov::element::f32;
+bool is_f32_tensor_type(const ov::element::Type &type) {
+  return type == ov::element::f32;
 }
 
-bool is_f16_tensor_type(const ov::element::Type& type) {
-    return type == ov::element::f16;
+bool is_f16_tensor_type(const ov::element::Type &type) {
+  return type == ov::element::f16;
 }
 
-bool is_bool_tensor_type(const ov::element::Type& type) {
-    return type == ov::element::boolean;
+bool is_bool_tensor_type(const ov::element::Type &type) {
+  return type == ov::element::boolean;
 }
 
-bool is_i32_tensor_type(const ov::element::Type& type) {
-    return type == ov::element::i32;
+bool is_i32_tensor_type(const ov::element::Type &type) {
+  return type == ov::element::i32;
 }
 
-bool is_i64_tensor_type(const ov::element::Type& type) {
-    return type == ov::element::i64;
+bool is_i64_tensor_type(const ov::element::Type &type) {
+  return type == ov::element::i64;
 }
 
-bool is_opencl_range_tensor_type(const ov::element::Type& type) {
-    return is_f16_tensor_type(type) || is_f32_tensor_type(type) || is_i32_tensor_type(type) ||
-           is_i64_tensor_type(type);
+bool is_opencl_range_tensor_type(const ov::element::Type &type) {
+  return is_f16_tensor_type(type) || is_f32_tensor_type(type) ||
+         is_i32_tensor_type(type) || is_i64_tensor_type(type);
 }
 
-bool is_opencl_convert_tensor_type(const ov::element::Type& type) {
-    return is_f32_tensor_type(type) || is_i32_tensor_type(type) ||
-           is_i64_tensor_type(type);
+bool is_opencl_convert_tensor_type(const ov::element::Type &type) {
+  return is_f32_tensor_type(type) || is_i32_tensor_type(type) ||
+         is_i64_tensor_type(type);
 }
 
-bool is_opencl_binary_tensor_type(const ov::element::Type& type) {
-    return is_f16_tensor_type(type) || is_f32_tensor_type(type) ||
-           is_i32_tensor_type(type);
+bool is_opencl_binary_tensor_type(const ov::element::Type &type) {
+  return is_f16_tensor_type(type) || is_f32_tensor_type(type) ||
+         is_i32_tensor_type(type);
 }
 
-const char* opencl_scalar_type_suffix(const ov::element::Type& type) {
-    if (is_f16_tensor_type(type)) {
-        return "f16";
-    }
-    if (is_f32_tensor_type(type)) {
-        return "f32";
-    }
-    if (is_i32_tensor_type(type)) {
-        return "i32";
-    }
-    if (is_i64_tensor_type(type)) {
-        return "i64";
-    }
-    return "unknown";
+const char *opencl_scalar_type_suffix(const ov::element::Type &type) {
+  if (is_f16_tensor_type(type)) {
+    return "f16";
+  }
+  if (is_f32_tensor_type(type)) {
+    return "f32";
+  }
+  if (is_i32_tensor_type(type)) {
+    return "i32";
+  }
+  if (is_i64_tensor_type(type)) {
+    return "i64";
+  }
+  return "unknown";
 }
 
-const char* opencl_range_type_suffix(const ov::element::Type& type) {
-    return opencl_scalar_type_suffix(type);
+const char *opencl_range_type_suffix(const ov::element::Type &type) {
+  return opencl_scalar_type_suffix(type);
 }
 
-bool same_static_shape(const std::shared_ptr<const ov::Node>& node,
-                       size_t input_a,
-                       size_t input_b) {
-    if (!node || input_a >= node->get_input_size() ||
-        input_b >= node->get_input_size()) {
-        return false;
-    }
-    if (!node->get_input_partial_shape(input_a).is_static() ||
-        !node->get_input_partial_shape(input_b).is_static()) {
-        return false;
-    }
-    return node->get_input_shape(input_a) == node->get_input_shape(input_b);
+bool same_static_shape(const std::shared_ptr<const ov::Node> &node,
+                       size_t input_a, size_t input_b) {
+  if (!node || input_a >= node->get_input_size() ||
+      input_b >= node->get_input_size()) {
+    return false;
+  }
+  if (!node->get_input_partial_shape(input_a).is_static() ||
+      !node->get_input_partial_shape(input_b).is_static()) {
+    return false;
+  }
+  return node->get_input_shape(input_a) == node->get_input_shape(input_b);
 }
 
-bool same_static_element_count_input_output(const std::shared_ptr<const ov::Node>& node,
-                                            size_t input_idx,
-                                            size_t output_idx) {
-    if (!node || input_idx >= node->get_input_size() ||
-        output_idx >= node->get_output_size()) {
-        return false;
-    }
-    if (!node->get_input_partial_shape(input_idx).is_static() ||
-        !node->get_output_partial_shape(output_idx).is_static()) {
-        return false;
-    }
-    return ov::shape_size(node->get_input_shape(input_idx)) ==
-           ov::shape_size(node->get_output_shape(output_idx));
+bool same_static_element_count_input_output(
+    const std::shared_ptr<const ov::Node> &node, size_t input_idx,
+    size_t output_idx) {
+  if (!node || input_idx >= node->get_input_size() ||
+      output_idx >= node->get_output_size()) {
+    return false;
+  }
+  if (!node->get_input_partial_shape(input_idx).is_static() ||
+      !node->get_output_partial_shape(output_idx).is_static()) {
+    return false;
+  }
+  return ov::shape_size(node->get_input_shape(input_idx)) ==
+         ov::shape_size(node->get_output_shape(output_idx));
 }
 
-std::optional<GfxOpenClBaselineOp> activation_op_code(
-    const std::shared_ptr<const ov::Node>& node) {
-    if (ov::as_type_ptr<const ov::op::v0::Relu>(node)) {
-        return GfxOpenClBaselineOp::Relu;
-    }
-    if (ov::as_type_ptr<const ov::op::v0::Sigmoid>(node)) {
-        return GfxOpenClBaselineOp::Sigmoid;
-    }
-    if (ov::as_type_ptr<const ov::op::v0::Tanh>(node)) {
-        return GfxOpenClBaselineOp::Tanh;
-    }
-    if (ov::as_type_ptr<const ov::op::v0::Gelu>(node)) {
-        return GfxOpenClBaselineOp::GeluErf;
-    }
-    if (auto gelu = ov::as_type_ptr<const ov::op::v7::Gelu>(node)) {
-        return gelu->get_approximation_mode() == ov::op::GeluApproximationMode::TANH
-                   ? GfxOpenClBaselineOp::GeluTanh
-                   : GfxOpenClBaselineOp::GeluErf;
-    }
-    if (ov::as_type_ptr<const ov::op::v4::HSwish>(node)) {
-        return GfxOpenClBaselineOp::HSwish;
-    }
-    if (ov::as_type_ptr<const ov::op::v5::HSigmoid>(node)) {
-        return GfxOpenClBaselineOp::HSigmoid;
-    }
-    if (ov::as_type_ptr<const ov::op::v4::SoftPlus>(node)) {
-        return GfxOpenClBaselineOp::SoftPlus;
-    }
-    if (ov::as_type_ptr<const ov::op::v4::Swish>(node)) {
-        return GfxOpenClBaselineOp::Swish;
-    }
-    if (ov::as_type_ptr<const ov::op::v4::Mish>(node)) {
-        return GfxOpenClBaselineOp::Mish;
-    }
-    if (ov::as_type_ptr<const ov::op::v9::SoftSign>(node)) {
-        return GfxOpenClBaselineOp::SoftSign;
-    }
-    if (ov::as_type_ptr<const ov::op::v0::Abs>(node)) {
-        return GfxOpenClBaselineOp::Abs;
-    }
-    if (ov::as_type_ptr<const ov::op::v0::Sign>(node)) {
-        return GfxOpenClBaselineOp::Sign;
-    }
-    if (ov::as_type_ptr<const ov::op::v0::Clamp>(node)) {
-        return GfxOpenClBaselineOp::Clamp;
-    }
-    if (ov::as_type_ptr<const ov::op::v0::Negative>(node)) {
-        return GfxOpenClBaselineOp::Negative;
-    }
-    if (ov::as_type_ptr<const ov::op::v0::Sin>(node)) {
-        return GfxOpenClBaselineOp::Sin;
-    }
-    if (ov::as_type_ptr<const ov::op::v0::Cos>(node)) {
-        return GfxOpenClBaselineOp::Cos;
-    }
-    if (ov::as_type_ptr<const ov::op::v0::Tan>(node)) {
-        return GfxOpenClBaselineOp::Tan;
-    }
-    if (ov::as_type_ptr<const ov::op::v0::Erf>(node)) {
-        return GfxOpenClBaselineOp::Erf;
-    }
-    if (ov::as_type_ptr<const ov::op::v0::Asin>(node)) {
-        return GfxOpenClBaselineOp::Asin;
-    }
-    if (ov::as_type_ptr<const ov::op::v0::Acos>(node)) {
-        return GfxOpenClBaselineOp::Acos;
-    }
-    if (ov::as_type_ptr<const ov::op::v0::Atan>(node)) {
-        return GfxOpenClBaselineOp::Atan;
-    }
-    if (ov::as_type_ptr<const ov::op::v3::Asinh>(node)) {
-        return GfxOpenClBaselineOp::Asinh;
-    }
-    if (ov::as_type_ptr<const ov::op::v3::Acosh>(node)) {
-        return GfxOpenClBaselineOp::Acosh;
-    }
-    if (ov::as_type_ptr<const ov::op::v3::Atanh>(node)) {
-        return GfxOpenClBaselineOp::Atanh;
-    }
-    if (ov::as_type_ptr<const ov::op::v0::Sinh>(node)) {
-        return GfxOpenClBaselineOp::Sinh;
-    }
-    if (ov::as_type_ptr<const ov::op::v0::Cosh>(node)) {
-        return GfxOpenClBaselineOp::Cosh;
-    }
-    if (auto round = ov::as_type_ptr<const ov::op::v5::Round>(node)) {
-        return round->get_mode() == ov::op::v5::Round::RoundMode::HALF_TO_EVEN
-                   ? GfxOpenClBaselineOp::RoundEven
-                   : GfxOpenClBaselineOp::RoundAway;
-    }
-    if (ov::as_type_ptr<const ov::op::v0::Exp>(node)) {
-        return GfxOpenClBaselineOp::Exp;
-    }
-    if (ov::as_type_ptr<const ov::op::v0::Log>(node)) {
-        return GfxOpenClBaselineOp::Log;
-    }
-    if (ov::as_type_ptr<const ov::op::v0::Sqrt>(node)) {
-        return GfxOpenClBaselineOp::Sqrt;
-    }
-    if (ov::as_type_ptr<const ov::op::v0::Floor>(node)) {
-        return GfxOpenClBaselineOp::Floor;
-    }
-    if (ov::as_type_ptr<const ov::op::v0::Ceiling>(node)) {
-        return GfxOpenClBaselineOp::Ceiling;
-    }
-    if (ov::as_type_ptr<const ov::op::v0::Elu>(node)) {
-        return GfxOpenClBaselineOp::Elu;
-    }
-    return std::nullopt;
+std::optional<GfxOpenClBaselineOp>
+activation_op_code(const std::shared_ptr<const ov::Node> &node) {
+  if (ov::as_type_ptr<const ov::op::v0::Relu>(node)) {
+    return GfxOpenClBaselineOp::Relu;
+  }
+  if (ov::as_type_ptr<const ov::op::v0::Sigmoid>(node)) {
+    return GfxOpenClBaselineOp::Sigmoid;
+  }
+  if (ov::as_type_ptr<const ov::op::v0::Tanh>(node)) {
+    return GfxOpenClBaselineOp::Tanh;
+  }
+  if (ov::as_type_ptr<const ov::op::v0::Gelu>(node)) {
+    return GfxOpenClBaselineOp::GeluErf;
+  }
+  if (auto gelu = ov::as_type_ptr<const ov::op::v7::Gelu>(node)) {
+    return gelu->get_approximation_mode() == ov::op::GeluApproximationMode::TANH
+               ? GfxOpenClBaselineOp::GeluTanh
+               : GfxOpenClBaselineOp::GeluErf;
+  }
+  if (ov::as_type_ptr<const ov::op::v4::HSwish>(node)) {
+    return GfxOpenClBaselineOp::HSwish;
+  }
+  if (ov::as_type_ptr<const ov::op::v5::HSigmoid>(node)) {
+    return GfxOpenClBaselineOp::HSigmoid;
+  }
+  if (ov::as_type_ptr<const ov::op::v4::SoftPlus>(node)) {
+    return GfxOpenClBaselineOp::SoftPlus;
+  }
+  if (ov::as_type_ptr<const ov::op::v4::Swish>(node)) {
+    return GfxOpenClBaselineOp::Swish;
+  }
+  if (ov::as_type_ptr<const ov::op::v4::Mish>(node)) {
+    return GfxOpenClBaselineOp::Mish;
+  }
+  if (ov::as_type_ptr<const ov::op::v9::SoftSign>(node)) {
+    return GfxOpenClBaselineOp::SoftSign;
+  }
+  if (ov::as_type_ptr<const ov::op::v0::Abs>(node)) {
+    return GfxOpenClBaselineOp::Abs;
+  }
+  if (ov::as_type_ptr<const ov::op::v0::Sign>(node)) {
+    return GfxOpenClBaselineOp::Sign;
+  }
+  if (ov::as_type_ptr<const ov::op::v0::Clamp>(node)) {
+    return GfxOpenClBaselineOp::Clamp;
+  }
+  if (ov::as_type_ptr<const ov::op::v0::Negative>(node)) {
+    return GfxOpenClBaselineOp::Negative;
+  }
+  if (ov::as_type_ptr<const ov::op::v0::Sin>(node)) {
+    return GfxOpenClBaselineOp::Sin;
+  }
+  if (ov::as_type_ptr<const ov::op::v0::Cos>(node)) {
+    return GfxOpenClBaselineOp::Cos;
+  }
+  if (ov::as_type_ptr<const ov::op::v0::Tan>(node)) {
+    return GfxOpenClBaselineOp::Tan;
+  }
+  if (ov::as_type_ptr<const ov::op::v0::Erf>(node)) {
+    return GfxOpenClBaselineOp::Erf;
+  }
+  if (ov::as_type_ptr<const ov::op::v0::Asin>(node)) {
+    return GfxOpenClBaselineOp::Asin;
+  }
+  if (ov::as_type_ptr<const ov::op::v0::Acos>(node)) {
+    return GfxOpenClBaselineOp::Acos;
+  }
+  if (ov::as_type_ptr<const ov::op::v0::Atan>(node)) {
+    return GfxOpenClBaselineOp::Atan;
+  }
+  if (ov::as_type_ptr<const ov::op::v3::Asinh>(node)) {
+    return GfxOpenClBaselineOp::Asinh;
+  }
+  if (ov::as_type_ptr<const ov::op::v3::Acosh>(node)) {
+    return GfxOpenClBaselineOp::Acosh;
+  }
+  if (ov::as_type_ptr<const ov::op::v3::Atanh>(node)) {
+    return GfxOpenClBaselineOp::Atanh;
+  }
+  if (ov::as_type_ptr<const ov::op::v0::Sinh>(node)) {
+    return GfxOpenClBaselineOp::Sinh;
+  }
+  if (ov::as_type_ptr<const ov::op::v0::Cosh>(node)) {
+    return GfxOpenClBaselineOp::Cosh;
+  }
+  if (auto round = ov::as_type_ptr<const ov::op::v5::Round>(node)) {
+    return round->get_mode() == ov::op::v5::Round::RoundMode::HALF_TO_EVEN
+               ? GfxOpenClBaselineOp::RoundEven
+               : GfxOpenClBaselineOp::RoundAway;
+  }
+  if (ov::as_type_ptr<const ov::op::v0::Exp>(node)) {
+    return GfxOpenClBaselineOp::Exp;
+  }
+  if (ov::as_type_ptr<const ov::op::v0::Log>(node)) {
+    return GfxOpenClBaselineOp::Log;
+  }
+  if (ov::as_type_ptr<const ov::op::v0::Sqrt>(node)) {
+    return GfxOpenClBaselineOp::Sqrt;
+  }
+  if (ov::as_type_ptr<const ov::op::v0::Floor>(node)) {
+    return GfxOpenClBaselineOp::Floor;
+  }
+  if (ov::as_type_ptr<const ov::op::v0::Ceiling>(node)) {
+    return GfxOpenClBaselineOp::Ceiling;
+  }
+  if (ov::as_type_ptr<const ov::op::v0::Elu>(node)) {
+    return GfxOpenClBaselineOp::Elu;
+  }
+  return std::nullopt;
 }
 
-std::optional<GfxOpenClBaselineOp> binary_op_code(
-    const std::shared_ptr<const ov::Node>& node) {
-    if (ov::as_type_ptr<const ov::op::v1::Add>(node)) {
-        return GfxOpenClBaselineOp::Add;
-    }
-    if (ov::as_type_ptr<const ov::op::v1::Subtract>(node)) {
-        return GfxOpenClBaselineOp::Subtract;
-    }
-    if (ov::as_type_ptr<const ov::op::v1::Multiply>(node)) {
-        return GfxOpenClBaselineOp::Multiply;
-    }
-    if (ov::as_type_ptr<const ov::op::v1::Divide>(node)) {
-        return GfxOpenClBaselineOp::Divide;
-    }
-    if (ov::as_type_ptr<const ov::op::v1::Maximum>(node)) {
-        return GfxOpenClBaselineOp::Maximum;
-    }
-    if (ov::as_type_ptr<const ov::op::v1::Minimum>(node)) {
-        return GfxOpenClBaselineOp::Minimum;
-    }
-    if (ov::as_type_ptr<const ov::op::v1::Power>(node)) {
-        return GfxOpenClBaselineOp::Power;
-    }
-    if (ov::as_type_ptr<const ov::op::v0::SquaredDifference>(node)) {
-        return GfxOpenClBaselineOp::SquaredDifference;
-    }
-    if (ov::as_type_ptr<const ov::op::v1::Mod>(node)) {
-        return GfxOpenClBaselineOp::Mod;
-    }
-    if (ov::as_type_ptr<const ov::op::v1::FloorMod>(node)) {
-        return GfxOpenClBaselineOp::FloorMod;
-    }
-    return std::nullopt;
+std::optional<GfxOpenClBaselineOp>
+binary_op_code(const std::shared_ptr<const ov::Node> &node) {
+  if (ov::as_type_ptr<const ov::op::v1::Add>(node)) {
+    return GfxOpenClBaselineOp::Add;
+  }
+  if (ov::as_type_ptr<const ov::op::v1::Subtract>(node)) {
+    return GfxOpenClBaselineOp::Subtract;
+  }
+  if (ov::as_type_ptr<const ov::op::v1::Multiply>(node)) {
+    return GfxOpenClBaselineOp::Multiply;
+  }
+  if (ov::as_type_ptr<const ov::op::v1::Divide>(node)) {
+    return GfxOpenClBaselineOp::Divide;
+  }
+  if (ov::as_type_ptr<const ov::op::v1::Maximum>(node)) {
+    return GfxOpenClBaselineOp::Maximum;
+  }
+  if (ov::as_type_ptr<const ov::op::v1::Minimum>(node)) {
+    return GfxOpenClBaselineOp::Minimum;
+  }
+  if (ov::as_type_ptr<const ov::op::v1::Power>(node)) {
+    return GfxOpenClBaselineOp::Power;
+  }
+  if (ov::as_type_ptr<const ov::op::v0::SquaredDifference>(node)) {
+    return GfxOpenClBaselineOp::SquaredDifference;
+  }
+  if (ov::as_type_ptr<const ov::op::v1::Mod>(node)) {
+    return GfxOpenClBaselineOp::Mod;
+  }
+  if (ov::as_type_ptr<const ov::op::v1::FloorMod>(node)) {
+    return GfxOpenClBaselineOp::FloorMod;
+  }
+  return std::nullopt;
 }
 
 std::optional<GfxOpenClBaselineOp> compare_op_code(std::string_view type) {
-    if (type == "Equal") return GfxOpenClBaselineOp::Equal;
-    if (type == "NotEqual") return GfxOpenClBaselineOp::NotEqual;
-    if (type == "Greater") return GfxOpenClBaselineOp::Greater;
-    if (type == "GreaterEqual") return GfxOpenClBaselineOp::GreaterEqual;
-    if (type == "Less") return GfxOpenClBaselineOp::Less;
-    if (type == "LessEqual") return GfxOpenClBaselineOp::LessEqual;
-    return std::nullopt;
+  if (type == "Equal")
+    return GfxOpenClBaselineOp::Equal;
+  if (type == "NotEqual")
+    return GfxOpenClBaselineOp::NotEqual;
+  if (type == "Greater")
+    return GfxOpenClBaselineOp::Greater;
+  if (type == "GreaterEqual")
+    return GfxOpenClBaselineOp::GreaterEqual;
+  if (type == "Less")
+    return GfxOpenClBaselineOp::Less;
+  if (type == "LessEqual")
+    return GfxOpenClBaselineOp::LessEqual;
+  return std::nullopt;
 }
 
-std::optional<GfxOpenClBaselineOp> logical_unary_op_code(std::string_view type) {
-    if (type == "LogicalNot") return GfxOpenClBaselineOp::LogicalNot;
-    return std::nullopt;
+std::optional<GfxOpenClBaselineOp>
+logical_unary_op_code(std::string_view type) {
+  if (type == "LogicalNot")
+    return GfxOpenClBaselineOp::LogicalNot;
+  return std::nullopt;
 }
 
-std::optional<GfxOpenClBaselineOp> logical_binary_op_code(std::string_view type) {
-    if (type == "LogicalAnd") return GfxOpenClBaselineOp::LogicalAnd;
-    if (type == "LogicalOr") return GfxOpenClBaselineOp::LogicalOr;
-    if (type == "LogicalXor" || type == "Xor") return GfxOpenClBaselineOp::LogicalXor;
-    return std::nullopt;
+std::optional<GfxOpenClBaselineOp>
+logical_binary_op_code(std::string_view type) {
+  if (type == "LogicalAnd")
+    return GfxOpenClBaselineOp::LogicalAnd;
+  if (type == "LogicalOr")
+    return GfxOpenClBaselineOp::LogicalOr;
+  if (type == "LogicalXor" || type == "Xor")
+    return GfxOpenClBaselineOp::LogicalXor;
+  return std::nullopt;
 }
 
-std::optional<GfxOpenClBaselineOp> reduce_logical_op_code(std::string_view type) {
-    if (type == "ReduceLogicalAnd") return GfxOpenClBaselineOp::ReduceLogicalAnd;
-    if (type == "ReduceLogicalOr") return GfxOpenClBaselineOp::ReduceLogicalOr;
-    return std::nullopt;
+std::optional<GfxOpenClBaselineOp>
+reduce_logical_op_code(std::string_view type) {
+  if (type == "ReduceLogicalAnd")
+    return GfxOpenClBaselineOp::ReduceLogicalAnd;
+  if (type == "ReduceLogicalOr")
+    return GfxOpenClBaselineOp::ReduceLogicalOr;
+  return std::nullopt;
+}
+
+std::optional<GfxOpenClBaselineOp>
+reduce_numeric_op_code(std::string_view type) {
+  if (type == "ReduceSum")
+    return GfxOpenClBaselineOp::ReduceSum;
+  if (type == "ReduceMean")
+    return GfxOpenClBaselineOp::ReduceMean;
+  if (type == "ReduceMax")
+    return GfxOpenClBaselineOp::ReduceMax;
+  if (type == "ReduceMin")
+    return GfxOpenClBaselineOp::ReduceMin;
+  if (type == "ReduceProd")
+    return GfxOpenClBaselineOp::ReduceProd;
+  if (type == "ReduceL1")
+    return GfxOpenClBaselineOp::ReduceL1;
+  if (type == "ReduceL2")
+    return GfxOpenClBaselineOp::ReduceL2;
+  return std::nullopt;
 }
 
 bool is_linear_copy_op(std::string_view type) {
-    return type == "Reshape" || type == "Squeeze" || type == "Unsqueeze";
+  return type == "Reshape" || type == "Squeeze" || type == "Unsqueeze";
 }
 
-bool is_static_scalar_like_input(const std::shared_ptr<const ov::Node>& node,
+bool is_static_scalar_like_input(const std::shared_ptr<const ov::Node> &node,
                                  size_t input_idx) {
-    if (!node || input_idx >= node->get_input_size() ||
-        !node->get_input_partial_shape(input_idx).is_static()) {
-        return false;
-    }
-    return ov::shape_size(node->get_input_shape(input_idx)) == 1;
+  if (!node || input_idx >= node->get_input_size() ||
+      !node->get_input_partial_shape(input_idx).is_static()) {
+    return false;
+  }
+  return ov::shape_size(node->get_input_shape(input_idx)) == 1;
 }
 
-bool input_static_element_count_matches_output(const std::shared_ptr<const ov::Node>& node,
-                                               size_t input_idx,
-                                               size_t output_idx) {
-    if (!node || input_idx >= node->get_input_size() ||
-        output_idx >= node->get_output_size()) {
-        return false;
-    }
-    if (!node->get_input_partial_shape(input_idx).is_static() ||
-        !node->get_output_partial_shape(output_idx).is_static()) {
-        return false;
-    }
-    return ov::shape_size(node->get_input_shape(input_idx)) ==
-           ov::shape_size(node->get_output_shape(output_idx));
+bool input_static_element_count_matches_output(
+    const std::shared_ptr<const ov::Node> &node, size_t input_idx,
+    size_t output_idx) {
+  if (!node || input_idx >= node->get_input_size() ||
+      output_idx >= node->get_output_size()) {
+    return false;
+  }
+  if (!node->get_input_partial_shape(input_idx).is_static() ||
+      !node->get_output_partial_shape(output_idx).is_static()) {
+    return false;
+  }
+  return ov::shape_size(node->get_input_shape(input_idx)) ==
+         ov::shape_size(node->get_output_shape(output_idx));
 }
 
-std::optional<float> scalar_f32_constant_input(const std::shared_ptr<const ov::Node>& node,
-                                               size_t input_idx) {
-    if (!node || input_idx >= node->get_input_size()) {
-        return std::nullopt;
-    }
-    auto constant = ov::as_type_ptr<const ov::op::v0::Constant>(
-        node->input_value(input_idx).get_node_shared_ptr());
-    if (!constant ||
-        !is_f32_tensor_type(constant->get_output_element_type(0)) ||
-        !constant->get_output_partial_shape(0).is_static() ||
-        ov::shape_size(constant->get_output_shape(0)) != 1) {
-        return std::nullopt;
-    }
-    const auto values = constant->cast_vector<float>();
-    if (values.empty()) {
-        return std::nullopt;
-    }
-    return values.front();
+std::optional<float>
+scalar_f32_constant_input(const std::shared_ptr<const ov::Node> &node,
+                          size_t input_idx) {
+  if (!node || input_idx >= node->get_input_size()) {
+    return std::nullopt;
+  }
+  auto constant = ov::as_type_ptr<const ov::op::v0::Constant>(
+      node->input_value(input_idx).get_node_shared_ptr());
+  if (!constant || !is_f32_tensor_type(constant->get_output_element_type(0)) ||
+      !constant->get_output_partial_shape(0).is_static() ||
+      ov::shape_size(constant->get_output_shape(0)) != 1) {
+    return std::nullopt;
+  }
+  const auto values = constant->cast_vector<float>();
+  if (values.empty()) {
+    return std::nullopt;
+  }
+  return values.front();
 }
 
-std::optional<float> scalar_float_constant_input(const std::shared_ptr<const ov::Node>& node,
-                                                 size_t input_idx) {
-    if (!node || input_idx >= node->get_input_size()) {
-        return std::nullopt;
-    }
-    auto constant = ov::as_type_ptr<const ov::op::v0::Constant>(
-        node->input_value(input_idx).get_node_shared_ptr());
-    if (!constant ||
-        constant->get_output_element_type(0) != node->get_input_element_type(0) ||
-        !constant->get_output_partial_shape(0).is_static() ||
-        ov::shape_size(constant->get_output_shape(0)) != 1) {
-        return std::nullopt;
-    }
-    const auto values = constant->cast_vector<float>();
-    if (values.empty()) {
-        return std::nullopt;
-    }
-    return values.front();
+std::optional<float>
+scalar_float_constant_input(const std::shared_ptr<const ov::Node> &node,
+                            size_t input_idx) {
+  if (!node || input_idx >= node->get_input_size()) {
+    return std::nullopt;
+  }
+  auto constant = ov::as_type_ptr<const ov::op::v0::Constant>(
+      node->input_value(input_idx).get_node_shared_ptr());
+  if (!constant ||
+      constant->get_output_element_type(0) != node->get_input_element_type(0) ||
+      !constant->get_output_partial_shape(0).is_static() ||
+      ov::shape_size(constant->get_output_shape(0)) != 1) {
+    return std::nullopt;
+  }
+  const auto values = constant->cast_vector<float>();
+  if (values.empty()) {
+    return std::nullopt;
+  }
+  return values.front();
 }
 
-bool scalar_float_input(const std::shared_ptr<const ov::Node>& node,
+bool scalar_float_input(const std::shared_ptr<const ov::Node> &node,
                         size_t input_idx) {
-    if (!node || input_idx >= node->get_input_size()) {
-        return false;
-    }
-    return node->get_input_element_type(input_idx) == node->get_input_element_type(0) &&
-           node->get_input_partial_shape(input_idx).is_static() &&
-           ov::shape_size(node->get_input_shape(input_idx)) == 1;
+  if (!node || input_idx >= node->get_input_size()) {
+    return false;
+  }
+  return node->get_input_element_type(input_idx) ==
+             node->get_input_element_type(0) &&
+         node->get_input_partial_shape(input_idx).is_static() &&
+         ov::shape_size(node->get_input_shape(input_idx)) == 1;
 }
 
-std::optional<std::vector<int64_t>> constant_i64_vector_input(
-    const std::shared_ptr<const ov::Node>& node,
-    size_t input_idx) {
-    if (!node || input_idx >= node->get_input_size()) {
-        return std::nullopt;
-    }
-    auto constant = ov::as_type_ptr<const ov::op::v0::Constant>(
-        node->input_value(input_idx).get_node_shared_ptr());
-    if (!constant) {
-        return std::nullopt;
-    }
-    return constant->cast_vector<int64_t>();
+std::optional<std::vector<int64_t>>
+constant_i64_vector_input(const std::shared_ptr<const ov::Node> &node,
+                          size_t input_idx) {
+  if (!node || input_idx >= node->get_input_size()) {
+    return std::nullopt;
+  }
+  auto constant = ov::as_type_ptr<const ov::op::v0::Constant>(
+      node->input_value(input_idx).get_node_shared_ptr());
+  if (!constant) {
+    return std::nullopt;
+  }
+  return constant->cast_vector<int64_t>();
 }
 
 std::optional<size_t> normalize_axis(int64_t axis, size_t rank);
 
-bool checked_u32(uint64_t value, uint32_t& out) {
-    if (value > std::numeric_limits<uint32_t>::max()) {
-        return false;
-    }
-    out = static_cast<uint32_t>(value);
-    return true;
+bool checked_u32(uint64_t value, uint32_t &out) {
+  if (value > std::numeric_limits<uint32_t>::max()) {
+    return false;
+  }
+  out = static_cast<uint32_t>(value);
+  return true;
 }
 
-uint64_t shape_product_range(const ov::Shape& shape, size_t begin, size_t end) {
-    uint64_t product = 1;
-    for (size_t axis = begin; axis < end; ++axis) {
-        product *= shape[axis];
-    }
-    return product;
+uint64_t shape_product_range(const ov::Shape &shape, size_t begin, size_t end) {
+  uint64_t product = 1;
+  for (size_t axis = begin; axis < end; ++axis) {
+    product *= shape[axis];
+  }
+  return product;
 }
 
-bool append_shape_u32(const ov::Shape& shape,
-                      size_t max_rank,
-                      std::vector<uint32_t>& values);
+bool append_shape_u32(const ov::Shape &shape, size_t max_rank,
+                      std::vector<uint32_t> &values);
 
-std::optional<uint32_t> aligned_broadcast_stride(const ov::Shape& input_shape,
-                                                 const ov::Shape& output_shape,
+std::optional<uint32_t> aligned_broadcast_stride(const ov::Shape &input_shape,
+                                                 const ov::Shape &output_shape,
                                                  size_t output_axis) {
-    const size_t output_rank = output_shape.size();
-    const size_t input_rank = input_shape.size();
-    if (output_axis >= output_rank || input_rank > output_rank) {
-        return std::nullopt;
-    }
-    if (output_axis < output_rank - input_rank) {
-        return 0u;
-    }
-    const size_t input_axis = output_axis - (output_rank - input_rank);
-    const size_t input_dim = input_shape[input_axis];
-    const size_t output_dim = output_shape[output_axis];
-    if (input_dim != output_dim && input_dim != 1) {
-        return std::nullopt;
-    }
-    if (input_dim == 1 && output_dim != 1) {
-        return 0u;
-    }
-    uint32_t stride = 0;
-    if (!checked_u32(shape_product_range(input_shape, input_axis + 1, input_rank), stride)) {
-        return std::nullopt;
-    }
-    return stride;
+  const size_t output_rank = output_shape.size();
+  const size_t input_rank = input_shape.size();
+  if (output_axis >= output_rank || input_rank > output_rank) {
+    return std::nullopt;
+  }
+  if (output_axis < output_rank - input_rank) {
+    return 0u;
+  }
+  const size_t input_axis = output_axis - (output_rank - input_rank);
+  const size_t input_dim = input_shape[input_axis];
+  const size_t output_dim = output_shape[output_axis];
+  if (input_dim != output_dim && input_dim != 1) {
+    return std::nullopt;
+  }
+  if (input_dim == 1 && output_dim != 1) {
+    return 0u;
+  }
+  uint32_t stride = 0;
+  if (!checked_u32(shape_product_range(input_shape, input_axis + 1, input_rank),
+                   stride)) {
+    return std::nullopt;
+  }
+  return stride;
 }
 
-bool append_aligned_broadcast_strides_u32(const ov::Shape& input_shape,
-                                          const ov::Shape& output_shape,
+bool append_aligned_broadcast_strides_u32(const ov::Shape &input_shape,
+                                          const ov::Shape &output_shape,
                                           size_t max_rank,
-                                          std::vector<uint32_t>& values) {
-    if (output_shape.size() > max_rank || input_shape.size() > output_shape.size()) {
-        return false;
+                                          std::vector<uint32_t> &values) {
+  if (output_shape.size() > max_rank ||
+      input_shape.size() > output_shape.size()) {
+    return false;
+  }
+  for (size_t axis = 0; axis < output_shape.size(); ++axis) {
+    const auto stride =
+        aligned_broadcast_stride(input_shape, output_shape, axis);
+    if (!stride) {
+      return false;
     }
-    for (size_t axis = 0; axis < output_shape.size(); ++axis) {
-        const auto stride = aligned_broadcast_stride(input_shape, output_shape, axis);
-        if (!stride) {
-            return false;
-        }
-        values.push_back(*stride);
-    }
-    values.insert(values.end(), max_rank - output_shape.size(), 0u);
-    return true;
+    values.push_back(*stride);
+  }
+  values.insert(values.end(), max_rank - output_shape.size(), 0u);
+  return true;
 }
 
-bool output_type_matches(const std::shared_ptr<const ov::Node>& node,
-                         const ov::element::Type& output_type) {
-    return node && node->get_output_size() == 1 &&
-           node->get_output_element_type(0) == output_type;
+bool output_type_matches(const std::shared_ptr<const ov::Node> &node,
+                         const ov::element::Type &output_type) {
+  return node && node->get_output_size() == 1 &&
+         node->get_output_element_type(0) == output_type;
 }
 
-std::optional<std::vector<uint32_t>> broadcast_static_u32_scalars(
-    const std::shared_ptr<const ov::Node>& node,
-    const std::vector<ov::element::Type>& input_types,
-    const ov::element::Type& output_type) {
-    if (!node ||
-        node->get_input_size() != input_types.size() ||
-        node->get_output_size() != 1 ||
-        !node->get_output_partial_shape(0).is_static() ||
-        !output_type_matches(node, output_type)) {
-        return std::nullopt;
-    }
+std::optional<std::vector<uint32_t>>
+broadcast_static_u32_scalars(const std::shared_ptr<const ov::Node> &node,
+                             const std::vector<ov::element::Type> &input_types,
+                             const ov::element::Type &output_type) {
+  if (!node || node->get_input_size() != input_types.size() ||
+      node->get_output_size() != 1 ||
+      !node->get_output_partial_shape(0).is_static() ||
+      !output_type_matches(node, output_type)) {
+    return std::nullopt;
+  }
 
-    for (size_t input_idx = 0; input_idx < input_types.size(); ++input_idx) {
-        if (!node->get_input_partial_shape(input_idx).is_static() ||
-            node->get_input_element_type(input_idx) != input_types[input_idx]) {
-            return std::nullopt;
-        }
+  for (size_t input_idx = 0; input_idx < input_types.size(); ++input_idx) {
+    if (!node->get_input_partial_shape(input_idx).is_static() ||
+        node->get_input_element_type(input_idx) != input_types[input_idx]) {
+      return std::nullopt;
     }
+  }
 
-    const auto& output_shape = node->get_output_shape(0);
-    const size_t rank = output_shape.size();
-    if (rank == 0 || rank > 4 || ov::shape_size(output_shape) == 0) {
-        return std::nullopt;
+  const auto &output_shape = node->get_output_shape(0);
+  const size_t rank = output_shape.size();
+  if (rank == 0 || rank > 4 || ov::shape_size(output_shape) == 0) {
+    return std::nullopt;
+  }
+
+  for (size_t input_idx = 0; input_idx < input_types.size(); ++input_idx) {
+    const auto &input_shape = node->get_input_shape(input_idx);
+    if (input_shape.size() > rank || ov::shape_size(input_shape) == 0) {
+      return std::nullopt;
     }
+  }
 
-    for (size_t input_idx = 0; input_idx < input_types.size(); ++input_idx) {
-        const auto& input_shape = node->get_input_shape(input_idx);
-        if (input_shape.size() > rank || ov::shape_size(input_shape) == 0) {
-            return std::nullopt;
-        }
-    }
-
-    for (size_t axis = 0; axis < rank; ++axis) {
-        if (output_shape[axis] == 0) {
-            return std::nullopt;
-        }
-        for (size_t input_idx = 0; input_idx < input_types.size(); ++input_idx) {
-            if (!aligned_broadcast_stride(node->get_input_shape(input_idx),
-                                          output_shape,
-                                          axis)) {
-                return std::nullopt;
-            }
-        }
-    }
-
-    uint32_t total = 0;
-    if (!checked_u32(ov::shape_size(output_shape), total)) {
-        return std::nullopt;
-    }
-    (void)total;
-
-    std::vector<uint32_t> scalars;
-    scalars.reserve(1 + 4 + 4 * input_types.size());
-    scalars.push_back(static_cast<uint32_t>(rank));
-    if (!append_shape_u32(output_shape, 4, scalars)) {
-        return std::nullopt;
+  for (size_t axis = 0; axis < rank; ++axis) {
+    if (output_shape[axis] == 0) {
+      return std::nullopt;
     }
     for (size_t input_idx = 0; input_idx < input_types.size(); ++input_idx) {
-        if (!append_aligned_broadcast_strides_u32(node->get_input_shape(input_idx),
-                                                 output_shape,
-                                                 4,
-                                                 scalars)) {
-            return std::nullopt;
-        }
+      if (!aligned_broadcast_stride(node->get_input_shape(input_idx),
+                                    output_shape, axis)) {
+        return std::nullopt;
+      }
     }
-    return scalars;
+  }
+
+  uint32_t total = 0;
+  if (!checked_u32(ov::shape_size(output_shape), total)) {
+    return std::nullopt;
+  }
+  (void)total;
+
+  std::vector<uint32_t> scalars;
+  scalars.reserve(1 + 4 + 4 * input_types.size());
+  scalars.push_back(static_cast<uint32_t>(rank));
+  if (!append_shape_u32(output_shape, 4, scalars)) {
+    return std::nullopt;
+  }
+  for (size_t input_idx = 0; input_idx < input_types.size(); ++input_idx) {
+    if (!append_aligned_broadcast_strides_u32(node->get_input_shape(input_idx),
+                                              output_shape, 4, scalars)) {
+      return std::nullopt;
+    }
+  }
+  return scalars;
 }
 
 std::optional<std::vector<uint32_t>> binary_broadcast_static_u32_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    if (!node || node->get_input_size() != 2 || node->get_output_size() != 1) {
-        return std::nullopt;
-    }
-    const auto element_type = node->get_output_element_type(0);
-    if (!is_opencl_binary_tensor_type(element_type)) {
-        return std::nullopt;
-    }
-    return broadcast_static_u32_scalars(node, {element_type, element_type}, element_type);
+    const std::shared_ptr<const ov::Node> &node) {
+  if (!node || node->get_input_size() != 2 || node->get_output_size() != 1) {
+    return std::nullopt;
+  }
+  const auto element_type = node->get_output_element_type(0);
+  if (!is_opencl_binary_tensor_type(element_type)) {
+    return std::nullopt;
+  }
+  return broadcast_static_u32_scalars(node, {element_type, element_type},
+                                      element_type);
 }
 
 GfxKernelStageManifest make_opencl_baseline_manifest(
-    GfxKernelStageFamily family,
-    std::string specialization_key,
-    std::string entry_point,
-    uint32_t direct_inputs,
-    uint32_t scalar_arg_count,
+    GfxKernelStageFamily family, std::string specialization_key,
+    std::string entry_point, uint32_t direct_inputs, uint32_t scalar_arg_count,
     uint32_t direct_outputs = 1);
 
 GfxOpenClSourceArtifact make_opencl_baseline_artifact(
-    GfxKernelStageManifest manifest,
-    std::string source_id,
+    GfxKernelStageManifest manifest, std::string source_id,
     std::vector<GfxOpenClSourceScalarArg> scalar_args,
-    std::vector<size_t> direct_input_indices,
-    GfxOpenClBaselineOp op,
+    std::vector<size_t> direct_input_indices, GfxOpenClBaselineOp op,
     GfxOpenClBaselineInputMode input_mode = GfxOpenClBaselineInputMode::Direct,
     float scalar_constant_f32 = 0.0f,
     std::vector<uint32_t> static_u32_scalars = {},
@@ -4614,2568 +4484,2540 @@ GfxOpenClSourceArtifact make_opencl_baseline_artifact(
     std::vector<float> static_f32_scalars = {});
 
 bool is_numpy_aligned_binary_broadcast(
-    const ov::op::util::BinaryElementwiseArithmetic& op) {
-    return op.get_autob().m_type == ov::op::AutoBroadcastType::NUMPY;
+    const ov::op::util::BinaryElementwiseArithmetic &op) {
+  return op.get_autob().m_type == ov::op::AutoBroadcastType::NUMPY;
 }
 
-std::optional<GfxOpenClSourceArtifact> make_opencl_activation_artifact(
-    const std::shared_ptr<const ov::Node>& node) {
-    const auto op = activation_op_code(node);
-    if (!op ||
-        !node ||
-        (node->get_input_size() != 1 &&
-         !(ov::as_type_ptr<const ov::op::v4::Swish>(node) &&
-           node->get_input_size() == 2)) ||
-        node->get_output_size() != 1 ||
-        node->get_input_element_type(0) != node->get_output_element_type(0) ||
-        (!is_f32_tensor_type(node->get_output_element_type(0)) &&
-         !is_f16_tensor_type(node->get_output_element_type(0))) ||
-        !input_static_element_count_matches_output(node, 0, 0)) {
+std::optional<GfxOpenClSourceArtifact>
+make_opencl_activation_artifact(const std::shared_ptr<const ov::Node> &node) {
+  const auto op = activation_op_code(node);
+  if (!op || !node ||
+      (node->get_input_size() != 1 &&
+       !(ov::as_type_ptr<const ov::op::v4::Swish>(node) &&
+         node->get_input_size() == 2)) ||
+      node->get_output_size() != 1 ||
+      node->get_input_element_type(0) != node->get_output_element_type(0) ||
+      (!is_f32_tensor_type(node->get_output_element_type(0)) &&
+       !is_f16_tensor_type(node->get_output_element_type(0))) ||
+      !input_static_element_count_matches_output(node, 0, 0)) {
+    return std::nullopt;
+  }
+
+  const std::string type_suffix =
+      opencl_scalar_type_suffix(node->get_output_element_type(0));
+  const std::string entry_point =
+      "gfx_opencl_generated_activation_" + type_suffix;
+  float alpha = 0.0f;
+  float beta = 0.0f;
+  if (auto elu = ov::as_type_ptr<const ov::op::v0::Elu>(node)) {
+    alpha = static_cast<float>(elu->get_alpha());
+  }
+  if (auto clamp = ov::as_type_ptr<const ov::op::v0::Clamp>(node)) {
+    alpha = static_cast<float>(clamp->get_min());
+    beta = static_cast<float>(clamp->get_max());
+  }
+  if (auto swish = ov::as_type_ptr<const ov::op::v4::Swish>(node)) {
+    alpha = 1.0f;
+    if (swish->get_input_size() == 2) {
+      if (!scalar_float_input(node, 1)) {
         return std::nullopt;
-    }
-
-    const std::string type_suffix =
-        opencl_scalar_type_suffix(node->get_output_element_type(0));
-    const std::string entry_point =
-        "gfx_opencl_generated_activation_" + type_suffix;
-    float alpha = 0.0f;
-    float beta = 0.0f;
-    if (auto elu = ov::as_type_ptr<const ov::op::v0::Elu>(node)) {
-        alpha = static_cast<float>(elu->get_alpha());
-    }
-    if (auto clamp = ov::as_type_ptr<const ov::op::v0::Clamp>(node)) {
-        alpha = static_cast<float>(clamp->get_min());
-        beta = static_cast<float>(clamp->get_max());
-    }
-    if (auto swish = ov::as_type_ptr<const ov::op::v4::Swish>(node)) {
-        alpha = 1.0f;
-        if (swish->get_input_size() == 2) {
-            if (!scalar_float_input(node, 1)) {
-                return std::nullopt;
-            }
-            const auto beta_value = scalar_float_constant_input(node, 1);
-            if (!beta_value) {
-                const auto runtime_entry_point =
-                    "gfx_opencl_generated_activation_runtime_beta_" +
-                    type_suffix;
-                auto manifest = make_opencl_baseline_manifest(
-                    GfxKernelStageFamily::Activation,
-                    "opencl:generated:activation_runtime_beta:" +
-                        std::string(node->get_type_name()) + ":" +
-                        type_suffix,
-                    runtime_entry_point,
-                    /*direct_inputs=*/2,
-                    /*scalar_arg_count=*/2);
-                return make_opencl_baseline_artifact(
-                    std::move(manifest),
-                    "opencl/generated/activation_runtime_beta_" + type_suffix,
-                    {GfxOpenClSourceScalarArg::ElementCount,
-                     GfxOpenClSourceScalarArg::OpCode},
-                    {0, 1},
-                    *op);
-            }
-            alpha = *beta_value;
-        }
-    }
-    auto manifest = make_opencl_baseline_manifest(
-        GfxKernelStageFamily::Activation,
-        "opencl:generated:activation:" + std::string(node->get_type_name()) +
-            ":" + type_suffix,
-        entry_point,
-        /*direct_inputs=*/1,
-        /*scalar_arg_count=*/4);
-    return make_opencl_baseline_artifact(
-        std::move(manifest),
-        "opencl/generated/activation_" + type_suffix,
-        {GfxOpenClSourceScalarArg::ElementCount,
-         GfxOpenClSourceScalarArg::OpCode,
-         GfxOpenClSourceScalarArg::StaticF32,
-         GfxOpenClSourceScalarArg::StaticF32},
-        {0},
-        *op,
-        GfxOpenClBaselineInputMode::Direct,
-        0.0f,
-        {},
-        GfxOpenClSourceElementCountSource::Output0,
-        {alpha, beta});
-}
-
-std::optional<GfxOpenClSourceArtifact> make_opencl_eltwise_artifact(
-    const std::shared_ptr<const ov::Node>& node) {
-    auto eltwise =
-        ov::as_type_ptr<const ov::op::util::BinaryElementwiseArithmetic>(node);
-    const auto op = binary_op_code(node);
-    if (!eltwise ||
-        !op ||
-        eltwise->get_input_size() != 2 ||
-        eltwise->get_output_size() != 1 ||
-        eltwise->get_output_element_type(0) != eltwise->get_input_element_type(0) ||
-        eltwise->get_output_element_type(0) != eltwise->get_input_element_type(1) ||
-        !is_opencl_binary_tensor_type(eltwise->get_output_element_type(0))) {
-        return std::nullopt;
-    }
-
-    const auto element_type = eltwise->get_output_element_type(0);
-    const bool is_f32 = is_f32_tensor_type(element_type);
-    const std::string type_suffix = opencl_scalar_type_suffix(element_type);
-    const bool lhs_matches_output = input_static_element_count_matches_output(node, 0, 0);
-    const bool rhs_matches_output = input_static_element_count_matches_output(node, 1, 0);
-    const auto lhs_constant = scalar_f32_constant_input(node, 0);
-    const auto rhs_constant = scalar_f32_constant_input(node, 1);
-    const std::string type = node->get_type_name();
-    const auto source_id = [&type_suffix](std::string_view variant) {
-        const std::string suffix = variant.empty() ? "binary_" + type_suffix
-                                                   : std::string(variant);
-        return "opencl/generated/eltwise_" + suffix;
-    };
-
-    if (same_static_shape(node, 0, 1) && lhs_matches_output && rhs_matches_output) {
-        const std::string entry_point =
-            "gfx_opencl_generated_eltwise_binary_" + type_suffix;
+      }
+      const auto beta_value = scalar_float_constant_input(node, 1);
+      if (!beta_value) {
+        const auto runtime_entry_point =
+            "gfx_opencl_generated_activation_runtime_beta_" + type_suffix;
         auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::Eltwise,
-            "opencl:generated:eltwise:" + type + ":" + type_suffix + ":same_shape",
-            entry_point,
+            GfxKernelStageFamily::Activation,
+            "opencl:generated:activation_runtime_beta:" +
+                std::string(node->get_type_name()) + ":" + type_suffix,
+            runtime_entry_point,
             /*direct_inputs=*/2,
             /*scalar_arg_count=*/2);
         return make_opencl_baseline_artifact(
             std::move(manifest),
-            source_id({}),
+            "opencl/generated/activation_runtime_beta_" + type_suffix,
             {GfxOpenClSourceScalarArg::ElementCount,
              GfxOpenClSourceScalarArg::OpCode},
-            {0, 1},
-            *op);
+            {0, 1}, *op);
+      }
+      alpha = *beta_value;
     }
+  }
+  auto manifest = make_opencl_baseline_manifest(
+      GfxKernelStageFamily::Activation,
+      "opencl:generated:activation:" + std::string(node->get_type_name()) +
+          ":" + type_suffix,
+      entry_point,
+      /*direct_inputs=*/1,
+      /*scalar_arg_count=*/4);
+  return make_opencl_baseline_artifact(
+      std::move(manifest), "opencl/generated/activation_" + type_suffix,
+      {GfxOpenClSourceScalarArg::ElementCount, GfxOpenClSourceScalarArg::OpCode,
+       GfxOpenClSourceScalarArg::StaticF32,
+       GfxOpenClSourceScalarArg::StaticF32},
+      {0}, *op, GfxOpenClBaselineInputMode::Direct, 0.0f, {},
+      GfxOpenClSourceElementCountSource::Output0, {alpha, beta});
+}
 
-    if (!is_numpy_aligned_binary_broadcast(*eltwise)) {
-        return std::nullopt;
-    }
-
-    if (is_f32 && rhs_constant && lhs_matches_output) {
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::Eltwise,
-            "opencl:generated:eltwise:" + type + ":f32:rhs_scalar_const",
-            "gfx_opencl_generated_eltwise_const_f32",
-            /*direct_inputs=*/1,
-            /*scalar_arg_count=*/4);
-        return make_opencl_baseline_artifact(
-            std::move(manifest),
-            source_id("const_f32"),
-            {GfxOpenClSourceScalarArg::ElementCount,
-             GfxOpenClSourceScalarArg::OpCode,
-             GfxOpenClSourceScalarArg::InputMode,
-             GfxOpenClSourceScalarArg::ScalarConstantF32},
-            {0},
-            *op,
-            GfxOpenClBaselineInputMode::RhsScalarConstant,
-            *rhs_constant);
-    }
-    if (is_f32 && lhs_constant && rhs_matches_output) {
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::Eltwise,
-            "opencl:generated:eltwise:" + type + ":f32:lhs_scalar_const",
-            "gfx_opencl_generated_eltwise_const_f32",
-            /*direct_inputs=*/1,
-            /*scalar_arg_count=*/4);
-        return make_opencl_baseline_artifact(
-            std::move(manifest),
-            source_id("const_f32"),
-            {GfxOpenClSourceScalarArg::ElementCount,
-             GfxOpenClSourceScalarArg::OpCode,
-             GfxOpenClSourceScalarArg::InputMode,
-             GfxOpenClSourceScalarArg::ScalarConstantF32},
-            {1},
-            *op,
-            GfxOpenClBaselineInputMode::LhsScalarConstant,
-            *lhs_constant);
-    }
-    if (is_static_scalar_like_input(node, 1) && lhs_matches_output) {
-        const std::string entry_point =
-            "gfx_opencl_generated_eltwise_scalar_" + type_suffix;
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::Eltwise,
-            "opencl:generated:eltwise:" + type + ":" + type_suffix + ":rhs_scalar",
-            entry_point,
-            /*direct_inputs=*/2,
-            /*scalar_arg_count=*/3);
-        return make_opencl_baseline_artifact(
-            std::move(manifest),
-            source_id("scalar_" + type_suffix),
-            {GfxOpenClSourceScalarArg::ElementCount,
-             GfxOpenClSourceScalarArg::OpCode,
-             GfxOpenClSourceScalarArg::InputMode},
-            {0, 1},
-            *op,
-            GfxOpenClBaselineInputMode::RhsScalar);
-    }
-    if (is_static_scalar_like_input(node, 0) && rhs_matches_output) {
-        const std::string entry_point =
-            "gfx_opencl_generated_eltwise_scalar_" + type_suffix;
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::Eltwise,
-            "opencl:generated:eltwise:" + type + ":" + type_suffix + ":lhs_scalar",
-            entry_point,
-            /*direct_inputs=*/2,
-            /*scalar_arg_count=*/3);
-        return make_opencl_baseline_artifact(
-            std::move(manifest),
-            source_id("scalar_" + type_suffix),
-            {GfxOpenClSourceScalarArg::ElementCount,
-             GfxOpenClSourceScalarArg::OpCode,
-             GfxOpenClSourceScalarArg::InputMode},
-            {0, 1},
-            *op,
-            GfxOpenClBaselineInputMode::LhsScalar);
-    }
-
-    auto static_u32_scalars = binary_broadcast_static_u32_scalars(node);
-    if (static_u32_scalars) {
-        const std::string entry_point =
-            "gfx_opencl_generated_eltwise_broadcast_" + type_suffix;
-        std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-            GfxOpenClSourceScalarArg::ElementCount,
-            GfxOpenClSourceScalarArg::OpCode};
-        scalar_args.insert(scalar_args.end(),
-                           static_u32_scalars->size(),
-                           GfxOpenClSourceScalarArg::StaticU32);
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::Eltwise,
-            "opencl:generated:eltwise:" + type + ":" + type_suffix + ":broadcast",
-            entry_point,
-            /*direct_inputs=*/2,
-            static_cast<uint32_t>(scalar_args.size()));
-        return make_opencl_baseline_artifact(
-            std::move(manifest),
-            source_id("broadcast_" + type_suffix),
-            std::move(scalar_args),
-            {0, 1},
-            *op,
-            GfxOpenClBaselineInputMode::Direct,
-            0.0f,
-            std::move(*static_u32_scalars));
-    }
+std::optional<GfxOpenClSourceArtifact>
+make_opencl_eltwise_artifact(const std::shared_ptr<const ov::Node> &node) {
+  auto eltwise =
+      ov::as_type_ptr<const ov::op::util::BinaryElementwiseArithmetic>(node);
+  const auto op = binary_op_code(node);
+  if (!eltwise || !op || eltwise->get_input_size() != 2 ||
+      eltwise->get_output_size() != 1 ||
+      eltwise->get_output_element_type(0) !=
+          eltwise->get_input_element_type(0) ||
+      eltwise->get_output_element_type(0) !=
+          eltwise->get_input_element_type(1) ||
+      !is_opencl_binary_tensor_type(eltwise->get_output_element_type(0))) {
     return std::nullopt;
+  }
+
+  const auto element_type = eltwise->get_output_element_type(0);
+  const bool is_f32 = is_f32_tensor_type(element_type);
+  const std::string type_suffix = opencl_scalar_type_suffix(element_type);
+  const bool lhs_matches_output =
+      input_static_element_count_matches_output(node, 0, 0);
+  const bool rhs_matches_output =
+      input_static_element_count_matches_output(node, 1, 0);
+  const auto lhs_constant = scalar_f32_constant_input(node, 0);
+  const auto rhs_constant = scalar_f32_constant_input(node, 1);
+  const std::string type = node->get_type_name();
+  const auto source_id = [&type_suffix](std::string_view variant) {
+    const std::string suffix =
+        variant.empty() ? "binary_" + type_suffix : std::string(variant);
+    return "opencl/generated/eltwise_" + suffix;
+  };
+
+  if (same_static_shape(node, 0, 1) && lhs_matches_output &&
+      rhs_matches_output) {
+    const std::string entry_point =
+        "gfx_opencl_generated_eltwise_binary_" + type_suffix;
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::Eltwise,
+        "opencl:generated:eltwise:" + type + ":" + type_suffix + ":same_shape",
+        entry_point,
+        /*direct_inputs=*/2,
+        /*scalar_arg_count=*/2);
+    return make_opencl_baseline_artifact(
+        std::move(manifest), source_id({}),
+        {GfxOpenClSourceScalarArg::ElementCount,
+         GfxOpenClSourceScalarArg::OpCode},
+        {0, 1}, *op);
+  }
+
+  if (!is_numpy_aligned_binary_broadcast(*eltwise)) {
+    return std::nullopt;
+  }
+
+  if (is_f32 && rhs_constant && lhs_matches_output) {
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::Eltwise,
+        "opencl:generated:eltwise:" + type + ":f32:rhs_scalar_const",
+        "gfx_opencl_generated_eltwise_const_f32",
+        /*direct_inputs=*/1,
+        /*scalar_arg_count=*/4);
+    return make_opencl_baseline_artifact(
+        std::move(manifest), source_id("const_f32"),
+        {GfxOpenClSourceScalarArg::ElementCount,
+         GfxOpenClSourceScalarArg::OpCode, GfxOpenClSourceScalarArg::InputMode,
+         GfxOpenClSourceScalarArg::ScalarConstantF32},
+        {0}, *op, GfxOpenClBaselineInputMode::RhsScalarConstant, *rhs_constant);
+  }
+  if (is_f32 && lhs_constant && rhs_matches_output) {
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::Eltwise,
+        "opencl:generated:eltwise:" + type + ":f32:lhs_scalar_const",
+        "gfx_opencl_generated_eltwise_const_f32",
+        /*direct_inputs=*/1,
+        /*scalar_arg_count=*/4);
+    return make_opencl_baseline_artifact(
+        std::move(manifest), source_id("const_f32"),
+        {GfxOpenClSourceScalarArg::ElementCount,
+         GfxOpenClSourceScalarArg::OpCode, GfxOpenClSourceScalarArg::InputMode,
+         GfxOpenClSourceScalarArg::ScalarConstantF32},
+        {1}, *op, GfxOpenClBaselineInputMode::LhsScalarConstant, *lhs_constant);
+  }
+  if (is_static_scalar_like_input(node, 1) && lhs_matches_output) {
+    const std::string entry_point =
+        "gfx_opencl_generated_eltwise_scalar_" + type_suffix;
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::Eltwise,
+        "opencl:generated:eltwise:" + type + ":" + type_suffix + ":rhs_scalar",
+        entry_point,
+        /*direct_inputs=*/2,
+        /*scalar_arg_count=*/3);
+    return make_opencl_baseline_artifact(
+        std::move(manifest), source_id("scalar_" + type_suffix),
+        {GfxOpenClSourceScalarArg::ElementCount,
+         GfxOpenClSourceScalarArg::OpCode, GfxOpenClSourceScalarArg::InputMode},
+        {0, 1}, *op, GfxOpenClBaselineInputMode::RhsScalar);
+  }
+  if (is_static_scalar_like_input(node, 0) && rhs_matches_output) {
+    const std::string entry_point =
+        "gfx_opencl_generated_eltwise_scalar_" + type_suffix;
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::Eltwise,
+        "opencl:generated:eltwise:" + type + ":" + type_suffix + ":lhs_scalar",
+        entry_point,
+        /*direct_inputs=*/2,
+        /*scalar_arg_count=*/3);
+    return make_opencl_baseline_artifact(
+        std::move(manifest), source_id("scalar_" + type_suffix),
+        {GfxOpenClSourceScalarArg::ElementCount,
+         GfxOpenClSourceScalarArg::OpCode, GfxOpenClSourceScalarArg::InputMode},
+        {0, 1}, *op, GfxOpenClBaselineInputMode::LhsScalar);
+  }
+
+  auto static_u32_scalars = binary_broadcast_static_u32_scalars(node);
+  if (static_u32_scalars) {
+    const std::string entry_point =
+        "gfx_opencl_generated_eltwise_broadcast_" + type_suffix;
+    std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+        GfxOpenClSourceScalarArg::ElementCount,
+        GfxOpenClSourceScalarArg::OpCode};
+    scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
+                       GfxOpenClSourceScalarArg::StaticU32);
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::Eltwise,
+        "opencl:generated:eltwise:" + type + ":" + type_suffix + ":broadcast",
+        entry_point,
+        /*direct_inputs=*/2, static_cast<uint32_t>(scalar_args.size()));
+    return make_opencl_baseline_artifact(
+        std::move(manifest), source_id("broadcast_" + type_suffix),
+        std::move(scalar_args), {0, 1}, *op, GfxOpenClBaselineInputMode::Direct,
+        0.0f, std::move(*static_u32_scalars));
+  }
+  return std::nullopt;
 }
 
 std::optional<std::vector<uint32_t>> compare_broadcast_static_u32_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    return broadcast_static_u32_scalars(node,
-                                        {ov::element::f32, ov::element::f32},
-                                        ov::element::boolean);
+    const std::shared_ptr<const ov::Node> &node) {
+  return broadcast_static_u32_scalars(
+      node, {ov::element::f32, ov::element::f32}, ov::element::boolean);
 }
 
 std::optional<std::vector<uint32_t>> select_broadcast_static_u32_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    return broadcast_static_u32_scalars(node,
-                                        {ov::element::boolean,
-                                         ov::element::f32,
-                                         ov::element::f32},
-                                        ov::element::f32);
+    const std::shared_ptr<const ov::Node> &node) {
+  return broadcast_static_u32_scalars(
+      node, {ov::element::boolean, ov::element::f32, ov::element::f32},
+      ov::element::f32);
 }
 
-std::optional<std::vector<uint32_t>> logical_binary_broadcast_static_u32_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    return broadcast_static_u32_scalars(node,
-                                        {ov::element::boolean,
-                                         ov::element::boolean},
-                                        ov::element::boolean);
+std::optional<std::vector<uint32_t>>
+logical_binary_broadcast_static_u32_scalars(
+    const std::shared_ptr<const ov::Node> &node) {
+  return broadcast_static_u32_scalars(
+      node, {ov::element::boolean, ov::element::boolean}, ov::element::boolean);
 }
 
-std::optional<std::vector<uint32_t>> reduce_logical_static_u32_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    if (!node ||
-        node->get_input_size() != 2 ||
-        node->get_output_size() != 1 ||
-        !is_bool_tensor_type(node->get_input_element_type(0)) ||
-        !is_bool_tensor_type(node->get_output_element_type(0)) ||
-        !node->get_input_partial_shape(0).is_static() ||
-        !node->get_output_partial_shape(0).is_static()) {
-        return std::nullopt;
+std::optional<std::vector<uint32_t>>
+reduce_static_u32_scalars(const std::shared_ptr<const ov::Node> &node,
+                          bool keep_dims) {
+  const auto &input_shape = node->get_input_shape(0);
+  const auto &output_shape = node->get_output_shape(0);
+  const size_t rank = input_shape.size();
+  const size_t out_rank = output_shape.size();
+  if (rank == 0 || rank > 4 || out_rank > 4 ||
+      ov::shape_size(input_shape) == 0 || ov::shape_size(output_shape) == 0) {
+    return std::nullopt;
+  }
+  for (const auto dim : input_shape) {
+    if (dim == 0 || dim > std::numeric_limits<uint32_t>::max()) {
+      return std::nullopt;
     }
+  }
+  for (const auto dim : output_shape) {
+    if (dim == 0 || dim > std::numeric_limits<uint32_t>::max()) {
+      return std::nullopt;
+    }
+  }
+  uint32_t input_count = 0;
+  uint32_t output_count = 0;
+  if (!checked_u32(ov::shape_size(input_shape), input_count) ||
+      !checked_u32(ov::shape_size(output_shape), output_count)) {
+    return std::nullopt;
+  }
+  (void)input_count;
+  (void)output_count;
 
-    bool keep_dims = false;
-    if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceLogicalAnd>(node)) {
-        if (!reduce->reduction_axes_constant()) {
-            return std::nullopt;
-        }
-        keep_dims = reduce->get_keep_dims();
-    } else if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceLogicalOr>(node)) {
-        if (!reduce->reduction_axes_constant()) {
-            return std::nullopt;
-        }
-        keep_dims = reduce->get_keep_dims();
-    } else {
-        return std::nullopt;
-    }
+  const auto axes_i64 = constant_i64_vector_input(node, 1);
+  if (!axes_i64 || axes_i64->size() > rank) {
+    return std::nullopt;
+  }
 
-    const auto& input_shape = node->get_input_shape(0);
-    const auto& output_shape = node->get_output_shape(0);
-    const size_t rank = input_shape.size();
-    const size_t out_rank = output_shape.size();
-    if (rank == 0 || rank > 4 || out_rank > 4 ||
-        ov::shape_size(input_shape) == 0 ||
-        ov::shape_size(output_shape) == 0) {
-        return std::nullopt;
+  std::vector<bool> reduce_axes(rank, false);
+  uint32_t reduce_mask = 0;
+  for (const auto axis_value : *axes_i64) {
+    const auto axis = normalize_axis(axis_value, rank);
+    if (!axis || reduce_axes[*axis]) {
+      return std::nullopt;
     }
-    for (const auto dim : input_shape) {
-        if (dim == 0 || dim > std::numeric_limits<uint32_t>::max()) {
-            return std::nullopt;
-        }
-    }
-    for (const auto dim : output_shape) {
-        if (dim == 0 || dim > std::numeric_limits<uint32_t>::max()) {
-            return std::nullopt;
-        }
-    }
-    uint32_t input_count = 0;
-    uint32_t output_count = 0;
-    if (!checked_u32(ov::shape_size(input_shape), input_count) ||
-        !checked_u32(ov::shape_size(output_shape), output_count)) {
-        return std::nullopt;
-    }
-    (void)input_count;
-    (void)output_count;
+    reduce_axes[*axis] = true;
+    reduce_mask |= 1u << static_cast<uint32_t>(*axis);
+  }
 
-    const auto axes_i64 = constant_i64_vector_input(node, 1);
-    if (!axes_i64 || axes_i64->size() > rank) {
-        return std::nullopt;
-    }
-
-    std::vector<bool> reduce_axes(rank, false);
-    uint32_t reduce_mask = 0;
-    for (const auto axis_value : *axes_i64) {
-        const auto axis = normalize_axis(axis_value, rank);
-        if (!axis || reduce_axes[*axis]) {
-            return std::nullopt;
-        }
-        reduce_axes[*axis] = true;
-        reduce_mask |= 1u << static_cast<uint32_t>(*axis);
-    }
-
-    ov::Shape expected_output;
-    if (keep_dims) {
-        expected_output.reserve(rank);
-        for (size_t axis = 0; axis < rank; ++axis) {
-            expected_output.push_back(reduce_axes[axis] ? 1 : input_shape[axis]);
-        }
-    } else {
-        for (size_t axis = 0; axis < rank; ++axis) {
-            if (!reduce_axes[axis]) {
-                expected_output.push_back(input_shape[axis]);
-            }
-        }
-    }
-    if (expected_output != output_shape) {
-        return std::nullopt;
-    }
-
-    std::vector<uint32_t> out_axis_to_input_axis;
-    out_axis_to_input_axis.reserve(4);
-    if (keep_dims) {
-        for (size_t axis = 0; axis < rank; ++axis) {
-            out_axis_to_input_axis.push_back(reduce_axes[axis]
-                                                 ? 4u
-                                                 : static_cast<uint32_t>(axis));
-        }
-    } else {
-        for (size_t axis = 0; axis < rank; ++axis) {
-            if (!reduce_axes[axis]) {
-                out_axis_to_input_axis.push_back(static_cast<uint32_t>(axis));
-            }
-        }
-    }
-    out_axis_to_input_axis.resize(4, 4u);
-
-    std::vector<uint32_t> scalars;
-    scalars.reserve(15);
-    scalars.push_back(static_cast<uint32_t>(rank));
-    scalars.push_back(static_cast<uint32_t>(out_rank));
-    if (!append_shape_u32(input_shape, 4, scalars) ||
-        !append_shape_u32(output_shape, 4, scalars)) {
-        return std::nullopt;
-    }
-    scalars.push_back(reduce_mask);
-    scalars.insert(scalars.end(),
-                   out_axis_to_input_axis.begin(),
-                   out_axis_to_input_axis.end());
-    return scalars;
-}
-
-std::optional<std::vector<uint32_t>> transpose_static_u32_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    if (!node || node->get_input_size() != 2 ||
-        !node->get_input_partial_shape(0).is_static() ||
-        !node->get_output_partial_shape(0).is_static()) {
-        return std::nullopt;
-    }
-    const auto& input_shape = node->get_input_shape(0);
-    const auto& output_shape = node->get_output_shape(0);
-    const size_t rank = input_shape.size();
-    if (rank == 0 || rank > 4 || output_shape.size() != rank ||
-        ov::shape_size(input_shape) != ov::shape_size(output_shape)) {
-        return std::nullopt;
-    }
-    const auto perm_i64 = constant_i64_vector_input(node, 1);
-    if (!perm_i64 || perm_i64->size() != rank) {
-        return std::nullopt;
-    }
-    std::vector<bool> seen(rank, false);
-    std::vector<uint32_t> perm(rank, 0);
+  ov::Shape expected_output;
+  if (keep_dims) {
+    expected_output.reserve(rank);
     for (size_t axis = 0; axis < rank; ++axis) {
-        const int64_t value = (*perm_i64)[axis];
-        if (value < 0 || static_cast<size_t>(value) >= rank ||
-            seen[static_cast<size_t>(value)]) {
-            return std::nullopt;
-        }
-        seen[static_cast<size_t>(value)] = true;
-        perm[axis] = static_cast<uint32_t>(value);
+      expected_output.push_back(reduce_axes[axis] ? 1 : input_shape[axis]);
     }
-    std::vector<uint32_t> out_dims(4, 1);
-    std::vector<uint32_t> input_strides(4, 1);
+  } else {
     for (size_t axis = 0; axis < rank; ++axis) {
-        if (output_shape[axis] > std::numeric_limits<uint32_t>::max() ||
-            input_shape[axis] > std::numeric_limits<uint32_t>::max()) {
-            return std::nullopt;
-        }
-        out_dims[axis] = static_cast<uint32_t>(output_shape[axis]);
+      if (!reduce_axes[axis]) {
+        expected_output.push_back(input_shape[axis]);
+      }
     }
-    uint64_t stride = 1;
-    for (size_t rev = rank; rev-- > 0;) {
-        if (stride > std::numeric_limits<uint32_t>::max()) {
-            return std::nullopt;
-        }
-        input_strides[rev] = static_cast<uint32_t>(stride);
-        stride *= input_shape[rev];
+  }
+  if (expected_output != output_shape) {
+    return std::nullopt;
+  }
+
+  std::vector<uint32_t> out_axis_to_input_axis;
+  out_axis_to_input_axis.reserve(4);
+  if (keep_dims) {
+    for (size_t axis = 0; axis < rank; ++axis) {
+      out_axis_to_input_axis.push_back(
+          reduce_axes[axis] ? 4u : static_cast<uint32_t>(axis));
     }
+  } else {
+    for (size_t axis = 0; axis < rank; ++axis) {
+      if (!reduce_axes[axis]) {
+        out_axis_to_input_axis.push_back(static_cast<uint32_t>(axis));
+      }
+    }
+  }
+  out_axis_to_input_axis.resize(4, 4u);
+
+  std::vector<uint32_t> scalars;
+  scalars.reserve(15);
+  scalars.push_back(static_cast<uint32_t>(rank));
+  scalars.push_back(static_cast<uint32_t>(out_rank));
+  if (!append_shape_u32(input_shape, 4, scalars) ||
+      !append_shape_u32(output_shape, 4, scalars)) {
+    return std::nullopt;
+  }
+  scalars.push_back(reduce_mask);
+  scalars.insert(scalars.end(), out_axis_to_input_axis.begin(),
+                 out_axis_to_input_axis.end());
+  return scalars;
+}
+
+std::optional<bool>
+reduce_logical_keep_dims(const std::shared_ptr<const ov::Node> &node) {
+  if (!node || node->get_input_size() != 2 || node->get_output_size() != 1 ||
+      !is_bool_tensor_type(node->get_input_element_type(0)) ||
+      !is_bool_tensor_type(node->get_output_element_type(0)) ||
+      !node->get_input_partial_shape(0).is_static() ||
+      !node->get_output_partial_shape(0).is_static()) {
+    return std::nullopt;
+  }
+  if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceLogicalAnd>(node)) {
+    return reduce->reduction_axes_constant()
+               ? std::optional<bool>{reduce->get_keep_dims()}
+               : std::nullopt;
+  }
+  if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceLogicalOr>(node)) {
+    return reduce->reduction_axes_constant()
+               ? std::optional<bool>{reduce->get_keep_dims()}
+               : std::nullopt;
+  }
+  return std::nullopt;
+}
+
+std::optional<bool>
+reduce_numeric_keep_dims(const std::shared_ptr<const ov::Node> &node) {
+  if (!node || node->get_input_size() != 2 || node->get_output_size() != 1 ||
+      !is_f32_tensor_type(node->get_input_element_type(0)) ||
+      !is_f32_tensor_type(node->get_output_element_type(0)) ||
+      !node->get_input_partial_shape(0).is_static() ||
+      !node->get_output_partial_shape(0).is_static()) {
+    return std::nullopt;
+  }
+  if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceSum>(node)) {
+    return reduce->reduction_axes_constant()
+               ? std::optional<bool>{reduce->get_keep_dims()}
+               : std::nullopt;
+  }
+  if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceMean>(node)) {
+    return reduce->reduction_axes_constant()
+               ? std::optional<bool>{reduce->get_keep_dims()}
+               : std::nullopt;
+  }
+  if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceMax>(node)) {
+    return reduce->reduction_axes_constant()
+               ? std::optional<bool>{reduce->get_keep_dims()}
+               : std::nullopt;
+  }
+  if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceMin>(node)) {
+    return reduce->reduction_axes_constant()
+               ? std::optional<bool>{reduce->get_keep_dims()}
+               : std::nullopt;
+  }
+  if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceProd>(node)) {
+    return reduce->reduction_axes_constant()
+               ? std::optional<bool>{reduce->get_keep_dims()}
+               : std::nullopt;
+  }
+  if (auto reduce = ov::as_type_ptr<const ov::op::v4::ReduceL1>(node)) {
+    return reduce->reduction_axes_constant()
+               ? std::optional<bool>{reduce->get_keep_dims()}
+               : std::nullopt;
+  }
+  if (auto reduce = ov::as_type_ptr<const ov::op::v4::ReduceL2>(node)) {
+    return reduce->reduction_axes_constant()
+               ? std::optional<bool>{reduce->get_keep_dims()}
+               : std::nullopt;
+  }
+  return std::nullopt;
+}
+
+std::optional<std::vector<uint32_t>>
+reduce_logical_static_u32_scalars(const std::shared_ptr<const ov::Node> &node) {
+  const auto keep_dims = reduce_logical_keep_dims(node);
+  if (!keep_dims) {
+    return std::nullopt;
+  }
+  return reduce_static_u32_scalars(node, *keep_dims);
+}
+
+std::optional<std::vector<uint32_t>>
+reduce_numeric_static_u32_scalars(const std::shared_ptr<const ov::Node> &node) {
+  const auto keep_dims = reduce_numeric_keep_dims(node);
+  if (!keep_dims) {
+    return std::nullopt;
+  }
+  return reduce_static_u32_scalars(node, *keep_dims);
+}
+
+std::optional<std::vector<uint32_t>>
+transpose_static_u32_scalars(const std::shared_ptr<const ov::Node> &node) {
+  if (!node || node->get_input_size() != 2 ||
+      !node->get_input_partial_shape(0).is_static() ||
+      !node->get_output_partial_shape(0).is_static()) {
+    return std::nullopt;
+  }
+  const auto &input_shape = node->get_input_shape(0);
+  const auto &output_shape = node->get_output_shape(0);
+  const size_t rank = input_shape.size();
+  if (rank == 0 || rank > 4 || output_shape.size() != rank ||
+      ov::shape_size(input_shape) != ov::shape_size(output_shape)) {
+    return std::nullopt;
+  }
+  const auto perm_i64 = constant_i64_vector_input(node, 1);
+  if (!perm_i64 || perm_i64->size() != rank) {
+    return std::nullopt;
+  }
+  std::vector<bool> seen(rank, false);
+  std::vector<uint32_t> perm(rank, 0);
+  for (size_t axis = 0; axis < rank; ++axis) {
+    const int64_t value = (*perm_i64)[axis];
+    if (value < 0 || static_cast<size_t>(value) >= rank ||
+        seen[static_cast<size_t>(value)]) {
+      return std::nullopt;
+    }
+    seen[static_cast<size_t>(value)] = true;
+    perm[axis] = static_cast<uint32_t>(value);
+  }
+  std::vector<uint32_t> out_dims(4, 1);
+  std::vector<uint32_t> input_strides(4, 1);
+  for (size_t axis = 0; axis < rank; ++axis) {
+    if (output_shape[axis] > std::numeric_limits<uint32_t>::max() ||
+        input_shape[axis] > std::numeric_limits<uint32_t>::max()) {
+      return std::nullopt;
+    }
+    out_dims[axis] = static_cast<uint32_t>(output_shape[axis]);
+  }
+  uint64_t stride = 1;
+  for (size_t rev = rank; rev-- > 0;) {
     if (stride > std::numeric_limits<uint32_t>::max()) {
-        return std::nullopt;
+      return std::nullopt;
     }
-    perm.resize(4, 0);
+    input_strides[rev] = static_cast<uint32_t>(stride);
+    stride *= input_shape[rev];
+  }
+  if (stride > std::numeric_limits<uint32_t>::max()) {
+    return std::nullopt;
+  }
+  perm.resize(4, 0);
 
-    std::vector<uint32_t> scalars;
-    scalars.reserve(13);
-    scalars.push_back(static_cast<uint32_t>(rank));
-    scalars.insert(scalars.end(), out_dims.begin(), out_dims.end());
-    scalars.insert(scalars.end(), input_strides.begin(), input_strides.end());
-    scalars.insert(scalars.end(), perm.begin(), perm.end());
-    return scalars;
+  std::vector<uint32_t> scalars;
+  scalars.reserve(13);
+  scalars.push_back(static_cast<uint32_t>(rank));
+  scalars.insert(scalars.end(), out_dims.begin(), out_dims.end());
+  scalars.insert(scalars.end(), input_strides.begin(), input_strides.end());
+  scalars.insert(scalars.end(), perm.begin(), perm.end());
+  return scalars;
 }
 
-std::optional<std::vector<uint32_t>> slice_static_u32_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    auto slice = ov::as_type_ptr<const ov::op::v8::Slice>(node);
-    if (!slice ||
-        slice->get_input_size() < 4 ||
-        slice->get_input_size() > 5 ||
-        !slice->get_input_partial_shape(0).is_static() ||
-        !slice->get_output_partial_shape(0).is_static() ||
-        !is_f32_tensor_type(slice->get_input_element_type(0)) ||
-        !is_f32_tensor_type(slice->get_output_element_type(0))) {
-        return std::nullopt;
+std::optional<std::vector<uint32_t>>
+slice_static_u32_scalars(const std::shared_ptr<const ov::Node> &node) {
+  auto slice = ov::as_type_ptr<const ov::op::v8::Slice>(node);
+  if (!slice || slice->get_input_size() < 4 || slice->get_input_size() > 5 ||
+      !slice->get_input_partial_shape(0).is_static() ||
+      !slice->get_output_partial_shape(0).is_static() ||
+      !is_f32_tensor_type(slice->get_input_element_type(0)) ||
+      !is_f32_tensor_type(slice->get_output_element_type(0))) {
+    return std::nullopt;
+  }
+
+  const auto &input_shape = slice->get_input_shape(0);
+  const auto &output_shape = slice->get_output_shape(0);
+  const size_t rank = input_shape.size();
+  if (rank == 0 || rank > 4 || output_shape.size() != rank ||
+      ov::shape_size(output_shape) == 0) {
+    return std::nullopt;
+  }
+
+  const auto starts = constant_i64_vector_input(node, 1);
+  const auto ends = constant_i64_vector_input(node, 2);
+  const auto steps = constant_i64_vector_input(node, 3);
+  if (!starts || !ends || !steps || starts->size() != ends->size() ||
+      starts->size() != steps->size()) {
+    return std::nullopt;
+  }
+
+  std::vector<int64_t> axes;
+  if (slice->get_input_size() == 5) {
+    auto axes_i64 = constant_i64_vector_input(node, 4);
+    if (!axes_i64 || axes_i64->size() != starts->size()) {
+      return std::nullopt;
     }
-
-    const auto& input_shape = slice->get_input_shape(0);
-    const auto& output_shape = slice->get_output_shape(0);
-    const size_t rank = input_shape.size();
-    if (rank == 0 || rank > 4 || output_shape.size() != rank ||
-        ov::shape_size(output_shape) == 0) {
-        return std::nullopt;
+    axes = std::move(*axes_i64);
+  } else {
+    if (starts->size() != rank) {
+      return std::nullopt;
     }
-
-    const auto starts = constant_i64_vector_input(node, 1);
-    const auto ends = constant_i64_vector_input(node, 2);
-    const auto steps = constant_i64_vector_input(node, 3);
-    if (!starts || !ends || !steps ||
-        starts->size() != ends->size() ||
-        starts->size() != steps->size()) {
-        return std::nullopt;
-    }
-
-    std::vector<int64_t> axes;
-    if (slice->get_input_size() == 5) {
-        auto axes_i64 = constant_i64_vector_input(node, 4);
-        if (!axes_i64 || axes_i64->size() != starts->size()) {
-            return std::nullopt;
-        }
-        axes = std::move(*axes_i64);
-    } else {
-        if (starts->size() != rank) {
-            return std::nullopt;
-        }
-        axes.reserve(rank);
-        for (size_t axis = 0; axis < rank; ++axis) {
-            axes.push_back(static_cast<int64_t>(axis));
-        }
-    }
-
-    std::vector<uint32_t> out_dims(4, 1);
-    std::vector<uint32_t> input_strides(4, 1);
-    std::vector<uint32_t> begin(4, 0);
-    std::vector<uint32_t> slice_steps(4, 1);
-
+    axes.reserve(rank);
     for (size_t axis = 0; axis < rank; ++axis) {
-        if (input_shape[axis] == 0 ||
-            input_shape[axis] > std::numeric_limits<uint32_t>::max() ||
-            output_shape[axis] == 0 ||
-            output_shape[axis] > std::numeric_limits<uint32_t>::max()) {
-            return std::nullopt;
-        }
-        out_dims[axis] = static_cast<uint32_t>(output_shape[axis]);
+      axes.push_back(static_cast<int64_t>(axis));
     }
+  }
 
-    uint64_t stride = 1;
-    for (size_t rev = rank; rev-- > 0;) {
-        if (stride > std::numeric_limits<uint32_t>::max()) {
-            return std::nullopt;
-        }
-        input_strides[rev] = static_cast<uint32_t>(stride);
-        stride *= input_shape[rev];
+  std::vector<uint32_t> out_dims(4, 1);
+  std::vector<uint32_t> input_strides(4, 1);
+  std::vector<uint32_t> begin(4, 0);
+  std::vector<uint32_t> slice_steps(4, 1);
+
+  for (size_t axis = 0; axis < rank; ++axis) {
+    if (input_shape[axis] == 0 ||
+        input_shape[axis] > std::numeric_limits<uint32_t>::max() ||
+        output_shape[axis] == 0 ||
+        output_shape[axis] > std::numeric_limits<uint32_t>::max()) {
+      return std::nullopt;
     }
+    out_dims[axis] = static_cast<uint32_t>(output_shape[axis]);
+  }
+
+  uint64_t stride = 1;
+  for (size_t rev = rank; rev-- > 0;) {
     if (stride > std::numeric_limits<uint32_t>::max()) {
-        return std::nullopt;
+      return std::nullopt;
     }
+    input_strides[rev] = static_cast<uint32_t>(stride);
+    stride *= input_shape[rev];
+  }
+  if (stride > std::numeric_limits<uint32_t>::max()) {
+    return std::nullopt;
+  }
 
-    std::vector<bool> seen(rank, false);
-    for (size_t i = 0; i < starts->size(); ++i) {
-        const auto axis = normalize_axis(axes[i], rank);
-        if (!axis || seen[*axis]) {
-            return std::nullopt;
-        }
-        seen[*axis] = true;
-        const int64_t step = (*steps)[i];
-        if (step <= 0 ||
-            step > static_cast<int64_t>(std::numeric_limits<uint32_t>::max())) {
-            return std::nullopt;
-        }
-        const int64_t dim = static_cast<int64_t>(input_shape[*axis]);
-        const int64_t raw_start = (*starts)[i] < 0 ? (*starts)[i] + dim : (*starts)[i];
-        if (raw_start < 0 || raw_start >= dim) {
-            return std::nullopt;
-        }
-        int64_t raw_end = (*ends)[i] < 0 ? (*ends)[i] + dim : (*ends)[i];
-        if (raw_end < 0) {
-            raw_end = 0;
-        }
-        if (raw_end > dim) {
-            raw_end = dim;
-        }
-        const size_t expected_axis_len =
-            raw_end <= raw_start
-                ? 0
-                : static_cast<size_t>((raw_end - raw_start + step - 1) / step);
-        if (expected_axis_len != output_shape[*axis]) {
-            return std::nullopt;
-        }
-        const size_t last_coord = output_shape[*axis] - 1;
-        const uint64_t last_input_coord =
-            static_cast<uint64_t>(raw_start) +
-            static_cast<uint64_t>(last_coord) * static_cast<uint64_t>(step);
-        if (last_input_coord >= input_shape[*axis]) {
-            return std::nullopt;
-        }
-        begin[*axis] = static_cast<uint32_t>(raw_start);
-        slice_steps[*axis] = static_cast<uint32_t>(step);
+  std::vector<bool> seen(rank, false);
+  for (size_t i = 0; i < starts->size(); ++i) {
+    const auto axis = normalize_axis(axes[i], rank);
+    if (!axis || seen[*axis]) {
+      return std::nullopt;
     }
-    for (size_t axis = 0; axis < rank; ++axis) {
-        if (!seen[axis] && output_shape[axis] != input_shape[axis]) {
-            return std::nullopt;
-        }
+    seen[*axis] = true;
+    const int64_t step = (*steps)[i];
+    if (step <= 0 ||
+        step > static_cast<int64_t>(std::numeric_limits<uint32_t>::max())) {
+      return std::nullopt;
     }
+    const int64_t dim = static_cast<int64_t>(input_shape[*axis]);
+    const int64_t raw_start =
+        (*starts)[i] < 0 ? (*starts)[i] + dim : (*starts)[i];
+    if (raw_start < 0 || raw_start >= dim) {
+      return std::nullopt;
+    }
+    int64_t raw_end = (*ends)[i] < 0 ? (*ends)[i] + dim : (*ends)[i];
+    if (raw_end < 0) {
+      raw_end = 0;
+    }
+    if (raw_end > dim) {
+      raw_end = dim;
+    }
+    const size_t expected_axis_len =
+        raw_end <= raw_start
+            ? 0
+            : static_cast<size_t>((raw_end - raw_start + step - 1) / step);
+    if (expected_axis_len != output_shape[*axis]) {
+      return std::nullopt;
+    }
+    const size_t last_coord = output_shape[*axis] - 1;
+    const uint64_t last_input_coord =
+        static_cast<uint64_t>(raw_start) +
+        static_cast<uint64_t>(last_coord) * static_cast<uint64_t>(step);
+    if (last_input_coord >= input_shape[*axis]) {
+      return std::nullopt;
+    }
+    begin[*axis] = static_cast<uint32_t>(raw_start);
+    slice_steps[*axis] = static_cast<uint32_t>(step);
+  }
+  for (size_t axis = 0; axis < rank; ++axis) {
+    if (!seen[axis] && output_shape[axis] != input_shape[axis]) {
+      return std::nullopt;
+    }
+  }
 
-    std::vector<uint32_t> scalars;
-    scalars.reserve(17);
-    scalars.push_back(static_cast<uint32_t>(rank));
-    scalars.insert(scalars.end(), out_dims.begin(), out_dims.end());
-    scalars.insert(scalars.end(), input_strides.begin(), input_strides.end());
-    scalars.insert(scalars.end(), begin.begin(), begin.end());
-    scalars.insert(scalars.end(), slice_steps.begin(), slice_steps.end());
-    return scalars;
+  std::vector<uint32_t> scalars;
+  scalars.reserve(17);
+  scalars.push_back(static_cast<uint32_t>(rank));
+  scalars.insert(scalars.end(), out_dims.begin(), out_dims.end());
+  scalars.insert(scalars.end(), input_strides.begin(), input_strides.end());
+  scalars.insert(scalars.end(), begin.begin(), begin.end());
+  scalars.insert(scalars.end(), slice_steps.begin(), slice_steps.end());
+  return scalars;
 }
 
-bool mask_has_non_zero_past_rank(const std::vector<int64_t>& mask, size_t rank) {
-    if (mask.size() <= rank) {
-        return false;
-    }
-    for (size_t axis = rank; axis < mask.size(); ++axis) {
-        if (mask[axis] != 0) {
-            return true;
-        }
-    }
+bool mask_has_non_zero_past_rank(const std::vector<int64_t> &mask,
+                                 size_t rank) {
+  if (mask.size() <= rank) {
     return false;
+  }
+  for (size_t axis = rank; axis < mask.size(); ++axis) {
+    if (mask[axis] != 0) {
+      return true;
+    }
+  }
+  return false;
 }
 
-std::optional<std::vector<uint32_t>> strided_slice_static_u32_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    auto slice = ov::as_type_ptr<const ov::op::v1::StridedSlice>(node);
-    if (!slice ||
-        slice->get_input_size() < 3 ||
-        slice->get_input_size() > 4 ||
-        !slice->get_input_partial_shape(0).is_static() ||
-        !slice->get_output_partial_shape(0).is_static() ||
-        !is_f32_tensor_type(slice->get_input_element_type(0)) ||
-        !is_f32_tensor_type(slice->get_output_element_type(0))) {
-        return std::nullopt;
+std::optional<std::vector<uint32_t>>
+strided_slice_static_u32_scalars(const std::shared_ptr<const ov::Node> &node) {
+  auto slice = ov::as_type_ptr<const ov::op::v1::StridedSlice>(node);
+  if (!slice || slice->get_input_size() < 3 || slice->get_input_size() > 4 ||
+      !slice->get_input_partial_shape(0).is_static() ||
+      !slice->get_output_partial_shape(0).is_static() ||
+      !is_f32_tensor_type(slice->get_input_element_type(0)) ||
+      !is_f32_tensor_type(slice->get_output_element_type(0))) {
+    return std::nullopt;
+  }
+  for (const int64_t value : slice->get_new_axis_mask()) {
+    if (value != 0) {
+      return std::nullopt;
     }
-    for (const int64_t value : slice->get_new_axis_mask()) {
-        if (value != 0) {
-            return std::nullopt;
-        }
+  }
+  for (const int64_t value : slice->get_shrink_axis_mask()) {
+    if (value != 0) {
+      return std::nullopt;
     }
-    for (const int64_t value : slice->get_shrink_axis_mask()) {
-        if (value != 0) {
-            return std::nullopt;
-        }
+  }
+  for (const int64_t value : slice->get_ellipsis_mask()) {
+    if (value != 0) {
+      return std::nullopt;
     }
-    for (const int64_t value : slice->get_ellipsis_mask()) {
-        if (value != 0) {
-            return std::nullopt;
-        }
-    }
+  }
 
-    const auto& input_shape = slice->get_input_shape(0);
-    const auto& output_shape = slice->get_output_shape(0);
-    const size_t rank = input_shape.size();
-    if (rank == 0 || rank > 4 || output_shape.size() != rank ||
-        ov::shape_size(output_shape) == 0 ||
-        mask_has_non_zero_past_rank(slice->get_begin_mask(), rank) ||
-        mask_has_non_zero_past_rank(slice->get_end_mask(), rank)) {
-        return std::nullopt;
-    }
+  const auto &input_shape = slice->get_input_shape(0);
+  const auto &output_shape = slice->get_output_shape(0);
+  const size_t rank = input_shape.size();
+  if (rank == 0 || rank > 4 || output_shape.size() != rank ||
+      ov::shape_size(output_shape) == 0 ||
+      mask_has_non_zero_past_rank(slice->get_begin_mask(), rank) ||
+      mask_has_non_zero_past_rank(slice->get_end_mask(), rank)) {
+    return std::nullopt;
+  }
 
-    const auto begin_values = constant_i64_vector_input(node, 1);
-    const auto end_values = constant_i64_vector_input(node, 2);
-    if (!begin_values || !end_values ||
-        begin_values->size() > rank ||
-        end_values->size() > rank) {
-        return std::nullopt;
+  const auto begin_values = constant_i64_vector_input(node, 1);
+  const auto end_values = constant_i64_vector_input(node, 2);
+  if (!begin_values || !end_values || begin_values->size() > rank ||
+      end_values->size() > rank) {
+    return std::nullopt;
+  }
+  std::vector<int64_t> strides(rank, 1);
+  if (slice->get_input_size() == 4) {
+    const auto stride_values = constant_i64_vector_input(node, 3);
+    if (!stride_values || stride_values->size() > rank) {
+      return std::nullopt;
     }
-    std::vector<int64_t> strides(rank, 1);
-    if (slice->get_input_size() == 4) {
-        const auto stride_values = constant_i64_vector_input(node, 3);
-        if (!stride_values || stride_values->size() > rank) {
-            return std::nullopt;
-        }
-        for (size_t axis = 0; axis < stride_values->size(); ++axis) {
-            strides[axis] = (*stride_values)[axis];
-        }
+    for (size_t axis = 0; axis < stride_values->size(); ++axis) {
+      strides[axis] = (*stride_values)[axis];
     }
+  }
 
-    std::vector<uint32_t> out_dims(4, 1);
-    std::vector<uint32_t> input_strides(4, 1);
-    std::vector<uint32_t> begin(4, 0);
-    std::vector<uint32_t> slice_steps(4, 1);
+  std::vector<uint32_t> out_dims(4, 1);
+  std::vector<uint32_t> input_strides(4, 1);
+  std::vector<uint32_t> begin(4, 0);
+  std::vector<uint32_t> slice_steps(4, 1);
 
-    for (size_t axis = 0; axis < rank; ++axis) {
-        if (input_shape[axis] == 0 ||
-            input_shape[axis] > std::numeric_limits<uint32_t>::max() ||
-            output_shape[axis] == 0 ||
-            output_shape[axis] > std::numeric_limits<uint32_t>::max()) {
-            return std::nullopt;
-        }
-        out_dims[axis] = static_cast<uint32_t>(output_shape[axis]);
+  for (size_t axis = 0; axis < rank; ++axis) {
+    if (input_shape[axis] == 0 ||
+        input_shape[axis] > std::numeric_limits<uint32_t>::max() ||
+        output_shape[axis] == 0 ||
+        output_shape[axis] > std::numeric_limits<uint32_t>::max()) {
+      return std::nullopt;
     }
+    out_dims[axis] = static_cast<uint32_t>(output_shape[axis]);
+  }
 
-    uint64_t stride = 1;
-    for (size_t rev = rank; rev-- > 0;) {
-        if (stride > std::numeric_limits<uint32_t>::max()) {
-            return std::nullopt;
-        }
-        input_strides[rev] = static_cast<uint32_t>(stride);
-        stride *= input_shape[rev];
-    }
+  uint64_t stride = 1;
+  for (size_t rev = rank; rev-- > 0;) {
     if (stride > std::numeric_limits<uint32_t>::max()) {
-        return std::nullopt;
+      return std::nullopt;
+    }
+    input_strides[rev] = static_cast<uint32_t>(stride);
+    stride *= input_shape[rev];
+  }
+  if (stride > std::numeric_limits<uint32_t>::max()) {
+    return std::nullopt;
+  }
+
+  const auto &begin_mask = slice->get_begin_mask();
+  const auto &end_mask = slice->get_end_mask();
+  for (size_t axis = 0; axis < rank; ++axis) {
+    const bool masked_begin = axis < begin_mask.size() && begin_mask[axis] != 0;
+    const bool masked_end = axis < end_mask.size() && end_mask[axis] != 0;
+    const int64_t step = strides[axis];
+    if (step <= 0 ||
+        step > static_cast<int64_t>(std::numeric_limits<uint32_t>::max())) {
+      return std::nullopt;
+    }
+    const int64_t dim = static_cast<int64_t>(input_shape[axis]);
+    int64_t raw_start = axis < begin_values->size() ? (*begin_values)[axis] : 0;
+    raw_start =
+        masked_begin ? 0 : (raw_start < 0 ? raw_start + dim : raw_start);
+    if (raw_start < 0 || raw_start >= dim) {
+      return std::nullopt;
+    }
+    int64_t raw_end = axis < end_values->size() ? (*end_values)[axis] : dim;
+    raw_end = masked_end ? dim : (raw_end < 0 ? raw_end + dim : raw_end);
+    if (raw_end < 0) {
+      raw_end = 0;
+    }
+    if (raw_end > dim) {
+      raw_end = dim;
     }
 
-    const auto& begin_mask = slice->get_begin_mask();
-    const auto& end_mask = slice->get_end_mask();
-    for (size_t axis = 0; axis < rank; ++axis) {
-        const bool masked_begin = axis < begin_mask.size() && begin_mask[axis] != 0;
-        const bool masked_end = axis < end_mask.size() && end_mask[axis] != 0;
-        const int64_t step = strides[axis];
-        if (step <= 0 ||
-            step > static_cast<int64_t>(std::numeric_limits<uint32_t>::max())) {
-            return std::nullopt;
-        }
-        const int64_t dim = static_cast<int64_t>(input_shape[axis]);
-        int64_t raw_start = axis < begin_values->size() ? (*begin_values)[axis] : 0;
-        raw_start = masked_begin ? 0 : (raw_start < 0 ? raw_start + dim : raw_start);
-        if (raw_start < 0 || raw_start >= dim) {
-            return std::nullopt;
-        }
-        int64_t raw_end = axis < end_values->size() ? (*end_values)[axis] : dim;
-        raw_end = masked_end ? dim : (raw_end < 0 ? raw_end + dim : raw_end);
-        if (raw_end < 0) {
-            raw_end = 0;
-        }
-        if (raw_end > dim) {
-            raw_end = dim;
-        }
-
-        const size_t expected_axis_len =
-            raw_end <= raw_start
-                ? 0
-                : static_cast<size_t>((raw_end - raw_start + step - 1) / step);
-        if (expected_axis_len != output_shape[axis]) {
-            return std::nullopt;
-        }
-        const size_t last_coord = output_shape[axis] - 1;
-        const uint64_t last_input_coord =
-            static_cast<uint64_t>(raw_start) +
-            static_cast<uint64_t>(last_coord) * static_cast<uint64_t>(step);
-        if (last_input_coord >= input_shape[axis]) {
-            return std::nullopt;
-        }
-        begin[axis] = static_cast<uint32_t>(raw_start);
-        slice_steps[axis] = static_cast<uint32_t>(step);
+    const size_t expected_axis_len =
+        raw_end <= raw_start
+            ? 0
+            : static_cast<size_t>((raw_end - raw_start + step - 1) / step);
+    if (expected_axis_len != output_shape[axis]) {
+      return std::nullopt;
     }
+    const size_t last_coord = output_shape[axis] - 1;
+    const uint64_t last_input_coord =
+        static_cast<uint64_t>(raw_start) +
+        static_cast<uint64_t>(last_coord) * static_cast<uint64_t>(step);
+    if (last_input_coord >= input_shape[axis]) {
+      return std::nullopt;
+    }
+    begin[axis] = static_cast<uint32_t>(raw_start);
+    slice_steps[axis] = static_cast<uint32_t>(step);
+  }
 
-    std::vector<uint32_t> scalars;
-    scalars.reserve(17);
-    scalars.push_back(static_cast<uint32_t>(rank));
-    scalars.insert(scalars.end(), out_dims.begin(), out_dims.end());
-    scalars.insert(scalars.end(), input_strides.begin(), input_strides.end());
-    scalars.insert(scalars.end(), begin.begin(), begin.end());
-    scalars.insert(scalars.end(), slice_steps.begin(), slice_steps.end());
-    return scalars;
+  std::vector<uint32_t> scalars;
+  scalars.reserve(17);
+  scalars.push_back(static_cast<uint32_t>(rank));
+  scalars.insert(scalars.end(), out_dims.begin(), out_dims.end());
+  scalars.insert(scalars.end(), input_strides.begin(), input_strides.end());
+  scalars.insert(scalars.end(), begin.begin(), begin.end());
+  scalars.insert(scalars.end(), slice_steps.begin(), slice_steps.end());
+  return scalars;
 }
 
-std::optional<std::vector<uint32_t>> gather_static_u32_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    auto gather = ov::as_type_ptr<const ov::op::util::GatherBase>(node);
-    if (!gather ||
-        gather->get_input_size() != 3 ||
-        !gather->get_input_partial_shape(0).is_static() ||
-        !gather->get_input_partial_shape(1).is_static() ||
-        !gather->get_output_partial_shape(0).is_static() ||
-        !is_f32_tensor_type(gather->get_input_element_type(0)) ||
-        !is_f32_tensor_type(gather->get_output_element_type(0))) {
-        return std::nullopt;
-    }
-    int64_t batch_dims = 0;
-    if (auto gather_v7 = ov::as_type_ptr<const ov::op::v7::Gather>(node)) {
-        batch_dims = gather_v7->get_batch_dims();
-    } else if (auto gather_v8 = ov::as_type_ptr<const ov::op::v8::Gather>(node)) {
-        batch_dims = gather_v8->get_batch_dims();
-    }
-    if (batch_dims != 0) {
-        return std::nullopt;
-    }
-    const auto indices_type = gather->get_input_element_type(1);
-    if (indices_type != ov::element::i32 && indices_type != ov::element::i64) {
-        return std::nullopt;
-    }
+std::optional<std::vector<uint32_t>>
+gather_static_u32_scalars(const std::shared_ptr<const ov::Node> &node) {
+  auto gather = ov::as_type_ptr<const ov::op::util::GatherBase>(node);
+  if (!gather || gather->get_input_size() != 3 ||
+      !gather->get_input_partial_shape(0).is_static() ||
+      !gather->get_input_partial_shape(1).is_static() ||
+      !gather->get_output_partial_shape(0).is_static() ||
+      !is_f32_tensor_type(gather->get_input_element_type(0)) ||
+      !is_f32_tensor_type(gather->get_output_element_type(0))) {
+    return std::nullopt;
+  }
+  int64_t batch_dims = 0;
+  if (auto gather_v7 = ov::as_type_ptr<const ov::op::v7::Gather>(node)) {
+    batch_dims = gather_v7->get_batch_dims();
+  } else if (auto gather_v8 = ov::as_type_ptr<const ov::op::v8::Gather>(node)) {
+    batch_dims = gather_v8->get_batch_dims();
+  }
+  if (batch_dims != 0) {
+    return std::nullopt;
+  }
+  const auto indices_type = gather->get_input_element_type(1);
+  if (indices_type != ov::element::i32 && indices_type != ov::element::i64) {
+    return std::nullopt;
+  }
 
-    const auto& data_shape = gather->get_input_shape(0);
-    const auto& indices_shape = gather->get_input_shape(1);
-    const auto& output_shape = gather->get_output_shape(0);
-    if (data_shape.empty() ||
-        ov::shape_size(indices_shape) == 0 ||
-        ov::shape_size(output_shape) == 0) {
-        return std::nullopt;
-    }
-    const auto axis_values = constant_i64_vector_input(node, 2);
-    if (!axis_values || axis_values->size() != 1) {
-        return std::nullopt;
-    }
-    const auto axis = normalize_axis(axis_values->front(), data_shape.size());
-    if (!axis || data_shape[*axis] == 0) {
-        return std::nullopt;
-    }
+  const auto &data_shape = gather->get_input_shape(0);
+  const auto &indices_shape = gather->get_input_shape(1);
+  const auto &output_shape = gather->get_output_shape(0);
+  if (data_shape.empty() || ov::shape_size(indices_shape) == 0 ||
+      ov::shape_size(output_shape) == 0) {
+    return std::nullopt;
+  }
+  const auto axis_values = constant_i64_vector_input(node, 2);
+  if (!axis_values || axis_values->size() != 1) {
+    return std::nullopt;
+  }
+  const auto axis = normalize_axis(axis_values->front(), data_shape.size());
+  if (!axis || data_shape[*axis] == 0) {
+    return std::nullopt;
+  }
 
-    ov::Shape expected_output;
-    expected_output.reserve(data_shape.size() + indices_shape.size() - 1);
-    expected_output.insert(expected_output.end(), data_shape.begin(), data_shape.begin() + *axis);
-    expected_output.insert(expected_output.end(), indices_shape.begin(), indices_shape.end());
-    expected_output.insert(expected_output.end(), data_shape.begin() + *axis + 1, data_shape.end());
-    if (expected_output != output_shape) {
-        return std::nullopt;
-    }
+  ov::Shape expected_output;
+  expected_output.reserve(data_shape.size() + indices_shape.size() - 1);
+  expected_output.insert(expected_output.end(), data_shape.begin(),
+                         data_shape.begin() + *axis);
+  expected_output.insert(expected_output.end(), indices_shape.begin(),
+                         indices_shape.end());
+  expected_output.insert(expected_output.end(), data_shape.begin() + *axis + 1,
+                         data_shape.end());
+  if (expected_output != output_shape) {
+    return std::nullopt;
+  }
 
-    uint32_t outer = 0;
-    uint32_t inner = 0;
-    uint32_t axis_dim = 0;
-    uint32_t indices_count = 0;
-    if (!checked_u32(shape_product_range(data_shape, 0, *axis), outer) ||
-        !checked_u32(shape_product_range(data_shape, *axis + 1, data_shape.size()), inner) ||
-        !checked_u32(data_shape[*axis], axis_dim) ||
-        !checked_u32(ov::shape_size(indices_shape), indices_count)) {
-        return std::nullopt;
-    }
-    return std::vector<uint32_t>{outer, inner, axis_dim, indices_count};
+  uint32_t outer = 0;
+  uint32_t inner = 0;
+  uint32_t axis_dim = 0;
+  uint32_t indices_count = 0;
+  if (!checked_u32(shape_product_range(data_shape, 0, *axis), outer) ||
+      !checked_u32(
+          shape_product_range(data_shape, *axis + 1, data_shape.size()),
+          inner) ||
+      !checked_u32(data_shape[*axis], axis_dim) ||
+      !checked_u32(ov::shape_size(indices_shape), indices_count)) {
+    return std::nullopt;
+  }
+  return std::vector<uint32_t>{outer, inner, axis_dim, indices_count};
 }
 
-bool append_shape_u32(const ov::Shape& shape,
-                      size_t max_rank,
-                      std::vector<uint32_t>& values) {
-    if (shape.size() > max_rank) {
-        return false;
+bool append_shape_u32(const ov::Shape &shape, size_t max_rank,
+                      std::vector<uint32_t> &values) {
+  if (shape.size() > max_rank) {
+    return false;
+  }
+  for (size_t axis = 0; axis < shape.size(); ++axis) {
+    uint32_t dim = 0;
+    if (!checked_u32(shape[axis], dim)) {
+      return false;
     }
-    for (size_t axis = 0; axis < shape.size(); ++axis) {
-        uint32_t dim = 0;
-        if (!checked_u32(shape[axis], dim)) {
-            return false;
-        }
-        values.push_back(dim);
-    }
-    values.insert(values.end(), max_rank - shape.size(), 1u);
-    return true;
+    values.push_back(dim);
+  }
+  values.insert(values.end(), max_rank - shape.size(), 1u);
+  return true;
 }
 
-bool append_strides_u32(const ov::Shape& shape,
-                        size_t max_rank,
-                        std::vector<uint32_t>& values) {
-    if (shape.size() > max_rank) {
-        return false;
+bool append_strides_u32(const ov::Shape &shape, size_t max_rank,
+                        std::vector<uint32_t> &values) {
+  if (shape.size() > max_rank) {
+    return false;
+  }
+  for (size_t axis = 0; axis < shape.size(); ++axis) {
+    uint32_t stride = 0;
+    if (!checked_u32(shape_product_range(shape, axis + 1, shape.size()),
+                     stride)) {
+      return false;
     }
-    for (size_t axis = 0; axis < shape.size(); ++axis) {
-        uint32_t stride = 0;
-        if (!checked_u32(shape_product_range(shape, axis + 1, shape.size()), stride)) {
-            return false;
-        }
-        values.push_back(stride);
-    }
-    values.insert(values.end(), max_rank - shape.size(), 1u);
-    return true;
+    values.push_back(stride);
+  }
+  values.insert(values.end(), max_rank - shape.size(), 1u);
+  return true;
 }
 
-bool is_static_single_element_input(const std::shared_ptr<const ov::Node>& node,
+bool is_static_single_element_input(const std::shared_ptr<const ov::Node> &node,
                                     size_t input_idx) {
-    return node &&
-           input_idx < node->get_input_size() &&
-           node->get_input_partial_shape(input_idx).is_static() &&
-           ov::shape_size(node->get_input_shape(input_idx)) == 1;
+  return node && input_idx < node->get_input_size() &&
+         node->get_input_partial_shape(input_idx).is_static() &&
+         ov::shape_size(node->get_input_shape(input_idx)) == 1;
 }
 
-bool range_has_baseline_source_artifact(const std::shared_ptr<const ov::Node>& node) {
-    if (!node ||
-        node->get_input_size() != 3 ||
-        node->get_output_size() != 1 ||
-        !node->get_output_partial_shape(0).is_static() ||
-        !is_static_single_element_input(node, 0) ||
-        !is_static_single_element_input(node, 1) ||
-        !is_static_single_element_input(node, 2)) {
-        return false;
-    }
-    const auto output_type = node->get_output_element_type(0);
-    if (!is_opencl_range_tensor_type(output_type)) {
-        return false;
-    }
-    if (node->get_input_element_type(0) != output_type ||
-        node->get_input_element_type(1) != output_type ||
-        node->get_input_element_type(2) != output_type) {
-        return false;
-    }
-    const auto& output_shape = node->get_output_shape(0);
-    return output_shape.size() == 1 && ov::shape_size(output_shape) > 0;
+bool range_has_baseline_source_artifact(
+    const std::shared_ptr<const ov::Node> &node) {
+  if (!node || node->get_input_size() != 3 || node->get_output_size() != 1 ||
+      !node->get_output_partial_shape(0).is_static() ||
+      !is_static_single_element_input(node, 0) ||
+      !is_static_single_element_input(node, 1) ||
+      !is_static_single_element_input(node, 2)) {
+    return false;
+  }
+  const auto output_type = node->get_output_element_type(0);
+  if (!is_opencl_range_tensor_type(output_type)) {
+    return false;
+  }
+  if (node->get_input_element_type(0) != output_type ||
+      node->get_input_element_type(1) != output_type ||
+      node->get_input_element_type(2) != output_type) {
+    return false;
+  }
+  const auto &output_shape = node->get_output_shape(0);
+  return output_shape.size() == 1 && ov::shape_size(output_shape) > 0;
 }
 
-std::optional<ov::Shape> matmul_broadcast_batch_prefix(const ov::Shape& lhs,
-                                                       const ov::Shape& rhs) {
-    if (lhs.size() < 2 || rhs.size() < 2) {
-        return std::nullopt;
+std::optional<ov::Shape> matmul_broadcast_batch_prefix(const ov::Shape &lhs,
+                                                       const ov::Shape &rhs) {
+  if (lhs.size() < 2 || rhs.size() < 2) {
+    return std::nullopt;
+  }
+  const size_t lhs_batch_rank = lhs.size() - 2;
+  const size_t rhs_batch_rank = rhs.size() - 2;
+  const size_t out_batch_rank = std::max(lhs_batch_rank, rhs_batch_rank);
+  ov::Shape out(out_batch_rank, 1);
+  for (size_t i = 0; i < out_batch_rank; ++i) {
+    const size_t lhs_dim = lhs_batch_rank > i ? lhs[lhs_batch_rank - 1 - i] : 1;
+    const size_t rhs_dim = rhs_batch_rank > i ? rhs[rhs_batch_rank - 1 - i] : 1;
+    if (lhs_dim != rhs_dim && lhs_dim != 1 && rhs_dim != 1) {
+      return std::nullopt;
     }
-    const size_t lhs_batch_rank = lhs.size() - 2;
-    const size_t rhs_batch_rank = rhs.size() - 2;
-    const size_t out_batch_rank = std::max(lhs_batch_rank, rhs_batch_rank);
-    ov::Shape out(out_batch_rank, 1);
-    for (size_t i = 0; i < out_batch_rank; ++i) {
-        const size_t lhs_dim = lhs_batch_rank > i ? lhs[lhs_batch_rank - 1 - i] : 1;
-        const size_t rhs_dim = rhs_batch_rank > i ? rhs[rhs_batch_rank - 1 - i] : 1;
-        if (lhs_dim != rhs_dim && lhs_dim != 1 && rhs_dim != 1) {
-            return std::nullopt;
-        }
-        out[out_batch_rank - 1 - i] = std::max(lhs_dim, rhs_dim);
-    }
-    return out;
+    out[out_batch_rank - 1 - i] = std::max(lhs_dim, rhs_dim);
+  }
+  return out;
 }
 
-std::optional<std::vector<uint32_t>> matmul_static_u32_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    auto matmul = ov::as_type_ptr<const ov::op::v0::MatMul>(node);
-    if (!matmul ||
-        matmul->get_input_size() != 2 ||
-        matmul->get_output_size() != 1 ||
-        !matmul->get_input_partial_shape(0).is_static() ||
-        !matmul->get_input_partial_shape(1).is_static() ||
-        !matmul->get_output_partial_shape(0).is_static() ||
-        !is_f32_tensor_type(matmul->get_input_element_type(0)) ||
-        !is_f32_tensor_type(matmul->get_input_element_type(1)) ||
-        !is_f32_tensor_type(matmul->get_output_element_type(0))) {
-        return std::nullopt;
-    }
+std::optional<std::vector<uint32_t>>
+matmul_static_u32_scalars(const std::shared_ptr<const ov::Node> &node) {
+  auto matmul = ov::as_type_ptr<const ov::op::v0::MatMul>(node);
+  if (!matmul || matmul->get_input_size() != 2 ||
+      matmul->get_output_size() != 1 ||
+      !matmul->get_input_partial_shape(0).is_static() ||
+      !matmul->get_input_partial_shape(1).is_static() ||
+      !matmul->get_output_partial_shape(0).is_static() ||
+      !is_f32_tensor_type(matmul->get_input_element_type(0)) ||
+      !is_f32_tensor_type(matmul->get_input_element_type(1)) ||
+      !is_f32_tensor_type(matmul->get_output_element_type(0))) {
+    return std::nullopt;
+  }
 
-    const auto& lhs_raw = matmul->get_input_shape(0);
-    const auto& rhs_raw = matmul->get_input_shape(1);
-    const auto& output_shape = matmul->get_output_shape(0);
-    if (lhs_raw.size() < 2 || lhs_raw.size() > 4 ||
-        rhs_raw.size() < 2 || rhs_raw.size() > 4 ||
-        ov::shape_size(output_shape) == 0) {
-        return std::nullopt;
-    }
+  const auto &lhs_raw = matmul->get_input_shape(0);
+  const auto &rhs_raw = matmul->get_input_shape(1);
+  const auto &output_shape = matmul->get_output_shape(0);
+  if (lhs_raw.size() < 2 || lhs_raw.size() > 4 || rhs_raw.size() < 2 ||
+      rhs_raw.size() > 4 || ov::shape_size(output_shape) == 0) {
+    return std::nullopt;
+  }
 
-    ov::Shape lhs_logical = lhs_raw;
-    ov::Shape rhs_logical = rhs_raw;
-    const size_t lhs_rank = lhs_logical.size();
-    const size_t rhs_rank = rhs_logical.size();
-    if (matmul->get_transpose_a()) {
-        std::swap(lhs_logical[lhs_rank - 1], lhs_logical[lhs_rank - 2]);
-    }
-    if (matmul->get_transpose_b()) {
-        std::swap(rhs_logical[rhs_rank - 1], rhs_logical[rhs_rank - 2]);
-    }
+  ov::Shape lhs_logical = lhs_raw;
+  ov::Shape rhs_logical = rhs_raw;
+  const size_t lhs_rank = lhs_logical.size();
+  const size_t rhs_rank = rhs_logical.size();
+  if (matmul->get_transpose_a()) {
+    std::swap(lhs_logical[lhs_rank - 1], lhs_logical[lhs_rank - 2]);
+  }
+  if (matmul->get_transpose_b()) {
+    std::swap(rhs_logical[rhs_rank - 1], rhs_logical[rhs_rank - 2]);
+  }
 
-    const size_t m = lhs_logical[lhs_rank - 2];
-    const size_t k = lhs_logical[lhs_rank - 1];
-    const size_t rhs_k = rhs_logical[rhs_rank - 2];
-    const size_t n = rhs_logical[rhs_rank - 1];
-    if (m == 0 || n == 0 || k == 0 || rhs_k != k) {
-        return std::nullopt;
-    }
+  const size_t m = lhs_logical[lhs_rank - 2];
+  const size_t k = lhs_logical[lhs_rank - 1];
+  const size_t rhs_k = rhs_logical[rhs_rank - 2];
+  const size_t n = rhs_logical[rhs_rank - 1];
+  if (m == 0 || n == 0 || k == 0 || rhs_k != k) {
+    return std::nullopt;
+  }
 
-    const auto batch_prefix = matmul_broadcast_batch_prefix(lhs_logical, rhs_logical);
-    if (!batch_prefix) {
-        return std::nullopt;
-    }
-    ov::Shape expected_output = *batch_prefix;
-    expected_output.push_back(m);
-    expected_output.push_back(n);
-    if (expected_output != output_shape) {
-        return std::nullopt;
-    }
+  const auto batch_prefix =
+      matmul_broadcast_batch_prefix(lhs_logical, rhs_logical);
+  if (!batch_prefix) {
+    return std::nullopt;
+  }
+  ov::Shape expected_output = *batch_prefix;
+  expected_output.push_back(m);
+  expected_output.push_back(n);
+  if (expected_output != output_shape) {
+    return std::nullopt;
+  }
 
-    const uint64_t output_batch = shape_product_range(*batch_prefix, 0, batch_prefix->size());
-    const uint64_t lhs_batch = shape_product_range(lhs_logical, 0, lhs_rank - 2);
-    const uint64_t rhs_batch = shape_product_range(rhs_logical, 0, rhs_rank - 2);
-    if ((lhs_batch != 1 && lhs_batch != output_batch) ||
-        (rhs_batch != 1 && rhs_batch != output_batch)) {
-        return std::nullopt;
-    }
+  const uint64_t output_batch =
+      shape_product_range(*batch_prefix, 0, batch_prefix->size());
+  const uint64_t lhs_batch = shape_product_range(lhs_logical, 0, lhs_rank - 2);
+  const uint64_t rhs_batch = shape_product_range(rhs_logical, 0, rhs_rank - 2);
+  if ((lhs_batch != 1 && lhs_batch != output_batch) ||
+      (rhs_batch != 1 && rhs_batch != output_batch)) {
+    return std::nullopt;
+  }
 
-    const uint64_t lhs_matrix_elements = static_cast<uint64_t>(m) * static_cast<uint64_t>(k);
-    const uint64_t rhs_matrix_elements = static_cast<uint64_t>(k) * static_cast<uint64_t>(n);
-    uint32_t m_u32 = 0;
-    uint32_t n_u32 = 0;
-    uint32_t k_u32 = 0;
-    uint32_t lhs_batch_stride_u32 = 0;
-    uint32_t rhs_batch_stride_u32 = 0;
-    uint32_t lhs_row_stride_u32 = 0;
-    uint32_t lhs_col_stride_u32 = 0;
-    uint32_t rhs_row_stride_u32 = 0;
-    uint32_t rhs_col_stride_u32 = 0;
-    uint32_t output_count_u32 = 0;
-    if (!checked_u32(m, m_u32) ||
-        !checked_u32(n, n_u32) ||
-        !checked_u32(k, k_u32) ||
-        !checked_u32(lhs_batch == 1 ? 0 : lhs_matrix_elements, lhs_batch_stride_u32) ||
-        !checked_u32(rhs_batch == 1 ? 0 : rhs_matrix_elements, rhs_batch_stride_u32) ||
-        !checked_u32(matmul->get_transpose_a() ? 1 : k, lhs_row_stride_u32) ||
-        !checked_u32(matmul->get_transpose_a() ? m : 1, lhs_col_stride_u32) ||
-        !checked_u32(matmul->get_transpose_b() ? 1 : n, rhs_row_stride_u32) ||
-        !checked_u32(matmul->get_transpose_b() ? k : 1, rhs_col_stride_u32) ||
-        !checked_u32(ov::shape_size(output_shape), output_count_u32)) {
-        return std::nullopt;
-    }
-    (void)output_count_u32;
+  const uint64_t lhs_matrix_elements =
+      static_cast<uint64_t>(m) * static_cast<uint64_t>(k);
+  const uint64_t rhs_matrix_elements =
+      static_cast<uint64_t>(k) * static_cast<uint64_t>(n);
+  uint32_t m_u32 = 0;
+  uint32_t n_u32 = 0;
+  uint32_t k_u32 = 0;
+  uint32_t lhs_batch_stride_u32 = 0;
+  uint32_t rhs_batch_stride_u32 = 0;
+  uint32_t lhs_row_stride_u32 = 0;
+  uint32_t lhs_col_stride_u32 = 0;
+  uint32_t rhs_row_stride_u32 = 0;
+  uint32_t rhs_col_stride_u32 = 0;
+  uint32_t output_count_u32 = 0;
+  if (!checked_u32(m, m_u32) || !checked_u32(n, n_u32) ||
+      !checked_u32(k, k_u32) ||
+      !checked_u32(lhs_batch == 1 ? 0 : lhs_matrix_elements,
+                   lhs_batch_stride_u32) ||
+      !checked_u32(rhs_batch == 1 ? 0 : rhs_matrix_elements,
+                   rhs_batch_stride_u32) ||
+      !checked_u32(matmul->get_transpose_a() ? 1 : k, lhs_row_stride_u32) ||
+      !checked_u32(matmul->get_transpose_a() ? m : 1, lhs_col_stride_u32) ||
+      !checked_u32(matmul->get_transpose_b() ? 1 : n, rhs_row_stride_u32) ||
+      !checked_u32(matmul->get_transpose_b() ? k : 1, rhs_col_stride_u32) ||
+      !checked_u32(ov::shape_size(output_shape), output_count_u32)) {
+    return std::nullopt;
+  }
+  (void)output_count_u32;
 
-    return std::vector<uint32_t>{
-        m_u32,
-        n_u32,
-        k_u32,
-        lhs_batch_stride_u32,
-        rhs_batch_stride_u32,
-        lhs_row_stride_u32,
-        lhs_col_stride_u32,
-        rhs_row_stride_u32,
-        rhs_col_stride_u32,
-    };
+  return std::vector<uint32_t>{
+      m_u32,
+      n_u32,
+      k_u32,
+      lhs_batch_stride_u32,
+      rhs_batch_stride_u32,
+      lhs_row_stride_u32,
+      lhs_col_stride_u32,
+      rhs_row_stride_u32,
+      rhs_col_stride_u32,
+  };
 }
 
-std::optional<std::vector<uint32_t>> softmax_static_u32_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    int64_t raw_axis = 0;
-    if (auto softmax_v8 = ov::as_type_ptr<const ov::op::v8::Softmax>(node)) {
-        raw_axis = softmax_v8->get_axis();
-    } else if (auto softmax_v1 = ov::as_type_ptr<const ov::op::v1::Softmax>(node)) {
-        raw_axis = static_cast<int64_t>(softmax_v1->get_axis());
-    } else {
-        return std::nullopt;
-    }
+std::optional<std::vector<uint32_t>>
+softmax_static_u32_scalars(const std::shared_ptr<const ov::Node> &node) {
+  int64_t raw_axis = 0;
+  if (auto softmax_v8 = ov::as_type_ptr<const ov::op::v8::Softmax>(node)) {
+    raw_axis = softmax_v8->get_axis();
+  } else if (auto softmax_v1 =
+                 ov::as_type_ptr<const ov::op::v1::Softmax>(node)) {
+    raw_axis = static_cast<int64_t>(softmax_v1->get_axis());
+  } else {
+    return std::nullopt;
+  }
 
-    const auto element_type = node->get_input_element_type(0);
-    if (node->get_input_size() != 1 ||
-        node->get_output_size() != 1 ||
-        !node->get_input_partial_shape(0).is_static() ||
-        !node->get_output_partial_shape(0).is_static() ||
-        element_type != node->get_output_element_type(0) ||
-        (!is_f32_tensor_type(element_type) && !is_f16_tensor_type(element_type))) {
-        return std::nullopt;
-    }
+  const auto element_type = node->get_input_element_type(0);
+  if (node->get_input_size() != 1 || node->get_output_size() != 1 ||
+      !node->get_input_partial_shape(0).is_static() ||
+      !node->get_output_partial_shape(0).is_static() ||
+      element_type != node->get_output_element_type(0) ||
+      (!is_f32_tensor_type(element_type) &&
+       !is_f16_tensor_type(element_type))) {
+    return std::nullopt;
+  }
 
-    const auto& input_shape = node->get_input_shape(0);
-    const auto& output_shape = node->get_output_shape(0);
-    const size_t rank = input_shape.size();
-    if (rank == 0 ||
-        output_shape != input_shape ||
-        ov::shape_size(output_shape) == 0) {
-        return std::nullopt;
-    }
-    const auto axis = normalize_axis(raw_axis, rank);
-    if (!axis || input_shape[*axis] == 0) {
-        return std::nullopt;
-    }
+  const auto &input_shape = node->get_input_shape(0);
+  const auto &output_shape = node->get_output_shape(0);
+  const size_t rank = input_shape.size();
+  if (rank == 0 || output_shape != input_shape ||
+      ov::shape_size(output_shape) == 0) {
+    return std::nullopt;
+  }
+  const auto axis = normalize_axis(raw_axis, rank);
+  if (!axis || input_shape[*axis] == 0) {
+    return std::nullopt;
+  }
 
-    uint32_t outer = 0;
-    uint32_t axis_dim = 0;
-    uint32_t inner = 0;
-    uint32_t output_count = 0;
-    if (!checked_u32(shape_product_range(input_shape, 0, *axis), outer) ||
-        !checked_u32(input_shape[*axis], axis_dim) ||
-        !checked_u32(shape_product_range(input_shape, *axis + 1, rank), inner) ||
-        !checked_u32(ov::shape_size(output_shape), output_count)) {
-        return std::nullopt;
-    }
-    (void)output_count;
+  uint32_t outer = 0;
+  uint32_t axis_dim = 0;
+  uint32_t inner = 0;
+  uint32_t output_count = 0;
+  if (!checked_u32(shape_product_range(input_shape, 0, *axis), outer) ||
+      !checked_u32(input_shape[*axis], axis_dim) ||
+      !checked_u32(shape_product_range(input_shape, *axis + 1, rank), inner) ||
+      !checked_u32(ov::shape_size(output_shape), output_count)) {
+    return std::nullopt;
+  }
+  (void)output_count;
 
-    return std::vector<uint32_t>{outer, axis_dim, inner};
+  return std::vector<uint32_t>{outer, axis_dim, inner};
 }
 
 std::optional<std::vector<uint32_t>> softmax_dynamic_static_rank_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    int64_t raw_axis = 0;
-    if (auto softmax_v8 = ov::as_type_ptr<const ov::op::v8::Softmax>(node)) {
-        raw_axis = softmax_v8->get_axis();
-    } else if (auto softmax_v1 = ov::as_type_ptr<const ov::op::v1::Softmax>(node)) {
-        raw_axis = static_cast<int64_t>(softmax_v1->get_axis());
-    } else {
-        return std::nullopt;
-    }
+    const std::shared_ptr<const ov::Node> &node) {
+  int64_t raw_axis = 0;
+  if (auto softmax_v8 = ov::as_type_ptr<const ov::op::v8::Softmax>(node)) {
+    raw_axis = softmax_v8->get_axis();
+  } else if (auto softmax_v1 =
+                 ov::as_type_ptr<const ov::op::v1::Softmax>(node)) {
+    raw_axis = static_cast<int64_t>(softmax_v1->get_axis());
+  } else {
+    return std::nullopt;
+  }
 
-    const auto element_type = node->get_input_element_type(0);
-    if (node->get_input_size() != 1 ||
-        node->get_output_size() != 1 ||
-        element_type != node->get_output_element_type(0) ||
-        (!is_f32_tensor_type(element_type) && !is_f16_tensor_type(element_type))) {
-        return std::nullopt;
-    }
-    const auto input_rank = node->get_input_partial_shape(0).rank();
-    const auto output_rank = node->get_output_partial_shape(0).rank();
-    if (!input_rank.is_static() ||
-        !output_rank.is_static() ||
-        input_rank.get_length() != output_rank.get_length() ||
-        input_rank.get_length() <= 0 ||
-        input_rank.get_length() > 8) {
-        return std::nullopt;
-    }
-    if (node->get_output_partial_shape(0).is_static()) {
-        return std::nullopt;
-    }
+  const auto element_type = node->get_input_element_type(0);
+  if (node->get_input_size() != 1 || node->get_output_size() != 1 ||
+      element_type != node->get_output_element_type(0) ||
+      (!is_f32_tensor_type(element_type) &&
+       !is_f16_tensor_type(element_type))) {
+    return std::nullopt;
+  }
+  const auto input_rank = node->get_input_partial_shape(0).rank();
+  const auto output_rank = node->get_output_partial_shape(0).rank();
+  if (!input_rank.is_static() || !output_rank.is_static() ||
+      input_rank.get_length() != output_rank.get_length() ||
+      input_rank.get_length() <= 0 || input_rank.get_length() > 8) {
+    return std::nullopt;
+  }
+  if (node->get_output_partial_shape(0).is_static()) {
+    return std::nullopt;
+  }
 
-    const auto rank = static_cast<size_t>(input_rank.get_length());
-    const auto axis = normalize_axis(raw_axis, rank);
-    if (!axis) {
-        return std::nullopt;
-    }
+  const auto rank = static_cast<size_t>(input_rank.get_length());
+  const auto axis = normalize_axis(raw_axis, rank);
+  if (!axis) {
+    return std::nullopt;
+  }
 
-    return std::vector<uint32_t>{
-        static_cast<uint32_t>(rank),
-        static_cast<uint32_t>(*axis),
-    };
+  return std::vector<uint32_t>{
+      static_cast<uint32_t>(rank),
+      static_cast<uint32_t>(*axis),
+  };
 }
 
 std::vector<GfxOpenClSourceScalarArg> softmax_dynamic_shape_scalar_args() {
-    std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-        GfxOpenClSourceScalarArg::ElementCount,
-        GfxOpenClSourceScalarArg::StaticU32,
-        GfxOpenClSourceScalarArg::StaticU32};
-    scalar_args.reserve(11);
-    for (uint32_t axis = 0; axis < 8; ++axis) {
-        scalar_args.push_back(static_cast<GfxOpenClSourceScalarArg>(
-            static_cast<uint32_t>(GfxOpenClSourceScalarArg::Input0Dim0) + axis));
-    }
-    return scalar_args;
+  std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+      GfxOpenClSourceScalarArg::ElementCount,
+      GfxOpenClSourceScalarArg::StaticU32, GfxOpenClSourceScalarArg::StaticU32};
+  scalar_args.reserve(11);
+  for (uint32_t axis = 0; axis < 8; ++axis) {
+    scalar_args.push_back(static_cast<GfxOpenClSourceScalarArg>(
+        static_cast<uint32_t>(GfxOpenClSourceScalarArg::Input0Dim0) + axis));
+  }
+  return scalar_args;
 }
 
-std::optional<std::vector<uint32_t>> tile_static_u32_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    auto tile = ov::as_type_ptr<const ov::op::v0::Tile>(node);
-    if (!tile ||
-        tile->get_input_size() != 2 ||
-        tile->get_output_size() != 1 ||
-        !tile->get_input_partial_shape(0).is_static() ||
-        !tile->get_output_partial_shape(0).is_static() ||
-        tile->get_input_element_type(0) != tile->get_output_element_type(0) ||
-        (!is_f32_tensor_type(tile->get_input_element_type(0)) &&
-         !is_f16_tensor_type(tile->get_input_element_type(0)))) {
-        return std::nullopt;
+std::optional<std::vector<uint32_t>>
+tile_static_u32_scalars(const std::shared_ptr<const ov::Node> &node) {
+  auto tile = ov::as_type_ptr<const ov::op::v0::Tile>(node);
+  if (!tile || tile->get_input_size() != 2 || tile->get_output_size() != 1 ||
+      !tile->get_input_partial_shape(0).is_static() ||
+      !tile->get_output_partial_shape(0).is_static() ||
+      tile->get_input_element_type(0) != tile->get_output_element_type(0) ||
+      (!is_f32_tensor_type(tile->get_input_element_type(0)) &&
+       !is_f16_tensor_type(tile->get_input_element_type(0)))) {
+    return std::nullopt;
+  }
+  const auto &input_shape = tile->get_input_shape(0);
+  const auto &output_shape = tile->get_output_shape(0);
+  const size_t rank = input_shape.size();
+  if (rank == 0 || rank > 4 || output_shape.size() != rank ||
+      ov::shape_size(input_shape) == 0 || ov::shape_size(output_shape) == 0) {
+    return std::nullopt;
+  }
+  const auto repeats = constant_i64_vector_input(node, 1);
+  if (!repeats || repeats->size() != rank) {
+    return std::nullopt;
+  }
+  for (size_t axis = 0; axis < rank; ++axis) {
+    if (input_shape[axis] == 0 || (*repeats)[axis] <= 0 ||
+        static_cast<uint64_t>(input_shape[axis]) *
+                static_cast<uint64_t>((*repeats)[axis]) !=
+            output_shape[axis]) {
+      return std::nullopt;
     }
-    const auto& input_shape = tile->get_input_shape(0);
-    const auto& output_shape = tile->get_output_shape(0);
-    const size_t rank = input_shape.size();
-    if (rank == 0 || rank > 4 ||
-        output_shape.size() != rank ||
-        ov::shape_size(input_shape) == 0 ||
-        ov::shape_size(output_shape) == 0) {
-        return std::nullopt;
-    }
-    const auto repeats = constant_i64_vector_input(node, 1);
-    if (!repeats || repeats->size() != rank) {
-        return std::nullopt;
-    }
-    for (size_t axis = 0; axis < rank; ++axis) {
-        if (input_shape[axis] == 0 ||
-            (*repeats)[axis] <= 0 ||
-            static_cast<uint64_t>(input_shape[axis]) *
-                    static_cast<uint64_t>((*repeats)[axis]) != output_shape[axis]) {
-            return std::nullopt;
-        }
-    }
-    uint32_t total = 0;
-    if (!checked_u32(ov::shape_size(output_shape), total)) {
-        return std::nullopt;
-    }
-    (void)total;
+  }
+  uint32_t total = 0;
+  if (!checked_u32(ov::shape_size(output_shape), total)) {
+    return std::nullopt;
+  }
+  (void)total;
 
-    std::vector<uint32_t> scalars;
-    scalars.reserve(17);
-    scalars.push_back(static_cast<uint32_t>(rank));
-    if (!append_shape_u32(output_shape, 4, scalars) ||
-        !append_shape_u32(input_shape, 4, scalars) ||
-        !append_strides_u32(output_shape, 4, scalars) ||
-        !append_strides_u32(input_shape, 4, scalars)) {
-        return std::nullopt;
-    }
-    return scalars;
+  std::vector<uint32_t> scalars;
+  scalars.reserve(17);
+  scalars.push_back(static_cast<uint32_t>(rank));
+  if (!append_shape_u32(output_shape, 4, scalars) ||
+      !append_shape_u32(input_shape, 4, scalars) ||
+      !append_strides_u32(output_shape, 4, scalars) ||
+      !append_strides_u32(input_shape, 4, scalars)) {
+    return std::nullopt;
+  }
+  return scalars;
 }
 
-std::optional<uint32_t> tile_dynamic_static_rank(
-    const std::shared_ptr<const ov::Node>& node) {
-    if (!node ||
-        node->get_input_size() != 2 ||
-        node->get_output_size() != 1 ||
-        node->get_input_element_type(0) != node->get_output_element_type(0) ||
-        (!is_f32_tensor_type(node->get_input_element_type(0)) &&
-         !is_f16_tensor_type(node->get_input_element_type(0)))) {
-        return std::nullopt;
+std::optional<uint32_t>
+tile_dynamic_static_rank(const std::shared_ptr<const ov::Node> &node) {
+  if (!node || node->get_input_size() != 2 || node->get_output_size() != 1 ||
+      node->get_input_element_type(0) != node->get_output_element_type(0) ||
+      (!is_f32_tensor_type(node->get_input_element_type(0)) &&
+       !is_f16_tensor_type(node->get_input_element_type(0)))) {
+    return std::nullopt;
+  }
+  const auto input_rank = node->get_input_partial_shape(0).rank();
+  if (!input_rank.is_static() || input_rank.get_length() <= 0 ||
+      input_rank.get_length() > 4) {
+    return std::nullopt;
+  }
+  const auto output_rank = node->get_output_partial_shape(0).rank();
+  if (output_rank.is_static() &&
+      output_rank.get_length() != input_rank.get_length()) {
+    return std::nullopt;
+  }
+  const auto repeats_shape = node->get_input_partial_shape(1);
+  if (repeats_shape.is_static()) {
+    const auto repeats_count = ov::shape_size(repeats_shape.to_shape());
+    if (repeats_count != static_cast<size_t>(input_rank.get_length())) {
+      return std::nullopt;
     }
-    const auto input_rank = node->get_input_partial_shape(0).rank();
-    if (!input_rank.is_static() ||
-        input_rank.get_length() <= 0 ||
-        input_rank.get_length() > 4) {
-        return std::nullopt;
-    }
-    const auto output_rank = node->get_output_partial_shape(0).rank();
-    if (output_rank.is_static() &&
-        output_rank.get_length() != input_rank.get_length()) {
-        return std::nullopt;
-    }
-    const auto repeats_shape = node->get_input_partial_shape(1);
-    if (repeats_shape.is_static()) {
-        const auto repeats_count = ov::shape_size(repeats_shape.to_shape());
-        if (repeats_count != static_cast<size_t>(input_rank.get_length())) {
-            return std::nullopt;
-        }
-    }
-    if (node->get_output_partial_shape(0).is_static() &&
-        ov::shape_size(node->get_output_shape(0)) == 0) {
-        return std::nullopt;
-    }
-    return static_cast<uint32_t>(input_rank.get_length());
+  }
+  if (node->get_output_partial_shape(0).is_static() &&
+      ov::shape_size(node->get_output_shape(0)) == 0) {
+    return std::nullopt;
+  }
+  return static_cast<uint32_t>(input_rank.get_length());
 }
 
 std::vector<GfxOpenClSourceScalarArg> tile_dynamic_shape_scalar_args() {
-    std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-        GfxOpenClSourceScalarArg::ElementCount,
-        GfxOpenClSourceScalarArg::StaticU32};
-    scalar_args.reserve(10);
-    for (uint32_t axis = 0; axis < 4; ++axis) {
-        scalar_args.push_back(static_cast<GfxOpenClSourceScalarArg>(
-            static_cast<uint32_t>(GfxOpenClSourceScalarArg::Output0Dim0) + axis));
-    }
-    for (uint32_t axis = 0; axis < 4; ++axis) {
-        scalar_args.push_back(static_cast<GfxOpenClSourceScalarArg>(
-            static_cast<uint32_t>(GfxOpenClSourceScalarArg::Input0Dim0) + axis));
-    }
-    return scalar_args;
+  std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+      GfxOpenClSourceScalarArg::ElementCount,
+      GfxOpenClSourceScalarArg::StaticU32};
+  scalar_args.reserve(10);
+  for (uint32_t axis = 0; axis < 4; ++axis) {
+    scalar_args.push_back(static_cast<GfxOpenClSourceScalarArg>(
+        static_cast<uint32_t>(GfxOpenClSourceScalarArg::Output0Dim0) + axis));
+  }
+  for (uint32_t axis = 0; axis < 4; ++axis) {
+    scalar_args.push_back(static_cast<GfxOpenClSourceScalarArg>(
+        static_cast<uint32_t>(GfxOpenClSourceScalarArg::Input0Dim0) + axis));
+  }
+  return scalar_args;
 }
 
 std::optional<std::vector<uint32_t>> gather_elements_static_u32_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    auto gather = ov::as_type_ptr<const ov::op::v6::GatherElements>(node);
-    if (!gather ||
-        gather->get_input_size() != 2 ||
-        !gather->get_input_partial_shape(0).is_static() ||
-        !gather->get_input_partial_shape(1).is_static() ||
-        !gather->get_output_partial_shape(0).is_static() ||
-        !is_f32_tensor_type(gather->get_input_element_type(0)) ||
-        !is_f32_tensor_type(gather->get_output_element_type(0))) {
-        return std::nullopt;
-    }
-    const auto indices_type = gather->get_input_element_type(1);
-    if (indices_type != ov::element::i32 && indices_type != ov::element::i64) {
-        return std::nullopt;
-    }
+    const std::shared_ptr<const ov::Node> &node) {
+  auto gather = ov::as_type_ptr<const ov::op::v6::GatherElements>(node);
+  if (!gather || gather->get_input_size() != 2 ||
+      !gather->get_input_partial_shape(0).is_static() ||
+      !gather->get_input_partial_shape(1).is_static() ||
+      !gather->get_output_partial_shape(0).is_static() ||
+      !is_f32_tensor_type(gather->get_input_element_type(0)) ||
+      !is_f32_tensor_type(gather->get_output_element_type(0))) {
+    return std::nullopt;
+  }
+  const auto indices_type = gather->get_input_element_type(1);
+  if (indices_type != ov::element::i32 && indices_type != ov::element::i64) {
+    return std::nullopt;
+  }
 
-    const auto& data_shape = gather->get_input_shape(0);
-    const auto& indices_shape = gather->get_input_shape(1);
-    const auto& output_shape = gather->get_output_shape(0);
-    const size_t rank = output_shape.size();
-    if (rank == 0 || rank > 4 ||
-        data_shape.size() != rank ||
-        indices_shape != output_shape ||
-        ov::shape_size(output_shape) == 0) {
-        return std::nullopt;
+  const auto &data_shape = gather->get_input_shape(0);
+  const auto &indices_shape = gather->get_input_shape(1);
+  const auto &output_shape = gather->get_output_shape(0);
+  const size_t rank = output_shape.size();
+  if (rank == 0 || rank > 4 || data_shape.size() != rank ||
+      indices_shape != output_shape || ov::shape_size(output_shape) == 0) {
+    return std::nullopt;
+  }
+  const auto axis = normalize_axis(gather->get_axis(), rank);
+  if (!axis || data_shape[*axis] == 0) {
+    return std::nullopt;
+  }
+  for (size_t dim = 0; dim < rank; ++dim) {
+    if (data_shape[dim] == 0 || output_shape[dim] == 0) {
+      return std::nullopt;
     }
-    const auto axis = normalize_axis(gather->get_axis(), rank);
-    if (!axis || data_shape[*axis] == 0) {
-        return std::nullopt;
+    if (dim != *axis && output_shape[dim] > data_shape[dim]) {
+      return std::nullopt;
     }
-    for (size_t dim = 0; dim < rank; ++dim) {
-        if (data_shape[dim] == 0 || output_shape[dim] == 0) {
-            return std::nullopt;
-        }
-        if (dim != *axis && output_shape[dim] > data_shape[dim]) {
-            return std::nullopt;
-        }
-    }
-    uint32_t total = 0;
-    if (!checked_u32(ov::shape_size(output_shape), total)) {
-        return std::nullopt;
-    }
-    (void)total;
+  }
+  uint32_t total = 0;
+  if (!checked_u32(ov::shape_size(output_shape), total)) {
+    return std::nullopt;
+  }
+  (void)total;
 
-    std::vector<uint32_t> scalars;
-    scalars.reserve(18);
-    scalars.push_back(static_cast<uint32_t>(rank));
-    scalars.push_back(static_cast<uint32_t>(*axis));
-    if (!append_shape_u32(output_shape, 4, scalars) ||
-        !append_strides_u32(output_shape, 4, scalars) ||
-        !append_shape_u32(data_shape, 4, scalars) ||
-        !append_strides_u32(data_shape, 4, scalars)) {
-        return std::nullopt;
-    }
-    return scalars;
+  std::vector<uint32_t> scalars;
+  scalars.reserve(18);
+  scalars.push_back(static_cast<uint32_t>(rank));
+  scalars.push_back(static_cast<uint32_t>(*axis));
+  if (!append_shape_u32(output_shape, 4, scalars) ||
+      !append_strides_u32(output_shape, 4, scalars) ||
+      !append_shape_u32(data_shape, 4, scalars) ||
+      !append_strides_u32(data_shape, 4, scalars)) {
+    return std::nullopt;
+  }
+  return scalars;
 }
 
-std::optional<std::vector<uint32_t>> gather_nd_static_u32_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    auto gather = ov::as_type_ptr<const ov::op::util::GatherNDBase>(node);
-    if (!gather ||
-        gather->get_input_size() != 2 ||
-        gather->get_batch_dims() != 0 ||
-        !gather->get_input_partial_shape(0).is_static() ||
-        !gather->get_input_partial_shape(1).is_static() ||
-        !gather->get_output_partial_shape(0).is_static() ||
-        !is_f32_tensor_type(gather->get_input_element_type(0)) ||
-        !is_f32_tensor_type(gather->get_output_element_type(0))) {
-        return std::nullopt;
-    }
-    const auto indices_type = gather->get_input_element_type(1);
-    if (indices_type != ov::element::i32 && indices_type != ov::element::i64) {
-        return std::nullopt;
-    }
+std::optional<std::vector<uint32_t>>
+gather_nd_static_u32_scalars(const std::shared_ptr<const ov::Node> &node) {
+  auto gather = ov::as_type_ptr<const ov::op::util::GatherNDBase>(node);
+  if (!gather || gather->get_input_size() != 2 ||
+      gather->get_batch_dims() != 0 ||
+      !gather->get_input_partial_shape(0).is_static() ||
+      !gather->get_input_partial_shape(1).is_static() ||
+      !gather->get_output_partial_shape(0).is_static() ||
+      !is_f32_tensor_type(gather->get_input_element_type(0)) ||
+      !is_f32_tensor_type(gather->get_output_element_type(0))) {
+    return std::nullopt;
+  }
+  const auto indices_type = gather->get_input_element_type(1);
+  if (indices_type != ov::element::i32 && indices_type != ov::element::i64) {
+    return std::nullopt;
+  }
 
-    const auto& data_shape = gather->get_input_shape(0);
-    const auto& indices_shape = gather->get_input_shape(1);
-    const auto& output_shape = gather->get_output_shape(0);
-    const size_t data_rank = data_shape.size();
-    const size_t indices_rank = indices_shape.size();
-    if (data_rank == 0 || data_rank > 4 ||
-        indices_rank == 0 ||
-        indices_shape.back() == 0 ||
-        indices_shape.back() > data_rank ||
-        indices_shape.back() > 4 ||
-        ov::shape_size(output_shape) == 0) {
-        return std::nullopt;
+  const auto &data_shape = gather->get_input_shape(0);
+  const auto &indices_shape = gather->get_input_shape(1);
+  const auto &output_shape = gather->get_output_shape(0);
+  const size_t data_rank = data_shape.size();
+  const size_t indices_rank = indices_shape.size();
+  if (data_rank == 0 || data_rank > 4 || indices_rank == 0 ||
+      indices_shape.back() == 0 || indices_shape.back() > data_rank ||
+      indices_shape.back() > 4 || ov::shape_size(output_shape) == 0) {
+    return std::nullopt;
+  }
+  const size_t index_depth = indices_shape.back();
+  const size_t slice_rank = data_rank - index_depth;
+  for (size_t axis = 0; axis < data_rank; ++axis) {
+    if (data_shape[axis] == 0) {
+      return std::nullopt;
     }
-    const size_t index_depth = indices_shape.back();
-    const size_t slice_rank = data_rank - index_depth;
-    for (size_t axis = 0; axis < data_rank; ++axis) {
-        if (data_shape[axis] == 0) {
-            return std::nullopt;
-        }
-    }
+  }
 
-    ov::Shape expected_output;
-    expected_output.reserve(indices_rank - 1 + slice_rank);
-    expected_output.insert(expected_output.end(), indices_shape.begin(), indices_shape.end() - 1);
-    expected_output.insert(expected_output.end(), data_shape.begin() + index_depth, data_shape.end());
-    if (expected_output != output_shape) {
-        return std::nullopt;
-    }
+  ov::Shape expected_output;
+  expected_output.reserve(indices_rank - 1 + slice_rank);
+  expected_output.insert(expected_output.end(), indices_shape.begin(),
+                         indices_shape.end() - 1);
+  expected_output.insert(expected_output.end(),
+                         data_shape.begin() + index_depth, data_shape.end());
+  if (expected_output != output_shape) {
+    return std::nullopt;
+  }
 
-    uint32_t total = 0;
-    uint32_t slice_size = 0;
-    if (!checked_u32(ov::shape_size(output_shape), total) ||
-        !checked_u32(shape_product_range(data_shape, index_depth, data_rank), slice_size) ||
-        slice_size == 0) {
-        return std::nullopt;
-    }
-    (void)total;
+  uint32_t total = 0;
+  uint32_t slice_size = 0;
+  if (!checked_u32(ov::shape_size(output_shape), total) ||
+      !checked_u32(shape_product_range(data_shape, index_depth, data_rank),
+                   slice_size) ||
+      slice_size == 0) {
+    return std::nullopt;
+  }
+  (void)total;
 
-    std::vector<uint32_t> scalars;
-    scalars.reserve(11);
-    scalars.push_back(static_cast<uint32_t>(index_depth));
-    scalars.push_back(static_cast<uint32_t>(slice_rank));
-    scalars.push_back(slice_size);
-    if (!append_shape_u32(data_shape, 4, scalars) ||
-        !append_strides_u32(data_shape, 4, scalars)) {
-        return std::nullopt;
-    }
-    return scalars;
+  std::vector<uint32_t> scalars;
+  scalars.reserve(11);
+  scalars.push_back(static_cast<uint32_t>(index_depth));
+  scalars.push_back(static_cast<uint32_t>(slice_rank));
+  scalars.push_back(slice_size);
+  if (!append_shape_u32(data_shape, 4, scalars) ||
+      !append_strides_u32(data_shape, 4, scalars)) {
+    return std::nullopt;
+  }
+  return scalars;
 }
 
-std::optional<std::vector<uint32_t>> scatter_update_static_u32_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    auto scatter = ov::as_type_ptr<const ov::op::v3::ScatterUpdate>(node);
-    if (!scatter ||
-        scatter->get_input_size() != 4 ||
-        !scatter->get_input_partial_shape(0).is_static() ||
-        !scatter->get_input_partial_shape(1).is_static() ||
-        !scatter->get_input_partial_shape(2).is_static() ||
-        !scatter->get_output_partial_shape(0).is_static() ||
-        !is_f32_tensor_type(scatter->get_input_element_type(0)) ||
-        !is_f32_tensor_type(scatter->get_input_element_type(2)) ||
-        !is_f32_tensor_type(scatter->get_output_element_type(0))) {
-        return std::nullopt;
-    }
-    const auto indices_type = scatter->get_input_element_type(1);
-    if (indices_type != ov::element::i32 && indices_type != ov::element::i64) {
-        return std::nullopt;
-    }
+std::optional<std::vector<uint32_t>>
+scatter_update_static_u32_scalars(const std::shared_ptr<const ov::Node> &node) {
+  auto scatter = ov::as_type_ptr<const ov::op::v3::ScatterUpdate>(node);
+  if (!scatter || scatter->get_input_size() != 4 ||
+      !scatter->get_input_partial_shape(0).is_static() ||
+      !scatter->get_input_partial_shape(1).is_static() ||
+      !scatter->get_input_partial_shape(2).is_static() ||
+      !scatter->get_output_partial_shape(0).is_static() ||
+      !is_f32_tensor_type(scatter->get_input_element_type(0)) ||
+      !is_f32_tensor_type(scatter->get_input_element_type(2)) ||
+      !is_f32_tensor_type(scatter->get_output_element_type(0))) {
+    return std::nullopt;
+  }
+  const auto indices_type = scatter->get_input_element_type(1);
+  if (indices_type != ov::element::i32 && indices_type != ov::element::i64) {
+    return std::nullopt;
+  }
 
-    const auto& data_shape = scatter->get_input_shape(0);
-    const auto& indices_shape = scatter->get_input_shape(1);
-    const auto& updates_shape = scatter->get_input_shape(2);
-    const auto& output_shape = scatter->get_output_shape(0);
-    const size_t data_rank = data_shape.size();
-    const size_t indices_rank = indices_shape.size();
-    if (data_rank == 0 || data_rank > 4 ||
-        indices_rank > 4 ||
-        data_shape != output_shape ||
-        ov::shape_size(output_shape) == 0 ||
-        ov::shape_size(indices_shape) == 0) {
-        return std::nullopt;
+  const auto &data_shape = scatter->get_input_shape(0);
+  const auto &indices_shape = scatter->get_input_shape(1);
+  const auto &updates_shape = scatter->get_input_shape(2);
+  const auto &output_shape = scatter->get_output_shape(0);
+  const size_t data_rank = data_shape.size();
+  const size_t indices_rank = indices_shape.size();
+  if (data_rank == 0 || data_rank > 4 || indices_rank > 4 ||
+      data_shape != output_shape || ov::shape_size(output_shape) == 0 ||
+      ov::shape_size(indices_shape) == 0) {
+    return std::nullopt;
+  }
+  for (size_t axis = 0; axis < data_rank; ++axis) {
+    if (data_shape[axis] == 0) {
+      return std::nullopt;
     }
-    for (size_t axis = 0; axis < data_rank; ++axis) {
-        if (data_shape[axis] == 0) {
-            return std::nullopt;
-        }
-    }
-    const auto axis_values = constant_i64_vector_input(node, 3);
-    if (!axis_values || axis_values->size() != 1) {
-        return std::nullopt;
-    }
-    const auto axis = normalize_axis(axis_values->front(), data_rank);
-    if (!axis) {
-        return std::nullopt;
-    }
+  }
+  const auto axis_values = constant_i64_vector_input(node, 3);
+  if (!axis_values || axis_values->size() != 1) {
+    return std::nullopt;
+  }
+  const auto axis = normalize_axis(axis_values->front(), data_rank);
+  if (!axis) {
+    return std::nullopt;
+  }
 
-    ov::Shape expected_updates;
-    expected_updates.reserve(data_rank + indices_rank - 1);
-    expected_updates.insert(expected_updates.end(), data_shape.begin(), data_shape.begin() + *axis);
-    expected_updates.insert(expected_updates.end(), indices_shape.begin(), indices_shape.end());
-    expected_updates.insert(expected_updates.end(), data_shape.begin() + *axis + 1, data_shape.end());
-    if (expected_updates != updates_shape || expected_updates.size() > 7 ||
-        ov::shape_size(updates_shape) == 0) {
-        return std::nullopt;
-    }
+  ov::Shape expected_updates;
+  expected_updates.reserve(data_rank + indices_rank - 1);
+  expected_updates.insert(expected_updates.end(), data_shape.begin(),
+                          data_shape.begin() + *axis);
+  expected_updates.insert(expected_updates.end(), indices_shape.begin(),
+                          indices_shape.end());
+  expected_updates.insert(expected_updates.end(),
+                          data_shape.begin() + *axis + 1, data_shape.end());
+  if (expected_updates != updates_shape || expected_updates.size() > 7 ||
+      ov::shape_size(updates_shape) == 0) {
+    return std::nullopt;
+  }
 
-    uint32_t indices_total = 0;
-    if (!checked_u32(ov::shape_size(indices_shape), indices_total)) {
-        return std::nullopt;
-    }
+  uint32_t indices_total = 0;
+  if (!checked_u32(ov::shape_size(indices_shape), indices_total)) {
+    return std::nullopt;
+  }
 
-    std::vector<uint32_t> scalars;
-    scalars.reserve(28);
-    scalars.push_back(static_cast<uint32_t>(data_rank));
-    scalars.push_back(static_cast<uint32_t>(indices_rank));
-    scalars.push_back(static_cast<uint32_t>(updates_shape.size()));
-    scalars.push_back(static_cast<uint32_t>(*axis));
-    scalars.push_back(indices_total);
-    if (!append_shape_u32(data_shape, 4, scalars) ||
-        !append_strides_u32(data_shape, 4, scalars) ||
-        !append_shape_u32(indices_shape, 4, scalars) ||
-        !append_strides_u32(indices_shape, 4, scalars) ||
-        !append_strides_u32(updates_shape, 7, scalars)) {
-        return std::nullopt;
-    }
-    return scalars;
+  std::vector<uint32_t> scalars;
+  scalars.reserve(28);
+  scalars.push_back(static_cast<uint32_t>(data_rank));
+  scalars.push_back(static_cast<uint32_t>(indices_rank));
+  scalars.push_back(static_cast<uint32_t>(updates_shape.size()));
+  scalars.push_back(static_cast<uint32_t>(*axis));
+  scalars.push_back(indices_total);
+  if (!append_shape_u32(data_shape, 4, scalars) ||
+      !append_strides_u32(data_shape, 4, scalars) ||
+      !append_shape_u32(indices_shape, 4, scalars) ||
+      !append_strides_u32(indices_shape, 4, scalars) ||
+      !append_strides_u32(updates_shape, 7, scalars)) {
+    return std::nullopt;
+  }
+  return scalars;
 }
 
 bool scatter_elements_has_baseline_reduction(
-    const std::shared_ptr<const ov::Node>& node) {
-    if (auto scatter_v12 =
-            ov::as_type_ptr<const ov::op::v12::ScatterElementsUpdate>(node)) {
-        return scatter_v12->get_reduction() ==
-               ov::op::v12::ScatterElementsUpdate::Reduction::NONE;
-    }
-    return ov::as_type_ptr<const ov::op::v3::ScatterElementsUpdate>(node) != nullptr;
+    const std::shared_ptr<const ov::Node> &node) {
+  if (auto scatter_v12 =
+          ov::as_type_ptr<const ov::op::v12::ScatterElementsUpdate>(node)) {
+    return scatter_v12->get_reduction() ==
+           ov::op::v12::ScatterElementsUpdate::Reduction::NONE;
+  }
+  return ov::as_type_ptr<const ov::op::v3::ScatterElementsUpdate>(node) !=
+         nullptr;
 }
 
 std::optional<std::vector<uint32_t>> scatter_elements_static_u32_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    auto scatter = ov::as_type_ptr<const ov::op::util::ScatterElementsUpdateBase>(node);
-    if (!scatter ||
-        !scatter_elements_has_baseline_reduction(node) ||
-        scatter->get_input_size() != 4 ||
-        !scatter->get_input_partial_shape(0).is_static() ||
-        !scatter->get_input_partial_shape(1).is_static() ||
-        !scatter->get_input_partial_shape(2).is_static() ||
-        !scatter->get_output_partial_shape(0).is_static() ||
-        !is_f32_tensor_type(scatter->get_input_element_type(0)) ||
-        !is_f32_tensor_type(scatter->get_input_element_type(2)) ||
-        !is_f32_tensor_type(scatter->get_output_element_type(0))) {
-        return std::nullopt;
-    }
-    const auto indices_type = scatter->get_input_element_type(1);
-    if (indices_type != ov::element::i32 && indices_type != ov::element::i64) {
-        return std::nullopt;
-    }
+    const std::shared_ptr<const ov::Node> &node) {
+  auto scatter =
+      ov::as_type_ptr<const ov::op::util::ScatterElementsUpdateBase>(node);
+  if (!scatter || !scatter_elements_has_baseline_reduction(node) ||
+      scatter->get_input_size() != 4 ||
+      !scatter->get_input_partial_shape(0).is_static() ||
+      !scatter->get_input_partial_shape(1).is_static() ||
+      !scatter->get_input_partial_shape(2).is_static() ||
+      !scatter->get_output_partial_shape(0).is_static() ||
+      !is_f32_tensor_type(scatter->get_input_element_type(0)) ||
+      !is_f32_tensor_type(scatter->get_input_element_type(2)) ||
+      !is_f32_tensor_type(scatter->get_output_element_type(0))) {
+    return std::nullopt;
+  }
+  const auto indices_type = scatter->get_input_element_type(1);
+  if (indices_type != ov::element::i32 && indices_type != ov::element::i64) {
+    return std::nullopt;
+  }
 
-    const auto& data_shape = scatter->get_input_shape(0);
-    const auto& indices_shape = scatter->get_input_shape(1);
-    const auto& updates_shape = scatter->get_input_shape(2);
-    const auto& output_shape = scatter->get_output_shape(0);
-    const size_t rank = data_shape.size();
-    if (rank == 0 || rank > 4 ||
-        data_shape != output_shape ||
-        indices_shape != updates_shape ||
-        indices_shape.size() != rank ||
-        ov::shape_size(output_shape) == 0 ||
-        ov::shape_size(updates_shape) == 0) {
-        return std::nullopt;
+  const auto &data_shape = scatter->get_input_shape(0);
+  const auto &indices_shape = scatter->get_input_shape(1);
+  const auto &updates_shape = scatter->get_input_shape(2);
+  const auto &output_shape = scatter->get_output_shape(0);
+  const size_t rank = data_shape.size();
+  if (rank == 0 || rank > 4 || data_shape != output_shape ||
+      indices_shape != updates_shape || indices_shape.size() != rank ||
+      ov::shape_size(output_shape) == 0 || ov::shape_size(updates_shape) == 0) {
+    return std::nullopt;
+  }
+  const auto axis_values = constant_i64_vector_input(node, 3);
+  if (!axis_values || axis_values->size() != 1) {
+    return std::nullopt;
+  }
+  const auto axis = normalize_axis(axis_values->front(), rank);
+  if (!axis || data_shape[*axis] == 0) {
+    return std::nullopt;
+  }
+  for (size_t dim = 0; dim < rank; ++dim) {
+    if (data_shape[dim] == 0 || indices_shape[dim] == 0) {
+      return std::nullopt;
     }
-    const auto axis_values = constant_i64_vector_input(node, 3);
-    if (!axis_values || axis_values->size() != 1) {
-        return std::nullopt;
+    if (dim != *axis && indices_shape[dim] > data_shape[dim]) {
+      return std::nullopt;
     }
-    const auto axis = normalize_axis(axis_values->front(), rank);
-    if (!axis || data_shape[*axis] == 0) {
-        return std::nullopt;
-    }
-    for (size_t dim = 0; dim < rank; ++dim) {
-        if (data_shape[dim] == 0 || indices_shape[dim] == 0) {
-            return std::nullopt;
-        }
-        if (dim != *axis && indices_shape[dim] > data_shape[dim]) {
-            return std::nullopt;
-        }
-    }
+  }
 
-    uint32_t update_count = 0;
-    if (!checked_u32(ov::shape_size(updates_shape), update_count)) {
-        return std::nullopt;
-    }
+  uint32_t update_count = 0;
+  if (!checked_u32(ov::shape_size(updates_shape), update_count)) {
+    return std::nullopt;
+  }
 
-    std::vector<uint32_t> scalars;
-    scalars.reserve(19);
-    scalars.push_back(static_cast<uint32_t>(rank));
-    scalars.push_back(static_cast<uint32_t>(*axis));
-    scalars.push_back(update_count);
-    if (!append_shape_u32(updates_shape, 4, scalars) ||
-        !append_strides_u32(updates_shape, 4, scalars) ||
-        !append_shape_u32(data_shape, 4, scalars) ||
-        !append_strides_u32(data_shape, 4, scalars)) {
-        return std::nullopt;
-    }
-    return scalars;
+  std::vector<uint32_t> scalars;
+  scalars.reserve(19);
+  scalars.push_back(static_cast<uint32_t>(rank));
+  scalars.push_back(static_cast<uint32_t>(*axis));
+  scalars.push_back(update_count);
+  if (!append_shape_u32(updates_shape, 4, scalars) ||
+      !append_strides_u32(updates_shape, 4, scalars) ||
+      !append_shape_u32(data_shape, 4, scalars) ||
+      !append_strides_u32(data_shape, 4, scalars)) {
+    return std::nullopt;
+  }
+  return scalars;
 }
 
 bool scatter_nd_has_baseline_reduction(
-    const std::shared_ptr<const ov::Node>& node) {
-    if (auto scatter_v15 =
-            ov::as_type_ptr<const ov::op::v15::ScatterNDUpdate>(node)) {
-        return scatter_v15->get_reduction() ==
-               ov::op::v15::ScatterNDUpdate::Reduction::NONE;
-    }
-    return ov::as_type_ptr<const ov::op::v3::ScatterNDUpdate>(node) != nullptr;
+    const std::shared_ptr<const ov::Node> &node) {
+  if (auto scatter_v15 =
+          ov::as_type_ptr<const ov::op::v15::ScatterNDUpdate>(node)) {
+    return scatter_v15->get_reduction() ==
+           ov::op::v15::ScatterNDUpdate::Reduction::NONE;
+  }
+  return ov::as_type_ptr<const ov::op::v3::ScatterNDUpdate>(node) != nullptr;
 }
 
-std::optional<std::vector<uint32_t>> scatter_nd_static_u32_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    auto scatter = ov::as_type_ptr<const ov::op::util::ScatterNDBase>(node);
-    if (!scatter ||
-        !scatter_nd_has_baseline_reduction(node) ||
-        scatter->get_input_size() != 3 ||
-        !scatter->get_input_partial_shape(0).is_static() ||
-        !scatter->get_input_partial_shape(1).is_static() ||
-        !scatter->get_input_partial_shape(2).is_static() ||
-        !scatter->get_output_partial_shape(0).is_static() ||
-        !is_f32_tensor_type(scatter->get_input_element_type(0)) ||
-        !is_f32_tensor_type(scatter->get_input_element_type(2)) ||
-        !is_f32_tensor_type(scatter->get_output_element_type(0))) {
-        return std::nullopt;
-    }
-    const auto indices_type = scatter->get_input_element_type(1);
-    if (indices_type != ov::element::i32 && indices_type != ov::element::i64) {
-        return std::nullopt;
-    }
+std::optional<std::vector<uint32_t>>
+scatter_nd_static_u32_scalars(const std::shared_ptr<const ov::Node> &node) {
+  auto scatter = ov::as_type_ptr<const ov::op::util::ScatterNDBase>(node);
+  if (!scatter || !scatter_nd_has_baseline_reduction(node) ||
+      scatter->get_input_size() != 3 ||
+      !scatter->get_input_partial_shape(0).is_static() ||
+      !scatter->get_input_partial_shape(1).is_static() ||
+      !scatter->get_input_partial_shape(2).is_static() ||
+      !scatter->get_output_partial_shape(0).is_static() ||
+      !is_f32_tensor_type(scatter->get_input_element_type(0)) ||
+      !is_f32_tensor_type(scatter->get_input_element_type(2)) ||
+      !is_f32_tensor_type(scatter->get_output_element_type(0))) {
+    return std::nullopt;
+  }
+  const auto indices_type = scatter->get_input_element_type(1);
+  if (indices_type != ov::element::i32 && indices_type != ov::element::i64) {
+    return std::nullopt;
+  }
 
-    const auto& data_shape = scatter->get_input_shape(0);
-    const auto& indices_shape = scatter->get_input_shape(1);
-    const auto& updates_shape = scatter->get_input_shape(2);
-    const auto& output_shape = scatter->get_output_shape(0);
-    const size_t data_rank = data_shape.size();
-    const size_t indices_rank = indices_shape.size();
-    if (data_rank == 0 || data_rank > 4 ||
-        data_shape != output_shape ||
-        indices_rank == 0 ||
-        indices_shape.back() == 0 ||
-        indices_shape.back() > data_rank ||
-        indices_shape.back() > 4 ||
-        ov::shape_size(output_shape) == 0 ||
-        ov::shape_size(updates_shape) == 0) {
-        return std::nullopt;
+  const auto &data_shape = scatter->get_input_shape(0);
+  const auto &indices_shape = scatter->get_input_shape(1);
+  const auto &updates_shape = scatter->get_input_shape(2);
+  const auto &output_shape = scatter->get_output_shape(0);
+  const size_t data_rank = data_shape.size();
+  const size_t indices_rank = indices_shape.size();
+  if (data_rank == 0 || data_rank > 4 || data_shape != output_shape ||
+      indices_rank == 0 || indices_shape.back() == 0 ||
+      indices_shape.back() > data_rank || indices_shape.back() > 4 ||
+      ov::shape_size(output_shape) == 0 || ov::shape_size(updates_shape) == 0) {
+    return std::nullopt;
+  }
+  for (size_t axis = 0; axis < data_rank; ++axis) {
+    if (data_shape[axis] == 0) {
+      return std::nullopt;
     }
-    for (size_t axis = 0; axis < data_rank; ++axis) {
-        if (data_shape[axis] == 0) {
-            return std::nullopt;
-        }
-    }
+  }
 
-    const size_t index_depth = indices_shape.back();
-    ov::Shape expected_updates;
-    expected_updates.reserve(indices_rank - 1 + data_rank - index_depth);
-    expected_updates.insert(expected_updates.end(),
-                            indices_shape.begin(),
-                            indices_shape.end() - 1);
-    expected_updates.insert(expected_updates.end(),
-                            data_shape.begin() + index_depth,
-                            data_shape.end());
-    if (expected_updates != updates_shape) {
-        return std::nullopt;
-    }
+  const size_t index_depth = indices_shape.back();
+  ov::Shape expected_updates;
+  expected_updates.reserve(indices_rank - 1 + data_rank - index_depth);
+  expected_updates.insert(expected_updates.end(), indices_shape.begin(),
+                          indices_shape.end() - 1);
+  expected_updates.insert(expected_updates.end(),
+                          data_shape.begin() + index_depth, data_shape.end());
+  if (expected_updates != updates_shape) {
+    return std::nullopt;
+  }
 
-    uint32_t slice_size = 0;
-    uint32_t tuple_count = 0;
-    if (!checked_u32(shape_product_range(data_shape, index_depth, data_rank), slice_size) ||
-        !checked_u32(shape_product_range(indices_shape, 0, indices_rank - 1), tuple_count) ||
-        slice_size == 0 ||
-        tuple_count == 0) {
-        return std::nullopt;
-    }
+  uint32_t slice_size = 0;
+  uint32_t tuple_count = 0;
+  if (!checked_u32(shape_product_range(data_shape, index_depth, data_rank),
+                   slice_size) ||
+      !checked_u32(shape_product_range(indices_shape, 0, indices_rank - 1),
+                   tuple_count) ||
+      slice_size == 0 || tuple_count == 0) {
+    return std::nullopt;
+  }
 
-    std::vector<uint32_t> scalars;
-    scalars.reserve(11);
-    scalars.push_back(static_cast<uint32_t>(index_depth));
-    scalars.push_back(slice_size);
-    scalars.push_back(tuple_count);
-    if (!append_shape_u32(data_shape, 4, scalars) ||
-        !append_strides_u32(data_shape, 4, scalars)) {
-        return std::nullopt;
-    }
-    return scalars;
+  std::vector<uint32_t> scalars;
+  scalars.reserve(11);
+  scalars.push_back(static_cast<uint32_t>(index_depth));
+  scalars.push_back(slice_size);
+  scalars.push_back(tuple_count);
+  if (!append_shape_u32(data_shape, 4, scalars) ||
+      !append_strides_u32(data_shape, 4, scalars)) {
+    return std::nullopt;
+  }
+  return scalars;
 }
 
-std::optional<size_t> shapeof_rank(const std::shared_ptr<const ov::Node>& node) {
-    auto shape_of = ov::as_type_ptr<const ov::op::util::ShapeOfBase>(node);
-    if (!shape_of ||
-        shape_of->get_input_size() != 1 ||
-        shape_of->get_output_size() != 1 ||
-        !shape_of->get_input_partial_shape(0).rank().is_static() ||
-        !shape_of->get_output_partial_shape(0).is_static()) {
-        return std::nullopt;
-    }
-    const auto output_type = shape_of->get_output_element_type(0);
-    if (!is_i32_tensor_type(output_type) && !is_i64_tensor_type(output_type)) {
-        return std::nullopt;
-    }
+std::optional<size_t>
+shapeof_rank(const std::shared_ptr<const ov::Node> &node) {
+  auto shape_of = ov::as_type_ptr<const ov::op::util::ShapeOfBase>(node);
+  if (!shape_of || shape_of->get_input_size() != 1 ||
+      shape_of->get_output_size() != 1 ||
+      !shape_of->get_input_partial_shape(0).rank().is_static() ||
+      !shape_of->get_output_partial_shape(0).is_static()) {
+    return std::nullopt;
+  }
+  const auto output_type = shape_of->get_output_element_type(0);
+  if (!is_i32_tensor_type(output_type) && !is_i64_tensor_type(output_type)) {
+    return std::nullopt;
+  }
 
-    const auto& output_shape = shape_of->get_output_shape(0);
-    const size_t rank =
-        static_cast<size_t>(shape_of->get_input_partial_shape(0).rank().get_length());
-    if (rank == 0 || rank > 8 || output_shape.size() != 1 ||
-        output_shape[0] != rank) {
-        return std::nullopt;
-    }
+  const auto &output_shape = shape_of->get_output_shape(0);
+  const size_t rank = static_cast<size_t>(
+      shape_of->get_input_partial_shape(0).rank().get_length());
+  if (rank == 0 || rank > 8 || output_shape.size() != 1 ||
+      output_shape[0] != rank) {
+    return std::nullopt;
+  }
 
-    return rank;
+  return rank;
 }
 
 std::optional<size_t> normalize_axis(int64_t axis, size_t rank) {
-    if (rank == 0) {
-        return std::nullopt;
-    }
-    const int64_t signed_rank = static_cast<int64_t>(rank);
-    const int64_t normalized = axis < 0 ? axis + signed_rank : axis;
-    if (normalized < 0 || normalized >= signed_rank) {
-        return std::nullopt;
-    }
-    return static_cast<size_t>(normalized);
+  if (rank == 0) {
+    return std::nullopt;
+  }
+  const int64_t signed_rank = static_cast<int64_t>(rank);
+  const int64_t normalized = axis < 0 ? axis + signed_rank : axis;
+  if (normalized < 0 || normalized >= signed_rank) {
+    return std::nullopt;
+  }
+  return static_cast<size_t>(normalized);
 }
 
-std::optional<size_t> static_rank(const ov::PartialShape& shape) {
-    if (shape.rank().is_dynamic()) {
-        return std::nullopt;
-    }
-    return static_cast<size_t>(shape.rank().get_length());
+std::optional<size_t> static_rank(const ov::PartialShape &shape) {
+  if (shape.rank().is_dynamic()) {
+    return std::nullopt;
+  }
+  return static_cast<size_t>(shape.rank().get_length());
 }
 
-bool all_zero_size_t(const std::vector<size_t>& values) {
-    return std::all_of(values.begin(), values.end(), [](size_t value) {
-        return value == 0;
-    });
+bool all_zero_size_t(const std::vector<size_t> &values) {
+  return std::all_of(values.begin(), values.end(),
+                     [](size_t value) { return value == 0; });
 }
 
 bool axes_are_spatial_nchw(std::vector<int64_t> axes) {
-    if (axes.size() != 2) {
-        return false;
+  if (axes.size() != 2) {
+    return false;
+  }
+  for (auto &axis : axes) {
+    if (axis < 0) {
+      axis += 4;
     }
-    for (auto& axis : axes) {
-        if (axis < 0) {
-            axis += 4;
-        }
-    }
-    std::sort(axes.begin(), axes.end());
-    return axes == std::vector<int64_t>{2, 3};
+  }
+  std::sort(axes.begin(), axes.end());
+  return axes == std::vector<int64_t>{2, 3};
 }
 
-bool axes_are_spatial_nchw(const ov::AxisSet& axes) {
-    std::vector<int64_t> values;
-    values.reserve(axes.size());
-    for (const auto axis : axes) {
-        values.push_back(static_cast<int64_t>(axis));
-    }
-    return axes_are_spatial_nchw(std::move(values));
+bool axes_are_spatial_nchw(const ov::AxisSet &axes) {
+  std::vector<int64_t> values;
+  values.reserve(axes.size());
+  for (const auto axis : axes) {
+    values.push_back(static_cast<int64_t>(axis));
+  }
+  return axes_are_spatial_nchw(std::move(values));
 }
 
 bool constant_axes_input_is_spatial_nchw_or_absent(
-    const std::shared_ptr<const ov::Node>& node) {
-    if (!node || node->get_input_size() < 4) {
-        return true;
-    }
-    const auto axes = constant_i64_vector_input(node, 3);
-    return axes && axes_are_spatial_nchw(*axes);
+    const std::shared_ptr<const ov::Node> &node) {
+  if (!node || node->get_input_size() < 4) {
+    return true;
+  }
+  const auto axes = constant_i64_vector_input(node, 3);
+  return axes && axes_are_spatial_nchw(*axes);
 }
 
 bool static_nchw_spatial_resize_shape(
-    const std::shared_ptr<const ov::Node>& node) {
-    if (!node ||
-        !node->get_input_partial_shape(0).is_static() ||
-        !node->get_output_partial_shape(0).is_static()) {
-        return false;
-    }
-    const auto input_shape = node->get_input_shape(0);
-    const auto output_shape = node->get_output_shape(0);
-    return input_shape.size() == 4 &&
-           output_shape.size() == 4 &&
-           input_shape[0] == output_shape[0] &&
-           input_shape[1] == output_shape[1] &&
-           input_shape[2] != 0 &&
-           input_shape[3] != 0 &&
-           output_shape[2] != 0 &&
-           output_shape[3] != 0;
+    const std::shared_ptr<const ov::Node> &node) {
+  if (!node || !node->get_input_partial_shape(0).is_static() ||
+      !node->get_output_partial_shape(0).is_static()) {
+    return false;
+  }
+  const auto input_shape = node->get_input_shape(0);
+  const auto output_shape = node->get_output_shape(0);
+  return input_shape.size() == 4 && output_shape.size() == 4 &&
+         input_shape[0] == output_shape[0] &&
+         input_shape[1] == output_shape[1] && input_shape[2] != 0 &&
+         input_shape[3] != 0 && output_shape[2] != 0 && output_shape[3] != 0;
 }
 
 struct OpenClInterpolateArtifactMetadata {
-    std::string type_suffix;
-    uint32_t nearest = 0;
-    uint32_t align_corners = 0;
-    uint32_t use_half_pixel = 1;
-    uint32_t nearest_mode = 0;
+  std::string type_suffix;
+  uint32_t nearest = 0;
+  uint32_t align_corners = 0;
+  uint32_t use_half_pixel = 1;
+  uint32_t nearest_mode = 0;
 };
 
 std::optional<OpenClInterpolateArtifactMetadata>
 opencl_interpolate_artifact_metadata(
-    const std::shared_ptr<const ov::Node>& node) {
-    if (!static_nchw_spatial_resize_shape(node) ||
-        node->get_input_size() < 1 ||
-        node->get_output_element_type(0) != node->get_input_element_type(0) ||
-        (!is_f32_tensor_type(node->get_output_element_type(0)) &&
-         !is_f16_tensor_type(node->get_output_element_type(0)))) {
-        return std::nullopt;
-    }
-
-    OpenClInterpolateArtifactMetadata metadata{};
-    metadata.type_suffix = opencl_scalar_type_suffix(node->get_output_element_type(0));
-
-    if (auto interp = ov::as_type_ptr<const ov::op::v0::Interpolate>(node)) {
-        const auto mode = ov::util::to_lower(interp->get_attrs().mode);
-        if (mode == "nearest") {
-            metadata.nearest = 1;
-        } else if (mode == "linear") {
-            metadata.nearest = 0;
-        } else {
-            return std::nullopt;
-        }
-        if (interp->get_attrs().antialias ||
-            !all_zero_size_t(interp->get_attrs().pads_begin) ||
-            !all_zero_size_t(interp->get_attrs().pads_end) ||
-            !axes_are_spatial_nchw(interp->get_attrs().axes)) {
-            return std::nullopt;
-        }
-        metadata.align_corners = interp->get_attrs().align_corners ? 1u : 0u;
-        metadata.use_half_pixel = metadata.align_corners == 0u ? 1u : 0u;
-        metadata.nearest_mode = 0u;
-        return metadata;
-    }
-
-    const auto configure_base_attrs =
-        [&metadata](const ov::op::util::InterpolateBase::InterpolateAttrs& attrs) {
-            using Base = ov::op::util::InterpolateBase;
-            if (attrs.antialias ||
-                !all_zero_size_t(attrs.pads_begin) ||
-                !all_zero_size_t(attrs.pads_end)) {
-                return false;
-            }
-            switch (attrs.mode) {
-                case Base::InterpolateMode::NEAREST:
-                    metadata.nearest = 1u;
-                    break;
-                case Base::InterpolateMode::LINEAR:
-                case Base::InterpolateMode::LINEAR_ONNX:
-                case Base::InterpolateMode::BILINEAR_PILLOW:
-                    metadata.nearest = 0u;
-                    break;
-                default:
-                    return false;
-            }
-            switch (attrs.coordinate_transformation_mode) {
-                case Base::CoordinateTransformMode::HALF_PIXEL:
-                    metadata.align_corners = 0u;
-                    metadata.use_half_pixel = 1u;
-                    break;
-                case Base::CoordinateTransformMode::ALIGN_CORNERS:
-                    metadata.align_corners = 1u;
-                    metadata.use_half_pixel = 1u;
-                    break;
-                case Base::CoordinateTransformMode::ASYMMETRIC:
-                    metadata.align_corners = 0u;
-                    metadata.use_half_pixel = 0u;
-                    break;
-                default:
-                    return false;
-            }
-            switch (attrs.nearest_mode) {
-                case Base::NearestMode::FLOOR:
-                case Base::NearestMode::ROUND_PREFER_FLOOR:
-                    metadata.nearest_mode = 1u;
-                    break;
-                case Base::NearestMode::CEIL:
-                case Base::NearestMode::ROUND_PREFER_CEIL:
-                    metadata.nearest_mode = 2u;
-                    break;
-                case Base::NearestMode::SIMPLE:
-                default:
-                    metadata.nearest_mode = 0u;
-                    break;
-            }
-            return true;
-        };
-
-    if (auto interp = ov::as_type_ptr<const ov::op::v4::Interpolate>(node)) {
-        if (!constant_axes_input_is_spatial_nchw_or_absent(node) ||
-            !configure_base_attrs(interp->get_attrs())) {
-            return std::nullopt;
-        }
-        return metadata;
-    }
-
-    if (auto interp = ov::as_type_ptr<const ov::op::v11::Interpolate>(node)) {
-        if (!constant_axes_input_is_spatial_nchw_or_absent(node) ||
-            !configure_base_attrs(interp->get_attrs())) {
-            return std::nullopt;
-        }
-        return metadata;
-    }
-
+    const std::shared_ptr<const ov::Node> &node) {
+  if (!static_nchw_spatial_resize_shape(node) || node->get_input_size() < 1 ||
+      node->get_output_element_type(0) != node->get_input_element_type(0) ||
+      (!is_f32_tensor_type(node->get_output_element_type(0)) &&
+       !is_f16_tensor_type(node->get_output_element_type(0)))) {
     return std::nullopt;
+  }
+
+  OpenClInterpolateArtifactMetadata metadata{};
+  metadata.type_suffix =
+      opencl_scalar_type_suffix(node->get_output_element_type(0));
+
+  if (auto interp = ov::as_type_ptr<const ov::op::v0::Interpolate>(node)) {
+    const auto mode = ov::util::to_lower(interp->get_attrs().mode);
+    if (mode == "nearest") {
+      metadata.nearest = 1;
+    } else if (mode == "linear") {
+      metadata.nearest = 0;
+    } else {
+      return std::nullopt;
+    }
+    if (interp->get_attrs().antialias ||
+        !all_zero_size_t(interp->get_attrs().pads_begin) ||
+        !all_zero_size_t(interp->get_attrs().pads_end) ||
+        !axes_are_spatial_nchw(interp->get_attrs().axes)) {
+      return std::nullopt;
+    }
+    metadata.align_corners = interp->get_attrs().align_corners ? 1u : 0u;
+    metadata.use_half_pixel = metadata.align_corners == 0u ? 1u : 0u;
+    metadata.nearest_mode = 0u;
+    return metadata;
+  }
+
+  const auto configure_base_attrs =
+      [&metadata](
+          const ov::op::util::InterpolateBase::InterpolateAttrs &attrs) {
+        using Base = ov::op::util::InterpolateBase;
+        if (attrs.antialias || !all_zero_size_t(attrs.pads_begin) ||
+            !all_zero_size_t(attrs.pads_end)) {
+          return false;
+        }
+        switch (attrs.mode) {
+        case Base::InterpolateMode::NEAREST:
+          metadata.nearest = 1u;
+          break;
+        case Base::InterpolateMode::LINEAR:
+        case Base::InterpolateMode::LINEAR_ONNX:
+        case Base::InterpolateMode::BILINEAR_PILLOW:
+          metadata.nearest = 0u;
+          break;
+        default:
+          return false;
+        }
+        switch (attrs.coordinate_transformation_mode) {
+        case Base::CoordinateTransformMode::HALF_PIXEL:
+          metadata.align_corners = 0u;
+          metadata.use_half_pixel = 1u;
+          break;
+        case Base::CoordinateTransformMode::ALIGN_CORNERS:
+          metadata.align_corners = 1u;
+          metadata.use_half_pixel = 1u;
+          break;
+        case Base::CoordinateTransformMode::ASYMMETRIC:
+          metadata.align_corners = 0u;
+          metadata.use_half_pixel = 0u;
+          break;
+        default:
+          return false;
+        }
+        switch (attrs.nearest_mode) {
+        case Base::NearestMode::FLOOR:
+        case Base::NearestMode::ROUND_PREFER_FLOOR:
+          metadata.nearest_mode = 1u;
+          break;
+        case Base::NearestMode::CEIL:
+        case Base::NearestMode::ROUND_PREFER_CEIL:
+          metadata.nearest_mode = 2u;
+          break;
+        case Base::NearestMode::SIMPLE:
+        default:
+          metadata.nearest_mode = 0u;
+          break;
+        }
+        return true;
+      };
+
+  if (auto interp = ov::as_type_ptr<const ov::op::v4::Interpolate>(node)) {
+    if (!constant_axes_input_is_spatial_nchw_or_absent(node) ||
+        !configure_base_attrs(interp->get_attrs())) {
+      return std::nullopt;
+    }
+    return metadata;
+  }
+
+  if (auto interp = ov::as_type_ptr<const ov::op::v11::Interpolate>(node)) {
+    if (!constant_axes_input_is_spatial_nchw_or_absent(node) ||
+        !configure_base_attrs(interp->get_attrs())) {
+      return std::nullopt;
+    }
+    return metadata;
+  }
+
+  return std::nullopt;
 }
 
-bool partial_dim_compatible(const ov::Dimension& lhs, const ov::Dimension& rhs) {
-    return lhs.is_dynamic() || rhs.is_dynamic() || lhs.get_length() == rhs.get_length();
+bool partial_dim_compatible(const ov::Dimension &lhs,
+                            const ov::Dimension &rhs) {
+  return lhs.is_dynamic() || rhs.is_dynamic() ||
+         lhs.get_length() == rhs.get_length();
 }
 
-std::optional<uint32_t> static_partial_dim_u32(const ov::PartialShape& shape, size_t axis) {
-    if (axis >= shape.size() || shape[axis].is_dynamic()) {
-        return std::nullopt;
+std::optional<uint32_t> static_partial_dim_u32(const ov::PartialShape &shape,
+                                               size_t axis) {
+  if (axis >= shape.size() || shape[axis].is_dynamic()) {
+    return std::nullopt;
+  }
+  const auto dim = shape[axis].get_length();
+  if (dim <= 0 ||
+      dim > static_cast<int64_t>(std::numeric_limits<uint32_t>::max())) {
+    return std::nullopt;
+  }
+  return static_cast<uint32_t>(dim);
+}
+
+std::optional<uint32_t>
+static_partial_product_u32(const ov::PartialShape &shape, size_t begin,
+                           size_t end) {
+  if (shape.rank().is_dynamic() || begin > end || end > shape.size()) {
+    return std::nullopt;
+  }
+  uint64_t product = 1;
+  for (size_t axis = begin; axis < end; ++axis) {
+    if (shape[axis].is_dynamic()) {
+      return std::nullopt;
     }
     const auto dim = shape[axis].get_length();
-    if (dim <= 0 || dim > static_cast<int64_t>(std::numeric_limits<uint32_t>::max())) {
-        return std::nullopt;
+    if (dim <= 0) {
+      return std::nullopt;
     }
-    return static_cast<uint32_t>(dim);
+    product *= static_cast<uint64_t>(dim);
+    if (product > std::numeric_limits<uint32_t>::max()) {
+      return std::nullopt;
+    }
+  }
+  return static_cast<uint32_t>(product);
 }
 
-std::optional<uint32_t> static_partial_product_u32(const ov::PartialShape& shape,
-                                                   size_t begin,
-                                                   size_t end) {
-    if (shape.rank().is_dynamic() || begin > end || end > shape.size()) {
-        return std::nullopt;
+bool partial_same_rank_shapes_compatible(
+    const std::shared_ptr<const ov::Node> &node,
+    const std::vector<size_t> &inputs, size_t output_idx) {
+  if (!node || output_idx >= node->get_output_size()) {
+    return false;
+  }
+  const auto output_rank =
+      static_rank(node->get_output_partial_shape(output_idx));
+  if (!output_rank || *output_rank == 0 || *output_rank > 4) {
+    return false;
+  }
+  const auto &output_shape = node->get_output_partial_shape(output_idx);
+  for (const size_t input_idx : inputs) {
+    if (input_idx >= node->get_input_size()) {
+      return false;
     }
-    uint64_t product = 1;
-    for (size_t axis = begin; axis < end; ++axis) {
-        if (shape[axis].is_dynamic()) {
-            return std::nullopt;
-        }
-        const auto dim = shape[axis].get_length();
-        if (dim <= 0) {
-            return std::nullopt;
-        }
-        product *= static_cast<uint64_t>(dim);
-        if (product > std::numeric_limits<uint32_t>::max()) {
-            return std::nullopt;
-        }
+    const auto input_rank =
+        static_rank(node->get_input_partial_shape(input_idx));
+    if (!input_rank || *input_rank != *output_rank) {
+      return false;
     }
-    return static_cast<uint32_t>(product);
-}
-
-bool partial_same_rank_shapes_compatible(const std::shared_ptr<const ov::Node>& node,
-                                         const std::vector<size_t>& inputs,
-                                         size_t output_idx) {
-    if (!node || output_idx >= node->get_output_size()) {
+    const auto &input_shape = node->get_input_partial_shape(input_idx);
+    for (size_t axis = 0; axis < *output_rank; ++axis) {
+      if (!partial_dim_compatible(input_shape[axis], output_shape[axis])) {
         return false;
+      }
     }
-    const auto output_rank = static_rank(node->get_output_partial_shape(output_idx));
-    if (!output_rank || *output_rank == 0 || *output_rank > 4) {
-        return false;
-    }
-    const auto& output_shape = node->get_output_partial_shape(output_idx);
-    for (const size_t input_idx : inputs) {
-        if (input_idx >= node->get_input_size()) {
-            return false;
-        }
-        const auto input_rank = static_rank(node->get_input_partial_shape(input_idx));
-        if (!input_rank || *input_rank != *output_rank) {
-            return false;
-        }
-        const auto& input_shape = node->get_input_partial_shape(input_idx);
-        for (size_t axis = 0; axis < *output_rank; ++axis) {
-            if (!partial_dim_compatible(input_shape[axis], output_shape[axis])) {
-                return false;
-            }
-        }
-    }
-    return true;
+  }
+  return true;
 }
 
 GfxOpenClSourceScalarArg input_dim_scalar_arg(size_t input_idx, size_t axis) {
-    return static_cast<GfxOpenClSourceScalarArg>(
-        static_cast<uint32_t>(GfxOpenClSourceScalarArg::Input0Dim0) +
-        static_cast<uint32_t>(input_idx * 8 + axis));
+  return static_cast<GfxOpenClSourceScalarArg>(
+      static_cast<uint32_t>(GfxOpenClSourceScalarArg::Input0Dim0) +
+      static_cast<uint32_t>(input_idx * 8 + axis));
 }
 
 GfxOpenClSourceScalarArg output0_dim_scalar_arg(size_t axis) {
-    return static_cast<GfxOpenClSourceScalarArg>(
-        static_cast<uint32_t>(GfxOpenClSourceScalarArg::Output0Dim0) +
-        static_cast<uint32_t>(axis));
+  return static_cast<GfxOpenClSourceScalarArg>(
+      static_cast<uint32_t>(GfxOpenClSourceScalarArg::Output0Dim0) +
+      static_cast<uint32_t>(axis));
 }
 
 struct ConcatStaticU32Scalars {
-    uint32_t input_count = 0;
-    std::string type_suffix;
-    std::vector<uint32_t> values;
+  uint32_t input_count = 0;
+  std::string type_suffix;
+  std::vector<uint32_t> values;
 };
 
 constexpr uint32_t kOpenClMaxStaticConcatInputs = 30;
 
-std::optional<ConcatStaticU32Scalars> concat_static_u32_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    auto concat = ov::as_type_ptr<const ov::op::v0::Concat>(node);
-    if (!concat ||
-        !concat->get_output_partial_shape(0).is_static()) {
-        return std::nullopt;
+std::optional<ConcatStaticU32Scalars>
+concat_static_u32_scalars(const std::shared_ptr<const ov::Node> &node) {
+  auto concat = ov::as_type_ptr<const ov::op::v0::Concat>(node);
+  if (!concat || !concat->get_output_partial_shape(0).is_static()) {
+    return std::nullopt;
+  }
+  const size_t input_count = concat->get_input_size();
+  if (input_count < 2 || input_count > kOpenClMaxStaticConcatInputs) {
+    return std::nullopt;
+  }
+  const bool is_f32 = is_f32_tensor_type(concat->get_output_element_type(0));
+  const bool is_f16 = is_f16_tensor_type(concat->get_output_element_type(0));
+  if (!is_f32 && !is_f16) {
+    return std::nullopt;
+  }
+  for (size_t input_idx = 0; input_idx < input_count; ++input_idx) {
+    if (!concat->get_input_partial_shape(input_idx).is_static() ||
+        concat->get_input_element_type(input_idx) !=
+            concat->get_output_element_type(0)) {
+      return std::nullopt;
     }
-    const size_t input_count = concat->get_input_size();
-    if (input_count < 2 || input_count > kOpenClMaxStaticConcatInputs) {
-        return std::nullopt;
-    }
-    const bool is_f32 = is_f32_tensor_type(concat->get_output_element_type(0));
-    const bool is_f16 = is_f16_tensor_type(concat->get_output_element_type(0));
-    if (!is_f32 && !is_f16) {
-        return std::nullopt;
-    }
-    for (size_t input_idx = 0; input_idx < input_count; ++input_idx) {
-        if (!concat->get_input_partial_shape(input_idx).is_static() ||
-            concat->get_input_element_type(input_idx) != concat->get_output_element_type(0)) {
-            return std::nullopt;
-        }
-    }
-    const auto& output_shape = concat->get_output_shape(0);
-    const size_t rank = output_shape.size();
-    if (rank == 0) {
-        return std::nullopt;
-    }
-    const auto axis = normalize_axis(concat->get_axis(), rank);
-    if (!axis) {
-        return std::nullopt;
-    }
-    uint64_t inner = 1;
-    for (size_t dim = *axis + 1; dim < rank; ++dim) {
-        inner *= output_shape[dim];
-    }
-    if (inner == 0 ||
-        inner > std::numeric_limits<uint32_t>::max() ||
-        output_shape[*axis] == 0 ||
-        output_shape[*axis] > std::numeric_limits<uint32_t>::max()) {
-        return std::nullopt;
-    }
+  }
+  const auto &output_shape = concat->get_output_shape(0);
+  const size_t rank = output_shape.size();
+  if (rank == 0) {
+    return std::nullopt;
+  }
+  const auto axis = normalize_axis(concat->get_axis(), rank);
+  if (!axis) {
+    return std::nullopt;
+  }
+  uint64_t inner = 1;
+  for (size_t dim = *axis + 1; dim < rank; ++dim) {
+    inner *= output_shape[dim];
+  }
+  if (inner == 0 || inner > std::numeric_limits<uint32_t>::max() ||
+      output_shape[*axis] == 0 ||
+      output_shape[*axis] > std::numeric_limits<uint32_t>::max()) {
+    return std::nullopt;
+  }
 
-    size_t axis_total = 0;
-    std::vector<uint32_t> axis_lengths;
-    axis_lengths.reserve(input_count);
-    for (size_t input_idx = 0; input_idx < input_count; ++input_idx) {
-        const auto& input_shape = concat->get_input_shape(input_idx);
-        if (input_shape.size() != rank) {
-            return std::nullopt;
-        }
-        for (size_t dim = 0; dim < rank; ++dim) {
-            if (dim != *axis && input_shape[dim] != output_shape[dim]) {
-                return std::nullopt;
-            }
-        }
-        if (input_shape[*axis] == 0 ||
-            input_shape[*axis] > std::numeric_limits<uint32_t>::max()) {
-            return std::nullopt;
-        }
-        axis_total += input_shape[*axis];
-        axis_lengths.push_back(static_cast<uint32_t>(input_shape[*axis]));
+  size_t axis_total = 0;
+  std::vector<uint32_t> axis_lengths;
+  axis_lengths.reserve(input_count);
+  for (size_t input_idx = 0; input_idx < input_count; ++input_idx) {
+    const auto &input_shape = concat->get_input_shape(input_idx);
+    if (input_shape.size() != rank) {
+      return std::nullopt;
     }
-    if (axis_total != output_shape[*axis]) {
+    for (size_t dim = 0; dim < rank; ++dim) {
+      if (dim != *axis && input_shape[dim] != output_shape[dim]) {
         return std::nullopt;
+      }
     }
+    if (input_shape[*axis] == 0 ||
+        input_shape[*axis] > std::numeric_limits<uint32_t>::max()) {
+      return std::nullopt;
+    }
+    axis_total += input_shape[*axis];
+    axis_lengths.push_back(static_cast<uint32_t>(input_shape[*axis]));
+  }
+  if (axis_total != output_shape[*axis]) {
+    return std::nullopt;
+  }
 
-    ConcatStaticU32Scalars metadata;
-    metadata.input_count = static_cast<uint32_t>(input_count);
-    metadata.type_suffix = is_f16 ? "f16" : "f32";
-    metadata.values.reserve(2 + input_count * 2);
-    metadata.values.push_back(static_cast<uint32_t>(output_shape[*axis]));
-    metadata.values.push_back(static_cast<uint32_t>(inner));
-    uint32_t offset = 0;
-    for (uint32_t len : axis_lengths) {
-        if (is_f16 &&
-            (((static_cast<uint64_t>(offset) * inner) % 2u) != 0u ||
-             ((static_cast<uint64_t>(len) * inner) % 2u) != 0u)) {
-            return std::nullopt;
-        }
-        metadata.values.push_back(offset);
-        metadata.values.push_back(len);
-        offset += len;
+  ConcatStaticU32Scalars metadata;
+  metadata.input_count = static_cast<uint32_t>(input_count);
+  metadata.type_suffix = is_f16 ? "f16" : "f32";
+  metadata.values.reserve(2 + input_count * 2);
+  metadata.values.push_back(static_cast<uint32_t>(output_shape[*axis]));
+  metadata.values.push_back(static_cast<uint32_t>(inner));
+  uint32_t offset = 0;
+  for (uint32_t len : axis_lengths) {
+    if (is_f16 && (((static_cast<uint64_t>(offset) * inner) % 2u) != 0u ||
+                   ((static_cast<uint64_t>(len) * inner) % 2u) != 0u)) {
+      return std::nullopt;
     }
-    return metadata;
+    metadata.values.push_back(offset);
+    metadata.values.push_back(len);
+    offset += len;
+  }
+  return metadata;
 }
 
 struct ConcatDynamicScalars {
-    uint32_t input_count = 0;
-    uint32_t axis = 0;
-    uint32_t inner = 1;
+  uint32_t input_count = 0;
+  uint32_t axis = 0;
+  uint32_t inner = 1;
 };
 
-std::optional<ConcatDynamicScalars> concat_dynamic_f16_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    auto concat = ov::as_type_ptr<const ov::op::v0::Concat>(node);
-    if (!concat || concat->get_output_size() != 1 ||
-        concat->get_output_partial_shape(0).is_static() ||
-        !is_f16_tensor_type(concat->get_output_element_type(0))) {
+std::optional<ConcatDynamicScalars>
+concat_dynamic_f16_scalars(const std::shared_ptr<const ov::Node> &node) {
+  auto concat = ov::as_type_ptr<const ov::op::v0::Concat>(node);
+  if (!concat || concat->get_output_size() != 1 ||
+      concat->get_output_partial_shape(0).is_static() ||
+      !is_f16_tensor_type(concat->get_output_element_type(0))) {
+    return std::nullopt;
+  }
+  const size_t input_count = concat->get_input_size();
+  if (input_count < 2 || input_count > 4) {
+    return std::nullopt;
+  }
+  const auto rank = static_rank(concat->get_output_partial_shape(0));
+  if (!rank || *rank == 0 || *rank > 4) {
+    return std::nullopt;
+  }
+  const auto axis = normalize_axis(concat->get_axis(), *rank);
+  if (!axis) {
+    return std::nullopt;
+  }
+  const auto inner = static_partial_product_u32(
+      concat->get_output_partial_shape(0), *axis + 1, *rank);
+  if (!inner || *inner == 0) {
+    return std::nullopt;
+  }
+  const auto &output_shape = concat->get_output_partial_shape(0);
+  for (size_t input_idx = 0; input_idx < input_count; ++input_idx) {
+    if (!is_f16_tensor_type(concat->get_input_element_type(input_idx))) {
+      return std::nullopt;
+    }
+    const auto input_rank =
+        static_rank(concat->get_input_partial_shape(input_idx));
+    if (!input_rank || *input_rank != *rank) {
+      return std::nullopt;
+    }
+    const auto &input_shape = concat->get_input_partial_shape(input_idx);
+    for (size_t dim = 0; dim < *rank; ++dim) {
+      if (dim == *axis) {
+        continue;
+      }
+      if (!partial_dim_compatible(input_shape[dim], output_shape[dim])) {
         return std::nullopt;
+      }
     }
-    const size_t input_count = concat->get_input_size();
-    if (input_count < 2 || input_count > 4) {
-        return std::nullopt;
-    }
-    const auto rank = static_rank(concat->get_output_partial_shape(0));
-    if (!rank || *rank == 0 || *rank > 4) {
-        return std::nullopt;
-    }
-    const auto axis = normalize_axis(concat->get_axis(), *rank);
-    if (!axis) {
-        return std::nullopt;
-    }
-    const auto inner = static_partial_product_u32(
-        concat->get_output_partial_shape(0),
-        *axis + 1,
-        *rank);
-    if (!inner || *inner == 0) {
-        return std::nullopt;
-    }
-    const auto& output_shape = concat->get_output_partial_shape(0);
-    for (size_t input_idx = 0; input_idx < input_count; ++input_idx) {
-        if (!is_f16_tensor_type(concat->get_input_element_type(input_idx))) {
-            return std::nullopt;
-        }
-        const auto input_rank = static_rank(concat->get_input_partial_shape(input_idx));
-        if (!input_rank || *input_rank != *rank) {
-            return std::nullopt;
-        }
-        const auto& input_shape = concat->get_input_partial_shape(input_idx);
-        for (size_t dim = 0; dim < *rank; ++dim) {
-            if (dim == *axis) {
-                continue;
-            }
-            if (!partial_dim_compatible(input_shape[dim], output_shape[dim])) {
-                return std::nullopt;
-            }
-        }
-    }
-    ConcatDynamicScalars metadata;
-    metadata.input_count = static_cast<uint32_t>(input_count);
-    metadata.axis = static_cast<uint32_t>(*axis);
-    metadata.inner = *inner;
-    return metadata;
+  }
+  ConcatDynamicScalars metadata;
+  metadata.input_count = static_cast<uint32_t>(input_count);
+  metadata.axis = static_cast<uint32_t>(*axis);
+  metadata.inner = *inner;
+  return metadata;
 }
 
-bool select_dynamic_f16_supported(const std::shared_ptr<const ov::Node>& node) {
-    return node &&
-           node->get_type_name() == std::string("Select") &&
-           node->get_input_size() == 3 &&
-           node->get_output_size() == 1 &&
-           !node->get_output_partial_shape(0).is_static() &&
-           is_bool_tensor_type(node->get_input_element_type(0)) &&
-           is_f16_tensor_type(node->get_input_element_type(1)) &&
-           is_f16_tensor_type(node->get_input_element_type(2)) &&
-           is_f16_tensor_type(node->get_output_element_type(0)) &&
-           partial_same_rank_shapes_compatible(node, {0, 1, 2}, 0);
+bool select_dynamic_f16_supported(const std::shared_ptr<const ov::Node> &node) {
+  return node && node->get_type_name() == std::string("Select") &&
+         node->get_input_size() == 3 && node->get_output_size() == 1 &&
+         !node->get_output_partial_shape(0).is_static() &&
+         is_bool_tensor_type(node->get_input_element_type(0)) &&
+         is_f16_tensor_type(node->get_input_element_type(1)) &&
+         is_f16_tensor_type(node->get_input_element_type(2)) &&
+         is_f16_tensor_type(node->get_output_element_type(0)) &&
+         partial_same_rank_shapes_compatible(node, {0, 1, 2}, 0);
 }
 
 struct BroadcastDynamicScalars {
-    uint32_t rank = 0;
-    uint32_t input_rank = 0;
+  uint32_t rank = 0;
+  uint32_t input_rank = 0;
 };
 
-std::optional<BroadcastDynamicScalars> broadcast_dynamic_f16_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    auto broadcast = ov::as_type_ptr<const ov::op::v3::Broadcast>(node);
-    if (!broadcast ||
-        broadcast->get_input_size() != 2 ||
-        broadcast->get_output_size() != 1 ||
-        broadcast->get_output_partial_shape(0).is_static() ||
-        !is_f16_tensor_type(broadcast->get_input_element_type(0)) ||
-        !is_f16_tensor_type(broadcast->get_output_element_type(0))) {
-        return std::nullopt;
-    }
-    const auto spec = broadcast->get_broadcast_spec();
-    if (spec.m_type != ov::op::BroadcastType::BIDIRECTIONAL &&
-        spec.m_type != ov::op::BroadcastType::NUMPY) {
-        return std::nullopt;
-    }
-    const auto target_type = broadcast->get_input_element_type(1);
-    if (target_type != ov::element::i64) {
-        return std::nullopt;
-    }
-    const auto target_shape = broadcast->get_input_partial_shape(1);
-    if (!target_shape.is_static() ||
-        target_shape.size() != 1 ||
-        target_shape[0].is_dynamic() ||
-        target_shape[0].get_length() <= 0 ||
-        target_shape[0].get_length() > 4) {
-        return std::nullopt;
-    }
-    const auto output_rank = static_rank(broadcast->get_output_partial_shape(0));
-    const auto input_rank = static_rank(broadcast->get_input_partial_shape(0));
-    if (!output_rank || !input_rank ||
-        *output_rank != static_cast<size_t>(target_shape[0].get_length()) ||
-        *input_rank > *output_rank ||
-        *output_rank == 0 ||
-        *output_rank > 4) {
-        return std::nullopt;
-    }
-    BroadcastDynamicScalars metadata;
-    metadata.rank = static_cast<uint32_t>(*output_rank);
-    metadata.input_rank = static_cast<uint32_t>(*input_rank);
-    return metadata;
+std::optional<BroadcastDynamicScalars>
+broadcast_dynamic_f16_scalars(const std::shared_ptr<const ov::Node> &node) {
+  auto broadcast = ov::as_type_ptr<const ov::op::v3::Broadcast>(node);
+  if (!broadcast || broadcast->get_input_size() != 2 ||
+      broadcast->get_output_size() != 1 ||
+      broadcast->get_output_partial_shape(0).is_static() ||
+      !is_f16_tensor_type(broadcast->get_input_element_type(0)) ||
+      !is_f16_tensor_type(broadcast->get_output_element_type(0))) {
+    return std::nullopt;
+  }
+  const auto spec = broadcast->get_broadcast_spec();
+  if (spec.m_type != ov::op::BroadcastType::BIDIRECTIONAL &&
+      spec.m_type != ov::op::BroadcastType::NUMPY) {
+    return std::nullopt;
+  }
+  const auto target_type = broadcast->get_input_element_type(1);
+  if (target_type != ov::element::i64) {
+    return std::nullopt;
+  }
+  const auto target_shape = broadcast->get_input_partial_shape(1);
+  if (!target_shape.is_static() || target_shape.size() != 1 ||
+      target_shape[0].is_dynamic() || target_shape[0].get_length() <= 0 ||
+      target_shape[0].get_length() > 4) {
+    return std::nullopt;
+  }
+  const auto output_rank = static_rank(broadcast->get_output_partial_shape(0));
+  const auto input_rank = static_rank(broadcast->get_input_partial_shape(0));
+  if (!output_rank || !input_rank ||
+      *output_rank != static_cast<size_t>(target_shape[0].get_length()) ||
+      *input_rank > *output_rank || *output_rank == 0 || *output_rank > 4) {
+    return std::nullopt;
+  }
+  BroadcastDynamicScalars metadata;
+  metadata.rank = static_cast<uint32_t>(*output_rank);
+  metadata.input_rank = static_cast<uint32_t>(*input_rank);
+  return metadata;
 }
 
 struct SliceDynamicScalars {
-    uint32_t rank = 0;
-    std::vector<uint32_t> begin;
-    std::vector<uint32_t> steps;
+  uint32_t rank = 0;
+  std::vector<uint32_t> begin;
+  std::vector<uint32_t> steps;
 };
 
-std::optional<SliceDynamicScalars> slice_v8_dynamic_f16_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    auto slice = ov::as_type_ptr<const ov::op::v8::Slice>(node);
-    if (!slice ||
-        slice->get_input_size() < 4 ||
-        slice->get_input_size() > 5 ||
-        slice->get_output_size() != 1 ||
-        slice->get_output_partial_shape(0).is_static() ||
-        !is_f16_tensor_type(slice->get_input_element_type(0)) ||
-        !is_f16_tensor_type(slice->get_output_element_type(0)) ||
-        slice->get_input_element_type(1) != ov::element::i64 ||
-        slice->get_input_element_type(2) != ov::element::i64 ||
-        slice->get_input_element_type(3) != ov::element::i64) {
+std::optional<SliceDynamicScalars>
+slice_v8_dynamic_f16_scalars(const std::shared_ptr<const ov::Node> &node) {
+  auto slice = ov::as_type_ptr<const ov::op::v8::Slice>(node);
+  if (!slice || slice->get_input_size() < 4 || slice->get_input_size() > 5 ||
+      slice->get_output_size() != 1 ||
+      slice->get_output_partial_shape(0).is_static() ||
+      !is_f16_tensor_type(slice->get_input_element_type(0)) ||
+      !is_f16_tensor_type(slice->get_output_element_type(0)) ||
+      slice->get_input_element_type(1) != ov::element::i64 ||
+      slice->get_input_element_type(2) != ov::element::i64 ||
+      slice->get_input_element_type(3) != ov::element::i64) {
+    return std::nullopt;
+  }
+  const auto input_rank = static_rank(slice->get_input_partial_shape(0));
+  const auto output_rank = static_rank(slice->get_output_partial_shape(0));
+  if (!input_rank || !output_rank || *input_rank != *output_rank ||
+      *input_rank == 0 || *input_rank > 4) {
+    return std::nullopt;
+  }
+  if (slice->get_input_size() == 5) {
+    const auto axes = constant_i64_vector_input(node, 4);
+    if (!axes || axes->size() != *input_rank) {
+      return std::nullopt;
+    }
+    for (size_t axis_idx = 0; axis_idx < axes->size(); ++axis_idx) {
+      const auto axis = normalize_axis((*axes)[axis_idx], *input_rank);
+      if (!axis || *axis != axis_idx) {
         return std::nullopt;
+      }
     }
-    const auto input_rank = static_rank(slice->get_input_partial_shape(0));
-    const auto output_rank = static_rank(slice->get_output_partial_shape(0));
-    if (!input_rank || !output_rank || *input_rank != *output_rank ||
-        *input_rank == 0 || *input_rank > 4) {
-        return std::nullopt;
+  }
+  for (size_t input_idx = 1; input_idx <= 3; ++input_idx) {
+    const auto shape = slice->get_input_partial_shape(input_idx);
+    if (!shape.is_static() || shape.size() != 1 || shape[0].is_dynamic() ||
+        static_cast<size_t>(shape[0].get_length()) != *input_rank) {
+      return std::nullopt;
     }
-    if (slice->get_input_size() == 5) {
-        const auto axes = constant_i64_vector_input(node, 4);
-        if (!axes || axes->size() != *input_rank) {
-            return std::nullopt;
-        }
-        for (size_t axis_idx = 0; axis_idx < axes->size(); ++axis_idx) {
-            const auto axis = normalize_axis((*axes)[axis_idx], *input_rank);
-            if (!axis || *axis != axis_idx) {
-                return std::nullopt;
-            }
-        }
-    }
-    for (size_t input_idx = 1; input_idx <= 3; ++input_idx) {
-        const auto shape = slice->get_input_partial_shape(input_idx);
-        if (!shape.is_static() ||
-            shape.size() != 1 ||
-            shape[0].is_dynamic() ||
-            static_cast<size_t>(shape[0].get_length()) != *input_rank) {
-            return std::nullopt;
-        }
-    }
+  }
 
-    SliceDynamicScalars metadata;
-    metadata.rank = static_cast<uint32_t>(*input_rank);
-    return metadata;
+  SliceDynamicScalars metadata;
+  metadata.rank = static_cast<uint32_t>(*input_rank);
+  return metadata;
 }
 
-std::optional<SliceDynamicScalars> strided_slice_runtime_f16_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    auto slice = ov::as_type_ptr<const ov::op::v1::StridedSlice>(node);
-    if (!slice ||
-        slice->get_input_size() != 4 ||
-        slice->get_output_size() != 1 ||
-        slice->get_output_partial_shape(0).is_static() ||
-        !is_f16_tensor_type(slice->get_input_element_type(0)) ||
-        !is_f16_tensor_type(slice->get_output_element_type(0)) ||
-        slice->get_input_element_type(1) != ov::element::i64 ||
-        slice->get_input_element_type(2) != ov::element::i64 ||
-        slice->get_input_element_type(3) != ov::element::i64) {
-        return std::nullopt;
+std::optional<SliceDynamicScalars>
+strided_slice_runtime_f16_scalars(const std::shared_ptr<const ov::Node> &node) {
+  auto slice = ov::as_type_ptr<const ov::op::v1::StridedSlice>(node);
+  if (!slice || slice->get_input_size() != 4 || slice->get_output_size() != 1 ||
+      slice->get_output_partial_shape(0).is_static() ||
+      !is_f16_tensor_type(slice->get_input_element_type(0)) ||
+      !is_f16_tensor_type(slice->get_output_element_type(0)) ||
+      slice->get_input_element_type(1) != ov::element::i64 ||
+      slice->get_input_element_type(2) != ov::element::i64 ||
+      slice->get_input_element_type(3) != ov::element::i64) {
+    return std::nullopt;
+  }
+  for (const int64_t value : slice->get_begin_mask()) {
+    if (value != 0) {
+      return std::nullopt;
     }
-    for (const int64_t value : slice->get_begin_mask()) {
-        if (value != 0) {
-            return std::nullopt;
-        }
+  }
+  for (const int64_t value : slice->get_end_mask()) {
+    if (value != 0) {
+      return std::nullopt;
     }
-    for (const int64_t value : slice->get_end_mask()) {
-        if (value != 0) {
-            return std::nullopt;
-        }
+  }
+  for (const int64_t value : slice->get_new_axis_mask()) {
+    if (value != 0) {
+      return std::nullopt;
     }
-    for (const int64_t value : slice->get_new_axis_mask()) {
-        if (value != 0) {
-            return std::nullopt;
-        }
+  }
+  for (const int64_t value : slice->get_shrink_axis_mask()) {
+    if (value != 0) {
+      return std::nullopt;
     }
-    for (const int64_t value : slice->get_shrink_axis_mask()) {
-        if (value != 0) {
-            return std::nullopt;
-        }
+  }
+  for (const int64_t value : slice->get_ellipsis_mask()) {
+    if (value != 0) {
+      return std::nullopt;
     }
-    for (const int64_t value : slice->get_ellipsis_mask()) {
-        if (value != 0) {
-            return std::nullopt;
-        }
+  }
+  if (constant_i64_vector_input(node, 1) &&
+      constant_i64_vector_input(node, 3)) {
+    return std::nullopt;
+  }
+  const auto input_rank = static_rank(slice->get_input_partial_shape(0));
+  const auto output_rank = static_rank(slice->get_output_partial_shape(0));
+  if (!input_rank || !output_rank || *input_rank != *output_rank ||
+      *input_rank == 0 || *input_rank > 4) {
+    return std::nullopt;
+  }
+  for (size_t input_idx = 1; input_idx <= 3; ++input_idx) {
+    const auto shape = slice->get_input_partial_shape(input_idx);
+    if (!shape.is_static() || shape.size() != 1 || shape[0].is_dynamic() ||
+        static_cast<size_t>(shape[0].get_length()) != *input_rank) {
+      return std::nullopt;
     }
-    if (constant_i64_vector_input(node, 1) &&
-        constant_i64_vector_input(node, 3)) {
-        return std::nullopt;
-    }
-    const auto input_rank = static_rank(slice->get_input_partial_shape(0));
-    const auto output_rank = static_rank(slice->get_output_partial_shape(0));
-    if (!input_rank || !output_rank || *input_rank != *output_rank ||
-        *input_rank == 0 || *input_rank > 4) {
-        return std::nullopt;
-    }
-    for (size_t input_idx = 1; input_idx <= 3; ++input_idx) {
-        const auto shape = slice->get_input_partial_shape(input_idx);
-        if (!shape.is_static() ||
-            shape.size() != 1 ||
-            shape[0].is_dynamic() ||
-            static_cast<size_t>(shape[0].get_length()) != *input_rank) {
-            return std::nullopt;
-        }
-    }
+  }
 
-    SliceDynamicScalars metadata;
-    metadata.rank = static_cast<uint32_t>(*input_rank);
-    return metadata;
+  SliceDynamicScalars metadata;
+  metadata.rank = static_cast<uint32_t>(*input_rank);
+  return metadata;
 }
 
-std::optional<SliceDynamicScalars> strided_slice_dynamic_f16_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    auto slice = ov::as_type_ptr<const ov::op::v1::StridedSlice>(node);
-    if (!slice ||
-        slice->get_input_size() < 3 ||
-        slice->get_input_size() > 4 ||
-        slice->get_output_size() != 1 ||
-        slice->get_output_partial_shape(0).is_static() ||
-        !is_f16_tensor_type(slice->get_input_element_type(0)) ||
-        !is_f16_tensor_type(slice->get_output_element_type(0))) {
-        return std::nullopt;
+std::optional<SliceDynamicScalars>
+strided_slice_dynamic_f16_scalars(const std::shared_ptr<const ov::Node> &node) {
+  auto slice = ov::as_type_ptr<const ov::op::v1::StridedSlice>(node);
+  if (!slice || slice->get_input_size() < 3 || slice->get_input_size() > 4 ||
+      slice->get_output_size() != 1 ||
+      slice->get_output_partial_shape(0).is_static() ||
+      !is_f16_tensor_type(slice->get_input_element_type(0)) ||
+      !is_f16_tensor_type(slice->get_output_element_type(0))) {
+    return std::nullopt;
+  }
+  for (const int64_t value : slice->get_new_axis_mask()) {
+    if (value != 0) {
+      return std::nullopt;
     }
-    for (const int64_t value : slice->get_new_axis_mask()) {
-        if (value != 0) {
-            return std::nullopt;
-        }
+  }
+  for (const int64_t value : slice->get_shrink_axis_mask()) {
+    if (value != 0) {
+      return std::nullopt;
     }
-    for (const int64_t value : slice->get_shrink_axis_mask()) {
-        if (value != 0) {
-            return std::nullopt;
-        }
+  }
+  for (const int64_t value : slice->get_ellipsis_mask()) {
+    if (value != 0) {
+      return std::nullopt;
     }
-    for (const int64_t value : slice->get_ellipsis_mask()) {
-        if (value != 0) {
-            return std::nullopt;
-        }
+  }
+  const auto input_rank = static_rank(slice->get_input_partial_shape(0));
+  const auto output_rank = static_rank(slice->get_output_partial_shape(0));
+  if (!input_rank || !output_rank || *input_rank != *output_rank ||
+      *input_rank == 0 || *input_rank > 4 ||
+      mask_has_non_zero_past_rank(slice->get_begin_mask(), *input_rank) ||
+      mask_has_non_zero_past_rank(slice->get_end_mask(), *input_rank)) {
+    return std::nullopt;
+  }
+  const auto end_shape = slice->get_input_partial_shape(2);
+  if (!end_shape.is_static() || end_shape.size() != 1 ||
+      end_shape[0].is_dynamic() ||
+      static_cast<size_t>(end_shape[0].get_length()) != *input_rank ||
+      (slice->get_input_element_type(2) != ov::element::i64 &&
+       slice->get_input_element_type(2) != ov::element::i32)) {
+    return std::nullopt;
+  }
+  const auto begin_values = constant_i64_vector_input(node, 1);
+  if (!begin_values || begin_values->size() > *input_rank) {
+    return std::nullopt;
+  }
+  std::vector<int64_t> strides(*input_rank, 1);
+  if (slice->get_input_size() == 4) {
+    const auto stride_values = constant_i64_vector_input(node, 3);
+    if (!stride_values || stride_values->size() > *input_rank) {
+      return std::nullopt;
     }
-    const auto input_rank = static_rank(slice->get_input_partial_shape(0));
-    const auto output_rank = static_rank(slice->get_output_partial_shape(0));
-    if (!input_rank || !output_rank || *input_rank != *output_rank ||
-        *input_rank == 0 || *input_rank > 4 ||
-        mask_has_non_zero_past_rank(slice->get_begin_mask(), *input_rank) ||
-        mask_has_non_zero_past_rank(slice->get_end_mask(), *input_rank)) {
-        return std::nullopt;
+    for (size_t axis = 0; axis < stride_values->size(); ++axis) {
+      strides[axis] = (*stride_values)[axis];
     }
-    const auto end_shape = slice->get_input_partial_shape(2);
-    if (!end_shape.is_static() ||
-        end_shape.size() != 1 ||
-        end_shape[0].is_dynamic() ||
-        static_cast<size_t>(end_shape[0].get_length()) != *input_rank ||
-        (slice->get_input_element_type(2) != ov::element::i64 &&
-         slice->get_input_element_type(2) != ov::element::i32)) {
-        return std::nullopt;
-    }
-    const auto begin_values = constant_i64_vector_input(node, 1);
-    if (!begin_values || begin_values->size() > *input_rank) {
-        return std::nullopt;
-    }
-    std::vector<int64_t> strides(*input_rank, 1);
-    if (slice->get_input_size() == 4) {
-        const auto stride_values = constant_i64_vector_input(node, 3);
-        if (!stride_values || stride_values->size() > *input_rank) {
-            return std::nullopt;
-        }
-        for (size_t axis = 0; axis < stride_values->size(); ++axis) {
-            strides[axis] = (*stride_values)[axis];
-        }
-    }
+  }
 
-    SliceDynamicScalars metadata;
-    metadata.rank = static_cast<uint32_t>(*input_rank);
-    metadata.begin.assign(4, 0u);
-    metadata.steps.assign(4, 1u);
-    for (size_t axis = 0; axis < *input_rank; ++axis) {
-        const int64_t begin = axis < begin_values->size() ? (*begin_values)[axis] : 0;
-        if (begin < 0 ||
-            begin > static_cast<int64_t>(std::numeric_limits<uint32_t>::max()) ||
-            strides[axis] <= 0 ||
-            strides[axis] > static_cast<int64_t>(std::numeric_limits<uint32_t>::max())) {
-            return std::nullopt;
-        }
-        metadata.begin[axis] = static_cast<uint32_t>(begin);
-        metadata.steps[axis] = static_cast<uint32_t>(strides[axis]);
+  SliceDynamicScalars metadata;
+  metadata.rank = static_cast<uint32_t>(*input_rank);
+  metadata.begin.assign(4, 0u);
+  metadata.steps.assign(4, 1u);
+  for (size_t axis = 0; axis < *input_rank; ++axis) {
+    const int64_t begin =
+        axis < begin_values->size() ? (*begin_values)[axis] : 0;
+    if (begin < 0 ||
+        begin > static_cast<int64_t>(std::numeric_limits<uint32_t>::max()) ||
+        strides[axis] <= 0 ||
+        strides[axis] >
+            static_cast<int64_t>(std::numeric_limits<uint32_t>::max())) {
+      return std::nullopt;
     }
-    return metadata;
+    metadata.begin[axis] = static_cast<uint32_t>(begin);
+    metadata.steps[axis] = static_cast<uint32_t>(strides[axis]);
+  }
+  return metadata;
 }
 
-bool range_dynamic_i64_unit_supported(const std::shared_ptr<const ov::Node>& node) {
-    if (!node || node->get_type_name() != std::string("Range") ||
-        node->get_input_size() != 3 ||
-        node->get_output_size() != 1 ||
-        node->get_output_partial_shape(0).is_static() ||
-        node->get_output_element_type(0) != ov::element::i64 ||
-        node->get_input_element_type(1) != ov::element::i64 ||
-        !is_static_single_element_input(node, 1)) {
-        return false;
-    }
-    const auto rank = static_rank(node->get_output_partial_shape(0));
-    if (!rank || *rank != 1) {
-        return false;
-    }
-    const auto start = constant_i64_vector_input(node, 0);
-    const auto step = constant_i64_vector_input(node, 2);
-    return start && step &&
-           start->size() == 1 &&
-           step->size() == 1 &&
-           (*start)[0] == 0 &&
-           (*step)[0] == 1;
+bool range_dynamic_i64_unit_supported(
+    const std::shared_ptr<const ov::Node> &node) {
+  if (!node || node->get_type_name() != std::string("Range") ||
+      node->get_input_size() != 3 || node->get_output_size() != 1 ||
+      node->get_output_partial_shape(0).is_static() ||
+      node->get_output_element_type(0) != ov::element::i64 ||
+      node->get_input_element_type(1) != ov::element::i64 ||
+      !is_static_single_element_input(node, 1)) {
+    return false;
+  }
+  const auto rank = static_rank(node->get_output_partial_shape(0));
+  if (!rank || *rank != 1) {
+    return false;
+  }
+  const auto start = constant_i64_vector_input(node, 0);
+  const auto step = constant_i64_vector_input(node, 2);
+  return start && step && start->size() == 1 && step->size() == 1 &&
+         (*start)[0] == 0 && (*step)[0] == 1;
 }
 
 struct SplitStaticU32Scalars {
-    uint32_t output_count = 0;
-    std::string type_suffix;
-    std::vector<uint32_t> values;
+  uint32_t output_count = 0;
+  std::string type_suffix;
+  std::vector<uint32_t> values;
 };
 
 constexpr uint32_t kOpenClMaxStaticSplitOutputs = 30;
 
 std::optional<SplitStaticU32Scalars> split_static_u32_scalars_from_outputs(
-    const std::shared_ptr<const ov::Node>& node,
-    size_t data_input_idx,
-    size_t axis_input_idx,
-    size_t output_count,
-    bool require_equal_axis_lengths,
-    const std::vector<int64_t>* explicit_axis_lengths) {
-    if (!node ||
-        data_input_idx >= node->get_input_size() ||
-        axis_input_idx >= node->get_input_size() ||
-        !node->get_input_partial_shape(data_input_idx).is_static()) {
-        return std::nullopt;
+    const std::shared_ptr<const ov::Node> &node, size_t data_input_idx,
+    size_t axis_input_idx, size_t output_count, bool require_equal_axis_lengths,
+    const std::vector<int64_t> *explicit_axis_lengths) {
+  if (!node || data_input_idx >= node->get_input_size() ||
+      axis_input_idx >= node->get_input_size() ||
+      !node->get_input_partial_shape(data_input_idx).is_static()) {
+    return std::nullopt;
+  }
+  if (output_count < 1 || output_count > kOpenClMaxStaticSplitOutputs ||
+      node->get_output_size() != output_count) {
+    return std::nullopt;
+  }
+  if (explicit_axis_lengths && explicit_axis_lengths->size() != output_count) {
+    return std::nullopt;
+  }
+  const auto data_type = node->get_input_element_type(data_input_idx);
+  if (!is_f32_tensor_type(data_type) && !is_f16_tensor_type(data_type)) {
+    return std::nullopt;
+  }
+  for (size_t output_idx = 0; output_idx < output_count; ++output_idx) {
+    if (!node->get_output_partial_shape(output_idx).is_static() ||
+        node->get_output_element_type(output_idx) != data_type) {
+      return std::nullopt;
     }
-    if (output_count < 1 || output_count > kOpenClMaxStaticSplitOutputs ||
-        node->get_output_size() != output_count) {
-        return std::nullopt;
-    }
-    if (explicit_axis_lengths && explicit_axis_lengths->size() != output_count) {
-        return std::nullopt;
-    }
-    const auto data_type = node->get_input_element_type(data_input_idx);
-    if (!is_f32_tensor_type(data_type) && !is_f16_tensor_type(data_type)) {
-        return std::nullopt;
-    }
-    for (size_t output_idx = 0; output_idx < output_count; ++output_idx) {
-        if (!node->get_output_partial_shape(output_idx).is_static() ||
-            node->get_output_element_type(output_idx) != data_type) {
-            return std::nullopt;
-        }
-    }
+  }
 
-    const auto axis_i64 = constant_i64_vector_input(node, axis_input_idx);
-    if (!axis_i64 || axis_i64->size() != 1) {
-        return std::nullopt;
-    }
-    const auto& input_shape = node->get_input_shape(data_input_idx);
-    const size_t rank = input_shape.size();
-    if (rank == 0) {
-        return std::nullopt;
-    }
-    const auto axis = normalize_axis(axis_i64->front(), rank);
-    if (!axis) {
-        return std::nullopt;
-    }
-    if (input_shape[*axis] == 0 ||
-        input_shape[*axis] > std::numeric_limits<uint32_t>::max()) {
-        return std::nullopt;
-    }
-    if (require_equal_axis_lengths && input_shape[*axis] % output_count != 0) {
-        return std::nullopt;
-    }
+  const auto axis_i64 = constant_i64_vector_input(node, axis_input_idx);
+  if (!axis_i64 || axis_i64->size() != 1) {
+    return std::nullopt;
+  }
+  const auto &input_shape = node->get_input_shape(data_input_idx);
+  const size_t rank = input_shape.size();
+  if (rank == 0) {
+    return std::nullopt;
+  }
+  const auto axis = normalize_axis(axis_i64->front(), rank);
+  if (!axis) {
+    return std::nullopt;
+  }
+  if (input_shape[*axis] == 0 ||
+      input_shape[*axis] > std::numeric_limits<uint32_t>::max()) {
+    return std::nullopt;
+  }
+  if (require_equal_axis_lengths && input_shape[*axis] % output_count != 0) {
+    return std::nullopt;
+  }
 
-    uint64_t inner = 1;
-    for (size_t dim = *axis + 1; dim < rank; ++dim) {
-        inner *= input_shape[dim];
-    }
-    if (inner == 0 || inner > std::numeric_limits<uint32_t>::max()) {
-        return std::nullopt;
-    }
+  uint64_t inner = 1;
+  for (size_t dim = *axis + 1; dim < rank; ++dim) {
+    inner *= input_shape[dim];
+  }
+  if (inner == 0 || inner > std::numeric_limits<uint32_t>::max()) {
+    return std::nullopt;
+  }
 
-    std::vector<uint32_t> axis_lengths;
-    axis_lengths.reserve(output_count);
-    size_t axis_total = 0;
-    const size_t equal_axis_length =
-        require_equal_axis_lengths ? input_shape[*axis] / output_count : 0;
-    for (size_t output_idx = 0; output_idx < output_count; ++output_idx) {
-        const auto& output_shape = node->get_output_shape(output_idx);
-        if (output_shape.size() != rank) {
-            return std::nullopt;
-        }
-        for (size_t dim = 0; dim < rank; ++dim) {
-            if (dim != *axis && output_shape[dim] != input_shape[dim]) {
-                return std::nullopt;
-            }
-        }
-        if (output_shape[*axis] == 0 ||
-            output_shape[*axis] > std::numeric_limits<uint32_t>::max()) {
-            return std::nullopt;
-        }
-        if (require_equal_axis_lengths &&
-            output_shape[*axis] != equal_axis_length) {
-            return std::nullopt;
-        }
-        if (explicit_axis_lengths) {
-            const int64_t expected = (*explicit_axis_lengths)[output_idx];
-            if (expected != -1 &&
-                output_shape[*axis] != static_cast<size_t>(expected)) {
-                return std::nullopt;
-            }
-        }
-        axis_total += output_shape[*axis];
-        axis_lengths.push_back(static_cast<uint32_t>(output_shape[*axis]));
+  std::vector<uint32_t> axis_lengths;
+  axis_lengths.reserve(output_count);
+  size_t axis_total = 0;
+  const size_t equal_axis_length =
+      require_equal_axis_lengths ? input_shape[*axis] / output_count : 0;
+  for (size_t output_idx = 0; output_idx < output_count; ++output_idx) {
+    const auto &output_shape = node->get_output_shape(output_idx);
+    if (output_shape.size() != rank) {
+      return std::nullopt;
     }
-    if (axis_total != input_shape[*axis]) {
+    for (size_t dim = 0; dim < rank; ++dim) {
+      if (dim != *axis && output_shape[dim] != input_shape[dim]) {
         return std::nullopt;
+      }
     }
+    if (output_shape[*axis] == 0 ||
+        output_shape[*axis] > std::numeric_limits<uint32_t>::max()) {
+      return std::nullopt;
+    }
+    if (require_equal_axis_lengths &&
+        output_shape[*axis] != equal_axis_length) {
+      return std::nullopt;
+    }
+    if (explicit_axis_lengths) {
+      const int64_t expected = (*explicit_axis_lengths)[output_idx];
+      if (expected != -1 &&
+          output_shape[*axis] != static_cast<size_t>(expected)) {
+        return std::nullopt;
+      }
+    }
+    axis_total += output_shape[*axis];
+    axis_lengths.push_back(static_cast<uint32_t>(output_shape[*axis]));
+  }
+  if (axis_total != input_shape[*axis]) {
+    return std::nullopt;
+  }
 
-    SplitStaticU32Scalars metadata;
-    metadata.output_count = static_cast<uint32_t>(output_count);
-    metadata.type_suffix = opencl_scalar_type_suffix(data_type);
-    metadata.values.reserve(2 + output_count * 2);
-    metadata.values.push_back(static_cast<uint32_t>(input_shape[*axis]));
-    metadata.values.push_back(static_cast<uint32_t>(inner));
-    uint32_t offset = 0;
-    for (uint32_t len : axis_lengths) {
-        metadata.values.push_back(offset);
-        metadata.values.push_back(len);
-        offset += len;
-    }
-    return metadata;
+  SplitStaticU32Scalars metadata;
+  metadata.output_count = static_cast<uint32_t>(output_count);
+  metadata.type_suffix = opencl_scalar_type_suffix(data_type);
+  metadata.values.reserve(2 + output_count * 2);
+  metadata.values.push_back(static_cast<uint32_t>(input_shape[*axis]));
+  metadata.values.push_back(static_cast<uint32_t>(inner));
+  uint32_t offset = 0;
+  for (uint32_t len : axis_lengths) {
+    metadata.values.push_back(offset);
+    metadata.values.push_back(len);
+    offset += len;
+  }
+  return metadata;
 }
 
-std::optional<SplitStaticU32Scalars> split_static_u32_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    auto split = ov::as_type_ptr<const ov::op::v1::Split>(node);
-    if (!split || split->get_input_size() != 2) {
-        return std::nullopt;
-    }
-    const size_t output_count = split->get_output_size();
-    if (split->get_num_splits() != output_count) {
-        return std::nullopt;
-    }
-    return split_static_u32_scalars_from_outputs(
-        node,
-        /*data_input_idx=*/0,
-        /*axis_input_idx=*/1,
-        output_count,
-        /*require_equal_axis_lengths=*/true,
-        /*explicit_axis_lengths=*/nullptr);
+std::optional<SplitStaticU32Scalars>
+split_static_u32_scalars(const std::shared_ptr<const ov::Node> &node) {
+  auto split = ov::as_type_ptr<const ov::op::v1::Split>(node);
+  if (!split || split->get_input_size() != 2) {
+    return std::nullopt;
+  }
+  const size_t output_count = split->get_output_size();
+  if (split->get_num_splits() != output_count) {
+    return std::nullopt;
+  }
+  return split_static_u32_scalars_from_outputs(
+      node,
+      /*data_input_idx=*/0,
+      /*axis_input_idx=*/1, output_count,
+      /*require_equal_axis_lengths=*/true,
+      /*explicit_axis_lengths=*/nullptr);
 }
 
-std::optional<SplitStaticU32Scalars> variadic_split_static_u32_scalars(
-    const std::shared_ptr<const ov::Node>& node) {
-    auto split = ov::as_type_ptr<const ov::op::v1::VariadicSplit>(node);
-    if (!split || split->get_input_size() != 3) {
+std::optional<SplitStaticU32Scalars>
+variadic_split_static_u32_scalars(const std::shared_ptr<const ov::Node> &node) {
+  auto split = ov::as_type_ptr<const ov::op::v1::VariadicSplit>(node);
+  if (!split || split->get_input_size() != 3) {
+    return std::nullopt;
+  }
+  const size_t output_count = split->get_output_size();
+  const auto explicit_axis_lengths = constant_i64_vector_input(node, 2);
+  if (!explicit_axis_lengths || explicit_axis_lengths->size() != output_count) {
+    return std::nullopt;
+  }
+  bool has_inferred_axis_length = false;
+  for (const int64_t axis_length : *explicit_axis_lengths) {
+    if (axis_length == -1) {
+      if (has_inferred_axis_length) {
         return std::nullopt;
+      }
+      has_inferred_axis_length = true;
+      continue;
     }
-    const size_t output_count = split->get_output_size();
-    const auto explicit_axis_lengths = constant_i64_vector_input(node, 2);
-    if (!explicit_axis_lengths || explicit_axis_lengths->size() != output_count) {
-        return std::nullopt;
+    if (axis_length <= 0 ||
+        axis_length >
+            static_cast<int64_t>(std::numeric_limits<uint32_t>::max())) {
+      return std::nullopt;
     }
-    bool has_inferred_axis_length = false;
-    for (const int64_t axis_length : *explicit_axis_lengths) {
-        if (axis_length == -1) {
-            if (has_inferred_axis_length) {
-                return std::nullopt;
-            }
-            has_inferred_axis_length = true;
-            continue;
-        }
-        if (axis_length <= 0 ||
-            axis_length > static_cast<int64_t>(std::numeric_limits<uint32_t>::max())) {
-            return std::nullopt;
-        }
-    }
-    return split_static_u32_scalars_from_outputs(
-        node,
-        /*data_input_idx=*/0,
-        /*axis_input_idx=*/1,
-        output_count,
-        /*require_equal_axis_lengths=*/false,
-        &*explicit_axis_lengths);
+  }
+  return split_static_u32_scalars_from_outputs(
+      node,
+      /*data_input_idx=*/0,
+      /*axis_input_idx=*/1, output_count,
+      /*require_equal_axis_lengths=*/false, &*explicit_axis_lengths);
 }
 
 GfxKernelStageManifest make_opencl_baseline_manifest(
-    GfxKernelStageFamily family,
-    std::string specialization_key,
-    std::string entry_point,
-    uint32_t direct_inputs,
-    uint32_t scalar_arg_count,
+    GfxKernelStageFamily family, std::string specialization_key,
+    std::string entry_point, uint32_t direct_inputs, uint32_t scalar_arg_count,
     uint32_t direct_outputs) {
-    GfxKernelExternalBufferAbiSpec abi{};
-    abi.valid = true;
-    abi.roles.insert(abi.roles.end(), direct_inputs, GfxKernelBufferRole::TensorInput);
-    abi.roles.insert(abi.roles.end(), direct_outputs, GfxKernelBufferRole::TensorOutput);
-    abi.roles.insert(abi.roles.end(), scalar_arg_count, GfxKernelBufferRole::ScalarParam);
-    auto dispatch = make_gfx_kernel_linear_dispatch_policy(
-        /*threads_per_threadgroup=*/64,
-        /*precompiled_binary_required=*/false);
-    auto custom = make_gfx_custom_kernel_manifest(
-        gfx_kernel_family_name(GfxKernelFamily::EltwiseFusedBuffer),
-        gfx_kernel_family_abi_id(GfxKernelFamily::EltwiseFusedBuffer),
-        std::move(entry_point),
-        std::move(abi),
-        dispatch);
-    return make_gfx_custom_kernel_stage_manifest(family,
-                                                 GfxKernelBackendDomain::OpenCl,
-                                                 GfxKernelStorageKind::Buffer,
-                                                 std::move(specialization_key),
-                                                 std::move(custom));
+  GfxKernelExternalBufferAbiSpec abi{};
+  abi.valid = true;
+  abi.roles.insert(abi.roles.end(), direct_inputs,
+                   GfxKernelBufferRole::TensorInput);
+  abi.roles.insert(abi.roles.end(), direct_outputs,
+                   GfxKernelBufferRole::TensorOutput);
+  abi.roles.insert(abi.roles.end(), scalar_arg_count,
+                   GfxKernelBufferRole::ScalarParam);
+  const auto kernel_family = family == GfxKernelStageFamily::Reduction
+                                 ? GfxKernelFamily::ReductionBuffer
+                                 : GfxKernelFamily::EltwiseFusedBuffer;
+  auto dispatch = make_gfx_kernel_linear_dispatch_policy(
+      /*threads_per_threadgroup=*/64,
+      /*precompiled_binary_required=*/false);
+  auto custom = make_gfx_custom_kernel_manifest(
+      gfx_kernel_family_name(kernel_family),
+      gfx_kernel_family_abi_id(kernel_family), std::move(entry_point),
+      std::move(abi), dispatch);
+  return make_gfx_custom_kernel_stage_manifest(
+      family, GfxKernelBackendDomain::OpenCl, GfxKernelStorageKind::Buffer,
+      std::move(specialization_key), std::move(custom));
 }
 
-std::optional<uint32_t> split_output_count_from_entry_point(
-    std::string_view entry_point,
-    std::string_view type_suffix) {
-    constexpr std::string_view prefix = "gfx_opencl_baseline_split";
-    if (entry_point.size() <= prefix.size() + type_suffix.size() + 1 ||
-        entry_point.substr(0, prefix.size()) != prefix ||
-        entry_point.substr(entry_point.size() - type_suffix.size()) != type_suffix ||
-        entry_point[entry_point.size() - type_suffix.size() - 1] != '_') {
-        return std::nullopt;
+std::optional<uint32_t>
+split_output_count_from_entry_point(std::string_view entry_point,
+                                    std::string_view type_suffix) {
+  constexpr std::string_view prefix = "gfx_opencl_baseline_split";
+  if (entry_point.size() <= prefix.size() + type_suffix.size() + 1 ||
+      entry_point.substr(0, prefix.size()) != prefix ||
+      entry_point.substr(entry_point.size() - type_suffix.size()) !=
+          type_suffix ||
+      entry_point[entry_point.size() - type_suffix.size() - 1] != '_') {
+    return std::nullopt;
+  }
+  const auto digits =
+      entry_point.substr(prefix.size(), entry_point.size() - prefix.size() -
+                                            type_suffix.size() - 1);
+  uint32_t output_count = 0;
+  for (const char ch : digits) {
+    if (ch < '0' || ch > '9') {
+      return std::nullopt;
     }
-    const auto digits = entry_point.substr(
-        prefix.size(),
-        entry_point.size() - prefix.size() - type_suffix.size() - 1);
-    uint32_t output_count = 0;
-    for (const char ch : digits) {
-        if (ch < '0' || ch > '9') {
-            return std::nullopt;
-        }
-        output_count = output_count * 10u + static_cast<uint32_t>(ch - '0');
-    }
-    if (output_count < 1 || output_count > kOpenClMaxStaticSplitOutputs) {
-        return std::nullopt;
-    }
-    return output_count;
+    output_count = output_count * 10u + static_cast<uint32_t>(ch - '0');
+  }
+  if (output_count < 1 || output_count > kOpenClMaxStaticSplitOutputs) {
+    return std::nullopt;
+  }
+  return output_count;
 }
 
-std::optional<uint32_t> concat_input_count_from_entry_point(
-    std::string_view entry_point,
-    std::string_view type_suffix) {
-    constexpr std::string_view prefix = "gfx_opencl_baseline_concat";
-    if (entry_point.size() <= prefix.size() + type_suffix.size() + 1 ||
-        entry_point.substr(0, prefix.size()) != prefix ||
-        entry_point.substr(entry_point.size() - type_suffix.size()) != type_suffix ||
-        entry_point[entry_point.size() - type_suffix.size() - 1] != '_') {
-        return std::nullopt;
+std::optional<uint32_t>
+concat_input_count_from_entry_point(std::string_view entry_point,
+                                    std::string_view type_suffix) {
+  constexpr std::string_view prefix = "gfx_opencl_baseline_concat";
+  if (entry_point.size() <= prefix.size() + type_suffix.size() + 1 ||
+      entry_point.substr(0, prefix.size()) != prefix ||
+      entry_point.substr(entry_point.size() - type_suffix.size()) !=
+          type_suffix ||
+      entry_point[entry_point.size() - type_suffix.size() - 1] != '_') {
+    return std::nullopt;
+  }
+  const auto digits =
+      entry_point.substr(prefix.size(), entry_point.size() - prefix.size() -
+                                            type_suffix.size() - 1);
+  uint32_t input_count = 0;
+  for (const char ch : digits) {
+    if (ch < '0' || ch > '9') {
+      return std::nullopt;
     }
-    const auto digits = entry_point.substr(
-        prefix.size(),
-        entry_point.size() - prefix.size() - type_suffix.size() - 1);
-    uint32_t input_count = 0;
-    for (const char ch : digits) {
-        if (ch < '0' || ch > '9') {
-            return std::nullopt;
-        }
-        input_count = input_count * 10u + static_cast<uint32_t>(ch - '0');
-    }
-    if (input_count < 1 || input_count > kOpenClMaxStaticConcatInputs) {
-        return std::nullopt;
-    }
-    return input_count;
+    input_count = input_count * 10u + static_cast<uint32_t>(ch - '0');
+  }
+  if (input_count < 1 || input_count > kOpenClMaxStaticConcatInputs) {
+    return std::nullopt;
+  }
+  return input_count;
 }
 
 std::string make_opencl_static_concat_f32_source(
-    uint32_t input_count,
-    std::string_view entry_point,
-    const std::vector<uint32_t>& static_u32_scalars) {
-    if (static_u32_scalars.size() != 2 + input_count * 2) {
-        return {};
+    uint32_t input_count, std::string_view entry_point,
+    const std::vector<uint32_t> &static_u32_scalars) {
+  if (static_u32_scalars.size() != 2 + input_count * 2) {
+    return {};
+  }
+  std::vector<uint32_t> local_axis_offsets;
+  local_axis_offsets.reserve(input_count);
+  uint32_t copy_axis_total = 0;
+  for (uint32_t input_idx = 0; input_idx < input_count; ++input_idx) {
+    const size_t value_idx = 2 + static_cast<size_t>(input_idx) * 2;
+    local_axis_offsets.push_back(copy_axis_total);
+    copy_axis_total += static_u32_scalars[value_idx + 1];
+  }
+  std::ostringstream cl;
+  cl << "__kernel void " << entry_point << "(";
+  for (uint32_t input_idx = 0; input_idx < input_count; ++input_idx) {
+    if (input_idx != 0) {
+      cl << ",\n                                             ";
     }
-    std::vector<uint32_t> local_axis_offsets;
-    local_axis_offsets.reserve(input_count);
-    uint32_t copy_axis_total = 0;
-    for (uint32_t input_idx = 0; input_idx < input_count; ++input_idx) {
-        const size_t value_idx = 2 + static_cast<size_t>(input_idx) * 2;
-        local_axis_offsets.push_back(copy_axis_total);
-        copy_axis_total += static_u32_scalars[value_idx + 1];
-    }
-    std::ostringstream cl;
-    cl << "__kernel void " << entry_point << "(";
-    for (uint32_t input_idx = 0; input_idx < input_count; ++input_idx) {
-        if (input_idx != 0) {
-            cl << ",\n                                             ";
-        }
-        cl << "__global const float* src" << input_idx;
-    }
-    cl << ",\n                                             __global float* dst,"
-       << "\n                                             uint count) {\n";
-    cl << "    const uint axis_total = " << static_u32_scalars[0] << "u;\n";
-    cl << "    const uint inner = " << static_u32_scalars[1] << "u;\n";
-    cl << "    const uint copy_axis_total = " << copy_axis_total << "u;\n";
-    cl << R"CLC(
+    cl << "__global const float* src" << input_idx;
+  }
+  cl << ",\n                                             __global float* dst,"
+     << "\n                                             uint count) {\n";
+  cl << "    const uint axis_total = " << static_u32_scalars[0] << "u;\n";
+  cl << "    const uint inner = " << static_u32_scalars[1] << "u;\n";
+  cl << "    const uint copy_axis_total = " << copy_axis_total << "u;\n";
+  cl << R"CLC(
     const uint gid = (uint)get_global_id(0);
     if (gid >= count) {
         return;
@@ -7184,66 +7026,65 @@ std::string make_opencl_static_concat_f32_source(
     const uint chunk_axis_idx = (gid / inner) % copy_axis_total;
     const uint outer_idx = gid / (copy_axis_total * inner);
 )CLC";
-    for (uint32_t input_idx = 0; input_idx < input_count; ++input_idx) {
-        const size_t value_idx = 2 + static_cast<size_t>(input_idx) * 2;
-        const uint32_t axis_offset = static_u32_scalars[value_idx];
-        const uint32_t axis_len = static_u32_scalars[value_idx + 1];
-        const uint32_t local_axis_offset = local_axis_offsets[input_idx];
-        cl << (input_idx == 0 ? "    if" : " else if")
-           << " (chunk_axis_idx >= " << local_axis_offset
-           << "u && chunk_axis_idx < " << (local_axis_offset + axis_len)
-           << "u) {\n"
-           << "        const uint src_axis_idx = chunk_axis_idx - "
-           << local_axis_offset << "u;\n"
-           << "        const uint dst_axis_idx = " << axis_offset
-           << "u + src_axis_idx;\n"
-           << "        const uint src_idx = (outer_idx * "
-           << axis_len << "u + src_axis_idx) * inner + inner_idx;\n"
-           << "        const uint dst_idx = (outer_idx * axis_total + dst_axis_idx) * inner + inner_idx;\n"
-           << "        dst[dst_idx] = src" << input_idx << "[src_idx];\n"
-           << "        return;\n"
-           << "    }";
-    }
-    cl << "\n    dst[gid] = 0.0f;\n}\n";
-    return cl.str();
+  for (uint32_t input_idx = 0; input_idx < input_count; ++input_idx) {
+    const size_t value_idx = 2 + static_cast<size_t>(input_idx) * 2;
+    const uint32_t axis_offset = static_u32_scalars[value_idx];
+    const uint32_t axis_len = static_u32_scalars[value_idx + 1];
+    const uint32_t local_axis_offset = local_axis_offsets[input_idx];
+    cl << (input_idx == 0 ? "    if" : " else if")
+       << " (chunk_axis_idx >= " << local_axis_offset
+       << "u && chunk_axis_idx < " << (local_axis_offset + axis_len) << "u) {\n"
+       << "        const uint src_axis_idx = chunk_axis_idx - "
+       << local_axis_offset << "u;\n"
+       << "        const uint dst_axis_idx = " << axis_offset
+       << "u + src_axis_idx;\n"
+       << "        const uint src_idx = (outer_idx * " << axis_len
+       << "u + src_axis_idx) * inner + inner_idx;\n"
+       << "        const uint dst_idx = (outer_idx * axis_total + "
+          "dst_axis_idx) * inner + inner_idx;\n"
+       << "        dst[dst_idx] = src" << input_idx << "[src_idx];\n"
+       << "        return;\n"
+       << "    }";
+  }
+  cl << "\n    dst[gid] = 0.0f;\n}\n";
+  return cl.str();
 }
 
 std::string make_opencl_static_concat_f16_source(
-    uint32_t input_count,
-    std::string_view entry_point,
-    const std::vector<uint32_t>& static_u32_scalars) {
-    if (static_u32_scalars.size() != 2 + input_count * 2) {
-        return {};
-    }
-    std::vector<uint32_t> local_axis_offsets;
-    local_axis_offsets.reserve(input_count);
-    uint32_t copy_axis_total = 0;
-    for (uint32_t input_idx = 0; input_idx < input_count; ++input_idx) {
-        const size_t value_idx = 2 + static_cast<size_t>(input_idx) * 2;
-        local_axis_offsets.push_back(copy_axis_total);
-        copy_axis_total += static_u32_scalars[value_idx + 1];
-    }
-    std::ostringstream cl;
-    cl << R"CLC(
+    uint32_t input_count, std::string_view entry_point,
+    const std::vector<uint32_t> &static_u32_scalars) {
+  if (static_u32_scalars.size() != 2 + input_count * 2) {
+    return {};
+  }
+  std::vector<uint32_t> local_axis_offsets;
+  local_axis_offsets.reserve(input_count);
+  uint32_t copy_axis_total = 0;
+  for (uint32_t input_idx = 0; input_idx < input_count; ++input_idx) {
+    const size_t value_idx = 2 + static_cast<size_t>(input_idx) * 2;
+    local_axis_offsets.push_back(copy_axis_total);
+    copy_axis_total += static_u32_scalars[value_idx + 1];
+  }
+  std::ostringstream cl;
+  cl << R"CLC(
 #define GFX_LOAD_F16_BITS(src, idx) \
     (((idx) & 1u) == 0u ? ((src)[(idx) >> 1u] & 65535u) : (((src)[(idx) >> 1u] >> 16u) & 65535u))
 #define GFX_STORE_F16_PAIR(dst, word_idx, lo, hi) \
     ((dst)[(word_idx)] = ((lo) & 65535u) | (((hi) & 65535u) << 16u))
 
 )CLC";
-    cl << "__kernel void " << entry_point << "(";
-    for (uint32_t input_idx = 0; input_idx < input_count; ++input_idx) {
-        if (input_idx != 0) {
-            cl << ",\n                                             ";
-        }
-        cl << "__global const uint* src" << input_idx;
+  cl << "__kernel void " << entry_point << "(";
+  for (uint32_t input_idx = 0; input_idx < input_count; ++input_idx) {
+    if (input_idx != 0) {
+      cl << ",\n                                             ";
     }
-    cl << ",\n                                             __global uint* dst,"
-       << "\n                                             uint count) {\n";
-    cl << "    const uint axis_total = " << static_u32_scalars[0] << "u;\n";
-    cl << "    const uint inner = " << static_u32_scalars[1] << "u;\n";
-    cl << "    const uint copy_axis_total = " << copy_axis_total << "u;\n";
-    cl << R"CLC(
+    cl << "__global const uint* src" << input_idx;
+  }
+  cl << ",\n                                             __global uint* dst,"
+     << "\n                                             uint count) {\n";
+  cl << "    const uint axis_total = " << static_u32_scalars[0] << "u;\n";
+  cl << "    const uint inner = " << static_u32_scalars[1] << "u;\n";
+  cl << "    const uint copy_axis_total = " << copy_axis_total << "u;\n";
+  cl << R"CLC(
     const uint word_idx = (uint)get_global_id(0);
     const uint elem0 = word_idx * 2u;
     if (elem0 >= count) {
@@ -7253,44 +7094,45 @@ std::string make_opencl_static_concat_f16_source(
     const uint chunk_axis_idx0 = (elem0 / inner) % copy_axis_total;
     const uint outer_idx0 = elem0 / (copy_axis_total * inner);
 )CLC";
-    for (uint32_t input_idx = 0; input_idx < input_count; ++input_idx) {
-        const size_t value_idx = 2 + static_cast<size_t>(input_idx) * 2;
-        const uint32_t axis_offset = static_u32_scalars[value_idx];
-        const uint32_t axis_len = static_u32_scalars[value_idx + 1];
-        const uint32_t local_axis_offset = local_axis_offsets[input_idx];
-        cl << (input_idx == 0 ? "    if" : " else if")
-           << " (chunk_axis_idx0 >= " << local_axis_offset
-           << "u && chunk_axis_idx0 < " << (local_axis_offset + axis_len)
-           << "u) {\n"
-           << "        const uint src_axis_idx = chunk_axis_idx0 - "
-           << local_axis_offset << "u;\n"
-           << "        const uint dst_axis_idx = " << axis_offset
-           << "u + src_axis_idx;\n"
-           << "        const uint src_idx = (outer_idx0 * "
-           << axis_len << "u + src_axis_idx) * inner + inner_idx0;\n"
-           << "        const uint dst_elem = (outer_idx0 * axis_total + dst_axis_idx) * inner + inner_idx0;\n"
-           << "        const uint lo = GFX_LOAD_F16_BITS(src" << input_idx << ", src_idx);\n"
-           << "        const uint hi = elem0 + 1u < count ? GFX_LOAD_F16_BITS(src"
-           << input_idx << ", src_idx + 1u) : 0u;\n"
-           << "        GFX_STORE_F16_PAIR(dst, dst_elem >> 1u, lo, hi);\n"
-           << "        return;\n"
-           << "    }";
-    }
-    cl << R"CLC(
+  for (uint32_t input_idx = 0; input_idx < input_count; ++input_idx) {
+    const size_t value_idx = 2 + static_cast<size_t>(input_idx) * 2;
+    const uint32_t axis_offset = static_u32_scalars[value_idx];
+    const uint32_t axis_len = static_u32_scalars[value_idx + 1];
+    const uint32_t local_axis_offset = local_axis_offsets[input_idx];
+    cl << (input_idx == 0 ? "    if" : " else if")
+       << " (chunk_axis_idx0 >= " << local_axis_offset
+       << "u && chunk_axis_idx0 < " << (local_axis_offset + axis_len)
+       << "u) {\n"
+       << "        const uint src_axis_idx = chunk_axis_idx0 - "
+       << local_axis_offset << "u;\n"
+       << "        const uint dst_axis_idx = " << axis_offset
+       << "u + src_axis_idx;\n"
+       << "        const uint src_idx = (outer_idx0 * " << axis_len
+       << "u + src_axis_idx) * inner + inner_idx0;\n"
+       << "        const uint dst_elem = (outer_idx0 * axis_total + "
+          "dst_axis_idx) * inner + inner_idx0;\n"
+       << "        const uint lo = GFX_LOAD_F16_BITS(src" << input_idx
+       << ", src_idx);\n"
+       << "        const uint hi = elem0 + 1u < count ? GFX_LOAD_F16_BITS(src"
+       << input_idx << ", src_idx + 1u) : 0u;\n"
+       << "        GFX_STORE_F16_PAIR(dst, dst_elem >> 1u, lo, hi);\n"
+       << "        return;\n"
+       << "    }";
+  }
+  cl << R"CLC(
 }
 )CLC";
-    return cl.str();
+  return cl.str();
 }
 
 std::string make_opencl_static_split_f32_source(
-    uint32_t output_count,
-    std::string_view entry_point,
-    const std::vector<uint32_t>& static_u32_scalars) {
-    if (static_u32_scalars.size() != 2 + output_count * 2) {
-        return {};
-    }
-    std::ostringstream cl;
-    cl << R"CLC(
+    uint32_t output_count, std::string_view entry_point,
+    const std::vector<uint32_t> &static_u32_scalars) {
+  if (static_u32_scalars.size() != 2 + output_count * 2) {
+    return {};
+  }
+  std::ostringstream cl;
+  cl << R"CLC(
 static inline void gfx_split_store_f32(__global const float* src,
                                        __global float* dst,
                                        uint gid,
@@ -7309,15 +7151,15 @@ static inline void gfx_split_store_f32(__global const float* src,
 }
 
 )CLC";
-    cl << "__kernel void " << entry_point << "(__global const float* src";
-    for (uint32_t output_idx = 0; output_idx < output_count; ++output_idx) {
-        cl << ",\n                                             __global float* dst"
-           << output_idx;
-    }
-    cl << ",\n                                             uint count) {\n";
-    cl << "    const uint axis_total = " << static_u32_scalars[0] << "u;\n";
-    cl << "    const uint inner = " << static_u32_scalars[1] << "u;\n";
-    cl << R"CLC(
+  cl << "__kernel void " << entry_point << "(__global const float* src";
+  for (uint32_t output_idx = 0; output_idx < output_count; ++output_idx) {
+    cl << ",\n                                             __global float* dst"
+       << output_idx;
+  }
+  cl << ",\n                                             uint count) {\n";
+  cl << "    const uint axis_total = " << static_u32_scalars[0] << "u;\n";
+  cl << "    const uint inner = " << static_u32_scalars[1] << "u;\n";
+  cl << R"CLC(
     const uint gid = (uint)get_global_id(0);
     if (gid >= count) {
         return;
@@ -7326,26 +7168,25 @@ static inline void gfx_split_store_f32(__global const float* src,
     const uint axis_idx = (gid / inner) % axis_total;
     const uint outer_idx = gid / (axis_total * inner);
 )CLC";
-    for (uint32_t output_idx = 0; output_idx < output_count; ++output_idx) {
-        const size_t value_idx = 2 + static_cast<size_t>(output_idx) * 2;
-        cl << "    gfx_split_store_f32(src, dst" << output_idx
-           << ", gid, axis_idx, outer_idx, inner_idx, inner, "
-           << static_u32_scalars[value_idx] << "u, "
-           << static_u32_scalars[value_idx + 1] << "u);\n";
-    }
-    cl << "}\n";
-    return cl.str();
+  for (uint32_t output_idx = 0; output_idx < output_count; ++output_idx) {
+    const size_t value_idx = 2 + static_cast<size_t>(output_idx) * 2;
+    cl << "    gfx_split_store_f32(src, dst" << output_idx
+       << ", gid, axis_idx, outer_idx, inner_idx, inner, "
+       << static_u32_scalars[value_idx] << "u, "
+       << static_u32_scalars[value_idx + 1] << "u);\n";
+  }
+  cl << "}\n";
+  return cl.str();
 }
 
 std::string make_opencl_static_split_f16_source(
-    uint32_t output_count,
-    std::string_view entry_point,
-    const std::vector<uint32_t>& static_u32_scalars) {
-    if (static_u32_scalars.size() != 2 + output_count * 2) {
-        return {};
-    }
-    std::ostringstream cl;
-    cl << R"CLC(
+    uint32_t output_count, std::string_view entry_point,
+    const std::vector<uint32_t> &static_u32_scalars) {
+  if (static_u32_scalars.size() != 2 + output_count * 2) {
+    return {};
+  }
+  std::ostringstream cl;
+  cl << R"CLC(
 #define GFX_LOAD_F16_BITS(src, idx) \
     (((idx) & 1u) == 0u ? ((src)[(idx) >> 1u] & 65535u) : (((src)[(idx) >> 1u] >> 16u) & 65535u))
 #define GFX_STORE_F16_PAIR(dst, word_idx, lo, hi) \
@@ -7387,1428 +7228,1339 @@ static inline void gfx_split_store_word_f16(__global const uint* src,
 }
 
 )CLC";
-    cl << "__kernel void " << entry_point << "(__global const uint* src";
-    for (uint32_t output_idx = 0; output_idx < output_count; ++output_idx) {
-        cl << ",\n                                             __global uint* dst"
-           << output_idx;
-    }
-    cl << ",\n                                             uint count) {\n";
-    cl << "    const uint axis_total = " << static_u32_scalars[0] << "u;\n";
-    cl << "    const uint inner = " << static_u32_scalars[1] << "u;\n";
-    cl << "    const uint word_idx = (uint)get_global_id(0);\n";
-    for (uint32_t output_idx = 0; output_idx < output_count; ++output_idx) {
-        const size_t value_idx = 2 + static_cast<size_t>(output_idx) * 2;
-        cl << "    gfx_split_store_word_f16(src, dst" << output_idx
-           << ", word_idx, count, axis_total, inner, "
-           << static_u32_scalars[value_idx] << "u, "
-           << static_u32_scalars[value_idx + 1] << "u);\n";
-    }
-    cl << "}\n";
-    return cl.str();
+  cl << "__kernel void " << entry_point << "(__global const uint* src";
+  for (uint32_t output_idx = 0; output_idx < output_count; ++output_idx) {
+    cl << ",\n                                             __global uint* dst"
+       << output_idx;
+  }
+  cl << ",\n                                             uint count) {\n";
+  cl << "    const uint axis_total = " << static_u32_scalars[0] << "u;\n";
+  cl << "    const uint inner = " << static_u32_scalars[1] << "u;\n";
+  cl << "    const uint word_idx = (uint)get_global_id(0);\n";
+  for (uint32_t output_idx = 0; output_idx < output_count; ++output_idx) {
+    const size_t value_idx = 2 + static_cast<size_t>(output_idx) * 2;
+    cl << "    gfx_split_store_word_f16(src, dst" << output_idx
+       << ", word_idx, count, axis_total, inner, "
+       << static_u32_scalars[value_idx] << "u, "
+       << static_u32_scalars[value_idx + 1] << "u);\n";
+  }
+  cl << "}\n";
+  return cl.str();
 }
 
 GfxOpenClSourceArtifact make_opencl_baseline_artifact(
-    GfxKernelStageManifest manifest,
-    std::string source_id,
+    GfxKernelStageManifest manifest, std::string source_id,
     std::vector<GfxOpenClSourceScalarArg> scalar_args,
-    std::vector<size_t> direct_input_indices,
-    GfxOpenClBaselineOp op,
-    GfxOpenClBaselineInputMode input_mode,
-    float scalar_constant_f32,
+    std::vector<size_t> direct_input_indices, GfxOpenClBaselineOp op,
+    GfxOpenClBaselineInputMode input_mode, float scalar_constant_f32,
     std::vector<uint32_t> static_u32_scalars,
     GfxOpenClSourceElementCountSource element_count_source,
     std::vector<float> static_f32_scalars) {
-    GfxOpenClSourceArtifact artifact{};
-    artifact.valid = manifest.valid;
-    artifact.stage_manifest = std::move(manifest);
-    artifact.artifact_ref = make_gfx_kernel_artifact_ref(artifact.stage_manifest);
-    artifact.artifact_ref.source_id = std::move(source_id);
-    artifact.artifact_ref.entry_point = artifact.stage_manifest.custom_kernel.entry_point;
-    bool source_inlines_static_u32_scalars = false;
-    if (auto concat_inputs =
-            concat_input_count_from_entry_point(artifact.artifact_ref.entry_point, "f32");
-        concat_inputs && static_u32_scalars.size() == 2 + static_cast<size_t>(*concat_inputs) * 2) {
-        artifact.source = make_opencl_static_concat_f32_source(
-            *concat_inputs, artifact.artifact_ref.entry_point, static_u32_scalars);
-        source_inlines_static_u32_scalars = true;
-    } else if (auto concat_inputs =
-                   concat_input_count_from_entry_point(artifact.artifact_ref.entry_point, "f16");
-               concat_inputs &&
-               static_u32_scalars.size() == 2 + static_cast<size_t>(*concat_inputs) * 2) {
-        artifact.source = make_opencl_static_concat_f16_source(
-            *concat_inputs, artifact.artifact_ref.entry_point, static_u32_scalars);
-        source_inlines_static_u32_scalars = true;
-    } else if (auto split_outputs =
-            split_output_count_from_entry_point(artifact.artifact_ref.entry_point, "f32")) {
-        artifact.source = make_opencl_static_split_f32_source(
-            *split_outputs, artifact.artifact_ref.entry_point, static_u32_scalars);
-        source_inlines_static_u32_scalars = true;
-    } else if (auto split_outputs =
-                   split_output_count_from_entry_point(artifact.artifact_ref.entry_point, "f16")) {
-        artifact.source = make_opencl_static_split_f16_source(
-            *split_outputs, artifact.artifact_ref.entry_point, static_u32_scalars);
-        source_inlines_static_u32_scalars = true;
-    } else if (std::string_view(artifact.artifact_ref.entry_point).substr(
-                   0, std::string_view("gfx_opencl_generated_eltwise_").size()) ==
-               std::string_view("gfx_opencl_generated_eltwise_")) {
-        artifact.source = opencl_generated_eltwise_kernel_source().source;
-    } else if (std::string_view(artifact.artifact_ref.entry_point).substr(
-                   0, std::string_view("gfx_opencl_generated_activation_").size()) ==
-               std::string_view("gfx_opencl_generated_activation_")) {
-        artifact.source = opencl_generated_activation_kernel_source().source;
-    } else if (artifact.artifact_ref.entry_point ==
-               "gfx_opencl_generated_matmul_f32") {
-        artifact.source = opencl_generated_matmul_f32_kernel_source().source;
-    } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_softmax_f32" ||
-               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_softmax_dynamic_f32") {
-        artifact.source = opencl_baseline_softmax_f32_kernel_source().source;
-    } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_softmax_f16" ||
-               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_softmax_dynamic_f16") {
-        artifact.source = opencl_baseline_softmax_f16_kernel_source().source;
-    } else if (artifact.artifact_ref.entry_point ==
-               "gfx_opencl_generated_interpolate_f32") {
-        artifact.source = opencl_generated_interpolate_f32_kernel_source().source;
-    } else if (artifact.artifact_ref.entry_point ==
-               "gfx_opencl_generated_interpolate_f16") {
-        artifact.source = opencl_generated_interpolate_f16_kernel_source().source;
-    } else if (artifact.artifact_ref.entry_point ==
-                   "gfx_opencl_baseline_shapeof_i32" ||
-               artifact.artifact_ref.entry_point ==
-                   "gfx_opencl_baseline_shapeof_i64") {
-        artifact.source = kOpenClShapeOfSource;
-    } else if (artifact.artifact_ref.entry_point ==
-               "gfx_opencl_baseline_unary_f32") {
-        artifact.source = kOpenClUnaryF32Source;
-    } else if (artifact.artifact_ref.entry_point ==
-               "gfx_opencl_baseline_binary_broadcast_f32") {
-        artifact.source = kOpenClBinaryBroadcastF32Source;
-    } else if (artifact.artifact_ref.entry_point ==
-               "gfx_opencl_baseline_binary_scalar_f32") {
-        artifact.source = kOpenClBinaryScalarF32Source;
-    } else if (artifact.artifact_ref.entry_point ==
-               "gfx_opencl_baseline_binary_const_f32") {
-        artifact.source = kOpenClBinaryConstF32Source;
-    } else if (artifact.artifact_ref.entry_point ==
-                   "gfx_opencl_baseline_binary_i32" ||
-               artifact.artifact_ref.entry_point ==
-                   "gfx_opencl_baseline_binary_scalar_i32" ||
-               artifact.artifact_ref.entry_point ==
-                   "gfx_opencl_baseline_binary_broadcast_i32") {
-        artifact.source = kOpenClBinaryI32Source;
-    } else if (artifact.artifact_ref.entry_point ==
-                   "gfx_opencl_baseline_binary_f16" ||
-               artifact.artifact_ref.entry_point ==
-                   "gfx_opencl_baseline_binary_scalar_f16" ||
-               artifact.artifact_ref.entry_point ==
-                   "gfx_opencl_baseline_binary_broadcast_f16") {
-        artifact.source = kOpenClBinaryF16Source;
-    } else if (artifact.artifact_ref.entry_point ==
-               "gfx_opencl_baseline_compare_f32") {
-        artifact.source = kOpenClCompareF32Source;
-    } else if (artifact.artifact_ref.entry_point ==
-               "gfx_opencl_baseline_compare_broadcast_f32") {
-        artifact.source = kOpenClCompareBroadcastF32Source;
-    } else if (artifact.artifact_ref.entry_point ==
-               "gfx_opencl_baseline_select_f32") {
-        artifact.source = kOpenClSelectF32Source;
-    } else if (artifact.artifact_ref.entry_point ==
-               "gfx_opencl_baseline_select_broadcast_f32") {
-        artifact.source = kOpenClSelectBroadcastF32Source;
-    } else if (artifact.artifact_ref.entry_point ==
-               "gfx_opencl_baseline_transpose_f32") {
-        artifact.source = kOpenClTransposeF32Source;
-    } else if (artifact.artifact_ref.entry_point ==
-               "gfx_opencl_baseline_slice_f32") {
-        artifact.source = kOpenClSliceF32Source;
-    } else if (artifact.artifact_ref.entry_point ==
-               "gfx_opencl_baseline_range_f32") {
-        artifact.source = kOpenClRangeF32Source;
-    } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_tile_f32" ||
-               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_tile_dynamic_f32") {
-        artifact.source = kOpenClTileF32Source;
-    } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_gather_i32_f32" ||
-               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_gather_elements_i32_f32" ||
-               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_gather_nd_i32_f32") {
-        artifact.source = kOpenClGatherF32I32Source;
-    } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_gather_i64_f32" ||
-               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_gather_elements_i64_f32" ||
-               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_gather_nd_i64_f32") {
-        artifact.source = kOpenClGatherF32I64Source;
-    } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_scatter_update_i32_f32" ||
-               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_scatter_elements_i32_f32" ||
-               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_scatter_nd_i32_f32") {
-        artifact.source = kOpenClScatterF32I32Source;
-    } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_concat2_f32" ||
-               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_concat3_f32" ||
-               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_concat4_f32") {
-        artifact.source = kOpenClConcatSplitF32Source;
-    } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_select_f16" ||
-               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_concat2_f16" ||
-               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_concat3_f16" ||
-               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_concat4_f16" ||
-               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_broadcast_f16_i64shape" ||
-               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_tile_f16" ||
-               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_tile_dynamic_f16" ||
-               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_range_f16" ||
-               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_slice_f16" ||
-               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_slice_v8_f16" ||
-               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_range_i64_unit") {
-        artifact.source = kOpenClDynamicDataMovementF16Source;
-    } else if (artifact.artifact_ref.entry_point ==
-               "gfx_opencl_baseline_logical_unary_bool") {
-        artifact.source = kOpenClLogicalUnaryBoolSource;
-    } else if (artifact.artifact_ref.entry_point ==
-               "gfx_opencl_baseline_logical_binary_bool") {
-        artifact.source = kOpenClLogicalBinaryBoolSource;
-    } else if (artifact.artifact_ref.entry_point ==
-               "gfx_opencl_baseline_logical_binary_broadcast_bool") {
-        artifact.source = kOpenClLogicalBinaryBroadcastBoolSource;
-    } else if (artifact.artifact_ref.entry_point ==
-               "gfx_opencl_baseline_reduce_logical_bool") {
-        artifact.source = kOpenClReduceLogicalBoolSource;
-    } else {
-        artifact.source = kOpenClBaselineSource;
+  GfxOpenClSourceArtifact artifact{};
+  artifact.valid = manifest.valid;
+  artifact.stage_manifest = std::move(manifest);
+  artifact.artifact_ref = make_gfx_kernel_artifact_ref(artifact.stage_manifest);
+  artifact.artifact_ref.source_id = std::move(source_id);
+  artifact.artifact_ref.entry_point =
+      artifact.stage_manifest.custom_kernel.entry_point;
+  bool source_inlines_static_u32_scalars = false;
+  if (auto concat_inputs = concat_input_count_from_entry_point(
+          artifact.artifact_ref.entry_point, "f32");
+      concat_inputs && static_u32_scalars.size() ==
+                           2 + static_cast<size_t>(*concat_inputs) * 2) {
+    artifact.source = make_opencl_static_concat_f32_source(
+        *concat_inputs, artifact.artifact_ref.entry_point, static_u32_scalars);
+    source_inlines_static_u32_scalars = true;
+  } else if (auto concat_inputs = concat_input_count_from_entry_point(
+                 artifact.artifact_ref.entry_point, "f16");
+             concat_inputs && static_u32_scalars.size() ==
+                                  2 + static_cast<size_t>(*concat_inputs) * 2) {
+    artifact.source = make_opencl_static_concat_f16_source(
+        *concat_inputs, artifact.artifact_ref.entry_point, static_u32_scalars);
+    source_inlines_static_u32_scalars = true;
+  } else if (auto split_outputs = split_output_count_from_entry_point(
+                 artifact.artifact_ref.entry_point, "f32")) {
+    artifact.source = make_opencl_static_split_f32_source(
+        *split_outputs, artifact.artifact_ref.entry_point, static_u32_scalars);
+    source_inlines_static_u32_scalars = true;
+  } else if (auto split_outputs = split_output_count_from_entry_point(
+                 artifact.artifact_ref.entry_point, "f16")) {
+    artifact.source = make_opencl_static_split_f16_source(
+        *split_outputs, artifact.artifact_ref.entry_point, static_u32_scalars);
+    source_inlines_static_u32_scalars = true;
+  } else if (std::string_view(artifact.artifact_ref.entry_point)
+                 .substr(0, std::string_view("gfx_opencl_generated_eltwise_")
+                                .size()) ==
+             std::string_view("gfx_opencl_generated_eltwise_")) {
+    artifact.source = opencl_generated_eltwise_kernel_source().source;
+  } else if (std::string_view(artifact.artifact_ref.entry_point)
+                 .substr(0, std::string_view("gfx_opencl_generated_activation_")
+                                .size()) ==
+             std::string_view("gfx_opencl_generated_activation_")) {
+    artifact.source = opencl_generated_activation_kernel_source().source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_generated_matmul_f32") {
+    artifact.source = opencl_generated_matmul_f32_kernel_source().source;
+  } else if (artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_softmax_f32" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_softmax_dynamic_f32") {
+    artifact.source = opencl_baseline_softmax_f32_kernel_source().source;
+  } else if (artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_softmax_f16" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_softmax_dynamic_f16") {
+    artifact.source = opencl_baseline_softmax_f16_kernel_source().source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_generated_interpolate_f32") {
+    artifact.source = opencl_generated_interpolate_f32_kernel_source().source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_generated_interpolate_f16") {
+    artifact.source = opencl_generated_interpolate_f16_kernel_source().source;
+  } else if (artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_shapeof_i32" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_shapeof_i64") {
+    artifact.source = kOpenClShapeOfSource;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_baseline_unary_f32") {
+    artifact.source = kOpenClUnaryF32Source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_baseline_binary_broadcast_f32") {
+    artifact.source = kOpenClBinaryBroadcastF32Source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_baseline_binary_scalar_f32") {
+    artifact.source = kOpenClBinaryScalarF32Source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_baseline_binary_const_f32") {
+    artifact.source = kOpenClBinaryConstF32Source;
+  } else if (artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_binary_i32" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_binary_scalar_i32" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_binary_broadcast_i32") {
+    artifact.source = kOpenClBinaryI32Source;
+  } else if (artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_binary_f16" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_binary_scalar_f16" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_binary_broadcast_f16") {
+    artifact.source = kOpenClBinaryF16Source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_baseline_compare_f32") {
+    artifact.source = kOpenClCompareF32Source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_baseline_compare_broadcast_f32") {
+    artifact.source = kOpenClCompareBroadcastF32Source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_baseline_select_f32") {
+    artifact.source = kOpenClSelectF32Source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_baseline_select_broadcast_f32") {
+    artifact.source = kOpenClSelectBroadcastF32Source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_baseline_transpose_f32") {
+    artifact.source = kOpenClTransposeF32Source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_baseline_slice_f32") {
+    artifact.source = kOpenClSliceF32Source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_baseline_range_f32") {
+    artifact.source = kOpenClRangeF32Source;
+  } else if (artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_tile_f32" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_tile_dynamic_f32") {
+    artifact.source = kOpenClTileF32Source;
+  } else if (artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_gather_i32_f32" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_gather_elements_i32_f32" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_gather_nd_i32_f32") {
+    artifact.source = kOpenClGatherF32I32Source;
+  } else if (artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_gather_i64_f32" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_gather_elements_i64_f32" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_gather_nd_i64_f32") {
+    artifact.source = kOpenClGatherF32I64Source;
+  } else if (artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_scatter_update_i32_f32" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_scatter_elements_i32_f32" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_scatter_nd_i32_f32") {
+    artifact.source = kOpenClScatterF32I32Source;
+  } else if (artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_concat2_f32" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_concat3_f32" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_concat4_f32") {
+    artifact.source = kOpenClConcatSplitF32Source;
+  } else if (artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_select_f16" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_concat2_f16" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_concat3_f16" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_concat4_f16" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_broadcast_f16_i64shape" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_tile_f16" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_tile_dynamic_f16" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_range_f16" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_slice_f16" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_slice_v8_f16" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_range_i64_unit") {
+    artifact.source = kOpenClDynamicDataMovementF16Source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_baseline_logical_unary_bool") {
+    artifact.source = kOpenClLogicalUnaryBoolSource;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_baseline_logical_binary_bool") {
+    artifact.source = kOpenClLogicalBinaryBoolSource;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_baseline_logical_binary_broadcast_bool") {
+    artifact.source = kOpenClLogicalBinaryBroadcastBoolSource;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_generated_reduction_f32") {
+    artifact.source = opencl_generated_reduction_f32_kernel_source().source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_baseline_reduce_logical_bool") {
+    artifact.source =
+        opencl_baseline_reduction_logical_bool_kernel_source().source;
+  } else {
+    artifact.source = kOpenClBaselineSource;
+  }
+  if (source_inlines_static_u32_scalars) {
+    artifact.source_static_u32_scalars = static_u32_scalars;
+    static_u32_scalars.clear();
+  }
+  artifact.scalar_args = std::move(scalar_args);
+  artifact.static_u32_scalars = std::move(static_u32_scalars);
+  artifact.static_f32_scalars = std::move(static_f32_scalars);
+  artifact.direct_input_indices = std::move(direct_input_indices);
+  const auto roles = materialize_gfx_kernel_external_buffer_roles(
+      artifact.stage_manifest.custom_kernel.external_buffer_abi);
+  artifact.arg_count = static_cast<uint32_t>(roles.size());
+  artifact.direct_input_count =
+      static_cast<uint32_t>(artifact.direct_input_indices.size());
+  artifact.direct_output_count = 0;
+  for (const auto role : roles) {
+    if (role == GfxKernelBufferRole::TensorOutput) {
+      ++artifact.direct_output_count;
     }
-    if (source_inlines_static_u32_scalars) {
-        artifact.source_static_u32_scalars = static_u32_scalars;
-        static_u32_scalars.clear();
-    }
-    artifact.scalar_args = std::move(scalar_args);
-    artifact.static_u32_scalars = std::move(static_u32_scalars);
-    artifact.static_f32_scalars = std::move(static_f32_scalars);
-    artifact.direct_input_indices = std::move(direct_input_indices);
-    const auto roles = materialize_gfx_kernel_external_buffer_roles(
-        artifact.stage_manifest.custom_kernel.external_buffer_abi);
-    artifact.arg_count = static_cast<uint32_t>(roles.size());
-    artifact.direct_input_count = static_cast<uint32_t>(artifact.direct_input_indices.size());
-    artifact.direct_output_count = 0;
-    for (const auto role : roles) {
-        if (role == GfxKernelBufferRole::TensorOutput) {
-            ++artifact.direct_output_count;
-        }
-    }
-    artifact.element_count_source = element_count_source;
-    artifact.op = op;
-    artifact.input_mode = input_mode;
-    artifact.scalar_constant_f32 = scalar_constant_f32;
-    artifact.valid = artifact.valid &&
-                     artifact.artifact_ref.valid &&
-                     artifact.artifact_ref.kind == GfxKernelArtifactKind::OpenClSource &&
-                     !artifact.source.empty();
-    return artifact;
+  }
+  artifact.element_count_source = element_count_source;
+  artifact.op = op;
+  artifact.input_mode = input_mode;
+  artifact.scalar_constant_f32 = scalar_constant_f32;
+  artifact.valid =
+      artifact.valid && artifact.artifact_ref.valid &&
+      artifact.artifact_ref.kind == GfxKernelArtifactKind::OpenClSource &&
+      !artifact.source.empty();
+  return artifact;
 }
 
-}  // namespace
+} // namespace
 
-GfxOpenClSourceArtifactPayload::GfxOpenClSourceArtifactPayload(GfxOpenClSourceArtifact artifact)
+GfxOpenClSourceArtifactPayload::GfxOpenClSourceArtifactPayload(
+    GfxOpenClSourceArtifact artifact)
     : m_artifact(std::move(artifact)) {}
 
-compiler::KernelArtifactPayloadKind GfxOpenClSourceArtifactPayload::payload_kind() const noexcept {
-    return compiler::KernelArtifactPayloadKind::OpenClSource;
+compiler::KernelArtifactPayloadKind
+GfxOpenClSourceArtifactPayload::payload_kind() const noexcept {
+  return compiler::KernelArtifactPayloadKind::OpenClSource;
 }
 
-std::string_view GfxOpenClSourceArtifactPayload::backend_domain() const noexcept {
-    return "opencl";
+std::string_view
+GfxOpenClSourceArtifactPayload::backend_domain() const noexcept {
+  return "opencl";
 }
 
 std::string_view GfxOpenClSourceArtifactPayload::source_id() const noexcept {
-    return m_artifact.artifact_ref.source_id;
+  return m_artifact.artifact_ref.source_id;
 }
 
 std::string_view GfxOpenClSourceArtifactPayload::entry_point() const noexcept {
-    return m_artifact.artifact_ref.entry_point;
+  return m_artifact.artifact_ref.entry_point;
 }
 
 bool GfxOpenClSourceArtifactPayload::valid() const noexcept {
-    return m_artifact.valid &&
-           m_artifact.artifact_ref.valid &&
-           m_artifact.artifact_ref.kind == GfxKernelArtifactKind::OpenClSource &&
-           m_artifact.artifact_ref.backend_domain == GfxKernelBackendDomain::OpenCl &&
-           !m_artifact.source.empty();
+  return m_artifact.valid && m_artifact.artifact_ref.valid &&
+         m_artifact.artifact_ref.kind == GfxKernelArtifactKind::OpenClSource &&
+         m_artifact.artifact_ref.backend_domain ==
+             GfxKernelBackendDomain::OpenCl &&
+         !m_artifact.source.empty();
 }
 
 std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
-    const std::shared_ptr<const ov::Node>& node) {
-    if (!node || node->get_output_size() == 0) {
-        return std::nullopt;
-    }
-
-    const std::string type = node->get_type_name();
-    if (type == "Concat") {
-        auto dynamic_scalars = concat_dynamic_f16_scalars(node);
-        if (dynamic_scalars) {
-            std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-                GfxOpenClSourceScalarArg::ElementCount,
-                GfxOpenClSourceScalarArg::StaticU32};
-            for (size_t input_idx = 0; input_idx < dynamic_scalars->input_count; ++input_idx) {
-                scalar_args.push_back(input_dim_scalar_arg(input_idx, dynamic_scalars->axis));
-            }
-            std::vector<size_t> direct_input_indices;
-            direct_input_indices.reserve(dynamic_scalars->input_count);
-            for (size_t input_idx = 0; input_idx < dynamic_scalars->input_count; ++input_idx) {
-                direct_input_indices.push_back(input_idx);
-            }
-            const std::string entry_point =
-                "gfx_opencl_baseline_concat" +
-                std::to_string(dynamic_scalars->input_count) + "_f16";
-            auto manifest = make_opencl_baseline_manifest(
-                GfxKernelStageFamily::ConcatSplit,
-                "opencl:baseline:Concat:f16:dynamic_static_rank:inputs" +
-                    std::to_string(dynamic_scalars->input_count),
-                entry_point,
-                dynamic_scalars->input_count,
-                static_cast<uint32_t>(scalar_args.size()));
-            return make_opencl_baseline_artifact(
-                std::move(manifest),
-                "opencl/baseline/concat" +
-                    std::to_string(dynamic_scalars->input_count) + "_f16_dynamic",
-                std::move(scalar_args),
-                std::move(direct_input_indices),
-                GfxOpenClBaselineOp::Identity,
-                GfxOpenClBaselineInputMode::Direct,
-                0.0f,
-                {dynamic_scalars->inner});
-        }
-    }
-
-    if (type == "Broadcast") {
-        auto dynamic_scalars = broadcast_dynamic_f16_scalars(node);
-        if (dynamic_scalars) {
-            std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-                GfxOpenClSourceScalarArg::ElementCount,
-                GfxOpenClSourceScalarArg::StaticU32,
-                GfxOpenClSourceScalarArg::StaticU32};
-            for (uint32_t axis = 0; axis < 4; ++axis) {
-                scalar_args.push_back(input_dim_scalar_arg(0, axis));
-            }
-            auto manifest = make_opencl_baseline_manifest(
-                GfxKernelStageFamily::Layout,
-                "opencl:baseline:Broadcast:f16:i64shape:dynamic_static_rank",
-                "gfx_opencl_baseline_broadcast_f16_i64shape",
-                /*direct_inputs=*/2,
-                static_cast<uint32_t>(scalar_args.size()));
-            return make_opencl_baseline_artifact(
-                std::move(manifest),
-                "opencl/baseline/broadcast_f16_i64shape_dynamic",
-                std::move(scalar_args),
-                {0, 1},
-                GfxOpenClBaselineOp::Identity,
-                GfxOpenClBaselineInputMode::Direct,
-                0.0f,
-                {dynamic_scalars->rank, dynamic_scalars->input_rank});
-        }
-    }
-
-    if (type == "Select" && select_dynamic_f16_supported(node)) {
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::Eltwise,
-            "opencl:baseline:Select:bool_f16:dynamic_same_shape",
-            "gfx_opencl_baseline_select_f16",
-            /*direct_inputs=*/3,
-            /*scalar_arg_count=*/1);
-        return make_opencl_baseline_artifact(std::move(manifest),
-                                             "opencl/baseline/select_f16_dynamic",
-                                             {GfxOpenClSourceScalarArg::ElementCount},
-                                             {0, 1, 2},
-                                             GfxOpenClBaselineOp::Identity);
-    }
-
-    if (type == "Slice") {
-        auto dynamic_scalars = slice_v8_dynamic_f16_scalars(node);
-        if (dynamic_scalars) {
-            std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-                GfxOpenClSourceScalarArg::ElementCount,
-                GfxOpenClSourceScalarArg::StaticU32};
-            for (uint32_t axis = 0; axis < 4; ++axis) {
-                scalar_args.push_back(output0_dim_scalar_arg(axis));
-            }
-            for (uint32_t axis = 0; axis < 4; ++axis) {
-                scalar_args.push_back(input_dim_scalar_arg(0, axis));
-            }
-            auto manifest = make_opencl_baseline_manifest(
-                GfxKernelStageFamily::GatherScatter,
-                "opencl:baseline:Slice:f16:dynamic_static_rank",
-                "gfx_opencl_baseline_slice_v8_f16",
-                /*direct_inputs=*/4,
-                static_cast<uint32_t>(scalar_args.size()));
-            return make_opencl_baseline_artifact(std::move(manifest),
-                                                 "opencl/baseline/slice_v8_f16_dynamic",
-                                                 std::move(scalar_args),
-                                                 {0, 1, 2, 3},
-                                                 GfxOpenClBaselineOp::Identity,
-                                                 GfxOpenClBaselineInputMode::Direct,
-                                                 0.0f,
-                                                 {dynamic_scalars->rank});
-        }
-    }
-
-    if (type == "StridedSlice") {
-        auto runtime_scalars = strided_slice_runtime_f16_scalars(node);
-        if (runtime_scalars) {
-            std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-                GfxOpenClSourceScalarArg::ElementCount,
-                GfxOpenClSourceScalarArg::StaticU32};
-            for (uint32_t axis = 0; axis < 4; ++axis) {
-                scalar_args.push_back(output0_dim_scalar_arg(axis));
-            }
-            for (uint32_t axis = 0; axis < 4; ++axis) {
-                scalar_args.push_back(input_dim_scalar_arg(0, axis));
-            }
-            auto manifest = make_opencl_baseline_manifest(
-                GfxKernelStageFamily::GatherScatter,
-                "opencl:baseline:StridedSlice:f16:dynamic_runtime_static_rank",
-                "gfx_opencl_baseline_slice_v8_f16",
-                /*direct_inputs=*/4,
-                static_cast<uint32_t>(scalar_args.size()));
-            return make_opencl_baseline_artifact(std::move(manifest),
-                                                 "opencl/baseline/strided_slice_f16_dynamic_runtime",
-                                                 std::move(scalar_args),
-                                                 {0, 1, 2, 3},
-                                                 GfxOpenClBaselineOp::Identity,
-                                                 GfxOpenClBaselineInputMode::Direct,
-                                                 0.0f,
-                                                 {runtime_scalars->rank});
-        }
-
-        auto dynamic_scalars = strided_slice_dynamic_f16_scalars(node);
-        if (dynamic_scalars) {
-            std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-                GfxOpenClSourceScalarArg::ElementCount,
-                GfxOpenClSourceScalarArg::StaticU32};
-            for (uint32_t axis = 0; axis < 4; ++axis) {
-                scalar_args.push_back(output0_dim_scalar_arg(axis));
-            }
-            for (uint32_t axis = 0; axis < 4; ++axis) {
-                scalar_args.push_back(input_dim_scalar_arg(0, axis));
-            }
-            scalar_args.insert(scalar_args.end(),
-                               dynamic_scalars->begin.size() + dynamic_scalars->steps.size(),
-                               GfxOpenClSourceScalarArg::StaticU32);
-            std::vector<uint32_t> static_scalars = {dynamic_scalars->rank};
-            static_scalars.insert(static_scalars.end(),
-                                  dynamic_scalars->begin.begin(),
-                                  dynamic_scalars->begin.end());
-            static_scalars.insert(static_scalars.end(),
-                                  dynamic_scalars->steps.begin(),
-                                  dynamic_scalars->steps.end());
-            auto manifest = make_opencl_baseline_manifest(
-                GfxKernelStageFamily::GatherScatter,
-                "opencl:baseline:StridedSlice:f16:dynamic_static_rank",
-                "gfx_opencl_baseline_slice_f16",
-                /*direct_inputs=*/2,
-                static_cast<uint32_t>(scalar_args.size()));
-            return make_opencl_baseline_artifact(std::move(manifest),
-                                                 "opencl/baseline/slice_f16_dynamic",
-                                                 std::move(scalar_args),
-                                                 {0, 2},
-                                                 GfxOpenClBaselineOp::Identity,
-                                                 GfxOpenClBaselineInputMode::Direct,
-                                                 0.0f,
-                                                 std::move(static_scalars));
-        }
-    }
-
-    if (type == "Range" && range_dynamic_i64_unit_supported(node)) {
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::GatherScatter,
-            "opencl:baseline:Range:i64:dynamic_unit",
-            "gfx_opencl_baseline_range_i64_unit",
-            /*direct_inputs=*/1,
-            /*scalar_arg_count=*/1);
-        return make_opencl_baseline_artifact(std::move(manifest),
-                                             "opencl/baseline/range_i64_unit_dynamic",
-                                             {GfxOpenClSourceScalarArg::ElementCount},
-                                             {1},
-                                             GfxOpenClBaselineOp::Identity);
-    }
-
-    if (type == "Tile") {
-        auto static_u32_scalars = tile_static_u32_scalars(node);
-        const bool f16 = is_f16_tensor_type(node->get_input_element_type(0));
-        const std::string type_suffix = f16 ? "f16" : "f32";
-        if (!static_u32_scalars) {
-            auto rank = tile_dynamic_static_rank(node);
-            if (!rank) {
-                return std::nullopt;
-            }
-            auto scalar_args = tile_dynamic_shape_scalar_args();
-            auto manifest = make_opencl_baseline_manifest(
-                GfxKernelStageFamily::Layout,
-                "opencl:baseline:Tile:" + type_suffix + ":dynamic_static_rank",
-                "gfx_opencl_baseline_tile_dynamic_" + type_suffix,
-                /*direct_inputs=*/1,
-                static_cast<uint32_t>(scalar_args.size()));
-            return make_opencl_baseline_artifact(std::move(manifest),
-                                                 "opencl/baseline/tile_dynamic_" + type_suffix,
-                                                 std::move(scalar_args),
-                                                 {0},
-                                                 GfxOpenClBaselineOp::Identity,
-                                                 GfxOpenClBaselineInputMode::Direct,
-                                                 0.0f,
-                                                 {*rank});
-        }
-        std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-            GfxOpenClSourceScalarArg::ElementCount};
-        scalar_args.insert(scalar_args.end(),
-                           static_u32_scalars->size(),
-                           GfxOpenClSourceScalarArg::StaticU32);
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::Layout,
-            "opencl:baseline:Tile:" + type_suffix,
-            "gfx_opencl_baseline_tile_" + type_suffix,
-            /*direct_inputs=*/1,
-            static_cast<uint32_t>(scalar_args.size()));
-        return make_opencl_baseline_artifact(std::move(manifest),
-                                             "opencl/baseline/tile_" + type_suffix,
-                                             std::move(scalar_args),
-                                             {0},
-                                             GfxOpenClBaselineOp::Identity,
-                                             GfxOpenClBaselineInputMode::Direct,
-                                             0.0f,
-                                             std::move(*static_u32_scalars));
-    }
-
-    if (type == "Softmax") {
-        const auto element_type = node->get_input_element_type(0);
-        if (!is_f32_tensor_type(element_type) && !is_f16_tensor_type(element_type)) {
-            return std::nullopt;
-        }
-        const std::string type_suffix = opencl_scalar_type_suffix(element_type);
-        if (auto static_u32_scalars = softmax_static_u32_scalars(node)) {
-            std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-                GfxOpenClSourceScalarArg::ElementCount};
-            scalar_args.insert(scalar_args.end(),
-                               static_u32_scalars->size(),
-                               GfxOpenClSourceScalarArg::StaticU32);
-            auto manifest = make_opencl_baseline_manifest(
-                GfxKernelStageFamily::Softmax,
-                "opencl:baseline:Softmax:" + type_suffix,
-                "gfx_opencl_baseline_softmax_" + type_suffix,
-                /*direct_inputs=*/1,
-                static_cast<uint32_t>(scalar_args.size()));
-            return make_opencl_baseline_artifact(std::move(manifest),
-                                                 "opencl/baseline/softmax_" + type_suffix,
-                                                 std::move(scalar_args),
-                                                 {0},
-                                                 GfxOpenClBaselineOp::Identity,
-                                                 GfxOpenClBaselineInputMode::Direct,
-                                                 0.0f,
-                                                 std::move(*static_u32_scalars));
-        }
-        if (auto dynamic_static_rank = softmax_dynamic_static_rank_scalars(node)) {
-            auto scalar_args = softmax_dynamic_shape_scalar_args();
-            auto manifest = make_opencl_baseline_manifest(
-                GfxKernelStageFamily::Softmax,
-                "opencl:baseline:Softmax:" + type_suffix + ":dynamic_static_rank",
-                "gfx_opencl_baseline_softmax_dynamic_" + type_suffix,
-                /*direct_inputs=*/1,
-                static_cast<uint32_t>(scalar_args.size()));
-            return make_opencl_baseline_artifact(
-                std::move(manifest),
-                "opencl/baseline/softmax_" + type_suffix + "_dynamic_static_rank",
-                std::move(scalar_args),
-                {0},
-                GfxOpenClBaselineOp::Identity,
-                GfxOpenClBaselineInputMode::Direct,
-                0.0f,
-                std::move(*dynamic_static_rank));
-        }
-        return std::nullopt;
-    }
-
-    if (type == "Interpolate") {
-        auto metadata = opencl_interpolate_artifact_metadata(node);
-        if (!metadata) {
-            return std::nullopt;
-        }
-        std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-            GfxOpenClSourceScalarArg::ElementCount,
-            GfxOpenClSourceScalarArg::StaticU32,
-            GfxOpenClSourceScalarArg::StaticU32,
-            GfxOpenClSourceScalarArg::StaticU32,
-            GfxOpenClSourceScalarArg::StaticU32,
-            GfxOpenClSourceScalarArg::Input0Dim0,
-            GfxOpenClSourceScalarArg::Input0Dim1,
-            GfxOpenClSourceScalarArg::Input0Dim2,
-            GfxOpenClSourceScalarArg::Input0Dim3,
-            GfxOpenClSourceScalarArg::Output0Dim2,
-            GfxOpenClSourceScalarArg::Output0Dim3};
-        const std::string entry_point =
-            "gfx_opencl_generated_interpolate_" + metadata->type_suffix;
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::Layout,
-            "opencl:generated:Interpolate:" + metadata->type_suffix,
-            entry_point,
-            /*direct_inputs=*/1,
-            static_cast<uint32_t>(scalar_args.size()));
-        return make_opencl_baseline_artifact(
-            std::move(manifest),
-            "opencl/generated/interpolate_" + metadata->type_suffix,
-            std::move(scalar_args),
-            {0},
-            GfxOpenClBaselineOp::Identity,
-            GfxOpenClBaselineInputMode::Direct,
-            0.0f,
-            {metadata->nearest,
-             metadata->align_corners,
-             metadata->use_half_pixel,
-             metadata->nearest_mode});
-    }
-
-    if (!node->get_output_partial_shape(0).is_static()) {
-        return std::nullopt;
-    }
-
-    if (is_linear_copy_op(type)) {
-        if (node->get_input_size() < 1 ||
-            !is_f32_tensor_type(node->get_output_element_type(0)) ||
-            !is_f32_tensor_type(node->get_input_element_type(0)) ||
-            !same_static_element_count_input_output(node, 0, 0)) {
-            return std::nullopt;
-        }
-        auto manifest = make_opencl_baseline_manifest(
-            type == "Convert" ? GfxKernelStageFamily::Convert : GfxKernelStageFamily::Layout,
-            "opencl:baseline:" + type + ":f32:linear_copy",
-            "gfx_opencl_baseline_unary_f32",
-            /*direct_inputs=*/1,
-            /*scalar_arg_count=*/2);
-        return make_opencl_baseline_artifact(std::move(manifest),
-                                             "opencl/baseline/linear_copy_f32",
-                                             {GfxOpenClSourceScalarArg::ElementCount,
-                                              GfxOpenClSourceScalarArg::OpCode},
-                                             {0},
-                                             GfxOpenClBaselineOp::Identity);
-    }
-
-    if (type == "Convert") {
-        if (node->get_input_size() != 1 ||
-            !same_static_element_count_input_output(node, 0, 0)) {
-            return std::nullopt;
-        }
-        const auto input_type = node->get_input_element_type(0);
-        const auto output_type = node->get_output_element_type(0);
-        if (!is_opencl_convert_tensor_type(input_type) ||
-            !is_opencl_convert_tensor_type(output_type)) {
-            return std::nullopt;
-        }
-        const std::string input_suffix = opencl_scalar_type_suffix(input_type);
-        const std::string output_suffix = opencl_scalar_type_suffix(output_type);
-        const std::string suffix = input_suffix + "_to_" + output_suffix;
-        const std::string entry_point =
-            "gfx_opencl_baseline_convert_" + suffix;
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::Convert,
-            "opencl:baseline:Convert:" + suffix,
-            entry_point,
-            /*direct_inputs=*/1,
-            /*scalar_arg_count=*/1);
-        return make_opencl_baseline_artifact(std::move(manifest),
-                                             "opencl/baseline/convert_" + suffix,
-                                             {GfxOpenClSourceScalarArg::ElementCount},
-                                             {0},
-                                             GfxOpenClBaselineOp::Identity);
-    }
-
-    if (type == "MatMul") {
-        auto static_u32_scalars = matmul_static_u32_scalars(node);
-        if (!static_u32_scalars) {
-            return std::nullopt;
-        }
-        std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-            GfxOpenClSourceScalarArg::ElementCount};
-        scalar_args.insert(scalar_args.end(),
-                           static_u32_scalars->size(),
-                           GfxOpenClSourceScalarArg::StaticU32);
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::Gemm,
-            "opencl:generated:MatMul:f32",
-            "gfx_opencl_generated_matmul_f32",
-            /*direct_inputs=*/2,
-            static_cast<uint32_t>(scalar_args.size()));
-        return make_opencl_baseline_artifact(std::move(manifest),
-                                             "opencl/generated/matmul_f32",
-                                             std::move(scalar_args),
-                                             {0, 1},
-                                             GfxOpenClBaselineOp::Identity,
-                                             GfxOpenClBaselineInputMode::Direct,
-                                             0.0f,
-                                             std::move(*static_u32_scalars));
-    }
-
-    if (type == "Transpose") {
-        if (node->get_input_size() != 2 ||
-            !is_f32_tensor_type(node->get_output_element_type(0)) ||
-            !is_f32_tensor_type(node->get_input_element_type(0))) {
-            return std::nullopt;
-        }
-        auto static_u32_scalars = transpose_static_u32_scalars(node);
-        if (!static_u32_scalars) {
-            return std::nullopt;
-        }
-        std::vector<GfxOpenClSourceScalarArg> scalar_args;
-        scalar_args.reserve(1 + static_u32_scalars->size());
-        scalar_args.push_back(GfxOpenClSourceScalarArg::ElementCount);
-        scalar_args.insert(scalar_args.end(),
-                           static_u32_scalars->size(),
-                           GfxOpenClSourceScalarArg::StaticU32);
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::Transpose,
-            "opencl:baseline:Transpose:f32:rank" +
-                std::to_string(static_u32_scalars->front()),
-            "gfx_opencl_baseline_transpose_f32",
-            /*direct_inputs=*/1,
-            static_cast<uint32_t>(scalar_args.size()));
-        return make_opencl_baseline_artifact(std::move(manifest),
-                                             "opencl/baseline/transpose_f32",
-                                             std::move(scalar_args),
-                                             {0},
-                                             GfxOpenClBaselineOp::Identity,
-                                             GfxOpenClBaselineInputMode::Direct,
-                                             0.0f,
-                                             std::move(*static_u32_scalars));
-    }
-
-    if (type == "Slice" || type == "StridedSlice") {
-        auto static_u32_scalars = type == "Slice"
-                                      ? slice_static_u32_scalars(node)
-                                      : strided_slice_static_u32_scalars(node);
-        if (!static_u32_scalars) {
-            return std::nullopt;
-        }
-        std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-            GfxOpenClSourceScalarArg::ElementCount};
-        scalar_args.insert(scalar_args.end(),
-                           static_u32_scalars->size(),
-                           GfxOpenClSourceScalarArg::StaticU32);
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::GatherScatter,
-            "opencl:baseline:" + type + ":f32:rank" +
-                std::to_string(static_u32_scalars->front()),
-            "gfx_opencl_baseline_slice_f32",
-            /*direct_inputs=*/1,
-            static_cast<uint32_t>(scalar_args.size()));
-        return make_opencl_baseline_artifact(std::move(manifest),
-                                             "opencl/baseline/slice_f32",
-                                             std::move(scalar_args),
-                                             {0},
-                                             GfxOpenClBaselineOp::Identity,
-                                             GfxOpenClBaselineInputMode::Direct,
-                                             0.0f,
-                                             std::move(*static_u32_scalars));
-    }
-
-    if (type == "Range") {
-        if (!range_has_baseline_source_artifact(node)) {
-            return std::nullopt;
-        }
-        const auto output_type = node->get_output_element_type(0);
-        const std::string type_suffix = opencl_range_type_suffix(output_type);
-        const std::string entry_point = "gfx_opencl_baseline_range_" + type_suffix;
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::GatherScatter,
-            "opencl:baseline:Range:" + type_suffix,
-            entry_point,
-            /*direct_inputs=*/3,
-            /*scalar_arg_count=*/1);
-        return make_opencl_baseline_artifact(std::move(manifest),
-                                             "opencl/baseline/range_" + type_suffix,
-                                             {GfxOpenClSourceScalarArg::ElementCount},
-                                             {0, 1, 2},
-                                             GfxOpenClBaselineOp::Identity,
-                                             GfxOpenClBaselineInputMode::Direct);
-    }
-
-    if (type == "Gather") {
-        auto static_u32_scalars = gather_static_u32_scalars(node);
-        if (!static_u32_scalars) {
-            return std::nullopt;
-        }
-        const auto indices_type = node->get_input_element_type(1);
-        const bool indices_i64 = indices_type == ov::element::i64;
-        std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-            GfxOpenClSourceScalarArg::ElementCount};
-        scalar_args.insert(scalar_args.end(),
-                           static_u32_scalars->size(),
-                           GfxOpenClSourceScalarArg::StaticU32);
-        const std::string entry_point =
-            indices_i64 ? "gfx_opencl_baseline_gather_i64_f32"
-                        : "gfx_opencl_baseline_gather_i32_f32";
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::GatherScatter,
-            "opencl:baseline:Gather:" +
-                std::string(indices_i64 ? "i64" : "i32") + ":f32",
-            entry_point,
-            /*direct_inputs=*/2,
-            static_cast<uint32_t>(scalar_args.size()));
-        return make_opencl_baseline_artifact(
-            std::move(manifest),
-            indices_i64 ? "opencl/baseline/gather_i64_f32"
-                        : "opencl/baseline/gather_i32_f32",
-            std::move(scalar_args),
-            {0, 1},
-            GfxOpenClBaselineOp::Identity,
-            GfxOpenClBaselineInputMode::Direct,
-            0.0f,
-            std::move(*static_u32_scalars));
-    }
-
-    if (type == "GatherElements") {
-        auto static_u32_scalars = gather_elements_static_u32_scalars(node);
-        if (!static_u32_scalars) {
-            return std::nullopt;
-        }
-        const auto indices_type = node->get_input_element_type(1);
-        const bool indices_i64 = indices_type == ov::element::i64;
-        std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-            GfxOpenClSourceScalarArg::ElementCount};
-        scalar_args.insert(scalar_args.end(),
-                           static_u32_scalars->size(),
-                           GfxOpenClSourceScalarArg::StaticU32);
-        const std::string entry_point =
-            indices_i64 ? "gfx_opencl_baseline_gather_elements_i64_f32"
-                        : "gfx_opencl_baseline_gather_elements_i32_f32";
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::GatherScatter,
-            "opencl:baseline:GatherElements:" +
-                std::string(indices_i64 ? "i64" : "i32") + ":f32",
-            entry_point,
-            /*direct_inputs=*/2,
-            static_cast<uint32_t>(scalar_args.size()));
-        return make_opencl_baseline_artifact(
-            std::move(manifest),
-            indices_i64 ? "opencl/baseline/gather_elements_i64_f32"
-                        : "opencl/baseline/gather_elements_i32_f32",
-            std::move(scalar_args),
-            {0, 1},
-            GfxOpenClBaselineOp::Identity,
-            GfxOpenClBaselineInputMode::Direct,
-            0.0f,
-            std::move(*static_u32_scalars));
-    }
-
-    if (type == "GatherND") {
-        auto static_u32_scalars = gather_nd_static_u32_scalars(node);
-        if (!static_u32_scalars) {
-            return std::nullopt;
-        }
-        const auto indices_type = node->get_input_element_type(1);
-        const bool indices_i64 = indices_type == ov::element::i64;
-        std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-            GfxOpenClSourceScalarArg::ElementCount};
-        scalar_args.insert(scalar_args.end(),
-                           static_u32_scalars->size(),
-                           GfxOpenClSourceScalarArg::StaticU32);
-        const std::string entry_point =
-            indices_i64 ? "gfx_opencl_baseline_gather_nd_i64_f32"
-                        : "gfx_opencl_baseline_gather_nd_i32_f32";
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::GatherScatter,
-            "opencl:baseline:GatherND:" +
-                std::string(indices_i64 ? "i64" : "i32") + ":f32",
-            entry_point,
-            /*direct_inputs=*/2,
-            static_cast<uint32_t>(scalar_args.size()));
-        return make_opencl_baseline_artifact(
-            std::move(manifest),
-            indices_i64 ? "opencl/baseline/gather_nd_i64_f32"
-                        : "opencl/baseline/gather_nd_i32_f32",
-            std::move(scalar_args),
-            {0, 1},
-            GfxOpenClBaselineOp::Identity,
-            GfxOpenClBaselineInputMode::Direct,
-            0.0f,
-            std::move(*static_u32_scalars));
-    }
-
-    if (type == "ScatterUpdate") {
-        auto static_u32_scalars = scatter_update_static_u32_scalars(node);
-        if (!static_u32_scalars) {
-            return std::nullopt;
-        }
-        const auto indices_type = node->get_input_element_type(1);
-        const bool indices_i64 = indices_type == ov::element::i64;
-        std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-            GfxOpenClSourceScalarArg::ElementCount};
-        scalar_args.insert(scalar_args.end(),
-                           static_u32_scalars->size(),
-                           GfxOpenClSourceScalarArg::StaticU32);
-        const std::string entry_point =
-            indices_i64 ? "gfx_opencl_baseline_scatter_update_i64_f32"
-                        : "gfx_opencl_baseline_scatter_update_i32_f32";
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::GatherScatter,
-            "opencl:baseline:ScatterUpdate:" +
-                std::string(indices_i64 ? "i64" : "i32") + ":f32",
-            entry_point,
-            /*direct_inputs=*/3,
-            static_cast<uint32_t>(scalar_args.size()));
-        return make_opencl_baseline_artifact(
-            std::move(manifest),
-            indices_i64 ? "opencl/baseline/scatter_update_i64_f32"
-                        : "opencl/baseline/scatter_update_i32_f32",
-            std::move(scalar_args),
-            {0, 1, 2},
-            GfxOpenClBaselineOp::Identity,
-            GfxOpenClBaselineInputMode::Direct,
-            0.0f,
-            std::move(*static_u32_scalars));
-    }
-
-    if (type == "ScatterElementsUpdate") {
-        auto static_u32_scalars = scatter_elements_static_u32_scalars(node);
-        if (!static_u32_scalars) {
-            return std::nullopt;
-        }
-        const auto indices_type = node->get_input_element_type(1);
-        const bool indices_i64 = indices_type == ov::element::i64;
-        std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-            GfxOpenClSourceScalarArg::ElementCount};
-        scalar_args.insert(scalar_args.end(),
-                           static_u32_scalars->size(),
-                           GfxOpenClSourceScalarArg::StaticU32);
-        const std::string entry_point =
-            indices_i64 ? "gfx_opencl_baseline_scatter_elements_i64_f32"
-                        : "gfx_opencl_baseline_scatter_elements_i32_f32";
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::GatherScatter,
-            "opencl:baseline:ScatterElementsUpdate:" +
-                std::string(indices_i64 ? "i64" : "i32") + ":f32",
-            entry_point,
-            /*direct_inputs=*/3,
-            static_cast<uint32_t>(scalar_args.size()));
-        return make_opencl_baseline_artifact(
-            std::move(manifest),
-            indices_i64 ? "opencl/baseline/scatter_elements_i64_f32"
-                        : "opencl/baseline/scatter_elements_i32_f32",
-            std::move(scalar_args),
-            {0, 1, 2},
-            GfxOpenClBaselineOp::Identity,
-            GfxOpenClBaselineInputMode::Direct,
-            0.0f,
-            std::move(*static_u32_scalars));
-    }
-
-    if (type == "ScatterNDUpdate") {
-        auto static_u32_scalars = scatter_nd_static_u32_scalars(node);
-        if (!static_u32_scalars) {
-            return std::nullopt;
-        }
-        const auto indices_type = node->get_input_element_type(1);
-        const bool indices_i64 = indices_type == ov::element::i64;
-        std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-            GfxOpenClSourceScalarArg::ElementCount};
-        scalar_args.insert(scalar_args.end(),
-                           static_u32_scalars->size(),
-                           GfxOpenClSourceScalarArg::StaticU32);
-        const std::string entry_point =
-            indices_i64 ? "gfx_opencl_baseline_scatter_nd_i64_f32"
-                        : "gfx_opencl_baseline_scatter_nd_i32_f32";
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::GatherScatter,
-            "opencl:baseline:ScatterNDUpdate:" +
-                std::string(indices_i64 ? "i64" : "i32") + ":f32",
-            entry_point,
-            /*direct_inputs=*/3,
-            static_cast<uint32_t>(scalar_args.size()));
-        return make_opencl_baseline_artifact(
-            std::move(manifest),
-            indices_i64 ? "opencl/baseline/scatter_nd_i64_f32"
-                        : "opencl/baseline/scatter_nd_i32_f32",
-            std::move(scalar_args),
-            {0, 1, 2},
-            GfxOpenClBaselineOp::Identity,
-            GfxOpenClBaselineInputMode::Direct,
-            0.0f,
-            std::move(*static_u32_scalars));
-    }
-
-    if (type == "ShapeOf") {
-        auto rank = shapeof_rank(node);
-        if (!rank) {
-            return std::nullopt;
-        }
-        const auto output_type = node->get_output_element_type(0);
-        const bool output_i64 = is_i64_tensor_type(output_type);
-        std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-            GfxOpenClSourceScalarArg::ElementCount};
-        scalar_args.reserve(9);
-        for (uint32_t axis = 0; axis < 8; ++axis) {
-            scalar_args.push_back(static_cast<GfxOpenClSourceScalarArg>(
-                static_cast<uint32_t>(GfxOpenClSourceScalarArg::Input0Dim0) + axis));
-        }
-        const std::string entry_point =
-            output_i64 ? "gfx_opencl_baseline_shapeof_i64"
-                       : "gfx_opencl_baseline_shapeof_i32";
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::GatherScatter,
-            "opencl:baseline:ShapeOf:" +
-                std::string(output_i64 ? "i64" : "i32") + ":rank" +
-                std::to_string(*rank),
-            entry_point,
-            /*direct_inputs=*/1,
-            static_cast<uint32_t>(scalar_args.size()));
-        return make_opencl_baseline_artifact(
-            std::move(manifest),
-            output_i64 ? "opencl/baseline/shapeof_i64"
-                       : "opencl/baseline/shapeof_i32",
-            std::move(scalar_args),
-            {0},
-            GfxOpenClBaselineOp::Identity,
-            GfxOpenClBaselineInputMode::Direct);
-    }
-
-    if (type == "Concat") {
-        auto static_u32_scalars = concat_static_u32_scalars(node);
-        if (!static_u32_scalars) {
-            return std::nullopt;
-        }
-        std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-            GfxOpenClSourceScalarArg::ElementCount};
-        const std::string entry_point =
-            "gfx_opencl_baseline_concat" +
-            std::to_string(static_u32_scalars->input_count) + "_" +
-            static_u32_scalars->type_suffix;
-        std::vector<size_t> direct_input_indices;
-        direct_input_indices.reserve(static_u32_scalars->input_count);
-        for (size_t input_idx = 0;
-             input_idx < static_u32_scalars->input_count;
-             ++input_idx) {
-            direct_input_indices.push_back(input_idx);
-        }
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::ConcatSplit,
-            "opencl:baseline:Concat:" + static_u32_scalars->type_suffix + ":inputs" +
-                std::to_string(static_u32_scalars->input_count),
-            entry_point,
-            static_u32_scalars->input_count,
-            static_cast<uint32_t>(scalar_args.size()));
-        return make_opencl_baseline_artifact(
-            std::move(manifest),
-            "opencl/baseline/concat" +
-                std::to_string(static_u32_scalars->input_count) + "_" +
-                static_u32_scalars->type_suffix,
-            std::move(scalar_args),
-            std::move(direct_input_indices),
-            GfxOpenClBaselineOp::Identity,
-            GfxOpenClBaselineInputMode::Direct,
-            0.0f,
-            std::move(static_u32_scalars->values));
-    }
-
-    if (type == "Split" || type == "VariadicSplit") {
-        auto static_u32_scalars = type == "Split"
-                                      ? split_static_u32_scalars(node)
-                                      : variadic_split_static_u32_scalars(node);
-        if (!static_u32_scalars) {
-            return std::nullopt;
-        }
-        std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-            GfxOpenClSourceScalarArg::ElementCount};
-        const std::string entry_point =
-            "gfx_opencl_baseline_split" +
-            std::to_string(static_u32_scalars->output_count) + "_" +
-            static_u32_scalars->type_suffix;
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::ConcatSplit,
-            "opencl:baseline:" + type + ":" +
-                static_u32_scalars->type_suffix + ":outputs" +
-                std::to_string(static_u32_scalars->output_count),
-            entry_point,
-            /*direct_inputs=*/1,
-            static_cast<uint32_t>(scalar_args.size()),
-            static_u32_scalars->output_count);
-        return make_opencl_baseline_artifact(
-            std::move(manifest),
-            "opencl/baseline/split" +
-                std::to_string(static_u32_scalars->output_count) + "_" +
-                static_u32_scalars->type_suffix,
-            std::move(scalar_args),
-            {0},
-            GfxOpenClBaselineOp::Identity,
-            GfxOpenClBaselineInputMode::Direct,
-            0.0f,
-            std::move(static_u32_scalars->values),
-            GfxOpenClSourceElementCountSource::Input0);
-    }
-
-    if (auto activation_artifact = make_opencl_activation_artifact(node)) {
-        return activation_artifact;
-    }
-    if (activation_op_code(node)) {
-        return std::nullopt;
-    }
-
-    if (auto eltwise_artifact = make_opencl_eltwise_artifact(node)) {
-        return eltwise_artifact;
-    }
-    if (binary_op_code(node)) {
-        return std::nullopt;
-    }
-
-    if (auto op = compare_op_code(type)) {
-        if (node->get_input_size() != 2 ||
-            !is_bool_tensor_type(node->get_output_element_type(0)) ||
-            !is_f32_tensor_type(node->get_input_element_type(0)) ||
-            !is_f32_tensor_type(node->get_input_element_type(1))) {
-            return std::nullopt;
-        }
-        if (same_static_shape(node, 0, 1) &&
-            input_static_element_count_matches_output(node, 0, 0) &&
-            input_static_element_count_matches_output(node, 1, 0)) {
-            auto manifest = make_opencl_baseline_manifest(
-                GfxKernelStageFamily::Eltwise,
-                "opencl:baseline:" + type + ":f32:same_shape",
-                "gfx_opencl_baseline_compare_f32",
-                /*direct_inputs=*/2,
-                /*scalar_arg_count=*/2);
-            return make_opencl_baseline_artifact(std::move(manifest),
-                                                 "opencl/baseline/compare_f32",
-                                                 {GfxOpenClSourceScalarArg::ElementCount,
-                                                  GfxOpenClSourceScalarArg::OpCode},
-                                                 {0, 1},
-                                                 *op);
-        }
-        auto static_u32_scalars = compare_broadcast_static_u32_scalars(node);
-        if (static_u32_scalars) {
-            std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-                GfxOpenClSourceScalarArg::ElementCount,
-                GfxOpenClSourceScalarArg::OpCode};
-            scalar_args.insert(scalar_args.end(),
-                               static_u32_scalars->size(),
-                               GfxOpenClSourceScalarArg::StaticU32);
-            auto manifest = make_opencl_baseline_manifest(
-                GfxKernelStageFamily::Eltwise,
-                "opencl:baseline:" + type + ":f32:broadcast",
-                "gfx_opencl_baseline_compare_broadcast_f32",
-                /*direct_inputs=*/2,
-                static_cast<uint32_t>(scalar_args.size()));
-            return make_opencl_baseline_artifact(
-                std::move(manifest),
-                "opencl/baseline/compare_broadcast_f32",
-                std::move(scalar_args),
-                {0, 1},
-                *op,
-                GfxOpenClBaselineInputMode::Direct,
-                0.0f,
-                std::move(*static_u32_scalars));
-        }
-        return std::nullopt;
-    }
-
-    if (type == "Select") {
-        if (node->get_input_size() != 3 ||
-            !is_f32_tensor_type(node->get_output_element_type(0)) ||
-            !is_bool_tensor_type(node->get_input_element_type(0)) ||
-            !is_f32_tensor_type(node->get_input_element_type(1)) ||
-            !is_f32_tensor_type(node->get_input_element_type(2))) {
-            return std::nullopt;
-        }
-        if (input_static_element_count_matches_output(node, 0, 0) &&
-            input_static_element_count_matches_output(node, 1, 0) &&
-            input_static_element_count_matches_output(node, 2, 0)) {
-            auto manifest = make_opencl_baseline_manifest(
-                GfxKernelStageFamily::Eltwise,
-                "opencl:baseline:Select:bool_f32:same_shape",
-                "gfx_opencl_baseline_select_f32",
-                /*direct_inputs=*/3,
-                /*scalar_arg_count=*/1);
-            return make_opencl_baseline_artifact(std::move(manifest),
-                                                 "opencl/baseline/select_f32",
-                                                 {GfxOpenClSourceScalarArg::ElementCount},
-                                                 {0, 1, 2},
-                                                 GfxOpenClBaselineOp::Identity);
-        }
-        auto static_u32_scalars = select_broadcast_static_u32_scalars(node);
-        if (static_u32_scalars) {
-            std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-                GfxOpenClSourceScalarArg::ElementCount};
-            scalar_args.insert(scalar_args.end(),
-                               static_u32_scalars->size(),
-                               GfxOpenClSourceScalarArg::StaticU32);
-            auto manifest = make_opencl_baseline_manifest(
-                GfxKernelStageFamily::Eltwise,
-                "opencl:baseline:Select:bool_f32:broadcast",
-                "gfx_opencl_baseline_select_broadcast_f32",
-                /*direct_inputs=*/3,
-                static_cast<uint32_t>(scalar_args.size()));
-            return make_opencl_baseline_artifact(
-                std::move(manifest),
-                "opencl/baseline/select_broadcast_f32",
-                std::move(scalar_args),
-                {0, 1, 2},
-                GfxOpenClBaselineOp::Identity,
-                GfxOpenClBaselineInputMode::Direct,
-                0.0f,
-                std::move(*static_u32_scalars));
-        }
-        return std::nullopt;
-    }
-
-    if (auto op = logical_unary_op_code(type)) {
-        if (node->get_input_size() != 1 ||
-            !is_bool_tensor_type(node->get_output_element_type(0)) ||
-            !is_bool_tensor_type(node->get_input_element_type(0)) ||
-            !input_static_element_count_matches_output(node, 0, 0)) {
-            return std::nullopt;
-        }
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::Eltwise,
-            "opencl:baseline:" + type + ":bool:same_shape",
-            "gfx_opencl_baseline_logical_unary_bool",
-            /*direct_inputs=*/1,
-            /*scalar_arg_count=*/2);
-        return make_opencl_baseline_artifact(std::move(manifest),
-                                             "opencl/baseline/logical_unary_bool",
-                                             {GfxOpenClSourceScalarArg::ElementCount,
-                                              GfxOpenClSourceScalarArg::OpCode},
-                                             {0},
-                                             *op);
-    }
-
-    if (auto op = logical_binary_op_code(type)) {
-        if (node->get_input_size() != 2 ||
-            !is_bool_tensor_type(node->get_output_element_type(0)) ||
-            !is_bool_tensor_type(node->get_input_element_type(0)) ||
-            !is_bool_tensor_type(node->get_input_element_type(1))) {
-            return std::nullopt;
-        }
-        if (same_static_shape(node, 0, 1) &&
-            input_static_element_count_matches_output(node, 0, 0) &&
-            input_static_element_count_matches_output(node, 1, 0)) {
-            auto manifest = make_opencl_baseline_manifest(
-                GfxKernelStageFamily::Eltwise,
-                "opencl:baseline:" + type + ":bool:same_shape",
-                "gfx_opencl_baseline_logical_binary_bool",
-                /*direct_inputs=*/2,
-                /*scalar_arg_count=*/2);
-            return make_opencl_baseline_artifact(std::move(manifest),
-                                                 "opencl/baseline/logical_binary_bool",
-                                                 {GfxOpenClSourceScalarArg::ElementCount,
-                                                  GfxOpenClSourceScalarArg::OpCode},
-                                                 {0, 1},
-                                                 *op);
-        }
-        auto static_u32_scalars = logical_binary_broadcast_static_u32_scalars(node);
-        if (static_u32_scalars) {
-            std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-                GfxOpenClSourceScalarArg::ElementCount,
-                GfxOpenClSourceScalarArg::OpCode};
-            scalar_args.insert(scalar_args.end(),
-                               static_u32_scalars->size(),
-                               GfxOpenClSourceScalarArg::StaticU32);
-            auto manifest = make_opencl_baseline_manifest(
-                GfxKernelStageFamily::Eltwise,
-                "opencl:baseline:" + type + ":bool:broadcast",
-                "gfx_opencl_baseline_logical_binary_broadcast_bool",
-                /*direct_inputs=*/2,
-                static_cast<uint32_t>(scalar_args.size()));
-            return make_opencl_baseline_artifact(
-                std::move(manifest),
-                "opencl/baseline/logical_binary_broadcast_bool",
-                std::move(scalar_args),
-                {0, 1},
-                *op,
-                GfxOpenClBaselineInputMode::Direct,
-                0.0f,
-                std::move(*static_u32_scalars));
-        }
-        return std::nullopt;
-    }
-
-    if (auto op = reduce_logical_op_code(type)) {
-        if (node->get_input_size() != 2 ||
-            !is_bool_tensor_type(node->get_output_element_type(0)) ||
-            !is_bool_tensor_type(node->get_input_element_type(0))) {
-            return std::nullopt;
-        }
-        auto static_u32_scalars = reduce_logical_static_u32_scalars(node);
-        if (!static_u32_scalars) {
-            return std::nullopt;
-        }
-        std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-            GfxOpenClSourceScalarArg::ElementCount,
-            GfxOpenClSourceScalarArg::OpCode};
-        scalar_args.insert(scalar_args.end(),
-                           static_u32_scalars->size(),
-                           GfxOpenClSourceScalarArg::StaticU32);
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::Reduction,
-            "opencl:baseline:" + type + ":bool:static_axes",
-            "gfx_opencl_baseline_reduce_logical_bool",
-            /*direct_inputs=*/1,
-            static_cast<uint32_t>(scalar_args.size()));
-        return make_opencl_baseline_artifact(
-            std::move(manifest),
-            "opencl/baseline/reduce_logical_bool",
-            std::move(scalar_args),
-            {0},
-            *op,
-            GfxOpenClBaselineInputMode::Direct,
-            0.0f,
-            std::move(*static_u32_scalars));
-    }
-
+    const std::shared_ptr<const ov::Node> &node) {
+  if (!node || node->get_output_size() == 0) {
     return std::nullopt;
-}
+  }
 
-std::optional<GfxOpenClSourceArtifact> make_gfx_opencl_concat_chunk_source_artifact(
-    const GfxOpenClSourceArtifact& base_artifact,
-    uint32_t input_begin,
-    uint32_t input_count) {
-    if (!base_artifact.valid ||
-        input_count < 1 ||
-        input_count > 4 ||
-        base_artifact.direct_output_count != 1 ||
-        base_artifact.direct_input_indices.size() != base_artifact.direct_input_count) {
-        return std::nullopt;
+  const std::string type = node->get_type_name();
+  if (type == "Concat") {
+    auto dynamic_scalars = concat_dynamic_f16_scalars(node);
+    if (dynamic_scalars) {
+      std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+          GfxOpenClSourceScalarArg::ElementCount,
+          GfxOpenClSourceScalarArg::StaticU32};
+      for (size_t input_idx = 0; input_idx < dynamic_scalars->input_count;
+           ++input_idx) {
+        scalar_args.push_back(
+            input_dim_scalar_arg(input_idx, dynamic_scalars->axis));
+      }
+      std::vector<size_t> direct_input_indices;
+      direct_input_indices.reserve(dynamic_scalars->input_count);
+      for (size_t input_idx = 0; input_idx < dynamic_scalars->input_count;
+           ++input_idx) {
+        direct_input_indices.push_back(input_idx);
+      }
+      const std::string entry_point =
+          "gfx_opencl_baseline_concat" +
+          std::to_string(dynamic_scalars->input_count) + "_f16";
+      auto manifest = make_opencl_baseline_manifest(
+          GfxKernelStageFamily::ConcatSplit,
+          "opencl:baseline:Concat:f16:dynamic_static_rank:inputs" +
+              std::to_string(dynamic_scalars->input_count),
+          entry_point, dynamic_scalars->input_count,
+          static_cast<uint32_t>(scalar_args.size()));
+      return make_opencl_baseline_artifact(
+          std::move(manifest),
+          "opencl/baseline/concat" +
+              std::to_string(dynamic_scalars->input_count) + "_f16_dynamic",
+          std::move(scalar_args), std::move(direct_input_indices),
+          GfxOpenClBaselineOp::Identity, GfxOpenClBaselineInputMode::Direct,
+          0.0f, {dynamic_scalars->inner});
     }
+  }
 
-    std::string type_suffix;
-    auto total_inputs =
-        concat_input_count_from_entry_point(base_artifact.artifact_ref.entry_point, "f32");
-    if (total_inputs) {
-        type_suffix = "f32";
-    } else {
-        total_inputs =
-            concat_input_count_from_entry_point(base_artifact.artifact_ref.entry_point, "f16");
-        if (!total_inputs) {
-            return std::nullopt;
-        }
-        type_suffix = "f16";
+  if (type == "Broadcast") {
+    auto dynamic_scalars = broadcast_dynamic_f16_scalars(node);
+    if (dynamic_scalars) {
+      std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+          GfxOpenClSourceScalarArg::ElementCount,
+          GfxOpenClSourceScalarArg::StaticU32,
+          GfxOpenClSourceScalarArg::StaticU32};
+      for (uint32_t axis = 0; axis < 4; ++axis) {
+        scalar_args.push_back(input_dim_scalar_arg(0, axis));
+      }
+      auto manifest = make_opencl_baseline_manifest(
+          GfxKernelStageFamily::Layout,
+          "opencl:baseline:Broadcast:f16:i64shape:dynamic_static_rank",
+          "gfx_opencl_baseline_broadcast_f16_i64shape",
+          /*direct_inputs=*/2, static_cast<uint32_t>(scalar_args.size()));
+      return make_opencl_baseline_artifact(
+          std::move(manifest), "opencl/baseline/broadcast_f16_i64shape_dynamic",
+          std::move(scalar_args), {0, 1}, GfxOpenClBaselineOp::Identity,
+          GfxOpenClBaselineInputMode::Direct, 0.0f,
+          {dynamic_scalars->rank, dynamic_scalars->input_rank});
     }
-    if (input_begin >= *total_inputs ||
-        input_begin + input_count > *total_inputs ||
-        base_artifact.direct_input_count != *total_inputs ||
-        base_artifact.source_static_u32_scalars.size() !=
-            2 + static_cast<size_t>(*total_inputs) * 2) {
-        return std::nullopt;
-    }
+  }
 
-    std::vector<uint32_t> chunk_static_u32_scalars = {
-        base_artifact.source_static_u32_scalars[0],
-        base_artifact.source_static_u32_scalars[1],
-    };
-    chunk_static_u32_scalars.reserve(2 + static_cast<size_t>(input_count) * 2);
-    for (uint32_t local_input = 0; local_input < input_count; ++local_input) {
-        const size_t source_idx =
-            2 + static_cast<size_t>(input_begin + local_input) * 2;
-        chunk_static_u32_scalars.push_back(
-            base_artifact.source_static_u32_scalars[source_idx]);
-        chunk_static_u32_scalars.push_back(
-            base_artifact.source_static_u32_scalars[source_idx + 1]);
-    }
-
-    std::vector<size_t> direct_input_indices;
-    direct_input_indices.reserve(input_count);
-    for (uint32_t local_input = 0; local_input < input_count; ++local_input) {
-        direct_input_indices.push_back(
-            base_artifact.direct_input_indices[input_begin + local_input]);
-    }
-
-    const std::string entry_point =
-        "gfx_opencl_baseline_concat" + std::to_string(input_count) + "_" +
-        type_suffix;
+  if (type == "Select" && select_dynamic_f16_supported(node)) {
     auto manifest = make_opencl_baseline_manifest(
-        base_artifact.stage_manifest.stage_family,
-        base_artifact.stage_manifest.specialization_key + ":chunk" +
-            std::to_string(input_begin) + "x" + std::to_string(input_count),
-        entry_point,
-        input_count,
+        GfxKernelStageFamily::Eltwise,
+        "opencl:baseline:Select:bool_f16:dynamic_same_shape",
+        "gfx_opencl_baseline_select_f16",
+        /*direct_inputs=*/3,
         /*scalar_arg_count=*/1);
     return make_opencl_baseline_artifact(
-        std::move(manifest),
-        base_artifact.artifact_ref.source_id + "/chunk" +
-            std::to_string(input_begin) + "x" + std::to_string(input_count),
-        {GfxOpenClSourceScalarArg::ElementCount},
-        std::move(direct_input_indices),
-        base_artifact.op,
-        base_artifact.input_mode,
-        base_artifact.scalar_constant_f32,
-        std::move(chunk_static_u32_scalars),
-        base_artifact.element_count_source);
-}
+        std::move(manifest), "opencl/baseline/select_f16_dynamic",
+        {GfxOpenClSourceScalarArg::ElementCount}, {0, 1, 2},
+        GfxOpenClBaselineOp::Identity);
+  }
 
-std::optional<GfxOpenClSourceArtifact> make_gfx_opencl_split_chunk_source_artifact(
-    const GfxOpenClSourceArtifact& base_artifact,
-    uint32_t output_begin,
-    uint32_t output_count) {
-    if (!base_artifact.valid ||
-        output_count < 1 ||
-        output_count > 4 ||
-        base_artifact.direct_input_count != 1 ||
-        base_artifact.direct_input_indices.empty()) {
+  if (type == "Slice") {
+    auto dynamic_scalars = slice_v8_dynamic_f16_scalars(node);
+    if (dynamic_scalars) {
+      std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+          GfxOpenClSourceScalarArg::ElementCount,
+          GfxOpenClSourceScalarArg::StaticU32};
+      for (uint32_t axis = 0; axis < 4; ++axis) {
+        scalar_args.push_back(output0_dim_scalar_arg(axis));
+      }
+      for (uint32_t axis = 0; axis < 4; ++axis) {
+        scalar_args.push_back(input_dim_scalar_arg(0, axis));
+      }
+      auto manifest = make_opencl_baseline_manifest(
+          GfxKernelStageFamily::GatherScatter,
+          "opencl:baseline:Slice:f16:dynamic_static_rank",
+          "gfx_opencl_baseline_slice_v8_f16",
+          /*direct_inputs=*/4, static_cast<uint32_t>(scalar_args.size()));
+      return make_opencl_baseline_artifact(
+          std::move(manifest), "opencl/baseline/slice_v8_f16_dynamic",
+          std::move(scalar_args), {0, 1, 2, 3}, GfxOpenClBaselineOp::Identity,
+          GfxOpenClBaselineInputMode::Direct, 0.0f, {dynamic_scalars->rank});
+    }
+  }
+
+  if (type == "StridedSlice") {
+    auto runtime_scalars = strided_slice_runtime_f16_scalars(node);
+    if (runtime_scalars) {
+      std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+          GfxOpenClSourceScalarArg::ElementCount,
+          GfxOpenClSourceScalarArg::StaticU32};
+      for (uint32_t axis = 0; axis < 4; ++axis) {
+        scalar_args.push_back(output0_dim_scalar_arg(axis));
+      }
+      for (uint32_t axis = 0; axis < 4; ++axis) {
+        scalar_args.push_back(input_dim_scalar_arg(0, axis));
+      }
+      auto manifest = make_opencl_baseline_manifest(
+          GfxKernelStageFamily::GatherScatter,
+          "opencl:baseline:StridedSlice:f16:dynamic_runtime_static_rank",
+          "gfx_opencl_baseline_slice_v8_f16",
+          /*direct_inputs=*/4, static_cast<uint32_t>(scalar_args.size()));
+      return make_opencl_baseline_artifact(
+          std::move(manifest),
+          "opencl/baseline/strided_slice_f16_dynamic_runtime",
+          std::move(scalar_args), {0, 1, 2, 3}, GfxOpenClBaselineOp::Identity,
+          GfxOpenClBaselineInputMode::Direct, 0.0f, {runtime_scalars->rank});
+    }
+
+    auto dynamic_scalars = strided_slice_dynamic_f16_scalars(node);
+    if (dynamic_scalars) {
+      std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+          GfxOpenClSourceScalarArg::ElementCount,
+          GfxOpenClSourceScalarArg::StaticU32};
+      for (uint32_t axis = 0; axis < 4; ++axis) {
+        scalar_args.push_back(output0_dim_scalar_arg(axis));
+      }
+      for (uint32_t axis = 0; axis < 4; ++axis) {
+        scalar_args.push_back(input_dim_scalar_arg(0, axis));
+      }
+      scalar_args.insert(scalar_args.end(),
+                         dynamic_scalars->begin.size() +
+                             dynamic_scalars->steps.size(),
+                         GfxOpenClSourceScalarArg::StaticU32);
+      std::vector<uint32_t> static_scalars = {dynamic_scalars->rank};
+      static_scalars.insert(static_scalars.end(),
+                            dynamic_scalars->begin.begin(),
+                            dynamic_scalars->begin.end());
+      static_scalars.insert(static_scalars.end(),
+                            dynamic_scalars->steps.begin(),
+                            dynamic_scalars->steps.end());
+      auto manifest = make_opencl_baseline_manifest(
+          GfxKernelStageFamily::GatherScatter,
+          "opencl:baseline:StridedSlice:f16:dynamic_static_rank",
+          "gfx_opencl_baseline_slice_f16",
+          /*direct_inputs=*/2, static_cast<uint32_t>(scalar_args.size()));
+      return make_opencl_baseline_artifact(
+          std::move(manifest), "opencl/baseline/slice_f16_dynamic",
+          std::move(scalar_args), {0, 2}, GfxOpenClBaselineOp::Identity,
+          GfxOpenClBaselineInputMode::Direct, 0.0f, std::move(static_scalars));
+    }
+  }
+
+  if (type == "Range" && range_dynamic_i64_unit_supported(node)) {
+    auto manifest =
+        make_opencl_baseline_manifest(GfxKernelStageFamily::GatherScatter,
+                                      "opencl:baseline:Range:i64:dynamic_unit",
+                                      "gfx_opencl_baseline_range_i64_unit",
+                                      /*direct_inputs=*/1,
+                                      /*scalar_arg_count=*/1);
+    return make_opencl_baseline_artifact(
+        std::move(manifest), "opencl/baseline/range_i64_unit_dynamic",
+        {GfxOpenClSourceScalarArg::ElementCount}, {1},
+        GfxOpenClBaselineOp::Identity);
+  }
+
+  if (type == "Tile") {
+    auto static_u32_scalars = tile_static_u32_scalars(node);
+    const bool f16 = is_f16_tensor_type(node->get_input_element_type(0));
+    const std::string type_suffix = f16 ? "f16" : "f32";
+    if (!static_u32_scalars) {
+      auto rank = tile_dynamic_static_rank(node);
+      if (!rank) {
         return std::nullopt;
+      }
+      auto scalar_args = tile_dynamic_shape_scalar_args();
+      auto manifest = make_opencl_baseline_manifest(
+          GfxKernelStageFamily::Layout,
+          "opencl:baseline:Tile:" + type_suffix + ":dynamic_static_rank",
+          "gfx_opencl_baseline_tile_dynamic_" + type_suffix,
+          /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
+      return make_opencl_baseline_artifact(
+          std::move(manifest), "opencl/baseline/tile_dynamic_" + type_suffix,
+          std::move(scalar_args), {0}, GfxOpenClBaselineOp::Identity,
+          GfxOpenClBaselineInputMode::Direct, 0.0f, {*rank});
     }
-
-    std::string type_suffix;
-    auto total_outputs =
-        split_output_count_from_entry_point(base_artifact.artifact_ref.entry_point, "f32");
-    if (total_outputs) {
-        type_suffix = "f32";
-    } else {
-        total_outputs =
-            split_output_count_from_entry_point(base_artifact.artifact_ref.entry_point, "f16");
-        if (!total_outputs) {
-            return std::nullopt;
-        }
-        type_suffix = "f16";
-    }
-    if (output_begin >= *total_outputs ||
-        output_begin + output_count > *total_outputs ||
-        base_artifact.source_static_u32_scalars.size() !=
-            2 + static_cast<size_t>(*total_outputs) * 2) {
-        return std::nullopt;
-    }
-
-    std::vector<uint32_t> chunk_static_u32_scalars = {
-        base_artifact.source_static_u32_scalars[0],
-        base_artifact.source_static_u32_scalars[1],
-    };
-    chunk_static_u32_scalars.reserve(2 + static_cast<size_t>(output_count) * 2);
-    for (uint32_t local_output = 0; local_output < output_count; ++local_output) {
-        const size_t source_idx =
-            2 + static_cast<size_t>(output_begin + local_output) * 2;
-        chunk_static_u32_scalars.push_back(
-            base_artifact.source_static_u32_scalars[source_idx]);
-        chunk_static_u32_scalars.push_back(
-            base_artifact.source_static_u32_scalars[source_idx + 1]);
-    }
-
-    const std::string entry_point =
-        "gfx_opencl_baseline_split" + std::to_string(output_count) + "_" +
-        type_suffix;
+    std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+        GfxOpenClSourceScalarArg::ElementCount};
+    scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
+                       GfxOpenClSourceScalarArg::StaticU32);
     auto manifest = make_opencl_baseline_manifest(
-        base_artifact.stage_manifest.stage_family,
-        base_artifact.stage_manifest.specialization_key + ":chunk" +
-            std::to_string(output_begin) + "x" + std::to_string(output_count),
-        entry_point,
-        /*direct_inputs=*/1,
-        /*scalar_arg_count=*/1,
-        output_count);
+        GfxKernelStageFamily::Layout, "opencl:baseline:Tile:" + type_suffix,
+        "gfx_opencl_baseline_tile_" + type_suffix,
+        /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
+    return make_opencl_baseline_artifact(
+        std::move(manifest), "opencl/baseline/tile_" + type_suffix,
+        std::move(scalar_args), {0}, GfxOpenClBaselineOp::Identity,
+        GfxOpenClBaselineInputMode::Direct, 0.0f,
+        std::move(*static_u32_scalars));
+  }
+
+  if (type == "Softmax") {
+    const auto element_type = node->get_input_element_type(0);
+    if (!is_f32_tensor_type(element_type) &&
+        !is_f16_tensor_type(element_type)) {
+      return std::nullopt;
+    }
+    const std::string type_suffix = opencl_scalar_type_suffix(element_type);
+    if (auto static_u32_scalars = softmax_static_u32_scalars(node)) {
+      std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+          GfxOpenClSourceScalarArg::ElementCount};
+      scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
+                         GfxOpenClSourceScalarArg::StaticU32);
+      auto manifest = make_opencl_baseline_manifest(
+          GfxKernelStageFamily::Softmax,
+          "opencl:baseline:Softmax:" + type_suffix,
+          "gfx_opencl_baseline_softmax_" + type_suffix,
+          /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
+      return make_opencl_baseline_artifact(
+          std::move(manifest), "opencl/baseline/softmax_" + type_suffix,
+          std::move(scalar_args), {0}, GfxOpenClBaselineOp::Identity,
+          GfxOpenClBaselineInputMode::Direct, 0.0f,
+          std::move(*static_u32_scalars));
+    }
+    if (auto dynamic_static_rank = softmax_dynamic_static_rank_scalars(node)) {
+      auto scalar_args = softmax_dynamic_shape_scalar_args();
+      auto manifest = make_opencl_baseline_manifest(
+          GfxKernelStageFamily::Softmax,
+          "opencl:baseline:Softmax:" + type_suffix + ":dynamic_static_rank",
+          "gfx_opencl_baseline_softmax_dynamic_" + type_suffix,
+          /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
+      return make_opencl_baseline_artifact(
+          std::move(manifest),
+          "opencl/baseline/softmax_" + type_suffix + "_dynamic_static_rank",
+          std::move(scalar_args), {0}, GfxOpenClBaselineOp::Identity,
+          GfxOpenClBaselineInputMode::Direct, 0.0f,
+          std::move(*dynamic_static_rank));
+    }
+    return std::nullopt;
+  }
+
+  if (type == "Interpolate") {
+    auto metadata = opencl_interpolate_artifact_metadata(node);
+    if (!metadata) {
+      return std::nullopt;
+    }
+    std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+        GfxOpenClSourceScalarArg::ElementCount,
+        GfxOpenClSourceScalarArg::StaticU32,
+        GfxOpenClSourceScalarArg::StaticU32,
+        GfxOpenClSourceScalarArg::StaticU32,
+        GfxOpenClSourceScalarArg::StaticU32,
+        GfxOpenClSourceScalarArg::Input0Dim0,
+        GfxOpenClSourceScalarArg::Input0Dim1,
+        GfxOpenClSourceScalarArg::Input0Dim2,
+        GfxOpenClSourceScalarArg::Input0Dim3,
+        GfxOpenClSourceScalarArg::Output0Dim2,
+        GfxOpenClSourceScalarArg::Output0Dim3};
+    const std::string entry_point =
+        "gfx_opencl_generated_interpolate_" + metadata->type_suffix;
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::Layout,
+        "opencl:generated:Interpolate:" + metadata->type_suffix, entry_point,
+        /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
     return make_opencl_baseline_artifact(
         std::move(manifest),
-        base_artifact.artifact_ref.source_id + "/chunk" +
-            std::to_string(output_begin) + "x" + std::to_string(output_count),
-        {GfxOpenClSourceScalarArg::ElementCount},
-        base_artifact.direct_input_indices,
-        base_artifact.op,
-        base_artifact.input_mode,
-        base_artifact.scalar_constant_f32,
-        std::move(chunk_static_u32_scalars),
-        base_artifact.element_count_source);
+        "opencl/generated/interpolate_" + metadata->type_suffix,
+        std::move(scalar_args), {0}, GfxOpenClBaselineOp::Identity,
+        GfxOpenClBaselineInputMode::Direct, 0.0f,
+        {metadata->nearest, metadata->align_corners, metadata->use_half_pixel,
+         metadata->nearest_mode});
+  }
+
+  if (!node->get_output_partial_shape(0).is_static()) {
+    return std::nullopt;
+  }
+
+  if (is_linear_copy_op(type)) {
+    if (node->get_input_size() < 1 ||
+        !is_f32_tensor_type(node->get_output_element_type(0)) ||
+        !is_f32_tensor_type(node->get_input_element_type(0)) ||
+        !same_static_element_count_input_output(node, 0, 0)) {
+      return std::nullopt;
+    }
+    auto manifest = make_opencl_baseline_manifest(
+        type == "Convert" ? GfxKernelStageFamily::Convert
+                          : GfxKernelStageFamily::Layout,
+        "opencl:baseline:" + type + ":f32:linear_copy",
+        "gfx_opencl_baseline_unary_f32",
+        /*direct_inputs=*/1,
+        /*scalar_arg_count=*/2);
+    return make_opencl_baseline_artifact(
+        std::move(manifest), "opencl/baseline/linear_copy_f32",
+        {GfxOpenClSourceScalarArg::ElementCount,
+         GfxOpenClSourceScalarArg::OpCode},
+        {0}, GfxOpenClBaselineOp::Identity);
+  }
+
+  if (type == "Convert") {
+    if (node->get_input_size() != 1 ||
+        !same_static_element_count_input_output(node, 0, 0)) {
+      return std::nullopt;
+    }
+    const auto input_type = node->get_input_element_type(0);
+    const auto output_type = node->get_output_element_type(0);
+    if (!is_opencl_convert_tensor_type(input_type) ||
+        !is_opencl_convert_tensor_type(output_type)) {
+      return std::nullopt;
+    }
+    const std::string input_suffix = opencl_scalar_type_suffix(input_type);
+    const std::string output_suffix = opencl_scalar_type_suffix(output_type);
+    const std::string suffix = input_suffix + "_to_" + output_suffix;
+    const std::string entry_point = "gfx_opencl_baseline_convert_" + suffix;
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::Convert, "opencl:baseline:Convert:" + suffix,
+        entry_point,
+        /*direct_inputs=*/1,
+        /*scalar_arg_count=*/1);
+    return make_opencl_baseline_artifact(
+        std::move(manifest), "opencl/baseline/convert_" + suffix,
+        {GfxOpenClSourceScalarArg::ElementCount}, {0},
+        GfxOpenClBaselineOp::Identity);
+  }
+
+  if (type == "MatMul") {
+    auto static_u32_scalars = matmul_static_u32_scalars(node);
+    if (!static_u32_scalars) {
+      return std::nullopt;
+    }
+    std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+        GfxOpenClSourceScalarArg::ElementCount};
+    scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
+                       GfxOpenClSourceScalarArg::StaticU32);
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::Gemm, "opencl:generated:MatMul:f32",
+        "gfx_opencl_generated_matmul_f32",
+        /*direct_inputs=*/2, static_cast<uint32_t>(scalar_args.size()));
+    return make_opencl_baseline_artifact(
+        std::move(manifest), "opencl/generated/matmul_f32",
+        std::move(scalar_args), {0, 1}, GfxOpenClBaselineOp::Identity,
+        GfxOpenClBaselineInputMode::Direct, 0.0f,
+        std::move(*static_u32_scalars));
+  }
+
+  if (type == "Transpose") {
+    if (node->get_input_size() != 2 ||
+        !is_f32_tensor_type(node->get_output_element_type(0)) ||
+        !is_f32_tensor_type(node->get_input_element_type(0))) {
+      return std::nullopt;
+    }
+    auto static_u32_scalars = transpose_static_u32_scalars(node);
+    if (!static_u32_scalars) {
+      return std::nullopt;
+    }
+    std::vector<GfxOpenClSourceScalarArg> scalar_args;
+    scalar_args.reserve(1 + static_u32_scalars->size());
+    scalar_args.push_back(GfxOpenClSourceScalarArg::ElementCount);
+    scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
+                       GfxOpenClSourceScalarArg::StaticU32);
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::Transpose,
+        "opencl:baseline:Transpose:f32:rank" +
+            std::to_string(static_u32_scalars->front()),
+        "gfx_opencl_baseline_transpose_f32",
+        /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
+    return make_opencl_baseline_artifact(
+        std::move(manifest), "opencl/baseline/transpose_f32",
+        std::move(scalar_args), {0}, GfxOpenClBaselineOp::Identity,
+        GfxOpenClBaselineInputMode::Direct, 0.0f,
+        std::move(*static_u32_scalars));
+  }
+
+  if (type == "Slice" || type == "StridedSlice") {
+    auto static_u32_scalars = type == "Slice"
+                                  ? slice_static_u32_scalars(node)
+                                  : strided_slice_static_u32_scalars(node);
+    if (!static_u32_scalars) {
+      return std::nullopt;
+    }
+    std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+        GfxOpenClSourceScalarArg::ElementCount};
+    scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
+                       GfxOpenClSourceScalarArg::StaticU32);
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::GatherScatter,
+        "opencl:baseline:" + type + ":f32:rank" +
+            std::to_string(static_u32_scalars->front()),
+        "gfx_opencl_baseline_slice_f32",
+        /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
+    return make_opencl_baseline_artifact(
+        std::move(manifest), "opencl/baseline/slice_f32",
+        std::move(scalar_args), {0}, GfxOpenClBaselineOp::Identity,
+        GfxOpenClBaselineInputMode::Direct, 0.0f,
+        std::move(*static_u32_scalars));
+  }
+
+  if (type == "Range") {
+    if (!range_has_baseline_source_artifact(node)) {
+      return std::nullopt;
+    }
+    const auto output_type = node->get_output_element_type(0);
+    const std::string type_suffix = opencl_range_type_suffix(output_type);
+    const std::string entry_point = "gfx_opencl_baseline_range_" + type_suffix;
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::GatherScatter,
+        "opencl:baseline:Range:" + type_suffix, entry_point,
+        /*direct_inputs=*/3,
+        /*scalar_arg_count=*/1);
+    return make_opencl_baseline_artifact(
+        std::move(manifest), "opencl/baseline/range_" + type_suffix,
+        {GfxOpenClSourceScalarArg::ElementCount}, {0, 1, 2},
+        GfxOpenClBaselineOp::Identity, GfxOpenClBaselineInputMode::Direct);
+  }
+
+  if (type == "Gather") {
+    auto static_u32_scalars = gather_static_u32_scalars(node);
+    if (!static_u32_scalars) {
+      return std::nullopt;
+    }
+    const auto indices_type = node->get_input_element_type(1);
+    const bool indices_i64 = indices_type == ov::element::i64;
+    std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+        GfxOpenClSourceScalarArg::ElementCount};
+    scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
+                       GfxOpenClSourceScalarArg::StaticU32);
+    const std::string entry_point = indices_i64
+                                        ? "gfx_opencl_baseline_gather_i64_f32"
+                                        : "gfx_opencl_baseline_gather_i32_f32";
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::GatherScatter,
+        "opencl:baseline:Gather:" + std::string(indices_i64 ? "i64" : "i32") +
+            ":f32",
+        entry_point,
+        /*direct_inputs=*/2, static_cast<uint32_t>(scalar_args.size()));
+    return make_opencl_baseline_artifact(
+        std::move(manifest),
+        indices_i64 ? "opencl/baseline/gather_i64_f32"
+                    : "opencl/baseline/gather_i32_f32",
+        std::move(scalar_args), {0, 1}, GfxOpenClBaselineOp::Identity,
+        GfxOpenClBaselineInputMode::Direct, 0.0f,
+        std::move(*static_u32_scalars));
+  }
+
+  if (type == "GatherElements") {
+    auto static_u32_scalars = gather_elements_static_u32_scalars(node);
+    if (!static_u32_scalars) {
+      return std::nullopt;
+    }
+    const auto indices_type = node->get_input_element_type(1);
+    const bool indices_i64 = indices_type == ov::element::i64;
+    std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+        GfxOpenClSourceScalarArg::ElementCount};
+    scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
+                       GfxOpenClSourceScalarArg::StaticU32);
+    const std::string entry_point =
+        indices_i64 ? "gfx_opencl_baseline_gather_elements_i64_f32"
+                    : "gfx_opencl_baseline_gather_elements_i32_f32";
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::GatherScatter,
+        "opencl:baseline:GatherElements:" +
+            std::string(indices_i64 ? "i64" : "i32") + ":f32",
+        entry_point,
+        /*direct_inputs=*/2, static_cast<uint32_t>(scalar_args.size()));
+    return make_opencl_baseline_artifact(
+        std::move(manifest),
+        indices_i64 ? "opencl/baseline/gather_elements_i64_f32"
+                    : "opencl/baseline/gather_elements_i32_f32",
+        std::move(scalar_args), {0, 1}, GfxOpenClBaselineOp::Identity,
+        GfxOpenClBaselineInputMode::Direct, 0.0f,
+        std::move(*static_u32_scalars));
+  }
+
+  if (type == "GatherND") {
+    auto static_u32_scalars = gather_nd_static_u32_scalars(node);
+    if (!static_u32_scalars) {
+      return std::nullopt;
+    }
+    const auto indices_type = node->get_input_element_type(1);
+    const bool indices_i64 = indices_type == ov::element::i64;
+    std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+        GfxOpenClSourceScalarArg::ElementCount};
+    scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
+                       GfxOpenClSourceScalarArg::StaticU32);
+    const std::string entry_point =
+        indices_i64 ? "gfx_opencl_baseline_gather_nd_i64_f32"
+                    : "gfx_opencl_baseline_gather_nd_i32_f32";
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::GatherScatter,
+        "opencl:baseline:GatherND:" + std::string(indices_i64 ? "i64" : "i32") +
+            ":f32",
+        entry_point,
+        /*direct_inputs=*/2, static_cast<uint32_t>(scalar_args.size()));
+    return make_opencl_baseline_artifact(
+        std::move(manifest),
+        indices_i64 ? "opencl/baseline/gather_nd_i64_f32"
+                    : "opencl/baseline/gather_nd_i32_f32",
+        std::move(scalar_args), {0, 1}, GfxOpenClBaselineOp::Identity,
+        GfxOpenClBaselineInputMode::Direct, 0.0f,
+        std::move(*static_u32_scalars));
+  }
+
+  if (type == "ScatterUpdate") {
+    auto static_u32_scalars = scatter_update_static_u32_scalars(node);
+    if (!static_u32_scalars) {
+      return std::nullopt;
+    }
+    const auto indices_type = node->get_input_element_type(1);
+    const bool indices_i64 = indices_type == ov::element::i64;
+    std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+        GfxOpenClSourceScalarArg::ElementCount};
+    scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
+                       GfxOpenClSourceScalarArg::StaticU32);
+    const std::string entry_point =
+        indices_i64 ? "gfx_opencl_baseline_scatter_update_i64_f32"
+                    : "gfx_opencl_baseline_scatter_update_i32_f32";
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::GatherScatter,
+        "opencl:baseline:ScatterUpdate:" +
+            std::string(indices_i64 ? "i64" : "i32") + ":f32",
+        entry_point,
+        /*direct_inputs=*/3, static_cast<uint32_t>(scalar_args.size()));
+    return make_opencl_baseline_artifact(
+        std::move(manifest),
+        indices_i64 ? "opencl/baseline/scatter_update_i64_f32"
+                    : "opencl/baseline/scatter_update_i32_f32",
+        std::move(scalar_args), {0, 1, 2}, GfxOpenClBaselineOp::Identity,
+        GfxOpenClBaselineInputMode::Direct, 0.0f,
+        std::move(*static_u32_scalars));
+  }
+
+  if (type == "ScatterElementsUpdate") {
+    auto static_u32_scalars = scatter_elements_static_u32_scalars(node);
+    if (!static_u32_scalars) {
+      return std::nullopt;
+    }
+    const auto indices_type = node->get_input_element_type(1);
+    const bool indices_i64 = indices_type == ov::element::i64;
+    std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+        GfxOpenClSourceScalarArg::ElementCount};
+    scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
+                       GfxOpenClSourceScalarArg::StaticU32);
+    const std::string entry_point =
+        indices_i64 ? "gfx_opencl_baseline_scatter_elements_i64_f32"
+                    : "gfx_opencl_baseline_scatter_elements_i32_f32";
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::GatherScatter,
+        "opencl:baseline:ScatterElementsUpdate:" +
+            std::string(indices_i64 ? "i64" : "i32") + ":f32",
+        entry_point,
+        /*direct_inputs=*/3, static_cast<uint32_t>(scalar_args.size()));
+    return make_opencl_baseline_artifact(
+        std::move(manifest),
+        indices_i64 ? "opencl/baseline/scatter_elements_i64_f32"
+                    : "opencl/baseline/scatter_elements_i32_f32",
+        std::move(scalar_args), {0, 1, 2}, GfxOpenClBaselineOp::Identity,
+        GfxOpenClBaselineInputMode::Direct, 0.0f,
+        std::move(*static_u32_scalars));
+  }
+
+  if (type == "ScatterNDUpdate") {
+    auto static_u32_scalars = scatter_nd_static_u32_scalars(node);
+    if (!static_u32_scalars) {
+      return std::nullopt;
+    }
+    const auto indices_type = node->get_input_element_type(1);
+    const bool indices_i64 = indices_type == ov::element::i64;
+    std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+        GfxOpenClSourceScalarArg::ElementCount};
+    scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
+                       GfxOpenClSourceScalarArg::StaticU32);
+    const std::string entry_point =
+        indices_i64 ? "gfx_opencl_baseline_scatter_nd_i64_f32"
+                    : "gfx_opencl_baseline_scatter_nd_i32_f32";
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::GatherScatter,
+        "opencl:baseline:ScatterNDUpdate:" +
+            std::string(indices_i64 ? "i64" : "i32") + ":f32",
+        entry_point,
+        /*direct_inputs=*/3, static_cast<uint32_t>(scalar_args.size()));
+    return make_opencl_baseline_artifact(
+        std::move(manifest),
+        indices_i64 ? "opencl/baseline/scatter_nd_i64_f32"
+                    : "opencl/baseline/scatter_nd_i32_f32",
+        std::move(scalar_args), {0, 1, 2}, GfxOpenClBaselineOp::Identity,
+        GfxOpenClBaselineInputMode::Direct, 0.0f,
+        std::move(*static_u32_scalars));
+  }
+
+  if (type == "ShapeOf") {
+    auto rank = shapeof_rank(node);
+    if (!rank) {
+      return std::nullopt;
+    }
+    const auto output_type = node->get_output_element_type(0);
+    const bool output_i64 = is_i64_tensor_type(output_type);
+    std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+        GfxOpenClSourceScalarArg::ElementCount};
+    scalar_args.reserve(9);
+    for (uint32_t axis = 0; axis < 8; ++axis) {
+      scalar_args.push_back(static_cast<GfxOpenClSourceScalarArg>(
+          static_cast<uint32_t>(GfxOpenClSourceScalarArg::Input0Dim0) + axis));
+    }
+    const std::string entry_point = output_i64
+                                        ? "gfx_opencl_baseline_shapeof_i64"
+                                        : "gfx_opencl_baseline_shapeof_i32";
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::GatherScatter,
+        "opencl:baseline:ShapeOf:" + std::string(output_i64 ? "i64" : "i32") +
+            ":rank" + std::to_string(*rank),
+        entry_point,
+        /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
+    return make_opencl_baseline_artifact(
+        std::move(manifest),
+        output_i64 ? "opencl/baseline/shapeof_i64"
+                   : "opencl/baseline/shapeof_i32",
+        std::move(scalar_args), {0}, GfxOpenClBaselineOp::Identity,
+        GfxOpenClBaselineInputMode::Direct);
+  }
+
+  if (type == "Concat") {
+    auto static_u32_scalars = concat_static_u32_scalars(node);
+    if (!static_u32_scalars) {
+      return std::nullopt;
+    }
+    std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+        GfxOpenClSourceScalarArg::ElementCount};
+    const std::string entry_point =
+        "gfx_opencl_baseline_concat" +
+        std::to_string(static_u32_scalars->input_count) + "_" +
+        static_u32_scalars->type_suffix;
+    std::vector<size_t> direct_input_indices;
+    direct_input_indices.reserve(static_u32_scalars->input_count);
+    for (size_t input_idx = 0; input_idx < static_u32_scalars->input_count;
+         ++input_idx) {
+      direct_input_indices.push_back(input_idx);
+    }
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::ConcatSplit,
+        "opencl:baseline:Concat:" + static_u32_scalars->type_suffix +
+            ":inputs" + std::to_string(static_u32_scalars->input_count),
+        entry_point, static_u32_scalars->input_count,
+        static_cast<uint32_t>(scalar_args.size()));
+    return make_opencl_baseline_artifact(
+        std::move(manifest),
+        "opencl/baseline/concat" +
+            std::to_string(static_u32_scalars->input_count) + "_" +
+            static_u32_scalars->type_suffix,
+        std::move(scalar_args), std::move(direct_input_indices),
+        GfxOpenClBaselineOp::Identity, GfxOpenClBaselineInputMode::Direct, 0.0f,
+        std::move(static_u32_scalars->values));
+  }
+
+  if (type == "Split" || type == "VariadicSplit") {
+    auto static_u32_scalars = type == "Split"
+                                  ? split_static_u32_scalars(node)
+                                  : variadic_split_static_u32_scalars(node);
+    if (!static_u32_scalars) {
+      return std::nullopt;
+    }
+    std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+        GfxOpenClSourceScalarArg::ElementCount};
+    const std::string entry_point =
+        "gfx_opencl_baseline_split" +
+        std::to_string(static_u32_scalars->output_count) + "_" +
+        static_u32_scalars->type_suffix;
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::ConcatSplit,
+        "opencl:baseline:" + type + ":" + static_u32_scalars->type_suffix +
+            ":outputs" + std::to_string(static_u32_scalars->output_count),
+        entry_point,
+        /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()),
+        static_u32_scalars->output_count);
+    return make_opencl_baseline_artifact(
+        std::move(manifest),
+        "opencl/baseline/split" +
+            std::to_string(static_u32_scalars->output_count) + "_" +
+            static_u32_scalars->type_suffix,
+        std::move(scalar_args), {0}, GfxOpenClBaselineOp::Identity,
+        GfxOpenClBaselineInputMode::Direct, 0.0f,
+        std::move(static_u32_scalars->values),
+        GfxOpenClSourceElementCountSource::Input0);
+  }
+
+  if (auto activation_artifact = make_opencl_activation_artifact(node)) {
+    return activation_artifact;
+  }
+  if (activation_op_code(node)) {
+    return std::nullopt;
+  }
+
+  if (auto eltwise_artifact = make_opencl_eltwise_artifact(node)) {
+    return eltwise_artifact;
+  }
+  if (binary_op_code(node)) {
+    return std::nullopt;
+  }
+
+  if (auto op = compare_op_code(type)) {
+    if (node->get_input_size() != 2 ||
+        !is_bool_tensor_type(node->get_output_element_type(0)) ||
+        !is_f32_tensor_type(node->get_input_element_type(0)) ||
+        !is_f32_tensor_type(node->get_input_element_type(1))) {
+      return std::nullopt;
+    }
+    if (same_static_shape(node, 0, 1) &&
+        input_static_element_count_matches_output(node, 0, 0) &&
+        input_static_element_count_matches_output(node, 1, 0)) {
+      auto manifest = make_opencl_baseline_manifest(
+          GfxKernelStageFamily::Eltwise,
+          "opencl:baseline:" + type + ":f32:same_shape",
+          "gfx_opencl_baseline_compare_f32",
+          /*direct_inputs=*/2,
+          /*scalar_arg_count=*/2);
+      return make_opencl_baseline_artifact(
+          std::move(manifest), "opencl/baseline/compare_f32",
+          {GfxOpenClSourceScalarArg::ElementCount,
+           GfxOpenClSourceScalarArg::OpCode},
+          {0, 1}, *op);
+    }
+    auto static_u32_scalars = compare_broadcast_static_u32_scalars(node);
+    if (static_u32_scalars) {
+      std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+          GfxOpenClSourceScalarArg::ElementCount,
+          GfxOpenClSourceScalarArg::OpCode};
+      scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
+                         GfxOpenClSourceScalarArg::StaticU32);
+      auto manifest = make_opencl_baseline_manifest(
+          GfxKernelStageFamily::Eltwise,
+          "opencl:baseline:" + type + ":f32:broadcast",
+          "gfx_opencl_baseline_compare_broadcast_f32",
+          /*direct_inputs=*/2, static_cast<uint32_t>(scalar_args.size()));
+      return make_opencl_baseline_artifact(
+          std::move(manifest), "opencl/baseline/compare_broadcast_f32",
+          std::move(scalar_args), {0, 1}, *op,
+          GfxOpenClBaselineInputMode::Direct, 0.0f,
+          std::move(*static_u32_scalars));
+    }
+    return std::nullopt;
+  }
+
+  if (type == "Select") {
+    if (node->get_input_size() != 3 ||
+        !is_f32_tensor_type(node->get_output_element_type(0)) ||
+        !is_bool_tensor_type(node->get_input_element_type(0)) ||
+        !is_f32_tensor_type(node->get_input_element_type(1)) ||
+        !is_f32_tensor_type(node->get_input_element_type(2))) {
+      return std::nullopt;
+    }
+    if (input_static_element_count_matches_output(node, 0, 0) &&
+        input_static_element_count_matches_output(node, 1, 0) &&
+        input_static_element_count_matches_output(node, 2, 0)) {
+      auto manifest = make_opencl_baseline_manifest(
+          GfxKernelStageFamily::Eltwise,
+          "opencl:baseline:Select:bool_f32:same_shape",
+          "gfx_opencl_baseline_select_f32",
+          /*direct_inputs=*/3,
+          /*scalar_arg_count=*/1);
+      return make_opencl_baseline_artifact(
+          std::move(manifest), "opencl/baseline/select_f32",
+          {GfxOpenClSourceScalarArg::ElementCount}, {0, 1, 2},
+          GfxOpenClBaselineOp::Identity);
+    }
+    auto static_u32_scalars = select_broadcast_static_u32_scalars(node);
+    if (static_u32_scalars) {
+      std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+          GfxOpenClSourceScalarArg::ElementCount};
+      scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
+                         GfxOpenClSourceScalarArg::StaticU32);
+      auto manifest = make_opencl_baseline_manifest(
+          GfxKernelStageFamily::Eltwise,
+          "opencl:baseline:Select:bool_f32:broadcast",
+          "gfx_opencl_baseline_select_broadcast_f32",
+          /*direct_inputs=*/3, static_cast<uint32_t>(scalar_args.size()));
+      return make_opencl_baseline_artifact(
+          std::move(manifest), "opencl/baseline/select_broadcast_f32",
+          std::move(scalar_args), {0, 1, 2}, GfxOpenClBaselineOp::Identity,
+          GfxOpenClBaselineInputMode::Direct, 0.0f,
+          std::move(*static_u32_scalars));
+    }
+    return std::nullopt;
+  }
+
+  if (auto op = logical_unary_op_code(type)) {
+    if (node->get_input_size() != 1 ||
+        !is_bool_tensor_type(node->get_output_element_type(0)) ||
+        !is_bool_tensor_type(node->get_input_element_type(0)) ||
+        !input_static_element_count_matches_output(node, 0, 0)) {
+      return std::nullopt;
+    }
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::Eltwise,
+        "opencl:baseline:" + type + ":bool:same_shape",
+        "gfx_opencl_baseline_logical_unary_bool",
+        /*direct_inputs=*/1,
+        /*scalar_arg_count=*/2);
+    return make_opencl_baseline_artifact(
+        std::move(manifest), "opencl/baseline/logical_unary_bool",
+        {GfxOpenClSourceScalarArg::ElementCount,
+         GfxOpenClSourceScalarArg::OpCode},
+        {0}, *op);
+  }
+
+  if (auto op = logical_binary_op_code(type)) {
+    if (node->get_input_size() != 2 ||
+        !is_bool_tensor_type(node->get_output_element_type(0)) ||
+        !is_bool_tensor_type(node->get_input_element_type(0)) ||
+        !is_bool_tensor_type(node->get_input_element_type(1))) {
+      return std::nullopt;
+    }
+    if (same_static_shape(node, 0, 1) &&
+        input_static_element_count_matches_output(node, 0, 0) &&
+        input_static_element_count_matches_output(node, 1, 0)) {
+      auto manifest = make_opencl_baseline_manifest(
+          GfxKernelStageFamily::Eltwise,
+          "opencl:baseline:" + type + ":bool:same_shape",
+          "gfx_opencl_baseline_logical_binary_bool",
+          /*direct_inputs=*/2,
+          /*scalar_arg_count=*/2);
+      return make_opencl_baseline_artifact(
+          std::move(manifest), "opencl/baseline/logical_binary_bool",
+          {GfxOpenClSourceScalarArg::ElementCount,
+           GfxOpenClSourceScalarArg::OpCode},
+          {0, 1}, *op);
+    }
+    auto static_u32_scalars = logical_binary_broadcast_static_u32_scalars(node);
+    if (static_u32_scalars) {
+      std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+          GfxOpenClSourceScalarArg::ElementCount,
+          GfxOpenClSourceScalarArg::OpCode};
+      scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
+                         GfxOpenClSourceScalarArg::StaticU32);
+      auto manifest = make_opencl_baseline_manifest(
+          GfxKernelStageFamily::Eltwise,
+          "opencl:baseline:" + type + ":bool:broadcast",
+          "gfx_opencl_baseline_logical_binary_broadcast_bool",
+          /*direct_inputs=*/2, static_cast<uint32_t>(scalar_args.size()));
+      return make_opencl_baseline_artifact(
+          std::move(manifest), "opencl/baseline/logical_binary_broadcast_bool",
+          std::move(scalar_args), {0, 1}, *op,
+          GfxOpenClBaselineInputMode::Direct, 0.0f,
+          std::move(*static_u32_scalars));
+    }
+    return std::nullopt;
+  }
+
+  if (auto op = reduce_logical_op_code(type)) {
+    if (node->get_input_size() != 2 ||
+        !is_bool_tensor_type(node->get_output_element_type(0)) ||
+        !is_bool_tensor_type(node->get_input_element_type(0))) {
+      return std::nullopt;
+    }
+    auto static_u32_scalars = reduce_logical_static_u32_scalars(node);
+    if (!static_u32_scalars) {
+      return std::nullopt;
+    }
+    std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+        GfxOpenClSourceScalarArg::ElementCount,
+        GfxOpenClSourceScalarArg::OpCode};
+    scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
+                       GfxOpenClSourceScalarArg::StaticU32);
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::Reduction,
+        "opencl:baseline:" + type + ":bool:static_axes",
+        "gfx_opencl_baseline_reduce_logical_bool",
+        /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
+    return make_opencl_baseline_artifact(
+        std::move(manifest), "opencl/baseline/reduce_logical_bool",
+        std::move(scalar_args), {0}, *op, GfxOpenClBaselineInputMode::Direct,
+        0.0f, std::move(*static_u32_scalars));
+  }
+
+  if (auto op = reduce_numeric_op_code(type)) {
+    if (node->get_input_size() != 2 ||
+        !is_f32_tensor_type(node->get_output_element_type(0)) ||
+        !is_f32_tensor_type(node->get_input_element_type(0))) {
+      return std::nullopt;
+    }
+    auto static_u32_scalars = reduce_numeric_static_u32_scalars(node);
+    if (!static_u32_scalars) {
+      return std::nullopt;
+    }
+    std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+        GfxOpenClSourceScalarArg::ElementCount,
+        GfxOpenClSourceScalarArg::OpCode};
+    scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
+                       GfxOpenClSourceScalarArg::StaticU32);
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::Reduction,
+        "opencl:generated:" + type + ":f32:static_axes",
+        "gfx_opencl_generated_reduction_f32",
+        /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
+    return make_opencl_baseline_artifact(
+        std::move(manifest), "opencl/generated/reduction_f32",
+        std::move(scalar_args), {0}, *op, GfxOpenClBaselineInputMode::Direct,
+        0.0f, std::move(*static_u32_scalars));
+  }
+
+  return std::nullopt;
+}
+
+std::optional<GfxOpenClSourceArtifact>
+make_gfx_opencl_concat_chunk_source_artifact(
+    const GfxOpenClSourceArtifact &base_artifact, uint32_t input_begin,
+    uint32_t input_count) {
+  if (!base_artifact.valid || input_count < 1 || input_count > 4 ||
+      base_artifact.direct_output_count != 1 ||
+      base_artifact.direct_input_indices.size() !=
+          base_artifact.direct_input_count) {
+    return std::nullopt;
+  }
+
+  std::string type_suffix;
+  auto total_inputs = concat_input_count_from_entry_point(
+      base_artifact.artifact_ref.entry_point, "f32");
+  if (total_inputs) {
+    type_suffix = "f32";
+  } else {
+    total_inputs = concat_input_count_from_entry_point(
+        base_artifact.artifact_ref.entry_point, "f16");
+    if (!total_inputs) {
+      return std::nullopt;
+    }
+    type_suffix = "f16";
+  }
+  if (input_begin >= *total_inputs ||
+      input_begin + input_count > *total_inputs ||
+      base_artifact.direct_input_count != *total_inputs ||
+      base_artifact.source_static_u32_scalars.size() !=
+          2 + static_cast<size_t>(*total_inputs) * 2) {
+    return std::nullopt;
+  }
+
+  std::vector<uint32_t> chunk_static_u32_scalars = {
+      base_artifact.source_static_u32_scalars[0],
+      base_artifact.source_static_u32_scalars[1],
+  };
+  chunk_static_u32_scalars.reserve(2 + static_cast<size_t>(input_count) * 2);
+  for (uint32_t local_input = 0; local_input < input_count; ++local_input) {
+    const size_t source_idx =
+        2 + static_cast<size_t>(input_begin + local_input) * 2;
+    chunk_static_u32_scalars.push_back(
+        base_artifact.source_static_u32_scalars[source_idx]);
+    chunk_static_u32_scalars.push_back(
+        base_artifact.source_static_u32_scalars[source_idx + 1]);
+  }
+
+  std::vector<size_t> direct_input_indices;
+  direct_input_indices.reserve(input_count);
+  for (uint32_t local_input = 0; local_input < input_count; ++local_input) {
+    direct_input_indices.push_back(
+        base_artifact.direct_input_indices[input_begin + local_input]);
+  }
+
+  const std::string entry_point = "gfx_opencl_baseline_concat" +
+                                  std::to_string(input_count) + "_" +
+                                  type_suffix;
+  auto manifest = make_opencl_baseline_manifest(
+      base_artifact.stage_manifest.stage_family,
+      base_artifact.stage_manifest.specialization_key + ":chunk" +
+          std::to_string(input_begin) + "x" + std::to_string(input_count),
+      entry_point, input_count,
+      /*scalar_arg_count=*/1);
+  return make_opencl_baseline_artifact(
+      std::move(manifest),
+      base_artifact.artifact_ref.source_id + "/chunk" +
+          std::to_string(input_begin) + "x" + std::to_string(input_count),
+      {GfxOpenClSourceScalarArg::ElementCount}, std::move(direct_input_indices),
+      base_artifact.op, base_artifact.input_mode,
+      base_artifact.scalar_constant_f32, std::move(chunk_static_u32_scalars),
+      base_artifact.element_count_source);
+}
+
+std::optional<GfxOpenClSourceArtifact>
+make_gfx_opencl_split_chunk_source_artifact(
+    const GfxOpenClSourceArtifact &base_artifact, uint32_t output_begin,
+    uint32_t output_count) {
+  if (!base_artifact.valid || output_count < 1 || output_count > 4 ||
+      base_artifact.direct_input_count != 1 ||
+      base_artifact.direct_input_indices.empty()) {
+    return std::nullopt;
+  }
+
+  std::string type_suffix;
+  auto total_outputs = split_output_count_from_entry_point(
+      base_artifact.artifact_ref.entry_point, "f32");
+  if (total_outputs) {
+    type_suffix = "f32";
+  } else {
+    total_outputs = split_output_count_from_entry_point(
+        base_artifact.artifact_ref.entry_point, "f16");
+    if (!total_outputs) {
+      return std::nullopt;
+    }
+    type_suffix = "f16";
+  }
+  if (output_begin >= *total_outputs ||
+      output_begin + output_count > *total_outputs ||
+      base_artifact.source_static_u32_scalars.size() !=
+          2 + static_cast<size_t>(*total_outputs) * 2) {
+    return std::nullopt;
+  }
+
+  std::vector<uint32_t> chunk_static_u32_scalars = {
+      base_artifact.source_static_u32_scalars[0],
+      base_artifact.source_static_u32_scalars[1],
+  };
+  chunk_static_u32_scalars.reserve(2 + static_cast<size_t>(output_count) * 2);
+  for (uint32_t local_output = 0; local_output < output_count; ++local_output) {
+    const size_t source_idx =
+        2 + static_cast<size_t>(output_begin + local_output) * 2;
+    chunk_static_u32_scalars.push_back(
+        base_artifact.source_static_u32_scalars[source_idx]);
+    chunk_static_u32_scalars.push_back(
+        base_artifact.source_static_u32_scalars[source_idx + 1]);
+  }
+
+  const std::string entry_point = "gfx_opencl_baseline_split" +
+                                  std::to_string(output_count) + "_" +
+                                  type_suffix;
+  auto manifest = make_opencl_baseline_manifest(
+      base_artifact.stage_manifest.stage_family,
+      base_artifact.stage_manifest.specialization_key + ":chunk" +
+          std::to_string(output_begin) + "x" + std::to_string(output_count),
+      entry_point,
+      /*direct_inputs=*/1,
+      /*scalar_arg_count=*/1, output_count);
+  return make_opencl_baseline_artifact(
+      std::move(manifest),
+      base_artifact.artifact_ref.source_id + "/chunk" +
+          std::to_string(output_begin) + "x" + std::to_string(output_count),
+      {GfxOpenClSourceScalarArg::ElementCount},
+      base_artifact.direct_input_indices, base_artifact.op,
+      base_artifact.input_mode, base_artifact.scalar_constant_f32,
+      std::move(chunk_static_u32_scalars), base_artifact.element_count_source);
 }
 
 std::string gfx_opencl_source_artifact_build_options(
-    const GfxOpenClSourceArtifact& artifact) {
-    std::string joined;
-    for (const auto& option : artifact.build_options) {
-        if (!joined.empty()) {
-            joined.push_back(' ');
-        }
-        joined += option;
+    const GfxOpenClSourceArtifact &artifact) {
+  std::string joined;
+  for (const auto &option : artifact.build_options) {
+    if (!joined.empty()) {
+      joined.push_back(' ');
     }
-    return joined;
+    joined += option;
+  }
+  return joined;
 }
 
-}  // namespace gfx_plugin
-}  // namespace ov
+} // namespace gfx_plugin
+} // namespace ov

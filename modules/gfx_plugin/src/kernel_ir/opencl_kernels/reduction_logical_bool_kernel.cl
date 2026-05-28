@@ -1,0 +1,169 @@
+// Copyright (C) 2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+
+static inline uint gfx_load_bool(__global const uchar* src, uint idx) {
+    const uint word = ((__global const uint*)src)[idx >> 2u];
+    return ((word >> ((idx & 3u) * 8u)) & 255u) == 0u ? 0u : 1u;
+}
+
+static inline uint gfx_reduce_output_coord(uint input_axis,
+                                           uint out_axis0,
+                                           uint out_axis1,
+                                           uint out_axis2,
+                                           uint out_axis3,
+                                           uint o0,
+                                           uint o1,
+                                           uint o2,
+                                           uint o3) {
+    if (out_axis0 == input_axis) {
+        return o0;
+    }
+    if (out_axis1 == input_axis) {
+        return o1;
+    }
+    if (out_axis2 == input_axis) {
+        return o2;
+    }
+    if (out_axis3 == input_axis) {
+        return o3;
+    }
+    return 0u;
+}
+
+static inline uint gfx_reduce_logical_bool_at(__global const uchar* src,
+                                              uint out_idx,
+                                              uint op,
+                                              uint out_rank,
+                                              uint in_dim0,
+                                              uint in_dim1,
+                                              uint in_dim2,
+                                              uint in_dim3,
+                                              uint out_dim1,
+                                              uint out_dim2,
+                                              uint out_dim3,
+                                              uint reduce_mask,
+                                              uint out_axis0,
+                                              uint out_axis1,
+                                              uint out_axis2,
+                                              uint out_axis3) {
+    uint o0 = 0u;
+    uint o1 = 0u;
+    uint o2 = 0u;
+    uint o3 = 0u;
+    if (out_rank == 1u) {
+        o0 = out_idx;
+    } else if (out_rank == 2u) {
+        o0 = out_idx / out_dim1;
+        o1 = out_idx - o0 * out_dim1;
+    } else if (out_rank == 3u) {
+        const uint plane0 = out_dim1 * out_dim2;
+        const uint rem0 = out_idx - (out_idx / plane0) * plane0;
+        o0 = out_idx / plane0;
+        o1 = rem0 / out_dim2;
+        o2 = rem0 - o1 * out_dim2;
+    } else if (out_rank == 4u) {
+        const uint plane0 = out_dim1 * out_dim2 * out_dim3;
+        const uint rem0 = out_idx - (out_idx / plane0) * plane0;
+        const uint plane1 = out_dim2 * out_dim3;
+        const uint rem1 = rem0 - (rem0 / plane1) * plane1;
+        o0 = out_idx / plane0;
+        o1 = rem0 / plane1;
+        o2 = rem1 / out_dim3;
+        o3 = rem1 - o2 * out_dim3;
+    }
+
+    const uint base0 = gfx_reduce_output_coord(0u, out_axis0, out_axis1, out_axis2, out_axis3,
+                                               o0, o1, o2, o3);
+    const uint base1 = gfx_reduce_output_coord(1u, out_axis0, out_axis1, out_axis2, out_axis3,
+                                               o0, o1, o2, o3);
+    const uint base2 = gfx_reduce_output_coord(2u, out_axis0, out_axis1, out_axis2, out_axis3,
+                                               o0, o1, o2, o3);
+    const uint base3 = gfx_reduce_output_coord(3u, out_axis0, out_axis1, out_axis2, out_axis3,
+                                               o0, o1, o2, o3);
+
+    const uint r0_count = (reduce_mask & 1u) != 0u ? in_dim0 : 1u;
+    const uint r1_count = (reduce_mask & 2u) != 0u ? in_dim1 : 1u;
+    const uint r2_count = (reduce_mask & 4u) != 0u ? in_dim2 : 1u;
+    const uint r3_count = (reduce_mask & 8u) != 0u ? in_dim3 : 1u;
+    uint acc = op == 64u ? 1u : 0u;
+    for (uint r0 = 0u; r0 < r0_count; ++r0) {
+        const uint c0 = (reduce_mask & 1u) != 0u ? r0 : base0;
+        for (uint r1 = 0u; r1 < r1_count; ++r1) {
+            const uint c1 = (reduce_mask & 2u) != 0u ? r1 : base1;
+            for (uint r2 = 0u; r2 < r2_count; ++r2) {
+                const uint c2 = (reduce_mask & 4u) != 0u ? r2 : base2;
+                for (uint r3 = 0u; r3 < r3_count; ++r3) {
+                    const uint c3 = (reduce_mask & 8u) != 0u ? r3 : base3;
+                    const uint input_offset = ((c0 * in_dim1 + c1) * in_dim2 + c2) * in_dim3 + c3;
+                    const uint v = gfx_load_bool(src, input_offset);
+                    if (op == 64u) {
+                        acc = acc & v;
+                    } else {
+                        acc = acc | v;
+                    }
+                }
+            }
+        }
+    }
+    return acc;
+}
+
+__kernel void gfx_opencl_baseline_reduce_logical_bool(__global const uchar* src,
+                                                      __global uchar* dst,
+                                                      uint count,
+                                                      uint op,
+                                                      uint rank,
+                                                      uint out_rank,
+                                                      uint in_dim0,
+                                                      uint in_dim1,
+                                                      uint in_dim2,
+                                                      uint in_dim3,
+                                                      uint out_dim0,
+                                                      uint out_dim1,
+                                                      uint out_dim2,
+                                                      uint out_dim3,
+                                                      uint reduce_mask,
+                                                      uint out_axis0,
+                                                      uint out_axis1,
+                                                      uint out_axis2,
+                                                      uint out_axis3) {
+    const uint word_idx = (uint)get_global_id(0);
+    const uint base = word_idx * 4u;
+    if (base >= count) {
+        return;
+    }
+    (void)rank;
+    (void)out_dim0;
+
+    uint packed = 0u;
+    if (base < count) {
+        packed |= gfx_reduce_logical_bool_at(src, base, op, out_rank,
+                                             in_dim0, in_dim1, in_dim2, in_dim3,
+                                             out_dim1, out_dim2, out_dim3,
+                                             reduce_mask, out_axis0, out_axis1,
+                                             out_axis2, out_axis3) << 0u;
+    }
+    if (base + 1u < count) {
+        packed |= gfx_reduce_logical_bool_at(src, base + 1u, op, out_rank,
+                                             in_dim0, in_dim1, in_dim2, in_dim3,
+                                             out_dim1, out_dim2, out_dim3,
+                                             reduce_mask, out_axis0, out_axis1,
+                                             out_axis2, out_axis3) << 8u;
+    }
+    if (base + 2u < count) {
+        packed |= gfx_reduce_logical_bool_at(src, base + 2u, op, out_rank,
+                                             in_dim0, in_dim1, in_dim2, in_dim3,
+                                             out_dim1, out_dim2, out_dim3,
+                                             reduce_mask, out_axis0, out_axis1,
+                                             out_axis2, out_axis3) << 16u;
+    }
+    if (base + 3u < count) {
+        packed |= gfx_reduce_logical_bool_at(src, base + 3u, op, out_rank,
+                                             in_dim0, in_dim1, in_dim2, in_dim3,
+                                             out_dim1, out_dim2, out_dim3,
+                                             reduce_mask, out_axis0, out_axis1,
+                                             out_axis2, out_axis3) << 24u;
+    }
+    ((__global uint*)dst)[word_idx] = packed;
+}

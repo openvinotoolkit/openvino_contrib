@@ -35,8 +35,6 @@
 #include "openvino/op/matmul.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/range.hpp"
-#include "openvino/op/reduce_logical_and.hpp"
-#include "openvino/op/reduce_logical_or.hpp"
 #include "openvino/op/reshape.hpp"
 #include "openvino/op/result.hpp"
 #include "openvino/op/scatter_elements_update.hpp"
@@ -226,67 +224,6 @@ TEST(GfxOpenClSourceArtifactsTest, BackendTargetIsStableAndCapabilityDriven) {
       EXPECT_EQ(stage.kernel_unit_kind, "generated_kernel");
     }
   }
-}
-
-TEST(GfxOpenClSourceArtifactsTest,
-     ReduceLogicalBoolArtifactsCarryStaticAxisMetadata) {
-  const auto data = param(ov::element::boolean, ov::Shape{2, 3, 4});
-
-  const auto reduce_and = std::make_shared<ov::op::v1::ReduceLogicalAnd>(
-      data, i64_const(ov::Shape{1}, {1}), false);
-  std::vector<GfxOpenClSourceScalarArg> and_scalar_args = {
-      GfxOpenClSourceScalarArg::ElementCount, GfxOpenClSourceScalarArg::OpCode};
-  and_scalar_args.insert(and_scalar_args.end(), 15,
-                         GfxOpenClSourceScalarArg::StaticU32);
-  const std::vector<uint32_t> and_static_u32_scalars = {
-      3,          // input rank
-      2,          // output rank
-      2, 3, 4, 1, // input dims padded to rank 4
-      2, 4, 1, 1, // output dims padded to rank 4
-      2,          // reduce axis mask: axis 1
-      0, 2, 4, 4, // output-axis to input-axis map
-  };
-
-  expect_opencl_artifact(reduce_and, GfxKernelStageFamily::Reduction,
-                         "opencl/baseline/reduce_logical_bool",
-                         "gfx_opencl_baseline_reduce_logical_bool",
-                         /*arg_count=*/19,
-                         /*direct_input_count=*/1, and_scalar_args, {0},
-                         and_static_u32_scalars);
-  expect_opencl_source_excludes(
-      reduce_and,
-      {"float", "long", "gfx_opencl_baseline_logical_unary_bool",
-       "gfx_opencl_baseline_logical_binary_bool",
-       "gfx_opencl_baseline_logical_binary_broadcast_bool",
-       "gfx_opencl_baseline_select_f32", "gfx_opencl_baseline_compare_f32"});
-  EXPECT_EQ(resolve_gfx_opencl_source_artifact(reduce_and)->op,
-            GfxOpenClBaselineOp::ReduceLogicalAnd);
-  EXPECT_TRUE(opencl_compiler_supports_node(reduce_and));
-
-  const auto reduce_or = std::make_shared<ov::op::v1::ReduceLogicalOr>(
-      data, i64_const(ov::Shape{2}, {1, 2}), true);
-  std::vector<GfxOpenClSourceScalarArg> or_scalar_args = {
-      GfxOpenClSourceScalarArg::ElementCount, GfxOpenClSourceScalarArg::OpCode};
-  or_scalar_args.insert(or_scalar_args.end(), 15,
-                        GfxOpenClSourceScalarArg::StaticU32);
-  const std::vector<uint32_t> or_static_u32_scalars = {
-      3,          // input rank
-      3,          // output rank
-      2, 3, 4, 1, // input dims padded to rank 4
-      2, 1, 1, 1, // output dims padded to rank 4
-      6,          // reduce axis mask: axes 1 and 2
-      0, 4, 4, 4, // reduced keep-dims axes do not map to input coords
-  };
-
-  expect_opencl_artifact(reduce_or, GfxKernelStageFamily::Reduction,
-                         "opencl/baseline/reduce_logical_bool",
-                         "gfx_opencl_baseline_reduce_logical_bool",
-                         /*arg_count=*/19,
-                         /*direct_input_count=*/1, or_scalar_args, {0},
-                         or_static_u32_scalars);
-  EXPECT_EQ(resolve_gfx_opencl_source_artifact(reduce_or)->op,
-            GfxOpenClBaselineOp::ReduceLogicalOr);
-  EXPECT_TRUE(opencl_compiler_supports_node(reduce_or));
 }
 
 TEST(GfxOpenClSourceArtifactsTest,

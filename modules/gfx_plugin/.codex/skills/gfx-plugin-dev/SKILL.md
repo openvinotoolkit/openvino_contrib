@@ -97,6 +97,10 @@ Metal operation policy, kernel registry, artifact materialization, and
 `src/mlir/msl_codegen_apple_msl_eltwise.*`. For `Swish`, keep static-beta and
 runtime scalar-beta binding roles aligned with `src/mlir/mlir_builder_unary.cpp`
 and the OpenCL artifact ABI.
+Generated reduction MSL routes must stay aligned across
+`src/mlir/msl_codegen_apple_msl_reduction.*`, embedded sources under
+`src/kernel_ir/metal_kernels/reduction_*`, `metal_kernel_registry.cpp`, and
+`metal_kernel_artifacts.cpp`.
 
 ## OpenCL Work
 
@@ -119,6 +123,9 @@ For OpenCL source-artifact work:
    contract tests when generated kernel-unit registration changes. Keep
    generated activation and elementwise case data in the family-specific
    `tests/unit/gfx_*_contract_cases.*` files.
+   For reduction source units, update
+   `tests/unit/gfx_reduction_kernel_contract_test.cpp` and the shared
+   `tests/unit/gfx_opencl_source_artifact_verifier.hpp` helper.
 7. Add runtime coverage only when dynamic OpenCL loading, memory, command
    enqueue, or runtime-shape behavior changed.
 

@@ -29,6 +29,7 @@
 #include "mlir/msl_codegen.hpp"
 #include "mlir/msl_codegen_apple_mps.hpp"
 #include "mlir/msl_codegen_apple_msl_activation.hpp"
+#include "mlir/msl_codegen_apple_msl_reduction.hpp"
 #include "mlir/msl_codegen_apple_msl_shape.hpp"
 #include "mlir/msl_codegen_apple_msl_slice_static.hpp"
 #include "mlir/msl_codegen_apple_msl_split.hpp"
@@ -248,8 +249,9 @@ void record_conv_compile_profile(const GfxStageOptimizationPlan &plan) {
                       manifest.requires_output_reuse ? 1u : 0u);
   set_compile_counter("conv_multi_kernel_requires_spatial_input_reuse",
                       manifest.requires_spatial_input_reuse ? 1u : 0u);
-  set_compile_counter("conv_multi_kernel_requires_coarse_output_tile_preservation",
-                      manifest.requires_coarse_output_tile_preservation ? 1u : 0u);
+  set_compile_counter(
+      "conv_multi_kernel_requires_coarse_output_tile_preservation",
+      manifest.requires_coarse_output_tile_preservation ? 1u : 0u);
   set_compile_counter("conv_multi_kernel_has_workgroup_local_reduction_plan",
                       manifest.has_workgroup_local_reduction_plan ? 1u : 0u);
   set_compile_counter("conv_multi_kernel_coarse_spatial_tile_elements",
@@ -1322,8 +1324,8 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
     compressed_matmul_info = detect_compressed_matmul_weights(m_node);
   }
   prepare_constant_input_buffers(compressed_matmul_info.has_value());
-  if (!false && m_type == "Concat" &&
-      concat_has_runtime_shape(m_node) && !has_absorbed_input_transpose()) {
+  if (!false && m_type == "Concat" && concat_has_runtime_shape(m_node) &&
+      !has_absorbed_input_transpose()) {
     return;
   }
   if (compressed_matmul_info) {
@@ -1560,8 +1562,7 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
     const auto shapeof_scalars = shapeof_payload.scalar_args;
     m_kernel_extra_inputs = std::move(shapeof_payload.extra_inputs);
     auto shapeof_plan = require_backend_custom_kernel_binding_plan(
-        false, "ShapeOf", "shapeof_kernel", shapeof_scalars,
-        m_name);
+        false, "ShapeOf", "shapeof_kernel", shapeof_scalars, m_name);
     apply_kernel_runtime_binding_state(shapeof_plan.runtime_binding);
     if (!false) {
       auto shapeof_source_plan = make_shapeof_msl_kernel_source_plan(m_node);
@@ -1689,20 +1690,22 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
   if (m_type == "Tile" && m_node && module) {
     const auto in_pshape = m_node->get_input_partial_shape(0);
     const auto out_pshape = m_node->get_output_partial_shape(0);
-    OPENVINO_ASSERT(in_pshape.rank().is_static() && out_pshape.rank().is_static(),
-                    "GFX MLIR: Tile requires static input/output ranks for stage ",
-                    m_name);
-    OPENVINO_ASSERT(in_pshape.rank().get_length() == out_pshape.rank().get_length(),
-                    "GFX MLIR: Tile input/output rank mismatch for stage ",
-                    m_name);
+    OPENVINO_ASSERT(
+        in_pshape.rank().is_static() && out_pshape.rank().is_static(),
+        "GFX MLIR: Tile requires static input/output ranks for stage ", m_name);
+    OPENVINO_ASSERT(
+        in_pshape.rank().get_length() == out_pshape.rank().get_length(),
+        "GFX MLIR: Tile input/output rank mismatch for stage ", m_name);
     std::vector<int32_t> tile_scalars = {
         out_pshape.is_static()
             ? static_cast<int32_t>(ov::shape_size(out_pshape.to_shape()))
             : 0,
-        static_cast<int32_t>(std::max<int64_t>(out_pshape.rank().get_length(), 1))};
+        static_cast<int32_t>(
+            std::max<int64_t>(out_pshape.rank().get_length(), 1))};
     if (in_pshape.is_static() && out_pshape.is_static()) {
       auto tile_payload = make_tile_runtime_param_payload(
-          *m_buffer_manager, m_name, in_pshape.to_shape(), out_pshape.to_shape());
+          *m_buffer_manager, m_name, in_pshape.to_shape(),
+          out_pshape.to_shape());
       tile_scalars = tile_payload.scalar_args;
       m_kernel_extra_inputs = std::move(tile_payload.extra_inputs);
     } else {
@@ -1714,8 +1717,7 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
       return;
     }
     auto tile_plan = annotate_required_backend_custom_kernel_binding(
-        module, false, "Tile", "tile_kernel", tile_scalars,
-        m_name);
+        module, false, "Tile", "tile_kernel", tile_scalars, m_name);
     if (false) {
       apply_kernel_runtime_binding_state(tile_plan.runtime_binding);
     }
@@ -1745,25 +1747,22 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
     }
   }
   if (!false) {
-    if (auto gather_nd = ov::as_type_ptr<const ov::op::util::GatherNDBase>(m_node)) {
+    if (auto gather_nd =
+            ov::as_type_ptr<const ov::op::util::GatherNDBase>(m_node)) {
       OPENVINO_ASSERT(gather_nd->get_batch_dims() == 0,
                       "GFX MLIR: GatherND batch_dims not supported for stage ",
                       m_name);
-      OPENVINO_ASSERT(
-          m_node->get_input_partial_shape(0).is_static() &&
-              m_node->get_input_partial_shape(1).is_static() &&
-              m_node->get_output_partial_shape(0).is_static(),
-          "GFX MLIR: GatherND requires static shapes for stage ", m_name);
+      OPENVINO_ASSERT(m_node->get_input_partial_shape(0).is_static() &&
+                          m_node->get_input_partial_shape(1).is_static() &&
+                          m_node->get_output_partial_shape(0).is_static(),
+                      "GFX MLIR: GatherND requires static shapes for stage ",
+                      m_name);
       auto gather_nd_payload = make_gather_nd_runtime_param_payload(
-          *m_buffer_manager,
-          m_name,
-          m_node->get_input_shape(0),
-          m_node->get_input_shape(1),
-          m_node->get_output_shape(0));
+          *m_buffer_manager, m_name, m_node->get_input_shape(0),
+          m_node->get_input_shape(1), m_node->get_output_shape(0));
       m_kernel_extra_inputs = std::move(gather_nd_payload.extra_inputs);
       auto gather_nd_plan = annotate_required_backend_custom_kernel_binding(
-          module, false, "GatherND", "gathernd_kernel", {},
-          m_name);
+          module, false, "GatherND", "gathernd_kernel", {}, m_name);
       apply_kernel_runtime_binding_state(gather_nd_plan.runtime_binding);
     }
   }
@@ -1803,13 +1802,13 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
            m_type == "HSwish" || m_type == "HSigmoid" || m_type == "SoftPlus" ||
            m_type == "Mish" || m_type == "SoftSign" || m_type == "Abs" ||
            m_type == "Sign" || m_type == "Clamp" || m_type == "LogicalNot" ||
-           m_type == "Exp" ||
-           m_type == "Log" || m_type == "Sqrt" || m_type == "Floor" ||
-           m_type == "Ceiling" || m_type == "Negative" || m_type == "Sin" ||
-           m_type == "Cos" || m_type == "Tan" || m_type == "Erf" ||
-           m_type == "Asin" || m_type == "Acos" || m_type == "Atan" ||
-           m_type == "Asinh" || m_type == "Acosh" || m_type == "Atanh" ||
-           m_type == "Sinh" || m_type == "Cosh" || m_type == "Round";
+           m_type == "Exp" || m_type == "Log" || m_type == "Sqrt" ||
+           m_type == "Floor" || m_type == "Ceiling" || m_type == "Negative" ||
+           m_type == "Sin" || m_type == "Cos" || m_type == "Tan" ||
+           m_type == "Erf" || m_type == "Asin" || m_type == "Acos" ||
+           m_type == "Atan" || m_type == "Asinh" || m_type == "Acosh" ||
+           m_type == "Atanh" || m_type == "Sinh" || m_type == "Cosh" ||
+           m_type == "Round";
   };
   auto is_binary_eltwise_compile_stage = [&]() {
     return m_type == "Add" || m_type == "Subtract" || m_type == "Multiply" ||
@@ -1840,8 +1839,7 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
       return;
     }
   }
-  if (!false && (m_type == "MaxPool" || m_type == "AvgPool") &&
-      module) {
+  if (!false && (m_type == "MaxPool" || m_type == "AvgPool") && module) {
     const std::vector<int32_t> pool_scalars;
     (void)annotate_required_backend_custom_kernel_binding(
         module, /*is_opencl_backend=*/false, m_type, "pool2d_kernel",
@@ -1928,8 +1926,7 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
       m_force_single_dispatch = true;
     }
   }
-  if (false &&
-      (m_type == "Interpolate" || m_type == "Transpose")) {
+  if (false && (m_type == "Interpolate" || m_type == "Transpose")) {
     m_force_single_dispatch = true;
   }
   if (m_has_residual_add && module) {
@@ -2114,8 +2111,8 @@ void MlirStage::prepare_prewarm_kernel_runtime_state(
           [&](const KernelArgMappingInfo &info) -> size_t {
             const size_t fallback = fallback_arg_count_from_kernel_mapping(
                 info, outputs.size(), m_kernel_extra_inputs.size());
-            return resolve_backend_manifest_arg_count_or_fallback(
-                module, false, fallback);
+            return resolve_backend_manifest_arg_count_or_fallback(module, false,
+                                                                  fallback);
           });
       compile_from_plan(plan_ctx, module, "interpolate");
       m_last_input_shape = interpolate_plan.input_shape;
@@ -2223,8 +2220,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
         }
         set_kernel_binding_override(
             require_stage_backend_custom_kernel_runtime_binding(
-                false, stage_type, entry_point, scalar_args,
-                m_name));
+                false, stage_type, entry_point, scalar_args, m_name));
       };
   auto bind_small_i64_const_outputs = [&](std::string_view suffix) -> bool {
     return bind_small_i64_const_stage_outputs(
@@ -2652,8 +2648,9 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
       set_backend_custom_kernel_binding_override("Select", "select_kernel",
                                                  select_scalars);
     }
-  } else if (auto scatter = ov::as_type_ptr<
-                 const ov::op::v3::ScatterElementsUpdate>(m_node)) {
+  } else if (auto scatter =
+                 ov::as_type_ptr<const ov::op::v3::ScatterElementsUpdate>(
+                     m_node)) {
     ov::Shape data_shape;
     ov::Shape indices_shape;
     ov::Shape updates_shape;
@@ -2661,8 +2658,11 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
         runtime_inputs.shape_known(1, indices_shape) &&
         runtime_inputs.shape_known(2, updates_shape)) {
       assign_runtime_value_outputs(
-          RuntimeValuePlan{data_shape, data_shape,
-                           scatter->get_output_element_type(0), true, {},
+          RuntimeValuePlan{data_shape,
+                           data_shape,
+                           scatter->get_output_element_type(0),
+                           true,
+                           {},
                            false},
           outputs);
       m_output_shape = data_shape;
@@ -2701,8 +2701,11 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
         runtime_inputs.shape_known(1, indices_shape) &&
         runtime_inputs.shape_known(2, updates_shape)) {
       assign_runtime_value_outputs(
-          RuntimeValuePlan{data_shape, data_shape,
-                           scatter->get_output_element_type(0), true, {},
+          RuntimeValuePlan{data_shape,
+                           data_shape,
+                           scatter->get_output_element_type(0),
+                           true,
+                           {},
                            false},
           outputs);
       m_output_shape = data_shape;
@@ -2729,8 +2732,8 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
       }
     }
   } else if (m_type == "Slice" || m_type == "StridedSlice") {
-    const auto slice_plan = plan_slice_runtime_values(
-        runtime_inputs, outputs, false, m_name);
+    const auto slice_plan =
+        plan_slice_runtime_values(runtime_inputs, outputs, false, m_name);
     assign_runtime_value_outputs(slice_plan.values, outputs);
     m_output_shape = slice_plan.values.output_shape;
 
@@ -2851,8 +2854,8 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
           [&](const KernelArgMappingInfo &info) -> size_t {
             const size_t fallback = fallback_arg_count_from_kernel_mapping(
                 info, outputs.size(), m_kernel_extra_inputs.size());
-            return resolve_backend_manifest_arg_count_or_fallback(
-                module, false, fallback);
+            return resolve_backend_manifest_arg_count_or_fallback(module, false,
+                                                                  fallback);
           });
       compile_from_plan(plan_ctx, module, "interpolate");
       if (false) {
@@ -2899,8 +2902,8 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
           [&](const KernelArgMappingInfo &info) -> size_t {
             const size_t fallback = fallback_arg_count_from_kernel_mapping(
                 info, outputs.size(), /*extra_inputs=*/0);
-            return resolve_backend_manifest_arg_count_or_fallback(
-                module, false, fallback);
+            return resolve_backend_manifest_arg_count_or_fallback(module, false,
+                                                                  fallback);
           });
       compile_from_plan(plan_ctx, module, "softmax");
       if (false) {
@@ -2995,13 +2998,13 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
            m_type == "HSwish" || m_type == "HSigmoid" || m_type == "SoftPlus" ||
            m_type == "Mish" || m_type == "SoftSign" || m_type == "Abs" ||
            m_type == "Sign" || m_type == "Clamp" || m_type == "LogicalNot" ||
-           m_type == "Exp" ||
-           m_type == "Log" || m_type == "Sqrt" || m_type == "Floor" ||
-           m_type == "Ceiling" || m_type == "Negative" || m_type == "Sin" ||
-           m_type == "Cos" || m_type == "Tan" || m_type == "Erf" ||
-           m_type == "Asin" || m_type == "Acos" || m_type == "Atan" ||
-           m_type == "Asinh" || m_type == "Acosh" || m_type == "Atanh" ||
-           m_type == "Sinh" || m_type == "Cosh" || m_type == "Round";
+           m_type == "Exp" || m_type == "Log" || m_type == "Sqrt" ||
+           m_type == "Floor" || m_type == "Ceiling" || m_type == "Negative" ||
+           m_type == "Sin" || m_type == "Cos" || m_type == "Tan" ||
+           m_type == "Erf" || m_type == "Asin" || m_type == "Acos" ||
+           m_type == "Atan" || m_type == "Asinh" || m_type == "Acosh" ||
+           m_type == "Atanh" || m_type == "Sinh" || m_type == "Cosh" ||
+           m_type == "Round";
   };
 
   if (m_node && is_unary_eltwise_stage() && m_node->get_input_size() >= 1 &&
@@ -3132,13 +3135,18 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
       return;
     }
     m_output_shape = reduce_plan.values.output_shape;
+    const auto reduce_kind = reduction_kind_from_node(m_node);
     auto reduce_payload = make_reduce_runtime_param_payload(
         *m_buffer_manager, m_name, reduce_plan.input_shape, reduce_info->axes,
-        reduce_info->keep_dims, reduce_plan.values.output_shape);
+        reduce_info->keep_dims, reduce_plan.values.output_shape,
+        reduce_kind ? reduction_kernel_op_code(*reduce_kind) : 0u);
     const auto reduce_scalars = reduce_payload.scalar_args;
     m_kernel_extra_inputs = std::move(reduce_payload.extra_inputs);
-    set_backend_custom_kernel_binding_override(m_type, "reduce_kernel",
-                                               reduce_scalars);
+    set_backend_custom_kernel_binding_override(
+        m_type,
+        reduce_kind ? reduction_msl_kernel_entry_point(*reduce_kind)
+                    : std::string_view("reduce_kernel"),
+        reduce_scalars);
   }
 
   if (ov::as_type_ptr<const ov::op::v1::Broadcast>(m_node) ||
@@ -3173,25 +3181,22 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
       auto binding_plan = make_backend_custom_kernel_roles_binding_plan(
           "Broadcast", "broadcast_kernel",
           {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorInput,
-           GfxKernelBufferRole::TensorOutput,
-           GfxKernelBufferRole::ScalarParam,
-           GfxKernelBufferRole::ScalarParam,
-           GfxKernelBufferRole::ScalarParam,
+           GfxKernelBufferRole::TensorOutput, GfxKernelBufferRole::ScalarParam,
+           GfxKernelBufferRole::ScalarParam, GfxKernelBufferRole::ScalarParam,
            GfxKernelBufferRole::RuntimeParams,
            GfxKernelBufferRole::RuntimeParams,
            GfxKernelBufferRole::RuntimeParams,
            GfxKernelBufferRole::RuntimeParams});
-      OPENVINO_ASSERT(binding_plan.valid &&
-                          binding_plan.scalar_arg_count ==
-                              broadcast_scalars.size(),
+      OPENVINO_ASSERT(binding_plan.valid && binding_plan.scalar_arg_count ==
+                                                broadcast_scalars.size(),
                       "GFX MLIR: Broadcast dynamic target-shape binding is "
                       "invalid for stage ",
                       m_name);
       binding_plan.runtime_binding.scalar_args = broadcast_scalars;
       set_kernel_binding_override(std::move(binding_plan.runtime_binding));
     } else {
-      set_backend_custom_kernel_binding_override("Broadcast", "broadcast_kernel",
-                                                 broadcast_scalars);
+      set_backend_custom_kernel_binding_override(
+          "Broadcast", "broadcast_kernel", broadcast_scalars);
     }
   }
 
@@ -3368,9 +3373,10 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
     return;
   }
 
-  const bool use_concat_buffer_copy =
-      m_type == "Concat" && !has_absorbed_input_transpose() &&
-      (!prefer_specialized_concat_execution() || concat_has_runtime_shape(m_node));
+  const bool use_concat_buffer_copy = m_type == "Concat" &&
+                                      !has_absorbed_input_transpose() &&
+                                      (!prefer_specialized_concat_execution() ||
+                                       concat_has_runtime_shape(m_node));
   if (use_concat_buffer_copy) {
     auto concat = ov::as_type_ptr<const ov::op::v0::Concat>(m_node);
     OPENVINO_ASSERT(concat, "GFX MLIR: expected v0::Concat for stage ", m_name);
@@ -4192,8 +4198,8 @@ void MlirStage::apply_stage_optimization_attrs(
       mlir::BoolAttr::get(ctx, manifest.requires_spatial_input_reuse));
   module->setAttr(
       "gfx.conv_multi_kernel_requires_coarse_output_tile_preservation",
-      mlir::BoolAttr::get(
-          ctx, manifest.requires_coarse_output_tile_preservation));
+      mlir::BoolAttr::get(ctx,
+                          manifest.requires_coarse_output_tile_preservation));
   module->setAttr(
       "gfx.conv_multi_kernel_has_workgroup_local_reduction_plan",
       mlir::BoolAttr::get(ctx, manifest.has_workgroup_local_reduction_plan));
@@ -4244,8 +4250,7 @@ void MlirStage::apply_stage_optimization_attrs(
       "gfx.conv_multi_kernel_workgroup_local_accumulator_elements",
       mlir::IntegerAttr::get(
           mlir::IntegerType::get(ctx, 64),
-          static_cast<int64_t>(
-              manifest.workgroup_local_accumulator_elements)));
+          static_cast<int64_t>(manifest.workgroup_local_accumulator_elements)));
   module->setAttr(
       "gfx.conv_multi_kernel_workgroup_local_accumulator_bytes",
       mlir::IntegerAttr::get(

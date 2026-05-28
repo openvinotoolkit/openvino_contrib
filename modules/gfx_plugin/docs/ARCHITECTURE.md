@@ -208,6 +208,12 @@ contract supports static activation scalars such as `Elu` alpha and `Clamp`
 range, and treats `Swish` beta as either a static scalar payload or a second
 scalar tensor input when the generated runtime-beta path is selected.
 
+Reduction lowering is also shared at the source-plan boundary. Numeric
+reductions currently use f32 generated-kernel contracts; logical reductions use
+boolean contracts. The supported source paths require static input/output shape
+metadata and constant axes so the compiler can materialize scalar and
+runtime-parameter bindings.
+
 Apple source planning is split by responsibility:
 
 - `msl_codegen_apple_msl_*`: Apple MSL custom-kernel source plans
@@ -270,13 +276,19 @@ roles.
 Generated MSL and vendor descriptor payloads are loaded through runtime
 descriptors. Current descriptor-backed Metal payload coverage includes generated
 MSL for `ShapeOf`, `Range`, `Tile`, `Concat`, `Split`, `Slice`, activation,
-elementwise, and causal SDPA helper forms, plus embedded MPSRT helper kernels
-for image bridges and TopK post-processing.
+elementwise, numeric/logical reduction, and causal SDPA helper forms, plus
+embedded MPSRT helper kernels for image bridges and TopK post-processing.
 
 Generated Metal activation payloads are produced by
 `src/mlir/msl_codegen_apple_msl_activation.*`. They use compiler-owned binding
 plans; `Swish` with a runtime scalar beta uses an explicit second input role
 instead of request-time argument inference.
+
+Generated Metal reduction payloads are produced by
+`src/mlir/msl_codegen_apple_msl_reduction.*` and loaded from embedded helper
+sources in `src/kernel_ir/metal_kernels/reduction_*`. Numeric f32 reductions and
+logical boolean reductions have separate source ids and entry points, but share
+the same explicit role-based binding shape.
 
 MPS/MPSGraph vendor routes are compiler-owned `VendorDescriptor` payloads. The
 Metal compiler policy can select descriptor-backed payloads for supported
@@ -326,6 +338,13 @@ mode, coordinate transform, nearest rounding, and NCHW spatial dimensions.
 MatMul, activation, and elementwise OpenCL paths use generated source units
 with explicit source ids under `opencl/generated/*`. Keep those distinctions in
 the artifact contract rather than duplicating them in the OpenCL stage executor.
+
+Reduction OpenCL paths are split by contract. Numeric f32 `ReduceSum`,
+`ReduceMean`, `ReduceMax`, `ReduceMin`, `ReduceProd`, `ReduceL1`, and
+`ReduceL2` use `opencl/generated/reduction_f32`. Boolean `ReduceLogicalAnd` and
+`ReduceLogicalOr` use the `opencl/baseline/reduce_logical_bool` exception
+artifact. Both forms carry static axis/shape metadata as source-static u32
+scalars.
 
 Generated activation artifacts use manifest metadata for opcode, static f32
 scalars, direct tensor inputs, and scalar-parameter order. `Swish` supports the

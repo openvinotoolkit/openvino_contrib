@@ -53,11 +53,13 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
    - MLIR support/lowering/source planning
    - Metal placement, MPSRT records, MPS/MPSGraph descriptors,
      `VendorDescriptor` payloads, generated activation/elementwise MSL routes,
-     `Swish` static/runtime beta contracts, or MSL binding
+     generated reduction MSL routes, `Swish` static/runtime beta contracts, or
+     MSL binding
    - OpenCL source-artifact coverage, runtime-shape handling, static f32
      scalars, constants, generated activation/elementwise/MatMul units,
-     `Swish` default/static/runtime beta artifacts, chunking, or
-     boolean-buffer behavior
+     generated f32 reduction units, logical-bool reduction artifacts, `Swish`
+     default/static/runtime beta artifacts, chunking, or boolean-buffer
+     behavior
    - stage policy, parallelism, partitioning, submission, caches, or workspace
      allocation
    - stateful `ReadValue` / `Assign`

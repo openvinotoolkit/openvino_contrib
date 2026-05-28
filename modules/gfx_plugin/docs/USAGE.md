@@ -169,12 +169,19 @@ compare/select, and boolean logical/reduction families when the model matches
 the artifact contracts.
 
 Generated activation, elementwise, f32 MatMul, and f32/f16 Interpolate sources
-plus f32/f16 Softmax baseline sources are embedded under
-`src/kernel_ir/opencl_kernels/`. Interpolate is limited to f32/f16 static NCHW
-spatial resize cases with supported modes, axes, padding, coordinate transforms,
-and nearest-rounding metadata. OpenCL operation support requires a matching
-source artifact and registered kernel unit; unsupported variants fail during
-support probing or compilation.
+plus generated f32 reduction sources and f32/f16 Softmax or logical-bool
+reduction baseline sources are embedded under `src/kernel_ir/opencl_kernels/`.
+Interpolate is limited to f32/f16 static NCHW spatial resize cases with
+supported modes, axes, padding, coordinate transforms, and nearest-rounding
+metadata. OpenCL operation support requires a matching source artifact and
+registered kernel unit; unsupported variants fail during support probing or
+compilation.
+
+Reduction source artifacts require static shape metadata and constant axes.
+Numeric `ReduceSum`, `ReduceMean`, `ReduceMax`, `ReduceMin`, `ReduceProd`,
+`ReduceL1`, and `ReduceL2` currently use the f32 generated source unit. Boolean
+`ReduceLogicalAnd` and `ReduceLogicalOr` use the logical-bool baseline source
+artifact.
 
 For generated activation artifacts, `Swish` supports default beta, scalar
 constant beta, and runtime scalar beta tensor forms when the beta input is a
@@ -199,6 +206,9 @@ external-buffer ABI are valid. Generated Metal activation and elementwise
 sources are planned through compiler-owned MSL descriptors rather than
 request-time node checks. Generated Metal `Swish` activation follows the same
 static-beta or runtime scalar-beta contract as the shared MLIR lowering.
+Generated Metal reduction sources use the `metal/generated/reduction_f32` and
+`metal/generated/reduction_logical_bool` contracts for the currently supported
+f32 numeric and boolean logical forms.
 
 `GFX_DIAGNOSTIC_F32_MPS_IMAGE` is a diagnostic compile property for selected
 f32 MPS image placement checks. It should be used for localization, not as a

@@ -189,8 +189,7 @@ gfx_kernel_external_buffer_abi_spec_for_stage(std::string_view stage_type,
                                       GfxKernelBufferRole::RuntimeParams});
   }
   if (family == GfxKernelFamily::EltwiseFusedBuffer) {
-    if (entry_point == "unary_kernel" ||
-        entry_point == "activation_kernel" ||
+    if (entry_point == "unary_kernel" || entry_point == "activation_kernel" ||
         entry_point == "convert_kernel" ||
         is_gfx_kernel_unary_eltwise_stage(stage_type)) {
       return make_gfx_kernel_unary_eltwise_abi();
@@ -256,12 +255,15 @@ gfx_kernel_external_buffer_abi_spec_for_stage(std::string_view stage_type,
          GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput});
   }
   if (family == GfxKernelFamily::ReductionBuffer &&
-      entry_point == "reduce_kernel") {
+      (entry_point == "reduce_kernel" ||
+       entry_point == "gfx_metal_generated_reduction_f32" ||
+       entry_point == "gfx_metal_generated_reduction_logical_bool")) {
     return make_gfx_kernel_roles_abi(
         {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
          GfxKernelBufferRole::ScalarParam, GfxKernelBufferRole::ScalarParam,
+         GfxKernelBufferRole::ScalarParam, GfxKernelBufferRole::RuntimeParams,
          GfxKernelBufferRole::RuntimeParams, GfxKernelBufferRole::RuntimeParams,
-         GfxKernelBufferRole::RuntimeParams, GfxKernelBufferRole::RuntimeParams,
+         GfxKernelBufferRole::RuntimeParams,
          GfxKernelBufferRole::RuntimeParams});
   }
   if (family == GfxKernelFamily::GatherScatterIndexed &&
@@ -276,11 +278,10 @@ gfx_kernel_external_buffer_abi_spec_for_stage(std::string_view stage_type,
        stage_type == "ScatterNDUpdate" ||
        entry_point == "scatter_elements_update" ||
        entry_point == "scatter_nd_update")) {
-    return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
-                                      GfxKernelBufferRole::TensorInput,
-                                      GfxKernelBufferRole::TensorInput,
-                                      GfxKernelBufferRole::TensorOutput,
-                                      GfxKernelBufferRole::RuntimeParams});
+    return make_gfx_kernel_roles_abi(
+        {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorInput,
+         GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
+         GfxKernelBufferRole::RuntimeParams});
   }
   if (family == GfxKernelFamily::GatherScatterIndexed &&
       (stage_type == "ScatterUpdate" ||
@@ -353,10 +354,10 @@ gfx_kernel_external_buffer_abi_spec_for_stage(std::string_view stage_type,
                                         GfxKernelBufferRole::RuntimeParams});
     }
     if (stage_type == "ShapeOf" || entry_point == "shapeof_kernel") {
-      return make_gfx_kernel_roles_abi(
-          {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
-           GfxKernelBufferRole::ScalarParam,
-           GfxKernelBufferRole::RuntimeParams});
+      return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
+                                        GfxKernelBufferRole::TensorOutput,
+                                        GfxKernelBufferRole::ScalarParam,
+                                        GfxKernelBufferRole::RuntimeParams});
     }
     if (stage_type == "Range" || entry_point == "range_kernel") {
       return make_gfx_kernel_roles_abi(
@@ -481,10 +482,8 @@ classify_gfx_custom_kernel_family(std::string_view stage_type,
       stage_type == "Cosh" || stage_type == "Round" ||
       stage_type == "Convert" || stage_type == "Activation" ||
       entry_point == "eltwise_kernel" ||
-      entry_point == "eltwise_fused_buffer" ||
-      entry_point == "unary_kernel" ||
-      entry_point == "activation_kernel" ||
-      entry_point == "select_kernel" ||
+      entry_point == "eltwise_fused_buffer" || entry_point == "unary_kernel" ||
+      entry_point == "activation_kernel" || entry_point == "select_kernel" ||
       entry_point == "broadcast_kernel" || entry_point == "convert_kernel" ||
       stage_type == "ConvTextureSwishEpilogue" ||
       entry_point == "gfx_mpsrt_conv_texture_swish_epilogue") {
@@ -563,7 +562,9 @@ classify_gfx_custom_kernel_family(std::string_view stage_type,
       stage_type == "ReduceMax" || stage_type == "ReduceMin" ||
       stage_type == "ReduceProd" || stage_type == "ReduceL1" ||
       stage_type == "ReduceL2" || stage_type == "ReduceLogicalAnd" ||
-      stage_type == "ReduceLogicalOr" || entry_point == "reduce_kernel") {
+      stage_type == "ReduceLogicalOr" || entry_point == "reduce_kernel" ||
+      entry_point == "gfx_metal_generated_reduction_f32" ||
+      entry_point == "gfx_metal_generated_reduction_logical_bool") {
     return GfxKernelFamily::ReductionBuffer;
   }
   return GfxKernelFamily::Unknown;

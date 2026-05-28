@@ -30,6 +30,14 @@ gfx_embed_kernel_source(
     "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/activation_kernel_source.hpp"
     "kOpenClGeneratedActivationKernelSource")
 gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/reduction_f32_kernel.cl"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/reduction_f32_kernel_source.hpp"
+    "kOpenClGeneratedReductionF32KernelSource")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/reduction_logical_bool_kernel.cl"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/reduction_logical_bool_kernel_source.hpp"
+    "kOpenClBaselineReductionLogicalBoolKernelSource")
+gfx_embed_kernel_source(
     "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/softmax_f32_kernel.cl"
     "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/softmax_f32_kernel_source.hpp"
     "kOpenClBaselineSoftmaxF32KernelSource")
@@ -78,6 +86,14 @@ gfx_embed_kernel_source(
     "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/metal_kernels/mpsrt_topk_stable_i64_indices_f16.metal"
     "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/metal_kernels/generated/mpsrt_topk_stable_i64_indices_f16_source.hpp"
     "kMpsrtTopKStableI64IndicesF16Source")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/metal_kernels/reduction_f32_kernel.metal"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/metal_kernels/generated/reduction_f32_kernel_source.hpp"
+    "kMetalGeneratedReductionF32KernelSource")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/metal_kernels/reduction_logical_bool_kernel.metal"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/metal_kernels/generated/reduction_logical_bool_kernel_source.hpp"
+    "kMetalGeneratedReductionLogicalBoolKernelSource")
 
 set(GFX_PLUGIN_COMMON_SOURCES ${GFX_PLUGIN_SOURCES})
 set(GFX_PLUGIN_ENTRY_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/plugin/plugin.cpp")

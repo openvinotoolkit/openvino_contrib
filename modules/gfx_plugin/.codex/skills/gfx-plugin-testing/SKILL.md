@@ -113,6 +113,8 @@ For Metal placement, MPSRT, MSL source planning, or request binding:
 - for generated activation MSL plans, keep
   `tests/unit/gfx_activation_msl_contract_cases.cpp` aligned with
   `src/mlir/msl_codegen_apple_msl_activation.*`
+- for generated reduction MSL plans, include
+  `tests/unit/gfx_reduction_kernel_contract_test.cpp`
 
 ### OpenCL
 
@@ -131,6 +133,10 @@ For OpenCL source-artifact changes:
   `tests/unit/gfx_eltwise_opencl_contract_cases.cpp`
 - include `tests/unit/gfx_eltwise_opencl_source_artifacts_test.cpp` when
   elementwise source artifact identity or metadata changes
+- include `tests/unit/gfx_reduction_kernel_contract_test.cpp` and reuse
+  `tests/unit/gfx_opencl_source_artifact_verifier.hpp` when reduction source
+  ids, scalar metadata, static axis contracts, or backend kernel-unit routes
+  change
 - add `tests/unit/gpu_backend_base_test.cpp` coverage when the artifact should
   be present in the compiler executable bundle
 - add runtime coverage when dynamic runtime loading, buffer binding,
