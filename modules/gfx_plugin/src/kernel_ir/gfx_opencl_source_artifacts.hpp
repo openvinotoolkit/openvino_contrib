@@ -45,6 +45,7 @@ enum class GfxOpenClBaselineOp : uint32_t {
     HSwish = 29,
     HSigmoid = 30,
     SoftPlus = 31,
+    Swish = 79,
     Equal = 32,
     NotEqual = 33,
     Greater = 34,

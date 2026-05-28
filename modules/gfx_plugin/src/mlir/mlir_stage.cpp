@@ -28,6 +28,7 @@
 #include "mlir/mlir_kernel_plan_utils.hpp"
 #include "mlir/msl_codegen.hpp"
 #include "mlir/msl_codegen_apple_mps.hpp"
+#include "mlir/msl_codegen_apple_msl_activation.hpp"
 #include "mlir/msl_codegen_apple_msl_shape.hpp"
 #include "mlir/msl_codegen_apple_msl_slice_static.hpp"
 #include "mlir/msl_codegen_apple_msl_split.hpp"
@@ -1830,6 +1831,15 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
         module, /*is_opencl_backend=*/true, m_type, "eltwise_kernel", m_name);
     apply_kernel_runtime_binding_state(binary_plan.runtime_binding);
   }
+  if (!false && module && is_unary_eltwise_compile_stage()) {
+    auto activation_source_plan =
+        make_activation_msl_kernel_source_plan(m_node, module);
+    if (activation_source_plan.valid()) {
+      compile_generated_msl_source_plan(activation_source_plan,
+                                        "direct Activation");
+      return;
+    }
+  }
   if (!false && (m_type == "MaxPool" || m_type == "AvgPool") &&
       module) {
     const std::vector<int32_t> pool_scalars;
@@ -3010,8 +3020,12 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
       m_output_shape = input_shape;
       const std::vector<int32_t> unary_scalars = {
           static_cast<int32_t>(ov::shape_size(input_shape))};
-      set_backend_custom_kernel_binding_override(m_type, "unary_kernel",
-                                                 unary_scalars, true);
+      if (m_kernel_binding_owned_by_source_plan) {
+        kernel_scalar_args_override = unary_scalars;
+      } else {
+        set_backend_custom_kernel_binding_override(m_type, "unary_kernel",
+                                                   unary_scalars, true);
+      }
     }
   }
 

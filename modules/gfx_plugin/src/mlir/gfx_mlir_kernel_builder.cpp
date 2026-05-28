@@ -4,6 +4,7 @@
 
 #include "mlir/gfx_mlir_kernel_builder.hpp"
 
+#include <optional>
 #include <vector>
 
 #include "mlir/mlir_builder.hpp"
@@ -12,8 +13,11 @@
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "openvino/core/except.hpp"
+#include "openvino/core/shape_util.hpp"
 #include "openvino/op/clamp.hpp"
+#include "openvino/op/constant.hpp"
 #include "openvino/op/elu.hpp"
+#include "openvino/op/swish.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -27,6 +31,26 @@ struct BuilderEntry {
     BuilderFn builder;
     bool multi_output;
 };
+
+std::optional<float> scalar_float_constant_input(const std::shared_ptr<const ov::Node>& node,
+                                                 size_t input_idx) {
+    if (!node || input_idx >= node->get_input_size()) {
+        return std::nullopt;
+    }
+    const auto constant = ov::as_type_ptr<const ov::op::v0::Constant>(
+        node->input_value(input_idx).get_node_shared_ptr());
+    if (!constant ||
+        constant->get_output_element_type(0) != node->get_input_element_type(0) ||
+        !constant->get_output_partial_shape(0).is_static() ||
+        ov::shape_size(constant->get_output_shape(0)) != 1) {
+        return std::nullopt;
+    }
+    const auto values = constant->cast_vector<float>();
+    if (values.empty()) {
+        return std::nullopt;
+    }
+    return values.front();
+}
 
 const std::vector<BuilderEntry>& builder_registry() {
     static const std::vector<BuilderEntry> entries = {
@@ -166,6 +190,7 @@ mlir::ModuleOp build_mlir_for_node(const std::shared_ptr<const ov::Node>& node,
         if (type == entry.name) {
             std::optional<std::pair<double, double>> clamp_range;
             float alpha = 1.0f;
+            float beta = 1.0f;
             if (entry.kind == ActivationKind::Clamp) {
                 if (auto clamp = ov::as_type_ptr<const ov::op::v0::Clamp>(node)) {
                     clamp_range = std::make_pair(clamp->get_min(), clamp->get_max());
@@ -176,7 +201,26 @@ mlir::ModuleOp build_mlir_for_node(const std::shared_ptr<const ov::Node>& node,
                     alpha = static_cast<float>(elu->get_alpha());
                 }
             }
-            return build_mlir_unary_from_node(node, ctx, entry.kind, alpha, clamp_range);
+            if (entry.kind == ActivationKind::Swish) {
+                if (auto swish = ov::as_type_ptr<const ov::op::v4::Swish>(node);
+                    swish && swish->get_input_size() == 2) {
+                    const auto static_beta = scalar_float_constant_input(node, 1);
+                    if (static_beta.has_value()) {
+                        beta = *static_beta;
+                    }
+                }
+            }
+            const bool swish_beta_runtime_input =
+                entry.kind == ActivationKind::Swish &&
+                node->get_input_size() == 2 &&
+                !scalar_float_constant_input(node, 1).has_value();
+            return build_mlir_unary_from_node(node,
+                                             ctx,
+                                             entry.kind,
+                                             alpha,
+                                             beta,
+                                             clamp_range,
+                                             swish_beta_runtime_input);
         }
     }
     OPENVINO_THROW("GFX MLIR: unsupported op for MLIR lowering: ", type);

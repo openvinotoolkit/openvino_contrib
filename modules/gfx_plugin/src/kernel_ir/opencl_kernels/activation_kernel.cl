@@ -27,6 +27,7 @@ static inline float gfx_activation_f32(float x, uint op, float alpha, float beta
     case 29u: return x * fmin(fmax(x + 3.0f, 0.0f), 6.0f) / 6.0f;
     case 30u: return fmin(fmax(x + 3.0f, 0.0f), 6.0f) / 6.0f;
     case 31u: return gfx_softplus_f32(x);
+    case 79u: return x / (1.0f + exp(-(alpha * x)));
     case 80u: return x * tanh(gfx_softplus_f32(x));
     case 81u: return x / (1.0f + fabs(x));
     case 82u: return x > 0.0f ? 1.0f : (x < 0.0f ? -1.0f : 0.0f);
@@ -60,6 +61,18 @@ __kernel void gfx_opencl_generated_activation_f32(__global const float* src,
         return;
     }
     dst[gid] = gfx_activation_f32(src[gid], op, alpha, beta);
+}
+
+__kernel void gfx_opencl_generated_activation_runtime_beta_f32(__global const float* src,
+                                                               __global const float* runtime_beta,
+                                                               __global float* dst,
+                                                               uint count,
+                                                               uint op) {
+    const uint gid = get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    dst[gid] = gfx_activation_f32(src[gid], op, runtime_beta[0], 0.0f);
 }
 
 static inline float gfx_f16_bits_to_f32(uint bits) {
@@ -133,6 +146,28 @@ __kernel void gfx_opencl_generated_activation_f16(__global const uint* src,
     if (elem0 + 1u < count) {
         hi = gfx_f32_to_f16_bits(
             gfx_activation_f32(gfx_f16_bits_to_f32((word >> 16) & 0xffffu), op, alpha, beta));
+    }
+    dst[word_idx] = (hi << 16) | (lo & 0xffffu);
+}
+
+__kernel void gfx_opencl_generated_activation_runtime_beta_f16(__global const uint* src,
+                                                               __global const uint* runtime_beta,
+                                                               __global uint* dst,
+                                                               uint count,
+                                                               uint op) {
+    const uint word_idx = get_global_id(0);
+    const uint elem0 = word_idx * 2u;
+    if (elem0 >= count) {
+        return;
+    }
+    const float beta = gfx_f16_bits_to_f32(runtime_beta[0] & 0xffffu);
+    const uint word = src[word_idx];
+    const uint lo =
+        gfx_f32_to_f16_bits(gfx_activation_f32(gfx_f16_bits_to_f32(word & 0xffffu), op, beta, 0.0f));
+    uint hi = 0u;
+    if (elem0 + 1u < count) {
+        hi = gfx_f32_to_f16_bits(
+            gfx_activation_f32(gfx_f16_bits_to_f32((word >> 16) & 0xffffu), op, beta, 0.0f));
     }
     dst[word_idx] = (hi << 16) | (lo & 0xffffu);
 }

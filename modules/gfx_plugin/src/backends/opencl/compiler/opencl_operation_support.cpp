@@ -9,6 +9,7 @@
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
 #include "openvino/op/interpolate.hpp"
 #include "openvino/op/matmul.hpp"
+#include "openvino/op/swish.hpp"
 #include "openvino/op/util/binary_elementwise_arithmetic.hpp"
 #include "openvino/op/util/binary_elementwise_comparison.hpp"
 #include "openvino/op/util/binary_elementwise_logical.hpp"
@@ -38,7 +39,8 @@ bool is_matmul_node(const std::shared_ptr<const ov::Node>& node) {
 
 bool is_activation_node(const std::shared_ptr<const ov::Node>& node) {
     return static_cast<bool>(
-        ov::as_type_ptr<const ov::op::util::UnaryElementwiseArithmetic>(node));
+        ov::as_type_ptr<const ov::op::util::UnaryElementwiseArithmetic>(node) ||
+        ov::as_type_ptr<const ov::op::v4::Swish>(node));
 }
 
 bool is_eltwise_node(const std::shared_ptr<const ov::Node>& node) {

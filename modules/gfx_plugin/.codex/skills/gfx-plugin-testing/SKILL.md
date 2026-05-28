@@ -110,6 +110,9 @@ For Metal placement, MPSRT, MSL source planning, or request binding:
   when the route reaches encode time
 - use `tests/unit/memory_device_integration_test.mm` for memory/device
   integration behavior
+- for generated activation MSL plans, keep
+  `tests/unit/gfx_activation_msl_contract_cases.cpp` aligned with
+  `src/mlir/msl_codegen_apple_msl_activation.*`
 
 ### OpenCL
 
@@ -121,6 +124,13 @@ For OpenCL source-artifact changes:
   `tests/unit/gfx_matmul_kernel_contract_test.cpp`, or
   `tests/unit/gfx_backend_architecture_contract_test.cpp` when generated
   kernel units or registry contracts change
+- keep generated activation and elementwise source-artifact cases in
+  `tests/unit/gfx_activation_contract_cases.hpp`,
+  `tests/unit/gfx_activation_opencl_contract_cases.cpp`,
+  `tests/unit/gfx_eltwise_contract_cases.hpp`, and
+  `tests/unit/gfx_eltwise_opencl_contract_cases.cpp`
+- include `tests/unit/gfx_eltwise_opencl_source_artifacts_test.cpp` when
+  elementwise source artifact identity or metadata changes
 - add `tests/unit/gpu_backend_base_test.cpp` coverage when the artifact should
   be present in the compiler executable bundle
 - add runtime coverage when dynamic runtime loading, buffer binding,

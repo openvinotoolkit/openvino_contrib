@@ -15,6 +15,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 
+#include "openvino/core/shape_util.hpp"
 #include "openvino/core/except.hpp"
 #include "runtime/gfx_activation.hpp"
 
@@ -25,7 +26,9 @@ mlir::ModuleOp build_mlir_unary_from_node(const std::shared_ptr<const ov::Node>&
                                           mlir::MLIRContext& ctx,
                                           ActivationKind kind,
                                           float alpha,
-                                          std::optional<std::pair<double, double>> clamp_range) {
+                                          float beta,
+                                          std::optional<std::pair<double, double>> clamp_range,
+                                          bool swish_beta_runtime_input) {
     ctx.loadDialect<mlir::func::FuncDialect, mlir::linalg::LinalgDialect, mlir::tensor::TensorDialect,
                     mlir::arith::ArithDialect, mlir::math::MathDialect>();
 
@@ -41,6 +44,20 @@ mlir::ModuleOp build_mlir_unary_from_node(const std::shared_ptr<const ov::Node>&
                                 /*signless_integers=*/true);
     mlir::SmallVector<int64_t> dims = to_shape(pshape);
     auto tensor_ty = mlir::RankedTensorType::get(dims, elem_ty);
+    const bool has_runtime_swish_beta =
+        kind == ActivationKind::Swish && swish_beta_runtime_input;
+    mlir::RankedTensorType beta_tensor_ty;
+    if (has_runtime_swish_beta) {
+        OPENVINO_ASSERT(node->get_input_size() == 2,
+                        "Unary MLIR builder: runtime Swish beta requires two inputs");
+        OPENVINO_ASSERT(node->get_input_element_type(1) == node->get_input_element_type(0),
+                        "Unary MLIR builder: runtime Swish beta type must match input type");
+        OPENVINO_ASSERT(node->get_input_partial_shape(1).is_static() &&
+                            ov::shape_size(node->get_input_shape(1)) == 1,
+                        "Unary MLIR builder: runtime Swish beta must be a static scalar tensor");
+        beta_tensor_ty = mlir::RankedTensorType::get(
+            to_shape(node->get_input_partial_shape(1)), elem_ty);
+    }
     auto make_float_attr = [&](double v) {
         if (auto ft = mlir::dyn_cast<mlir::FloatType>(elem_ty)) {
             return mlir::FloatAttr::get(ft, v);
@@ -52,7 +69,11 @@ mlir::ModuleOp build_mlir_unary_from_node(const std::shared_ptr<const ov::Node>&
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
     module_builder.setInsertionPointToStart(module.getBody());
 
-    auto func_type = module_builder.getFunctionType({tensor_ty}, {tensor_ty});
+    llvm::SmallVector<mlir::Type> input_types{tensor_ty};
+    if (has_runtime_swish_beta) {
+        input_types.push_back(beta_tensor_ty);
+    }
+    auto func_type = module_builder.getFunctionType(input_types, {tensor_ty});
     auto func = module_builder.create<mlir::func::FuncOp>(mlir::UnknownLoc::get(&ctx), "unary_main", func_type);
     func.addEntryBlock();
 
@@ -68,30 +89,46 @@ mlir::ModuleOp build_mlir_unary_from_node(const std::shared_ptr<const ov::Node>&
 
     llvm::SmallVector<mlir::utils::IteratorType> iterators(dims.size(), mlir::utils::IteratorType::parallel);
     auto map = mlir::AffineMap::getMultiDimIdentityMap(dims.size(), &ctx);
+    auto beta_map = mlir::AffineMap::get(dims.size(), 0, {}, &ctx);
+    llvm::SmallVector<mlir::AffineMap> indexing_maps{map};
+    llvm::SmallVector<mlir::Value> input_values{func.getArgument(0)};
+    if (has_runtime_swish_beta) {
+        indexing_maps.push_back(beta_map);
+        input_values.push_back(func.getArgument(1));
+    }
+    indexing_maps.push_back(map);
 
     auto generic = b.create<mlir::linalg::GenericOp>(
         mlir::UnknownLoc::get(&ctx),
         tensor_ty,
-        mlir::ValueRange{func.getArgument(0)},
+        mlir::ValueRange(input_values),
         mlir::ValueRange{empty},
-        mlir::ArrayRef<mlir::AffineMap>{map, map},
+        mlir::ArrayRef<mlir::AffineMap>(indexing_maps),
         mlir::ArrayRef<mlir::utils::IteratorType>(iterators));
     {
         // Explicitly add one block argument per input and per output to avoid verifier
         // complaints when the default builder drops output args.
         auto& region = generic.getRegion();
         region.getBlocks().clear();
+        llvm::SmallVector<mlir::Type> block_arg_types{
+            tensor_ty.getElementType()};
+        if (has_runtime_swish_beta) {
+            block_arg_types.push_back(beta_tensor_ty.getElementType());
+        }
+        block_arg_types.push_back(tensor_ty.getElementType());
+        llvm::SmallVector<mlir::Location> block_arg_locs(
+            block_arg_types.size(), mlir::UnknownLoc::get(&ctx));
         auto* block = &region.emplaceBlock();
-        block->addArguments({tensor_ty.getElementType(), tensor_ty.getElementType()},
-                            {mlir::UnknownLoc::get(&ctx), mlir::UnknownLoc::get(&ctx)});
+        block->addArguments(block_arg_types, block_arg_locs);
         mlir::OpBuilder body(block, block->begin());
         auto x = block->getArgument(0);
+        const size_t output_block_arg_index = has_runtime_swish_beta ? 2 : 1;
         mlir::Value zero;
         if (auto it = mlir::dyn_cast<mlir::IntegerType>(elem_ty)) {
-            zero = body.create<mlir::arith::ConstantOp>(block->getArgument(1).getLoc(),
+            zero = body.create<mlir::arith::ConstantOp>(block->getArgument(output_block_arg_index).getLoc(),
                                                         body.getIntegerAttr(it, 0));
         } else {
-            zero = body.create<mlir::arith::ConstantOp>(block->getArgument(1).getLoc(),
+            zero = body.create<mlir::arith::ConstantOp>(block->getArgument(output_block_arg_index).getLoc(),
                                                         body.getFloatAttr(elem_ty, 0.0));
         }
         mlir::Value result;
@@ -152,13 +189,19 @@ mlir::ModuleOp build_mlir_unary_from_node(const std::shared_ptr<const ov::Node>&
             }
             case ActivationKind::Swish: {
                 auto one = body.create<mlir::arith::ConstantOp>(mlir::UnknownLoc::get(&ctx), make_float_attr(1.0f));
+                mlir::Value beta_value =
+                    has_runtime_swish_beta
+                        ? block->getArgument(1)
+                        : body.create<mlir::arith::ConstantOp>(mlir::UnknownLoc::get(&ctx),
+                                                               make_float_attr(beta)).getResult();
+                auto beta_x = body.create<mlir::arith::MulFOp>(mlir::UnknownLoc::get(&ctx), beta_value, x);
                 auto cond = body.create<mlir::arith::CmpFOp>(mlir::UnknownLoc::get(&ctx),
-                                                             mlir::arith::CmpFPredicate::OGE, x, zero);
-                auto neg = body.create<mlir::arith::NegFOp>(mlir::UnknownLoc::get(&ctx), x);
+                                                             mlir::arith::CmpFPredicate::OGE, beta_x, zero);
+                auto neg = body.create<mlir::arith::NegFOp>(mlir::UnknownLoc::get(&ctx), beta_x);
                 auto exp_neg = body.create<mlir::math::ExpOp>(mlir::UnknownLoc::get(&ctx), neg);
                 auto pos_denom = body.create<mlir::arith::AddFOp>(mlir::UnknownLoc::get(&ctx), one, exp_neg);
                 auto pos = body.create<mlir::arith::DivFOp>(mlir::UnknownLoc::get(&ctx), x, pos_denom);
-                auto exp_pos = body.create<mlir::math::ExpOp>(mlir::UnknownLoc::get(&ctx), x);
+                auto exp_pos = body.create<mlir::math::ExpOp>(mlir::UnknownLoc::get(&ctx), beta_x);
                 auto neg_denom = body.create<mlir::arith::AddFOp>(mlir::UnknownLoc::get(&ctx), one, exp_pos);
                 auto neg_num = body.create<mlir::arith::MulFOp>(mlir::UnknownLoc::get(&ctx), x, exp_pos);
                 auto neg_res = body.create<mlir::arith::DivFOp>(mlir::UnknownLoc::get(&ctx), neg_num, neg_denom);

@@ -15,16 +15,19 @@
 #include "gfx_runtime_model_runner.hpp"
 #include "gfx_runtime_scenario.hpp"
 #include "openvino/op/clamp.hpp"
+#include "openvino/op/constant.hpp"
 #include "openvino/op/elu.hpp"
 #include "openvino/op/hsigmoid.hpp"
 #include "openvino/op/hswish.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/relu.hpp"
 #include "openvino/op/result.hpp"
+#include "openvino/op/round.hpp"
 #include "openvino/op/sign.hpp"
 #include "openvino/op/sigmoid.hpp"
 #include "openvino/op/softplus.hpp"
 #include "openvino/op/softsign.hpp"
+#include "openvino/op/swish.hpp"
 #include "openvino/op/tanh.hpp"
 
 namespace {
@@ -40,6 +43,12 @@ ov::Tensor filled_f32(const ov::Shape& shape) {
         const int signed_value = static_cast<int>(i % 23) - 11;
         data[i] = static_cast<float>(signed_value) * 0.25f;
     }
+    return tensor;
+}
+
+ov::Tensor scalar_f32(float value) {
+    ov::Tensor tensor(ov::element::f32, ov::Shape{});
+    tensor.data<float>()[0] = value;
     return tensor;
 }
 
@@ -68,6 +77,32 @@ RuntimeScenarioPtr activation_scenario(std::string name,
         rtol);
 }
 
+RuntimeScenarioPtr dynamic_swish_scenario() {
+    return ov::test::gfx::runtime_scenario(
+        "SwishDynamicBeta",
+        [] {
+            auto input =
+                std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                        ov::Shape{1, 4, 8, 8});
+            auto beta =
+                std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                        ov::Shape{});
+            auto activation = std::make_shared<ov::op::v4::Swish>(input, beta);
+            auto result = std::make_shared<ov::op::v0::Result>(activation);
+            return std::make_shared<ov::Model>(
+                ov::ResultVector{result},
+                ov::ParameterVector{input, beta},
+                "activation_runtime_dynamic_swish");
+        },
+        [] {
+            return std::vector<ov::Tensor>{filled_f32({1, 4, 8, 8}),
+                                           scalar_f32(0.5f)};
+        },
+        90,
+        1e-4f,
+        1e-4f);
+}
+
 std::vector<RuntimeScenarioPtr> activation_runtime_scenarios() {
     return {
         activation_scenario("Relu", [](const ov::Output<ov::Node>& input) {
@@ -94,11 +129,28 @@ std::vector<RuntimeScenarioPtr> activation_runtime_scenarios() {
         activation_scenario("SoftPlus", [](const ov::Output<ov::Node>& input) {
             return std::make_shared<ov::op::v4::SoftPlus>(input);
         }),
+        activation_scenario("SwishDefaultBeta", [](const ov::Output<ov::Node>& input) {
+            return std::make_shared<ov::op::v4::Swish>(input);
+        }),
+        activation_scenario("SwishStaticBeta", [](const ov::Output<ov::Node>& input) {
+            const auto beta = ov::op::v0::Constant::create(
+                ov::element::f32, ov::Shape{}, {0.5f});
+            return std::make_shared<ov::op::v4::Swish>(input, beta);
+        }),
+        dynamic_swish_scenario(),
         activation_scenario("SoftSign", [](const ov::Output<ov::Node>& input) {
             return std::make_shared<ov::op::v9::SoftSign>(input);
         }),
         activation_scenario("Sign", [](const ov::Output<ov::Node>& input) {
             return std::make_shared<ov::op::v0::Sign>(input);
+        }),
+        activation_scenario("RoundEven", [](const ov::Output<ov::Node>& input) {
+            return std::make_shared<ov::op::v5::Round>(
+                input, ov::op::v5::Round::RoundMode::HALF_TO_EVEN);
+        }),
+        activation_scenario("RoundAway", [](const ov::Output<ov::Node>& input) {
+            return std::make_shared<ov::op::v5::Round>(
+                input, ov::op::v5::Round::RoundMode::HALF_AWAY_FROM_ZERO);
         }),
     };
 }

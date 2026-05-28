@@ -33,7 +33,9 @@ mlir::ModuleOp build_mlir_unary_from_node(const std::shared_ptr<const ov::Node>&
                                           mlir::MLIRContext& ctx,
                                           ActivationKind kind,
                                           float alpha,
-                                          std::optional<std::pair<double, double>> clamp_range = std::nullopt);
+                                          float beta = 1.0f,
+                                          std::optional<std::pair<double, double>> clamp_range = std::nullopt,
+                                          bool swish_beta_runtime_input = false);
 
 // Build MLIR modules for binary eltwise ops with broadcast & dynamic shapes.
 mlir::ModuleOp build_mlir_add_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);

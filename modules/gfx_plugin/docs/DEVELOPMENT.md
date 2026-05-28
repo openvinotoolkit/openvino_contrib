@@ -131,6 +131,10 @@ For OpenCL source execution, start with:
 - `src/backends/opencl/runtime/opencl_source_stage.*`
 - `src/backends/opencl/runtime/stage_factory.*`
 - `tests/unit/gfx_opencl_source_artifacts_test.cpp`
+- `tests/unit/gfx_activation_contract_cases.hpp`
+- `tests/unit/gfx_activation_opencl_contract_cases.cpp`
+- `tests/unit/gfx_eltwise_contract_cases.hpp`
+- `tests/unit/gfx_eltwise_opencl_contract_cases.cpp`
 
 ## Adding Or Changing An Operation
 
@@ -167,6 +171,9 @@ Common operation families that need extra care:
   chunking, and boolean output padding
 - OpenCL generated kernel units such as activation, elementwise, f32 MatMul,
   and bounded f32/f16 Interpolate
+- generated activation `Swish` routes, where default/static beta and runtime
+  scalar beta must keep the MLIR, Metal MSL, and OpenCL artifact contracts
+  aligned
 - LLM-oriented fusions such as `RoPE`, compressed `MatMul`, and SDPA variants
 
 ## Shared Versus Backend-Specific Code
@@ -229,10 +236,19 @@ When adding an embedded OpenCL source unit:
 - route it from `gfx_opencl_source_artifacts.*` with explicit source id,
   entry point, route kind, scalar ABI, and shape/type limitations
 - cover source identity, scalar metadata, support probing, and payload routing
-  in `tests/unit/gfx_opencl_source_artifacts_test.cpp` and
+  in `tests/unit/gfx_opencl_source_artifacts_test.cpp`,
+  family-specific contract case files, and
   `tests/unit/gpu_backend_base_test.cpp` when the compiler bundle is affected
 - update `tests/unit/gfx_backend_architecture_contract_test.cpp` when kernel
   registry, backend-target identity, or manifest-routing contracts change
+
+For generated activation changes, update
+`tests/unit/gfx_activation_contract_cases.hpp`,
+`tests/unit/gfx_activation_opencl_contract_cases.cpp`, and
+`tests/unit/gfx_activation_msl_contract_cases.cpp` together. For generated
+elementwise OpenCL changes, update `tests/unit/gfx_eltwise_contract_cases.hpp`,
+`tests/unit/gfx_eltwise_opencl_contract_cases.cpp`, and
+`tests/unit/gfx_eltwise_opencl_source_artifacts_test.cpp`.
 
 ## Metal MPSRT And MSL
 
@@ -267,7 +283,9 @@ Generated Metal activation and elementwise paths are planned through
 `src/mlir/msl_codegen_apple_msl_activation.*` and
 `src/mlir/msl_codegen_apple_msl_eltwise.*`. Keep those source plans aligned
 with `src/backends/metal/compiler/metal_kernel_registry.cpp` and
-`metal_kernel_artifacts.cpp`.
+`metal_kernel_artifacts.cpp`. For `Swish`, keep static-beta and runtime-beta
+binding roles aligned with `src/mlir/mlir_builder_unary.cpp` and the OpenCL
+source artifact ABI.
 
 ## Properties
 
@@ -294,15 +312,16 @@ DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
   <path-to-ov_gfx_unit_tests> --gtest_filter=GfxStagePolicy.*
 ```
 
-Before commit, run at least:
+Before ordinary source commits, run at least:
 
 ```bash
 git diff --check
 ctest --test-dir build-gfx-plugin --output-on-failure -L GFX
 ```
 
-For documentation-only changes, `git diff --check` and targeted grep checks are
-usually enough unless build files, public properties, or source lists changed.
+For documentation/security publication tasks, do not run build or test targets
+unless explicitly requested. Use source inspection, targeted security/stale
+reference grep, `git diff --check`, and staged diff review for that gate.
 For compiler, manifest, or executable-descriptor changes, include
 `GpuBackendBaseTest.*` or a narrower relevant filter from
 `tests/unit/gpu_backend_base_test.cpp`.

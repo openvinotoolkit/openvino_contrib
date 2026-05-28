@@ -143,7 +143,11 @@ target_sources(${UNIT_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_backend_contracts.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_backend_architecture_contract_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_activation_kernel_contract_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_activation_msl_contract_cases.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_activation_opencl_contract_cases.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_eltwise_kernel_contract_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_eltwise_opencl_contract_cases.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_eltwise_opencl_source_artifacts_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_matmul_kernel_contract_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_backend_base_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_const_cache_test.cpp

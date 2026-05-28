@@ -176,6 +176,11 @@ and nearest-rounding metadata. OpenCL operation support requires a matching
 source artifact and registered kernel unit; unsupported variants fail during
 support probing or compilation.
 
+For generated activation artifacts, `Swish` supports default beta, scalar
+constant beta, and runtime scalar beta tensor forms when the beta input is a
+static scalar tensor with the same element type as the data input. Other beta
+shapes or element types are rejected by the artifact contract.
+
 Unsupported OpenCL cases fail during support probing, compilation, stage
 creation, or runtime validation. They do not fall back to CPU or switch backend.
 
@@ -192,7 +197,8 @@ Resize2D, and SDPA. Those payloads are executed through the
 `MpsrtVendorPrimitive` runtime stage only when the typed descriptor and
 external-buffer ABI are valid. Generated Metal activation and elementwise
 sources are planned through compiler-owned MSL descriptors rather than
-request-time node checks.
+request-time node checks. Generated Metal `Swish` activation follows the same
+static-beta or runtime scalar-beta contract as the shared MLIR lowering.
 
 `GFX_DIAGNOSTIC_F32_MPS_IMAGE` is a diagnostic compile property for selected
 f32 MPS image placement checks. It should be used for localization, not as a

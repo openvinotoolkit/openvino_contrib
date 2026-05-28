@@ -203,6 +203,11 @@ MLIR lives under `src/mlir/` and is shared infrastructure:
 - `gfx_backend_custom_kernel_adapter.*` converts kernel manifests into backend
   source-binding plans.
 
+Unary activation lowering is shared across backend source plans. The current
+contract supports static activation scalars such as `Elu` alpha and `Clamp`
+range, and treats `Swish` beta as either a static scalar payload or a second
+scalar tensor input when the generated runtime-beta path is selected.
+
 Apple source planning is split by responsibility:
 
 - `msl_codegen_apple_msl_*`: Apple MSL custom-kernel source plans
@@ -268,6 +273,11 @@ MSL for `ShapeOf`, `Range`, `Tile`, `Concat`, `Split`, `Slice`, activation,
 elementwise, and causal SDPA helper forms, plus embedded MPSRT helper kernels
 for image bridges and TopK post-processing.
 
+Generated Metal activation payloads are produced by
+`src/mlir/msl_codegen_apple_msl_activation.*`. They use compiler-owned binding
+plans; `Swish` with a runtime scalar beta uses an explicit second input role
+instead of request-time argument inference.
+
 MPS/MPSGraph vendor routes are compiler-owned `VendorDescriptor` payloads. The
 Metal compiler policy can select descriptor-backed payloads for supported
 MatMul/GEMM, `Softmax`, Pool2D, Resize2D, and SDPA forms. At runtime,
@@ -316,6 +326,12 @@ mode, coordinate transform, nearest rounding, and NCHW spatial dimensions.
 MatMul, activation, and elementwise OpenCL paths use generated source units
 with explicit source ids under `opencl/generated/*`. Keep those distinctions in
 the artifact contract rather than duplicating them in the OpenCL stage executor.
+
+Generated activation artifacts use manifest metadata for opcode, static f32
+scalars, direct tensor inputs, and scalar-parameter order. `Swish` supports the
+default beta, scalar constant beta, and runtime scalar beta tensor through
+dedicated `activation_runtime_beta_*` source ids when the beta input is a static
+scalar tensor with the same element type as the data input.
 
 ## Stateful And Reusable Inference
 

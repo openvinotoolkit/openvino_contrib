@@ -85,6 +85,7 @@
 #include "openvino/op/sqrt.hpp"
 #include "openvino/op/strided_slice.hpp"
 #include "openvino/op/subtract.hpp"
+#include "openvino/op/swish.hpp"
 #include "openvino/op/tan.hpp"
 #include "openvino/op/tanh.hpp"
 #include "openvino/op/tile.hpp"
@@ -4200,6 +4201,9 @@ std::optional<GfxOpenClBaselineOp> activation_op_code(
     if (ov::as_type_ptr<const ov::op::v4::SoftPlus>(node)) {
         return GfxOpenClBaselineOp::SoftPlus;
     }
+    if (ov::as_type_ptr<const ov::op::v4::Swish>(node)) {
+        return GfxOpenClBaselineOp::Swish;
+    }
     if (ov::as_type_ptr<const ov::op::v4::Mish>(node)) {
         return GfxOpenClBaselineOp::Mish;
     }
@@ -4389,6 +4393,36 @@ std::optional<float> scalar_f32_constant_input(const std::shared_ptr<const ov::N
         return std::nullopt;
     }
     return values.front();
+}
+
+std::optional<float> scalar_float_constant_input(const std::shared_ptr<const ov::Node>& node,
+                                                 size_t input_idx) {
+    if (!node || input_idx >= node->get_input_size()) {
+        return std::nullopt;
+    }
+    auto constant = ov::as_type_ptr<const ov::op::v0::Constant>(
+        node->input_value(input_idx).get_node_shared_ptr());
+    if (!constant ||
+        constant->get_output_element_type(0) != node->get_input_element_type(0) ||
+        !constant->get_output_partial_shape(0).is_static() ||
+        ov::shape_size(constant->get_output_shape(0)) != 1) {
+        return std::nullopt;
+    }
+    const auto values = constant->cast_vector<float>();
+    if (values.empty()) {
+        return std::nullopt;
+    }
+    return values.front();
+}
+
+bool scalar_float_input(const std::shared_ptr<const ov::Node>& node,
+                        size_t input_idx) {
+    if (!node || input_idx >= node->get_input_size()) {
+        return false;
+    }
+    return node->get_input_element_type(input_idx) == node->get_input_element_type(0) &&
+           node->get_input_partial_shape(input_idx).is_static() &&
+           ov::shape_size(node->get_input_shape(input_idx)) == 1;
 }
 
 std::optional<std::vector<int64_t>> constant_i64_vector_input(
@@ -4589,7 +4623,9 @@ std::optional<GfxOpenClSourceArtifact> make_opencl_activation_artifact(
     const auto op = activation_op_code(node);
     if (!op ||
         !node ||
-        node->get_input_size() != 1 ||
+        (node->get_input_size() != 1 &&
+         !(ov::as_type_ptr<const ov::op::v4::Swish>(node) &&
+           node->get_input_size() == 2)) ||
         node->get_output_size() != 1 ||
         node->get_input_element_type(0) != node->get_output_element_type(0) ||
         (!is_f32_tensor_type(node->get_output_element_type(0)) &&
@@ -4610,6 +4646,36 @@ std::optional<GfxOpenClSourceArtifact> make_opencl_activation_artifact(
     if (auto clamp = ov::as_type_ptr<const ov::op::v0::Clamp>(node)) {
         alpha = static_cast<float>(clamp->get_min());
         beta = static_cast<float>(clamp->get_max());
+    }
+    if (auto swish = ov::as_type_ptr<const ov::op::v4::Swish>(node)) {
+        alpha = 1.0f;
+        if (swish->get_input_size() == 2) {
+            if (!scalar_float_input(node, 1)) {
+                return std::nullopt;
+            }
+            const auto beta_value = scalar_float_constant_input(node, 1);
+            if (!beta_value) {
+                const auto runtime_entry_point =
+                    "gfx_opencl_generated_activation_runtime_beta_" +
+                    type_suffix;
+                auto manifest = make_opencl_baseline_manifest(
+                    GfxKernelStageFamily::Activation,
+                    "opencl:generated:activation_runtime_beta:" +
+                        std::string(node->get_type_name()) + ":" +
+                        type_suffix,
+                    runtime_entry_point,
+                    /*direct_inputs=*/2,
+                    /*scalar_arg_count=*/2);
+                return make_opencl_baseline_artifact(
+                    std::move(manifest),
+                    "opencl/generated/activation_runtime_beta_" + type_suffix,
+                    {GfxOpenClSourceScalarArg::ElementCount,
+                     GfxOpenClSourceScalarArg::OpCode},
+                    {0, 1},
+                    *op);
+            }
+            alpha = *beta_value;
+        }
     }
     auto manifest = make_opencl_baseline_manifest(
         GfxKernelStageFamily::Activation,

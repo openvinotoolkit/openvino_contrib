@@ -6,6 +6,8 @@
 
 #include <string>
 
+#include "openvino/op/round.hpp"
+
 namespace ov {
 namespace gfx_plugin {
 
@@ -146,8 +148,11 @@ unary_activation_kind_from_node(const ov::Node &node) {
     return ActivationKind::Sinh;
   if (type == "Cosh")
     return ActivationKind::Cosh;
-  if (type == "Round")
-    return ActivationKind::RoundAway;
+  if (auto round = dynamic_cast<const ov::op::v5::Round *>(&node)) {
+    return round->get_mode() == ov::op::v5::Round::RoundMode::HALF_TO_EVEN
+               ? ActivationKind::RoundEven
+               : ActivationKind::RoundAway;
+  }
   return std::nullopt;
 }
 

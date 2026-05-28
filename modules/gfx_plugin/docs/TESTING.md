@@ -127,6 +127,14 @@ For OpenCL source-artifact changes:
   `tests/unit/gfx_eltwise_kernel_contract_test.cpp`, or
   `tests/unit/gfx_matmul_kernel_contract_test.cpp` when the generated source
   unit contract for those families changes
+- keep reusable generated activation and elementwise case data in
+  `tests/unit/gfx_activation_contract_cases.hpp`,
+  `tests/unit/gfx_activation_opencl_contract_cases.cpp`,
+  `tests/unit/gfx_activation_msl_contract_cases.cpp`,
+  `tests/unit/gfx_eltwise_contract_cases.hpp`, and
+  `tests/unit/gfx_eltwise_opencl_contract_cases.cpp`
+- include `tests/unit/gfx_eltwise_opencl_source_artifacts_test.cpp` when
+  elementwise OpenCL artifact metadata or source identity changes
 - use `tests/unit/gpu_backend_base_test.cpp` when a source artifact is expected
   to appear in the compiler executable bundle
 - add runtime coverage when dynamic OpenCL loading, buffer binding, runtime
@@ -207,6 +215,10 @@ For docs-only changes:
 git diff --check
 rg -n "sensitive-placeholder" README.md docs .codex/skills || true
 ```
+
+For documentation/security publication tasks, skip build and test targets
+unless they are explicitly requested. Use source inspection, security grep,
+stale-reference grep, `git diff --check`, and staged diff review instead.
 
 For source or build-file changes:
 

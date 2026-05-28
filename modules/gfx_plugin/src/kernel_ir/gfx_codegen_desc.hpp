@@ -286,6 +286,7 @@ struct UnaryCodegenDesc : BaseCodegenDesc {
   double clamp_min = 0.0;
   double clamp_max = 0.0;
   bool gelu_tanh_approximation = false;
+  bool swish_beta_runtime_input = false;
 };
 
 struct InterpolateCodegenDesc : BaseCodegenDesc {

@@ -154,6 +154,12 @@ is no generic MLIR fallback for OpenCL operation support. Unsupported modes,
 axes, padding, shapes, or element types fail during support probing instead of
 falling through to a hidden runtime path.
 
+Generated activation artifacts cover the shared unary activation family and
+carry op-specific scalar payloads in the manifest. `Swish` supports the default
+beta, a scalar constant beta, and a runtime scalar beta tensor through the
+`opencl/generated/activation_runtime_beta_*` units when shape and type contracts
+match.
+
 ## MLIR Role
 
 MLIR is shared infrastructure, not a separate backend object. It is used for:
@@ -164,6 +170,10 @@ MLIR is shared infrastructure, not a separate backend object. It is used for:
 - Apple MSL/MPS source planning
 - typed MPSRT program materialization
 - runtime-value payload planning for dynamic shapes and source artifacts
+
+Activation lowering keeps OpenCL and Metal source plans on the same operation
+contract. `Swish` beta is represented either as a static scalar payload or as a
+second scalar tensor input when the runtime-beta path is supported.
 
 When adding or changing an op, keep support probing, lowering, backend source
 planning, runtime binding, and tests on the same contract.

@@ -94,7 +94,9 @@ vendor descriptors from request-time node checks.
 Generated activation and elementwise MSL routes must stay aligned across the
 Metal operation policy, kernel registry, artifact materialization, and
 `src/mlir/msl_codegen_apple_msl_activation.*` /
-`src/mlir/msl_codegen_apple_msl_eltwise.*`.
+`src/mlir/msl_codegen_apple_msl_eltwise.*`. For `Swish`, keep static-beta and
+runtime scalar-beta binding roles aligned with `src/mlir/mlir_builder_unary.cpp`
+and the OpenCL artifact ABI.
 
 ## OpenCL Work
 
@@ -114,7 +116,9 @@ For OpenCL source-artifact work:
 6. Update `tests/unit/gfx_opencl_source_artifacts_test.cpp` and
    `tests/unit/gpu_backend_base_test.cpp` when compiler payload routing changes.
    Use the focused activation, elementwise, MatMul, and backend-architecture
-   contract tests when generated kernel-unit registration changes.
+   contract tests when generated kernel-unit registration changes. Keep
+   generated activation and elementwise case data in the family-specific
+   `tests/unit/gfx_*_contract_cases.*` files.
 7. Add runtime coverage only when dynamic OpenCL loading, memory, command
    enqueue, or runtime-shape behavior changed.
 
@@ -168,9 +172,10 @@ DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
   <path-to-ov_gfx_unit_tests> --gtest_filter=GfxStagePolicy.*
 ```
 
-Before publication, run `git diff --check` and the relevant GFX tests. For
-source or build-file changes, prefer a real build/test target over documentation
-inspection only.
+Before publication, run `git diff --check` and the relevant GFX tests for normal
+source changes. For documentation/security publication tasks, do not run build
+or test targets unless the user explicitly asks; use source inspection,
+security grep, stale-reference grep, and staged diff review.
 
 ## Output Expectations
 
