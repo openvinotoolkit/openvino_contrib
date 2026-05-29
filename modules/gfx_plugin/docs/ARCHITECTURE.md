@@ -214,6 +214,18 @@ boolean contracts. The supported source paths require static input/output shape
 metadata and constant axes so the compiler can materialize scalar and
 runtime-parameter bindings.
 
+Softmax lowering is owned by the Softmax family. Metal has generated f32/f16
+Softmax and LogSoftmax MSL units with runtime-parameter binding; MPS vendor
+Softmax is only a descriptor-backed last-axis Softmax route. OpenCL has
+generated f32/f16 Softmax units for static shapes and dynamic-output
+static-rank shapes. OpenCL LogSoftmax is not currently implemented.
+
+Pooling lowering is owned by the Pooling family. OpenCL generated Pool2D units
+cover f32/f16 static 4D NCHW MaxPool/AvgPool contracts with 2D window metadata.
+Metal Pool2D is intentionally restricted to descriptor-backed MPS-family vendor
+routes; the old generic MSL Pool2D fallback is removed and must not be treated
+as current behavior.
+
 Apple source planning is split by responsibility:
 
 - `msl_codegen_apple_msl_*`: Apple MSL custom-kernel source plans
@@ -276,8 +288,9 @@ roles.
 Generated MSL and vendor descriptor payloads are loaded through runtime
 descriptors. Current descriptor-backed Metal payload coverage includes generated
 MSL for `ShapeOf`, `Range`, `Tile`, `Concat`, `Split`, `Slice`, activation,
-elementwise, numeric/logical reduction, and causal SDPA helper forms, plus
-embedded MPSRT helper kernels for image bridges and TopK post-processing.
+elementwise, numeric/logical reduction, Softmax/LogSoftmax, and causal SDPA
+helper forms, plus embedded MPSRT helper kernels for image bridges and TopK
+post-processing.
 
 Generated Metal activation payloads are produced by
 `src/mlir/msl_codegen_apple_msl_activation.*`. They use compiler-owned binding
@@ -289,6 +302,13 @@ Generated Metal reduction payloads are produced by
 sources in `src/kernel_ir/metal_kernels/reduction_*`. Numeric f32 reductions and
 logical boolean reductions have separate source ids and entry points, but share
 the same explicit role-based binding shape.
+
+Generated Metal Softmax payloads are produced by
+`src/mlir/msl_codegen_apple_msl_softmax.*` and loaded from embedded helper
+sources in `src/kernel_ir/metal_kernels/softmax_*` and
+`src/kernel_ir/metal_kernels/logsoftmax_*`. `Softmax` and `LogSoftmax` have
+separate f32/f16 source ids and entry points. The generated route uses explicit
+runtime-parameter roles instead of request-time buffer-order inference.
 
 MPS/MPSGraph vendor routes are compiler-owned `VendorDescriptor` payloads. The
 Metal compiler policy can select descriptor-backed payloads for supported
@@ -326,18 +346,21 @@ operation support policy intentionally does not fall back to generic MLIR
 support when no source artifact exists.
 
 Current OpenCL source artifacts cover data movement, selected converts, MatMul,
-Softmax, bounded static NCHW spatial Interpolate, Range, Tile, gather/scatter
-families, ShapeOf, Concat/Split, unary and binary elementwise families,
-compare/select, and boolean logical/reduction families when shapes and element
-types match their contracts.
+Softmax, Pool2D, bounded static NCHW spatial Interpolate, Range, Tile,
+gather/scatter families, ShapeOf, Concat/Split, unary and binary elementwise
+families, compare/select, and boolean logical/reduction families when shapes
+and element types match their contracts.
 
 Some OpenCL sources are baseline exception artifacts and some are generated
-kernel units. Softmax uses embedded f32/f16 baseline sources. Interpolate uses
-embedded f32/f16 generated kernel units with explicit scalar metadata for resize
-mode, coordinate transform, nearest rounding, and NCHW spatial dimensions.
-MatMul, activation, and elementwise OpenCL paths use generated source units
-with explicit source ids under `opencl/generated/*`. Keep those distinctions in
-the artifact contract rather than duplicating them in the OpenCL stage executor.
+kernel units. Softmax now uses generated f32/f16 units, including
+dynamic-output static-rank variants whose scalar ABI carries runtime shape
+metadata. Pool2D uses generated f32/f16 units for static 4D NCHW MaxPool and
+AvgPool. Interpolate uses embedded f32/f16 generated kernel units with explicit
+scalar metadata for resize mode, coordinate transform, nearest rounding, and
+NCHW spatial dimensions. MatMul, activation, and elementwise OpenCL paths use
+generated source units with explicit source ids under `opencl/generated/*`.
+Keep those distinctions in the artifact contract rather than duplicating them
+in the OpenCL stage executor.
 
 Reduction OpenCL paths are split by contract. Numeric f32 `ReduceSum`,
 `ReduceMean`, `ReduceMax`, `ReduceMin`, `ReduceProd`, `ReduceL1`, and

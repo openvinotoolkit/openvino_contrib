@@ -19,8 +19,6 @@
 #include "kernel_ir/opencl_kernels/interpolate_f16_kernel.hpp"
 #include "kernel_ir/opencl_kernels/interpolate_f32_kernel.hpp"
 #include "kernel_ir/opencl_kernels/matmul_f32_kernel.hpp"
-#include "kernel_ir/opencl_kernels/softmax_f16_kernel.hpp"
-#include "kernel_ir/opencl_kernels/softmax_f32_kernel.hpp"
 #include "mlir/mlir_support.hpp"
 #include "openvino/op/abs.hpp"
 #include "openvino/op/add.hpp"
@@ -42,7 +40,6 @@
 #include "openvino/op/scatter_update.hpp"
 #include "openvino/op/shape_of.hpp"
 #include "openvino/op/slice.hpp"
-#include "openvino/op/softmax.hpp"
 #include "openvino/op/split.hpp"
 #include "openvino/op/squeeze.hpp"
 #include "openvino/op/strided_slice.hpp"
@@ -133,7 +130,7 @@ void expect_opencl_artifact(const std::shared_ptr<const ov::Node> &node,
   EXPECT_EQ(artifact->direct_input_count, direct_input_count);
   EXPECT_EQ(artifact->direct_output_count, direct_output_count);
   EXPECT_EQ(artifact->direct_input_indices, direct_input_indices);
-  EXPECT_EQ(artifact->baseline_local_size, 64u);
+  EXPECT_EQ(artifact->local_size_hint, 64u);
   EXPECT_EQ(artifact->scalar_args, scalar_args);
   EXPECT_EQ(artifact->static_u32_scalars, static_u32_scalars);
   EXPECT_NE(artifact->source.find("__kernel void " + entry_point),
@@ -176,12 +173,12 @@ TEST(GfxOpenClSourceArtifactsTest, BackendTargetIsStableAndCapabilityDriven) {
   const auto kernel_registry = make_opencl_kernel_registry(target);
   const auto audit = kernel_registry.audit();
   ASSERT_TRUE(audit.valid());
-  EXPECT_EQ(audit.handwritten_exception_count, 2u);
+  EXPECT_EQ(audit.handwritten_exception_count, 1u);
   EXPECT_EQ(kernel_registry.route_count(LoweringRouteKind::GeneratedKernel),
-            15u);
+            22u);
   EXPECT_EQ(kernel_registry.route_count(
                 LoweringRouteKind::HandwrittenKernelException),
-            2u);
+            1u);
   OperationLegalizer legalizer(capabilities);
   LoweringPlanner planner(target, kernel_registry);
   auto lhs = param(ov::element::f32, ov::Shape{2, 3});
@@ -370,103 +367,6 @@ TEST(GfxOpenClSourceArtifactsTest,
   EXPECT_FALSE(support.semantic_legal);
   EXPECT_EQ(support.semantic_reason, "missing_opencl_matmul_kernel_unit");
   EXPECT_FALSE(opencl_compiler_supports_node(matmul));
-}
-
-TEST(GfxOpenClSourceArtifactsTest, SoftmaxArtifactsUseStaticAxisMetadata) {
-  const auto data = param(ov::element::f32, ov::Shape{2, 3, 4});
-  const auto softmax = std::make_shared<ov::op::v1::Softmax>(data, 1);
-  const auto f16_data = param(ov::element::f16, ov::Shape{2, 3, 4});
-  const auto f16_softmax = std::make_shared<ov::op::v1::Softmax>(f16_data, 1);
-  std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-      GfxOpenClSourceScalarArg::ElementCount};
-  scalar_args.insert(scalar_args.end(), 3, GfxOpenClSourceScalarArg::StaticU32);
-  const std::vector<uint32_t> static_u32_scalars = {
-      2, // outer
-      3, // axis extent
-      4, // inner contiguous block
-  };
-
-  expect_opencl_artifact(
-      softmax, GfxKernelStageFamily::Softmax, "opencl/baseline/softmax_f32",
-      "gfx_opencl_baseline_softmax_f32",
-      /*arg_count=*/6,
-      /*direct_input_count=*/1, scalar_args, {0}, static_u32_scalars);
-  const auto artifact = resolve_gfx_opencl_source_artifact(softmax);
-  ASSERT_TRUE(artifact.has_value());
-  EXPECT_EQ(artifact->source,
-            opencl_baseline_softmax_f32_kernel_source().source);
-  EXPECT_EQ(artifact->source.find("__global long*"), std::string::npos);
-  EXPECT_TRUE(opencl_compiler_supports_node(softmax));
-
-  expect_opencl_artifact(
-      f16_softmax, GfxKernelStageFamily::Softmax, "opencl/baseline/softmax_f16",
-      "gfx_opencl_baseline_softmax_f16",
-      /*arg_count=*/6,
-      /*direct_input_count=*/1, scalar_args, {0}, static_u32_scalars);
-  const auto f16_artifact = resolve_gfx_opencl_source_artifact(f16_softmax);
-  ASSERT_TRUE(f16_artifact.has_value());
-  EXPECT_EQ(f16_artifact->source,
-            opencl_baseline_softmax_f16_kernel_source().source);
-  EXPECT_NE(f16_artifact->source.find("gfx_f16_bits_to_f32"),
-            std::string::npos);
-  EXPECT_EQ(f16_artifact->source.find("__global half"), std::string::npos);
-  EXPECT_EQ(f16_artifact->source.find("__global long*"), std::string::npos);
-  EXPECT_TRUE(opencl_compiler_supports_node(f16_softmax));
-}
-
-TEST(GfxOpenClSourceArtifactsTest,
-     SoftmaxArtifactsNormalizeOpset8NegativeAxes) {
-  const auto data = param(ov::element::f32, ov::Shape{2, 3, 4});
-  const auto softmax = std::make_shared<ov::op::v8::Softmax>(data, -1);
-  std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-      GfxOpenClSourceScalarArg::ElementCount};
-  scalar_args.insert(scalar_args.end(), 3, GfxOpenClSourceScalarArg::StaticU32);
-  const std::vector<uint32_t> static_u32_scalars = {
-      6, // outer
-      4, // axis extent
-      1, // inner contiguous block
-  };
-
-  expect_opencl_artifact(
-      softmax, GfxKernelStageFamily::Softmax, "opencl/baseline/softmax_f32",
-      "gfx_opencl_baseline_softmax_f32",
-      /*arg_count=*/6,
-      /*direct_input_count=*/1, scalar_args, {0}, static_u32_scalars);
-  EXPECT_TRUE(opencl_compiler_supports_node(softmax));
-}
-
-TEST(GfxOpenClSourceArtifactsTest,
-     SoftmaxDynamicStaticRankArtifactsUseRuntimeShapeMetadata) {
-  const auto data = std::make_shared<ov::op::v0::Parameter>(
-      ov::element::f16, ov::PartialShape{ov::Dimension::dynamic(), 3, 4});
-  const auto softmax = std::make_shared<ov::op::v8::Softmax>(data, -2);
-
-  std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-      GfxOpenClSourceScalarArg::ElementCount,
-      GfxOpenClSourceScalarArg::StaticU32, GfxOpenClSourceScalarArg::StaticU32};
-  for (uint32_t axis = 0; axis < 8; ++axis) {
-    scalar_args.push_back(static_cast<GfxOpenClSourceScalarArg>(
-        static_cast<uint32_t>(GfxOpenClSourceScalarArg::Input0Dim0) + axis));
-  }
-  const std::vector<uint32_t> static_u32_scalars = {
-      3, // rank
-      1, // normalized axis
-  };
-
-  expect_opencl_artifact(softmax, GfxKernelStageFamily::Softmax,
-                         "opencl/baseline/softmax_f16_dynamic_static_rank",
-                         "gfx_opencl_baseline_softmax_dynamic_f16",
-                         /*arg_count=*/13,
-                         /*direct_input_count=*/1, scalar_args, {0},
-                         static_u32_scalars);
-  const auto artifact = resolve_gfx_opencl_source_artifact(softmax);
-  ASSERT_TRUE(artifact.has_value());
-  EXPECT_EQ(artifact->source,
-            opencl_baseline_softmax_f16_kernel_source().source);
-  EXPECT_NE(artifact->source.find("gfx_opencl_baseline_softmax_dynamic_f16"),
-            std::string::npos);
-  EXPECT_EQ(artifact->source.find("__global half"), std::string::npos);
-  EXPECT_TRUE(opencl_compiler_supports_node(softmax));
 }
 
 TEST(GfxOpenClSourceArtifactsTest,

@@ -19,6 +19,7 @@ set(GFX_UNIT_TEST_LINK_LIBS
     gmock
     gtest_main
     gtest
+    common_test_utils
     gfx_runtime_common
     gfx_runtime_mlir
     gfx_mlir
@@ -139,9 +140,17 @@ endif()
 
 add_executable(${UNIT_TARGET_NAME})
 add_dependencies(${UNIT_TARGET_NAME} ${GFX_TEST_DEPENDENCIES})
+set(GFX_UNIT_RUNTIME_EXECUTION_POLICY_SOURCE
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_runtime_execution_fork.cpp)
+if(APPLE OR WIN32 OR ANDROID OR GFX_BACKEND_OPENCL_AVAILABLE)
+    set(GFX_UNIT_RUNTIME_EXECUTION_POLICY_SOURCE
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_runtime_execution_inline.cpp)
+endif()
 target_sources(${UNIT_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_backend_contracts.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_backend_architecture_contract_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_runtime_model_runner.cpp
+    ${GFX_UNIT_RUNTIME_EXECUTION_POLICY_SOURCE}
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_activation_kernel_contract_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_activation_msl_contract_cases.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_activation_opencl_contract_cases.cpp
@@ -149,6 +158,8 @@ target_sources(${UNIT_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_eltwise_opencl_contract_cases.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_eltwise_opencl_source_artifacts_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_reduction_kernel_contract_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_softmax_kernel_contract_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_pool_kernel_contract_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_matmul_kernel_contract_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_backend_base_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_const_cache_test.cpp
@@ -229,7 +240,6 @@ target_sources(${RUNTIME_MICRO_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_matmul_runtime_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_multiply_runtime_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_reduce_logical_runtime_test.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_softmax_runtime_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_split_runtime_test.cpp)
 target_link_libraries(${RUNTIME_MICRO_TARGET_NAME} PRIVATE
     openvino::runtime::dev

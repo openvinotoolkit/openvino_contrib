@@ -206,7 +206,7 @@ INSTANTIATE_TEST_SUITE_P(Reduction, ReductionMlirContractTest,
 struct ReductionOpenClArtifactCase {
   std::string name;
   std::function<std::shared_ptr<ov::Node>()> make_node;
-  GfxOpenClBaselineOp op = GfxOpenClBaselineOp::ReduceSum;
+  GfxOpenClArtifactOp op = GfxOpenClArtifactOp::ReduceSum;
   std::vector<uint32_t> static_u32_scalars;
 };
 
@@ -218,49 +218,49 @@ std::vector<ReductionOpenClArtifactCase> reduction_opencl_artifact_cases() {
          return std::make_shared<ov::op::v1::ReduceSum>(
              data, i64_const(ov::Shape{1}, {1}), false);
        },
-       GfxOpenClBaselineOp::ReduceSum, reduce_axis1_static_u32_scalars(false)},
+       GfxOpenClArtifactOp::ReduceSum, reduce_axis1_static_u32_scalars(false)},
       {"ReduceMeanF32KeepDims",
        [] {
          const auto data = param(ov::element::f32, ov::Shape{2, 3, 4});
          return std::make_shared<ov::op::v1::ReduceMean>(
              data, i64_const(ov::Shape{1}, {1}), true);
        },
-       GfxOpenClBaselineOp::ReduceMean, reduce_axis1_static_u32_scalars(true)},
+       GfxOpenClArtifactOp::ReduceMean, reduce_axis1_static_u32_scalars(true)},
       {"ReduceMaxF32",
        [] {
          const auto data = param(ov::element::f32, ov::Shape{2, 3, 4});
          return std::make_shared<ov::op::v1::ReduceMax>(
              data, i64_const(ov::Shape{1}, {1}), false);
        },
-       GfxOpenClBaselineOp::ReduceMax, reduce_axis1_static_u32_scalars(false)},
+       GfxOpenClArtifactOp::ReduceMax, reduce_axis1_static_u32_scalars(false)},
       {"ReduceMinF32",
        [] {
          const auto data = param(ov::element::f32, ov::Shape{2, 3, 4});
          return std::make_shared<ov::op::v1::ReduceMin>(
              data, i64_const(ov::Shape{1}, {1}), false);
        },
-       GfxOpenClBaselineOp::ReduceMin, reduce_axis1_static_u32_scalars(false)},
+       GfxOpenClArtifactOp::ReduceMin, reduce_axis1_static_u32_scalars(false)},
       {"ReduceProdF32",
        [] {
          const auto data = param(ov::element::f32, ov::Shape{2, 3, 4});
          return std::make_shared<ov::op::v1::ReduceProd>(
              data, i64_const(ov::Shape{1}, {1}), false);
        },
-       GfxOpenClBaselineOp::ReduceProd, reduce_axis1_static_u32_scalars(false)},
+       GfxOpenClArtifactOp::ReduceProd, reduce_axis1_static_u32_scalars(false)},
       {"ReduceL1F32",
        [] {
          const auto data = param(ov::element::f32, ov::Shape{2, 3, 4});
          return std::make_shared<ov::op::v4::ReduceL1>(
              data, i64_const(ov::Shape{1}, {1}), false);
        },
-       GfxOpenClBaselineOp::ReduceL1, reduce_axis1_static_u32_scalars(false)},
+       GfxOpenClArtifactOp::ReduceL1, reduce_axis1_static_u32_scalars(false)},
       {"ReduceL2F32",
        [] {
          const auto data = param(ov::element::f32, ov::Shape{2, 3, 4});
          return std::make_shared<ov::op::v4::ReduceL2>(
              data, i64_const(ov::Shape{1}, {1}), false);
        },
-       GfxOpenClBaselineOp::ReduceL2, reduce_axis1_static_u32_scalars(false)},
+       GfxOpenClArtifactOp::ReduceL2, reduce_axis1_static_u32_scalars(false)},
   };
 }
 
@@ -319,7 +319,7 @@ TEST(ReductionOpenClArtifactContract,
                        reduce_axis1_static_u32_scalars(false))
       .uses_source(opencl_baseline_reduction_logical_bool_kernel_source())
       .excludes(non_reduction_opencl_sources())
-      .has_op(GfxOpenClBaselineOp::ReduceLogicalAnd)
+      .has_op(GfxOpenClArtifactOp::ReduceLogicalAnd)
       .supports_opencl_compiler();
 
   const auto reduce_or = std::make_shared<ov::op::v1::ReduceLogicalOr>(
@@ -334,7 +334,7 @@ TEST(ReductionOpenClArtifactContract,
                        or_static_u32_scalars)
       .uses_source(opencl_baseline_reduction_logical_bool_kernel_source())
       .excludes(non_reduction_opencl_sources())
-      .has_op(GfxOpenClBaselineOp::ReduceLogicalOr)
+      .has_op(GfxOpenClArtifactOp::ReduceLogicalOr)
       .supports_opencl_compiler();
 }
 

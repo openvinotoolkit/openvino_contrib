@@ -2892,8 +2892,17 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
       if (module) {
         module->setAttr("gfx.prefer_parallel",
                         mlir::BoolAttr::get(module.getContext(), false));
-        (void)annotate_required_backend_custom_kernel_binding(
-            module, /*is_opencl_backend=*/false, m_type, "softmax_kernel", {},
+        const auto binding = make_backend_custom_kernel_roles_binding_plan(
+            m_type, "softmax_kernel",
+            {GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::TensorOutput,
+             GfxKernelBufferRole::RuntimeParams});
+        OPENVINO_ASSERT(
+            binding.valid &&
+                annotate_backend_custom_kernel_module_with_binding_plan(module,
+                                                                        binding),
+            "GFX MLIR: failed to annotate Softmax runtime-param binding for "
+            "stage ",
             m_name);
       }
       auto plan_ctx = build_mlir_kernel_plan(
@@ -2901,7 +2910,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
           m_name.c_str(), "softmax_main",
           [&](const KernelArgMappingInfo &info) -> size_t {
             const size_t fallback = fallback_arg_count_from_kernel_mapping(
-                info, outputs.size(), /*extra_inputs=*/0);
+                info, outputs.size(), m_kernel_extra_inputs.size());
             return resolve_backend_manifest_arg_count_or_fallback(module, false,
                                                                   fallback);
           });

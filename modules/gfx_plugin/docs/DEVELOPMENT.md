@@ -172,12 +172,18 @@ Common operation families that need extra care:
 - OpenCL source artifacts with scalar ABI, static u32/f32 scalars, constants,
   chunking, and boolean output padding
 - OpenCL generated kernel units such as activation, elementwise, f32 MatMul,
-  bounded f32/f16 Interpolate, and f32 reduction
+  bounded f32/f16 Interpolate, f32 reduction, f32/f16 Softmax,
+  dynamic-static-rank f32/f16 Softmax, and f32/f16 Pool2D
 - OpenCL reduction routes, where numeric f32 reductions and logical boolean
   reductions use separate source ids but the same static axis metadata contract
 - generated activation `Swish` routes, where default/static beta and runtime
   scalar beta must keep the MLIR, Metal MSL, and OpenCL artifact contracts
   aligned
+- generated Softmax routes, where Metal `Softmax`/`LogSoftmax` and OpenCL
+  `Softmax` must keep axis normalization, scalar metadata, and kernel-unit ids
+  aligned with their backend-specific contracts
+- Pooling routes, where OpenCL generated Pool2D covers static f32/f16 NCHW
+  window contracts and Metal Pool2D must use a valid MPS-family vendor route
 - LLM-oriented fusions such as `RoPE`, compressed `MatMul`, and SDPA variants
 
 ## Shared Versus Backend-Specific Code
@@ -260,6 +266,21 @@ For reduction source-unit changes, update
 and logical boolean reduction source ids, entry points, static u32 metadata,
 kernel registry entries, and Metal/OpenCL artifact payloads aligned.
 
+For Softmax source-unit changes, update
+`tests/unit/gfx_softmax_kernel_contract_test.cpp` and the shared
+`tests/unit/gfx_opencl_source_artifact_verifier.hpp` helper. Keep Metal
+f32/f16 Softmax and LogSoftmax source ids, OpenCL static and dynamic-static-rank
+Softmax source ids, runtime-parameter roles, scalar metadata, and kernel
+registry entries aligned.
+
+For Pool2D source-unit changes, update
+`tests/unit/gfx_pool_kernel_contract_test.cpp`,
+`tests/integration/gfx_pooling_func_test.cpp` when externally visible behavior
+changes, and `tests/unit/gfx_backend_architecture_contract_test.cpp` when
+kernel-unit registration changes. Do not add a Metal MSL Pool2D fallback unless
+there is explicit MPS-family rejection evidence and an op-owned narrow artifact
+contract.
+
 ## Metal MPSRT And MSL
 
 Metal placement must stay coordinated across:
@@ -289,15 +310,17 @@ descriptor helpers in `src/mlir/gfx_apple_vendor_descriptors.*`, and
 express the new primitive. Do not rebuild vendor descriptors from request-time
 node checks.
 
-Generated Metal activation, elementwise, and reduction paths are planned through
-`src/mlir/msl_codegen_apple_msl_activation.*` and
-`src/mlir/msl_codegen_apple_msl_eltwise.*`, and
-`src/mlir/msl_codegen_apple_msl_reduction.*`. Keep those source plans aligned
+Generated Metal activation, elementwise, reduction, and Softmax paths are
+planned through `src/mlir/msl_codegen_apple_msl_activation.*`,
+`src/mlir/msl_codegen_apple_msl_eltwise.*`,
+`src/mlir/msl_codegen_apple_msl_reduction.*`, and
+`src/mlir/msl_codegen_apple_msl_softmax.*`. Keep those source plans aligned
 with `src/backends/metal/compiler/metal_kernel_registry.cpp`,
 `metal_kernel_artifacts.cpp`, and embedded helper source wrappers under
 `src/kernel_ir/metal_kernels/`. For `Swish`, keep static-beta and runtime-beta
 binding roles aligned with `src/mlir/mlir_builder_unary.cpp` and the OpenCL
-source artifact ABI.
+source artifact ABI. For Softmax, keep generated `Softmax` and `LogSoftmax`
+runtime-parameter roles aligned with the registered f32/f16 kernel units.
 
 ## Properties
 

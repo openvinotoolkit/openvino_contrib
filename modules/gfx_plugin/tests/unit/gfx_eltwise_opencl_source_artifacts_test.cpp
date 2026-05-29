@@ -118,7 +118,7 @@ TEST(EltwiseOpenClSourceArtifactsTest,
     std::string name;
     std::shared_ptr<ov::Node> node;
     std::string suffix;
-    GfxOpenClBaselineOp op;
+    GfxOpenClArtifactOp op;
   };
 
   const auto f16_lhs = param(ov::element::f16, ov::Shape{2, 3, 4});
@@ -129,15 +129,15 @@ TEST(EltwiseOpenClSourceArtifactsTest,
   const std::vector<Case> cases = {
       {"f16 SquaredDifference",
        std::make_shared<ov::op::v0::SquaredDifference>(f16_lhs, f16_rhs), "f16",
-       GfxOpenClBaselineOp::SquaredDifference},
+       GfxOpenClArtifactOp::SquaredDifference},
       {"i32 Divide", std::make_shared<ov::op::v1::Divide>(i32_lhs, i32_rhs),
-       "i32", GfxOpenClBaselineOp::Divide},
+       "i32", GfxOpenClArtifactOp::Divide},
       {"i32 Mod", std::make_shared<ov::op::v1::Mod>(i32_lhs, i32_rhs), "i32",
-       GfxOpenClBaselineOp::Mod},
+       GfxOpenClArtifactOp::Mod},
       {"i32 FloorMod", std::make_shared<ov::op::v1::FloorMod>(i32_lhs, i32_rhs),
-       "i32", GfxOpenClBaselineOp::FloorMod},
+       "i32", GfxOpenClArtifactOp::FloorMod},
       {"i32 Power", std::make_shared<ov::op::v1::Power>(i32_lhs, i32_rhs),
-       "i32", GfxOpenClBaselineOp::Power},
+       "i32", GfxOpenClArtifactOp::Power},
   };
 
   for (const auto &test_case : cases) {
@@ -179,7 +179,7 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                        scalar_input_args(), {0, 1})
       .excludes({"long", "__global const long*",
                  "gfx_opencl_baseline_binary_const_f32"})
-      .has_input_mode(GfxOpenClBaselineInputMode::RhsScalar)
+      .has_input_mode(GfxOpenClArtifactInputMode::RhsScalar)
       .supports_opencl_compiler();
 
   const auto i32_floor_mod =
@@ -191,8 +191,8 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                        scalar_input_args(), {0, 1})
       .excludes({"long", "__global const long*",
                  "gfx_opencl_baseline_binary_const_f32"})
-      .has_input_mode(GfxOpenClBaselineInputMode::LhsScalar)
-      .has_op(GfxOpenClBaselineOp::FloorMod)
+      .has_input_mode(GfxOpenClArtifactInputMode::LhsScalar)
+      .has_op(GfxOpenClArtifactOp::FloorMod)
       .supports_opencl_compiler();
 }
 
@@ -209,7 +209,7 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                        rhs_31_broadcast_to_234_strides())
       .excludes({"long", "__global const long*",
                  "gfx_opencl_baseline_binary_broadcast_f32"})
-      .has_op(GfxOpenClBaselineOp::Mod)
+      .has_op(GfxOpenClArtifactOp::Mod)
       .supports_opencl_compiler();
 
   const auto f16_lhs = param(ov::element::f16, ov::Shape{3, 1});
@@ -223,7 +223,7 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                        lhs_31_broadcast_to_234_strides())
       .excludes({"long", "__global const long*",
                  "gfx_opencl_baseline_binary_broadcast_f32"})
-      .has_op(GfxOpenClBaselineOp::Subtract)
+      .has_op(GfxOpenClArtifactOp::Subtract)
       .supports_opencl_compiler();
 }
 
@@ -287,7 +287,7 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                        "gfx_opencl_generated_eltwise_broadcast_f32", 18u, 2u,
                        op_and_broadcast_scalar_args(), {0, 1},
                        lhs_31_broadcast_to_234_strides())
-      .has_op(GfxOpenClBaselineOp::Subtract)
+      .has_op(GfxOpenClArtifactOp::Subtract)
       .supports_opencl_compiler();
 }
 
@@ -314,7 +314,7 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                  "gfx_opencl_baseline_binary_const_f32",
                  "gfx_opencl_baseline_compare_f32",
                  "gfx_opencl_baseline_select_f32"})
-      .has_input_mode(GfxOpenClBaselineInputMode::RhsScalar)
+      .has_input_mode(GfxOpenClArtifactInputMode::RhsScalar)
       .supports_opencl_compiler();
 
   OpenClSourceArtifactVerifier(lhs_scalar)
@@ -322,7 +322,7 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                        "opencl/generated/eltwise_scalar_f32",
                        "gfx_opencl_generated_eltwise_scalar_f32", 6u, 2u,
                        scalar_input_args(), {0, 1})
-      .has_input_mode(GfxOpenClBaselineInputMode::LhsScalar)
+      .has_input_mode(GfxOpenClArtifactInputMode::LhsScalar)
       .supports_opencl_compiler();
 
   OpenClSourceArtifactVerifier(rhs_const)
@@ -335,7 +335,7 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                  "gfx_opencl_baseline_binary_scalar_f32",
                  "gfx_opencl_baseline_compare_f32",
                  "gfx_opencl_baseline_select_f32"})
-      .has_input_mode(GfxOpenClBaselineInputMode::RhsScalarConstant)
+      .has_input_mode(GfxOpenClArtifactInputMode::RhsScalarConstant)
       .has_scalar_constant(2.0f)
       .supports_opencl_compiler();
 
@@ -344,7 +344,7 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                        "opencl/generated/eltwise_const_f32",
                        "gfx_opencl_generated_eltwise_const_f32", 6u, 1u,
                        scalar_constant_args(), {1})
-      .has_input_mode(GfxOpenClBaselineInputMode::LhsScalarConstant)
+      .has_input_mode(GfxOpenClArtifactInputMode::LhsScalarConstant)
       .supports_opencl_compiler();
 }
 
@@ -367,7 +367,7 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                  "gfx_opencl_baseline_compare_broadcast_f32",
                  "gfx_opencl_baseline_select_f32",
                  "gfx_opencl_baseline_select_broadcast_f32"})
-      .has_op(GfxOpenClBaselineOp::Greater)
+      .has_op(GfxOpenClArtifactOp::Greater)
       .supports_opencl_compiler();
 
   OpenClSourceArtifactVerifier(select)
@@ -411,7 +411,7 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                  "gfx_opencl_baseline_compare_f32",
                  "gfx_opencl_baseline_select_f32",
                  "gfx_opencl_baseline_select_broadcast_f32"})
-      .has_op(GfxOpenClBaselineOp::Greater)
+      .has_op(GfxOpenClArtifactOp::Greater)
       .supports_opencl_compiler();
 
   const auto cond = param(ov::element::boolean, ov::Shape{1, 3, 1});
@@ -459,21 +459,21 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                  "gfx_opencl_baseline_select_broadcast_f32",
                  "gfx_opencl_baseline_logical_binary_bool",
                  "gfx_opencl_baseline_logical_binary_broadcast_bool"})
-      .has_op(GfxOpenClBaselineOp::LogicalNot)
+      .has_op(GfxOpenClArtifactOp::LogicalNot)
       .supports_opencl_compiler();
 
   struct BinaryCase {
     std::string name;
     std::shared_ptr<ov::Node> node;
-    GfxOpenClBaselineOp op;
+    GfxOpenClArtifactOp op;
   };
   const std::vector<BinaryCase> binary_cases = {
       {"LogicalAnd", std::make_shared<ov::op::v1::LogicalAnd>(lhs, rhs),
-       GfxOpenClBaselineOp::LogicalAnd},
+       GfxOpenClArtifactOp::LogicalAnd},
       {"LogicalOr", std::make_shared<ov::op::v1::LogicalOr>(lhs, rhs),
-       GfxOpenClBaselineOp::LogicalOr},
+       GfxOpenClArtifactOp::LogicalOr},
       {"LogicalXor", std::make_shared<ov::op::v1::LogicalXor>(lhs, rhs),
-       GfxOpenClBaselineOp::LogicalXor},
+       GfxOpenClArtifactOp::LogicalXor},
   };
 
   for (const auto &test_case : binary_cases) {
@@ -518,7 +518,7 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                  "gfx_opencl_baseline_select_broadcast_f32",
                  "gfx_opencl_baseline_logical_unary_bool",
                  "gfx_opencl_baseline_logical_binary_bool"})
-      .has_op(GfxOpenClBaselineOp::LogicalOr)
+      .has_op(GfxOpenClArtifactOp::LogicalOr)
       .supports_opencl_compiler();
 }
 

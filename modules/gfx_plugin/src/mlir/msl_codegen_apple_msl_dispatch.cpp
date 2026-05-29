@@ -88,9 +88,6 @@ std::optional<KernelSource> make_apple_metal_msl_kernel_source_for_stage_type(
   auto apply_llm_source = [&]() {
     return make_apple_metal_llm_kernel_source(source, node);
   };
-  auto apply_pool2d_source = [&]() {
-    return make_apple_metal_pool2d_kernel_source(source, node);
-  };
   auto apply_softmax_source = [&]() {
     return make_apple_metal_softmax_kernel_source(source, node,
                                                   runtime_input_shape);
@@ -131,7 +128,7 @@ std::optional<KernelSource> make_apple_metal_msl_kernel_source_for_stage_type(
   case GfxKernelStageFamily::RmsnormRope:
     return apply_llm_source();
   case GfxKernelStageFamily::Pooling:
-    return apply_pool2d_source();
+    return std::nullopt;
   case GfxKernelStageFamily::Softmax:
   case GfxKernelStageFamily::AttentionSoftmax:
     return apply_softmax_source();

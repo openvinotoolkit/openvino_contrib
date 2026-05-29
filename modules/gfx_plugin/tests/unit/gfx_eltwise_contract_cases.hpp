@@ -20,14 +20,14 @@ struct EltwiseOpenClArtifactCase {
   std::function<std::shared_ptr<ov::Node>()> make_node;
   std::string expected_source_id;
   std::string expected_entry_point;
-  GfxOpenClBaselineOp expected_op = GfxOpenClBaselineOp::Add;
+  GfxOpenClArtifactOp expected_op = GfxOpenClArtifactOp::Add;
   uint32_t expected_arg_count = 0;
   uint32_t expected_direct_input_count = 0;
   std::vector<size_t> expected_direct_inputs;
   std::vector<GfxOpenClSourceScalarArg> expected_scalar_args;
   std::vector<uint32_t> expected_static_u32_scalars;
-  GfxOpenClBaselineInputMode expected_input_mode =
-      GfxOpenClBaselineInputMode::Direct;
+  GfxOpenClArtifactInputMode expected_input_mode =
+      GfxOpenClArtifactInputMode::Direct;
 };
 
 std::vector<EltwiseOpenClArtifactCase> eltwise_opencl_artifact_cases();

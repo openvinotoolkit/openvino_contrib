@@ -40,11 +40,27 @@ gfx_embed_kernel_source(
 gfx_embed_kernel_source(
     "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/softmax_f32_kernel.cl"
     "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/softmax_f32_kernel_source.hpp"
-    "kOpenClBaselineSoftmaxF32KernelSource")
+    "kOpenClGeneratedSoftmaxF32KernelSource")
 gfx_embed_kernel_source(
     "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/softmax_f16_kernel.cl"
     "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/softmax_f16_kernel_source.hpp"
-    "kOpenClBaselineSoftmaxF16KernelSource")
+    "kOpenClGeneratedSoftmaxF16KernelSource")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/softmax_f32_dynamic_kernel.cl"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/softmax_f32_dynamic_kernel_source.hpp"
+    "kOpenClGeneratedSoftmaxDynamicF32KernelSource")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/softmax_f16_dynamic_kernel.cl"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/softmax_f16_dynamic_kernel_source.hpp"
+    "kOpenClGeneratedSoftmaxDynamicF16KernelSource")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/pool2d_f32_kernel.cl"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/pool2d_f32_kernel_source.hpp"
+    "kOpenClGeneratedPool2DF32KernelSource")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/pool2d_f16_kernel.cl"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/pool2d_f16_kernel_source.hpp"
+    "kOpenClGeneratedPool2DF16KernelSource")
 gfx_embed_kernel_source(
     "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/interpolate_f32_kernel.cl"
     "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/interpolate_f32_kernel_source.hpp"
@@ -94,6 +110,22 @@ gfx_embed_kernel_source(
     "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/metal_kernels/reduction_logical_bool_kernel.metal"
     "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/metal_kernels/generated/reduction_logical_bool_kernel_source.hpp"
     "kMetalGeneratedReductionLogicalBoolKernelSource")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/metal_kernels/softmax_f32_kernel.metal"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/metal_kernels/generated/softmax_f32_kernel_source.hpp"
+    "kMetalGeneratedSoftmaxF32KernelSource")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/metal_kernels/softmax_f16_kernel.metal"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/metal_kernels/generated/softmax_f16_kernel_source.hpp"
+    "kMetalGeneratedSoftmaxF16KernelSource")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/metal_kernels/logsoftmax_f32_kernel.metal"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/metal_kernels/generated/logsoftmax_f32_kernel_source.hpp"
+    "kMetalGeneratedLogSoftmaxF32KernelSource")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/metal_kernels/logsoftmax_f16_kernel.metal"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/metal_kernels/generated/logsoftmax_f16_kernel_source.hpp"
+    "kMetalGeneratedLogSoftmaxF16KernelSource")
 
 set(GFX_PLUGIN_COMMON_SOURCES ${GFX_PLUGIN_SOURCES})
 set(GFX_PLUGIN_ENTRY_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/plugin/plugin.cpp")

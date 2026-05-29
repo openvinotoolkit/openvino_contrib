@@ -20,7 +20,7 @@ struct ActivationOpenClArtifactCase {
   std::function<std::shared_ptr<ov::Node>()> make_node;
   std::string expected_source_id;
   std::string expected_entry_point;
-  GfxOpenClBaselineOp expected_op = GfxOpenClBaselineOp::Relu;
+  GfxOpenClArtifactOp expected_op = GfxOpenClArtifactOp::Relu;
   std::vector<float> expected_static_f32_scalars{0.0f, 0.0f};
 };
 

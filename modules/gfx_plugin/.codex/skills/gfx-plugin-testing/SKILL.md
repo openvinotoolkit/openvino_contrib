@@ -94,8 +94,10 @@ Inspect and extend:
   `tests/unit/gfx_matmul_runtime_test.cpp`,
   `tests/unit/gfx_multiply_runtime_test.cpp`,
   `tests/unit/gfx_reduce_logical_runtime_test.cpp`,
-  `tests/unit/gfx_softmax_runtime_test.cpp`, and
   `tests/unit/gfx_split_runtime_test.cpp`
+- Softmax and Pooling contract tests:
+  `tests/unit/gfx_softmax_kernel_contract_test.cpp` and
+  `tests/unit/gfx_pool_kernel_contract_test.cpp`
 
 ### Metal
 
@@ -115,6 +117,10 @@ For Metal placement, MPSRT, MSL source planning, or request binding:
   `src/mlir/msl_codegen_apple_msl_activation.*`
 - for generated reduction MSL plans, include
   `tests/unit/gfx_reduction_kernel_contract_test.cpp`
+- for generated Softmax/LogSoftmax MSL plans, include
+  `tests/unit/gfx_softmax_kernel_contract_test.cpp`
+- for Metal Pool2D vendor routing or MSL-fallback rejection, include
+  `tests/unit/gfx_pool_kernel_contract_test.cpp`
 
 ### OpenCL
 
@@ -136,6 +142,12 @@ For OpenCL source-artifact changes:
 - include `tests/unit/gfx_reduction_kernel_contract_test.cpp` and reuse
   `tests/unit/gfx_opencl_source_artifact_verifier.hpp` when reduction source
   ids, scalar metadata, static axis contracts, or backend kernel-unit routes
+  change
+- include `tests/unit/gfx_softmax_kernel_contract_test.cpp` when generated
+  static or dynamic-static-rank Softmax source ids, scalar metadata, or backend
+  kernel-unit routes change
+- include `tests/unit/gfx_pool_kernel_contract_test.cpp` when generated Pool2D
+  source ids, static 4D NCHW window metadata, or backend kernel-unit routes
   change
 - add `tests/unit/gpu_backend_base_test.cpp` coverage when the artifact should
   be present in the compiler executable bundle

@@ -234,27 +234,6 @@ struct EltwiseCodegenDesc : BaseCodegenDesc {
   float input_activation_alpha = 0.0f;
 };
 
-struct Pool2DCodegenDesc : BaseCodegenDesc {
-  uint32_t N = 0;
-  uint32_t C = 0;
-  uint32_t H = 0;
-  uint32_t W = 0;
-  uint32_t kH = 0;
-  uint32_t kW = 0;
-  uint32_t strideH = 1;
-  uint32_t strideW = 1;
-  uint32_t dilationH = 1;
-  uint32_t dilationW = 1;
-  uint32_t padTop = 0;
-  uint32_t padLeft = 0;
-  uint32_t padBottom = 0;
-  uint32_t padRight = 0;
-  uint32_t outH = 0;
-  uint32_t outW = 0;
-  bool is_avg = false;
-  bool exclude_pad = true;
-};
-
 struct TopKCodegenDesc : BaseCodegenDesc {
   ov::element::Type index_type{ov::element::i32};
   uint32_t axis_len = 0;

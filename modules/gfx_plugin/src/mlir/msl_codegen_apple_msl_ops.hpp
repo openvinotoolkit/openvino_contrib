@@ -27,8 +27,6 @@ make_apple_metal_llm_kernel_source(KernelSource source,
 std::optional<KernelSource> make_apple_metal_softmax_kernel_source(
     KernelSource source, const std::shared_ptr<const ov::Node> &node,
     const std::optional<ov::Shape> &runtime_input_shape);
-std::optional<KernelSource> make_apple_metal_pool2d_kernel_source(
-    KernelSource source, const std::shared_ptr<const ov::Node> &node);
 std::optional<KernelSource> make_apple_metal_unary_kernel_source(
     KernelSource source, const std::shared_ptr<const ov::Node> &node);
 std::optional<KernelSource> make_apple_metal_elementwise_kernel_source(

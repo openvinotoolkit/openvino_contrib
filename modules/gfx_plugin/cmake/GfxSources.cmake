@@ -110,6 +110,14 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f32_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_kernel.cl
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f32_dynamic_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f32_dynamic_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_dynamic_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_dynamic_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_f32_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_f32_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_f16_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_f16_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f32_kernel.cl
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f32_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f16_kernel.cl
@@ -164,6 +172,10 @@ set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/reduction_logical_bool_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f32_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f32_dynamic_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_dynamic_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_f32_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_f16_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f32_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f16_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/matmul_f32_kernel.cpp
@@ -228,11 +240,13 @@ set(GFX_RUNTIME_METAL_MSL_HEADERS
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_op_kinds.hpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_shape.hpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_slice_static.hpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_softmax.hpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_mps.hpp
     ${_gfx_src_dir}/mlir/msl_codegen.hpp
     ${_gfx_src_dir}/mlir/msl_codegen_matmul_metal.hpp
     ${_gfx_src_dir}/mlir/msl_codegen_matmul_mpsrt.hpp
     ${_gfx_src_dir}/kernel_ir/metal_kernels/reduction_kernels.hpp
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/softmax_kernels.hpp
 )
 
 set(GFX_RUNTIME_METAL_MSL_SOURCES
@@ -267,7 +281,6 @@ set(GFX_RUNTIME_METAL_MSL_SOURCES
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_matmul.cpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_llm.cpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_softmax.cpp
-    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_pool2d.cpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_unary.cpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_common.cpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_op_kinds.cpp
@@ -278,8 +291,6 @@ set(GFX_RUNTIME_METAL_MSL_SOURCES
     ${_gfx_src_dir}/mlir/msl_codegen_matmul_metal.cpp
     ${_gfx_src_dir}/mlir/msl_codegen_matmul_mpsrt.cpp
     ${_gfx_src_dir}/mlir/pad_codegen.cpp
-    ${_gfx_src_dir}/mlir/pool_avg_codegen.cpp
-    ${_gfx_src_dir}/mlir/pool_max_codegen.cpp
     ${_gfx_src_dir}/mlir/range_codegen.cpp
     ${_gfx_src_dir}/mlir/reduce_codegen.cpp
     ${_gfx_src_dir}/mlir/reverse_codegen.cpp
@@ -299,6 +310,7 @@ set(GFX_RUNTIME_METAL_MSL_SOURCES
     ${_gfx_src_dir}/mlir/transpose_codegen.cpp
     ${_gfx_src_dir}/mlir/unary_codegen.cpp
     ${_gfx_src_dir}/kernel_ir/metal_kernels/reduction_kernels.cpp
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/softmax_kernels.cpp
 )
 
 set(GFX_RUNTIME_METAL_SOURCES
@@ -344,6 +356,11 @@ set(GFX_RUNTIME_METAL_HEADERS
     ${_gfx_src_dir}/kernel_ir/metal_kernels/reduction_f32_kernel.metal
     ${_gfx_src_dir}/kernel_ir/metal_kernels/reduction_logical_bool_kernel.metal
     ${_gfx_src_dir}/kernel_ir/metal_kernels/reduction_kernels.hpp
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/softmax_f32_kernel.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/softmax_f16_kernel.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/logsoftmax_f32_kernel.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/logsoftmax_f16_kernel.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/softmax_kernels.hpp
     ${_gfx_src_dir}/backends/metal/runtime/metal_command_encoder.hpp
     ${_gfx_src_dir}/backends/metal/codegen/metal_compiler.hpp
     ${_gfx_src_dir}/backends/metal/codegen/metal_codegen_backend.hpp

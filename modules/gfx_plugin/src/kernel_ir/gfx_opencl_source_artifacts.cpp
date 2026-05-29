@@ -22,9 +22,13 @@
 #include "kernel_ir/opencl_kernels/interpolate_f16_kernel.hpp"
 #include "kernel_ir/opencl_kernels/interpolate_f32_kernel.hpp"
 #include "kernel_ir/opencl_kernels/matmul_f32_kernel.hpp"
+#include "kernel_ir/opencl_kernels/pool2d_f16_kernel.hpp"
+#include "kernel_ir/opencl_kernels/pool2d_f32_kernel.hpp"
 #include "kernel_ir/opencl_kernels/reduction_f32_kernel.hpp"
 #include "kernel_ir/opencl_kernels/reduction_logical_bool_kernel.hpp"
+#include "kernel_ir/opencl_kernels/softmax_f16_dynamic_kernel.hpp"
 #include "kernel_ir/opencl_kernels/softmax_f16_kernel.hpp"
+#include "kernel_ir/opencl_kernels/softmax_f32_dynamic_kernel.hpp"
 #include "kernel_ir/opencl_kernels/softmax_f32_kernel.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/core/type/element_type.hpp"
@@ -36,6 +40,7 @@
 #include "openvino/op/asinh.hpp"
 #include "openvino/op/atan.hpp"
 #include "openvino/op/atanh.hpp"
+#include "openvino/op/avg_pool.hpp"
 #include "openvino/op/broadcast.hpp"
 #include "openvino/op/ceiling.hpp"
 #include "openvino/op/clamp.hpp"
@@ -64,6 +69,7 @@
 #include "openvino/op/mod.hpp"
 #include "openvino/op/multiply.hpp"
 #include "openvino/op/negative.hpp"
+#include "openvino/op/max_pool.hpp"
 #include "openvino/op/power.hpp"
 #include "openvino/op/range.hpp"
 #include "openvino/op/reduce_l1.hpp"
@@ -4013,211 +4019,211 @@ bool same_static_element_count_input_output(
          ov::shape_size(node->get_output_shape(output_idx));
 }
 
-std::optional<GfxOpenClBaselineOp>
+std::optional<GfxOpenClArtifactOp>
 activation_op_code(const std::shared_ptr<const ov::Node> &node) {
   if (ov::as_type_ptr<const ov::op::v0::Relu>(node)) {
-    return GfxOpenClBaselineOp::Relu;
+    return GfxOpenClArtifactOp::Relu;
   }
   if (ov::as_type_ptr<const ov::op::v0::Sigmoid>(node)) {
-    return GfxOpenClBaselineOp::Sigmoid;
+    return GfxOpenClArtifactOp::Sigmoid;
   }
   if (ov::as_type_ptr<const ov::op::v0::Tanh>(node)) {
-    return GfxOpenClBaselineOp::Tanh;
+    return GfxOpenClArtifactOp::Tanh;
   }
   if (ov::as_type_ptr<const ov::op::v0::Gelu>(node)) {
-    return GfxOpenClBaselineOp::GeluErf;
+    return GfxOpenClArtifactOp::GeluErf;
   }
   if (auto gelu = ov::as_type_ptr<const ov::op::v7::Gelu>(node)) {
     return gelu->get_approximation_mode() == ov::op::GeluApproximationMode::TANH
-               ? GfxOpenClBaselineOp::GeluTanh
-               : GfxOpenClBaselineOp::GeluErf;
+               ? GfxOpenClArtifactOp::GeluTanh
+               : GfxOpenClArtifactOp::GeluErf;
   }
   if (ov::as_type_ptr<const ov::op::v4::HSwish>(node)) {
-    return GfxOpenClBaselineOp::HSwish;
+    return GfxOpenClArtifactOp::HSwish;
   }
   if (ov::as_type_ptr<const ov::op::v5::HSigmoid>(node)) {
-    return GfxOpenClBaselineOp::HSigmoid;
+    return GfxOpenClArtifactOp::HSigmoid;
   }
   if (ov::as_type_ptr<const ov::op::v4::SoftPlus>(node)) {
-    return GfxOpenClBaselineOp::SoftPlus;
+    return GfxOpenClArtifactOp::SoftPlus;
   }
   if (ov::as_type_ptr<const ov::op::v4::Swish>(node)) {
-    return GfxOpenClBaselineOp::Swish;
+    return GfxOpenClArtifactOp::Swish;
   }
   if (ov::as_type_ptr<const ov::op::v4::Mish>(node)) {
-    return GfxOpenClBaselineOp::Mish;
+    return GfxOpenClArtifactOp::Mish;
   }
   if (ov::as_type_ptr<const ov::op::v9::SoftSign>(node)) {
-    return GfxOpenClBaselineOp::SoftSign;
+    return GfxOpenClArtifactOp::SoftSign;
   }
   if (ov::as_type_ptr<const ov::op::v0::Abs>(node)) {
-    return GfxOpenClBaselineOp::Abs;
+    return GfxOpenClArtifactOp::Abs;
   }
   if (ov::as_type_ptr<const ov::op::v0::Sign>(node)) {
-    return GfxOpenClBaselineOp::Sign;
+    return GfxOpenClArtifactOp::Sign;
   }
   if (ov::as_type_ptr<const ov::op::v0::Clamp>(node)) {
-    return GfxOpenClBaselineOp::Clamp;
+    return GfxOpenClArtifactOp::Clamp;
   }
   if (ov::as_type_ptr<const ov::op::v0::Negative>(node)) {
-    return GfxOpenClBaselineOp::Negative;
+    return GfxOpenClArtifactOp::Negative;
   }
   if (ov::as_type_ptr<const ov::op::v0::Sin>(node)) {
-    return GfxOpenClBaselineOp::Sin;
+    return GfxOpenClArtifactOp::Sin;
   }
   if (ov::as_type_ptr<const ov::op::v0::Cos>(node)) {
-    return GfxOpenClBaselineOp::Cos;
+    return GfxOpenClArtifactOp::Cos;
   }
   if (ov::as_type_ptr<const ov::op::v0::Tan>(node)) {
-    return GfxOpenClBaselineOp::Tan;
+    return GfxOpenClArtifactOp::Tan;
   }
   if (ov::as_type_ptr<const ov::op::v0::Erf>(node)) {
-    return GfxOpenClBaselineOp::Erf;
+    return GfxOpenClArtifactOp::Erf;
   }
   if (ov::as_type_ptr<const ov::op::v0::Asin>(node)) {
-    return GfxOpenClBaselineOp::Asin;
+    return GfxOpenClArtifactOp::Asin;
   }
   if (ov::as_type_ptr<const ov::op::v0::Acos>(node)) {
-    return GfxOpenClBaselineOp::Acos;
+    return GfxOpenClArtifactOp::Acos;
   }
   if (ov::as_type_ptr<const ov::op::v0::Atan>(node)) {
-    return GfxOpenClBaselineOp::Atan;
+    return GfxOpenClArtifactOp::Atan;
   }
   if (ov::as_type_ptr<const ov::op::v3::Asinh>(node)) {
-    return GfxOpenClBaselineOp::Asinh;
+    return GfxOpenClArtifactOp::Asinh;
   }
   if (ov::as_type_ptr<const ov::op::v3::Acosh>(node)) {
-    return GfxOpenClBaselineOp::Acosh;
+    return GfxOpenClArtifactOp::Acosh;
   }
   if (ov::as_type_ptr<const ov::op::v3::Atanh>(node)) {
-    return GfxOpenClBaselineOp::Atanh;
+    return GfxOpenClArtifactOp::Atanh;
   }
   if (ov::as_type_ptr<const ov::op::v0::Sinh>(node)) {
-    return GfxOpenClBaselineOp::Sinh;
+    return GfxOpenClArtifactOp::Sinh;
   }
   if (ov::as_type_ptr<const ov::op::v0::Cosh>(node)) {
-    return GfxOpenClBaselineOp::Cosh;
+    return GfxOpenClArtifactOp::Cosh;
   }
   if (auto round = ov::as_type_ptr<const ov::op::v5::Round>(node)) {
     return round->get_mode() == ov::op::v5::Round::RoundMode::HALF_TO_EVEN
-               ? GfxOpenClBaselineOp::RoundEven
-               : GfxOpenClBaselineOp::RoundAway;
+               ? GfxOpenClArtifactOp::RoundEven
+               : GfxOpenClArtifactOp::RoundAway;
   }
   if (ov::as_type_ptr<const ov::op::v0::Exp>(node)) {
-    return GfxOpenClBaselineOp::Exp;
+    return GfxOpenClArtifactOp::Exp;
   }
   if (ov::as_type_ptr<const ov::op::v0::Log>(node)) {
-    return GfxOpenClBaselineOp::Log;
+    return GfxOpenClArtifactOp::Log;
   }
   if (ov::as_type_ptr<const ov::op::v0::Sqrt>(node)) {
-    return GfxOpenClBaselineOp::Sqrt;
+    return GfxOpenClArtifactOp::Sqrt;
   }
   if (ov::as_type_ptr<const ov::op::v0::Floor>(node)) {
-    return GfxOpenClBaselineOp::Floor;
+    return GfxOpenClArtifactOp::Floor;
   }
   if (ov::as_type_ptr<const ov::op::v0::Ceiling>(node)) {
-    return GfxOpenClBaselineOp::Ceiling;
+    return GfxOpenClArtifactOp::Ceiling;
   }
   if (ov::as_type_ptr<const ov::op::v0::Elu>(node)) {
-    return GfxOpenClBaselineOp::Elu;
+    return GfxOpenClArtifactOp::Elu;
   }
   return std::nullopt;
 }
 
-std::optional<GfxOpenClBaselineOp>
+std::optional<GfxOpenClArtifactOp>
 binary_op_code(const std::shared_ptr<const ov::Node> &node) {
   if (ov::as_type_ptr<const ov::op::v1::Add>(node)) {
-    return GfxOpenClBaselineOp::Add;
+    return GfxOpenClArtifactOp::Add;
   }
   if (ov::as_type_ptr<const ov::op::v1::Subtract>(node)) {
-    return GfxOpenClBaselineOp::Subtract;
+    return GfxOpenClArtifactOp::Subtract;
   }
   if (ov::as_type_ptr<const ov::op::v1::Multiply>(node)) {
-    return GfxOpenClBaselineOp::Multiply;
+    return GfxOpenClArtifactOp::Multiply;
   }
   if (ov::as_type_ptr<const ov::op::v1::Divide>(node)) {
-    return GfxOpenClBaselineOp::Divide;
+    return GfxOpenClArtifactOp::Divide;
   }
   if (ov::as_type_ptr<const ov::op::v1::Maximum>(node)) {
-    return GfxOpenClBaselineOp::Maximum;
+    return GfxOpenClArtifactOp::Maximum;
   }
   if (ov::as_type_ptr<const ov::op::v1::Minimum>(node)) {
-    return GfxOpenClBaselineOp::Minimum;
+    return GfxOpenClArtifactOp::Minimum;
   }
   if (ov::as_type_ptr<const ov::op::v1::Power>(node)) {
-    return GfxOpenClBaselineOp::Power;
+    return GfxOpenClArtifactOp::Power;
   }
   if (ov::as_type_ptr<const ov::op::v0::SquaredDifference>(node)) {
-    return GfxOpenClBaselineOp::SquaredDifference;
+    return GfxOpenClArtifactOp::SquaredDifference;
   }
   if (ov::as_type_ptr<const ov::op::v1::Mod>(node)) {
-    return GfxOpenClBaselineOp::Mod;
+    return GfxOpenClArtifactOp::Mod;
   }
   if (ov::as_type_ptr<const ov::op::v1::FloorMod>(node)) {
-    return GfxOpenClBaselineOp::FloorMod;
+    return GfxOpenClArtifactOp::FloorMod;
   }
   return std::nullopt;
 }
 
-std::optional<GfxOpenClBaselineOp> compare_op_code(std::string_view type) {
+std::optional<GfxOpenClArtifactOp> compare_op_code(std::string_view type) {
   if (type == "Equal")
-    return GfxOpenClBaselineOp::Equal;
+    return GfxOpenClArtifactOp::Equal;
   if (type == "NotEqual")
-    return GfxOpenClBaselineOp::NotEqual;
+    return GfxOpenClArtifactOp::NotEqual;
   if (type == "Greater")
-    return GfxOpenClBaselineOp::Greater;
+    return GfxOpenClArtifactOp::Greater;
   if (type == "GreaterEqual")
-    return GfxOpenClBaselineOp::GreaterEqual;
+    return GfxOpenClArtifactOp::GreaterEqual;
   if (type == "Less")
-    return GfxOpenClBaselineOp::Less;
+    return GfxOpenClArtifactOp::Less;
   if (type == "LessEqual")
-    return GfxOpenClBaselineOp::LessEqual;
+    return GfxOpenClArtifactOp::LessEqual;
   return std::nullopt;
 }
 
-std::optional<GfxOpenClBaselineOp>
+std::optional<GfxOpenClArtifactOp>
 logical_unary_op_code(std::string_view type) {
   if (type == "LogicalNot")
-    return GfxOpenClBaselineOp::LogicalNot;
+    return GfxOpenClArtifactOp::LogicalNot;
   return std::nullopt;
 }
 
-std::optional<GfxOpenClBaselineOp>
+std::optional<GfxOpenClArtifactOp>
 logical_binary_op_code(std::string_view type) {
   if (type == "LogicalAnd")
-    return GfxOpenClBaselineOp::LogicalAnd;
+    return GfxOpenClArtifactOp::LogicalAnd;
   if (type == "LogicalOr")
-    return GfxOpenClBaselineOp::LogicalOr;
+    return GfxOpenClArtifactOp::LogicalOr;
   if (type == "LogicalXor" || type == "Xor")
-    return GfxOpenClBaselineOp::LogicalXor;
+    return GfxOpenClArtifactOp::LogicalXor;
   return std::nullopt;
 }
 
-std::optional<GfxOpenClBaselineOp>
+std::optional<GfxOpenClArtifactOp>
 reduce_logical_op_code(std::string_view type) {
   if (type == "ReduceLogicalAnd")
-    return GfxOpenClBaselineOp::ReduceLogicalAnd;
+    return GfxOpenClArtifactOp::ReduceLogicalAnd;
   if (type == "ReduceLogicalOr")
-    return GfxOpenClBaselineOp::ReduceLogicalOr;
+    return GfxOpenClArtifactOp::ReduceLogicalOr;
   return std::nullopt;
 }
 
-std::optional<GfxOpenClBaselineOp>
+std::optional<GfxOpenClArtifactOp>
 reduce_numeric_op_code(std::string_view type) {
   if (type == "ReduceSum")
-    return GfxOpenClBaselineOp::ReduceSum;
+    return GfxOpenClArtifactOp::ReduceSum;
   if (type == "ReduceMean")
-    return GfxOpenClBaselineOp::ReduceMean;
+    return GfxOpenClArtifactOp::ReduceMean;
   if (type == "ReduceMax")
-    return GfxOpenClBaselineOp::ReduceMax;
+    return GfxOpenClArtifactOp::ReduceMax;
   if (type == "ReduceMin")
-    return GfxOpenClBaselineOp::ReduceMin;
+    return GfxOpenClArtifactOp::ReduceMin;
   if (type == "ReduceProd")
-    return GfxOpenClBaselineOp::ReduceProd;
+    return GfxOpenClArtifactOp::ReduceProd;
   if (type == "ReduceL1")
-    return GfxOpenClBaselineOp::ReduceL1;
+    return GfxOpenClArtifactOp::ReduceL1;
   if (type == "ReduceL2")
-    return GfxOpenClBaselineOp::ReduceL2;
+    return GfxOpenClArtifactOp::ReduceL2;
   return std::nullopt;
 }
 
@@ -4467,16 +4473,16 @@ std::optional<std::vector<uint32_t>> binary_broadcast_static_u32_scalars(
                                       element_type);
 }
 
-GfxKernelStageManifest make_opencl_baseline_manifest(
+GfxKernelStageManifest make_opencl_source_manifest(
     GfxKernelStageFamily family, std::string specialization_key,
     std::string entry_point, uint32_t direct_inputs, uint32_t scalar_arg_count,
     uint32_t direct_outputs = 1);
 
-GfxOpenClSourceArtifact make_opencl_baseline_artifact(
+GfxOpenClSourceArtifact make_opencl_source_artifact(
     GfxKernelStageManifest manifest, std::string source_id,
     std::vector<GfxOpenClSourceScalarArg> scalar_args,
-    std::vector<size_t> direct_input_indices, GfxOpenClBaselineOp op,
-    GfxOpenClBaselineInputMode input_mode = GfxOpenClBaselineInputMode::Direct,
+    std::vector<size_t> direct_input_indices, GfxOpenClArtifactOp op,
+    GfxOpenClArtifactInputMode input_mode = GfxOpenClArtifactInputMode::Direct,
     float scalar_constant_f32 = 0.0f,
     std::vector<uint32_t> static_u32_scalars = {},
     GfxOpenClSourceElementCountSource element_count_source =
@@ -4526,14 +4532,14 @@ make_opencl_activation_artifact(const std::shared_ptr<const ov::Node> &node) {
       if (!beta_value) {
         const auto runtime_entry_point =
             "gfx_opencl_generated_activation_runtime_beta_" + type_suffix;
-        auto manifest = make_opencl_baseline_manifest(
+        auto manifest = make_opencl_source_manifest(
             GfxKernelStageFamily::Activation,
             "opencl:generated:activation_runtime_beta:" +
                 std::string(node->get_type_name()) + ":" + type_suffix,
             runtime_entry_point,
             /*direct_inputs=*/2,
             /*scalar_arg_count=*/2);
-        return make_opencl_baseline_artifact(
+        return make_opencl_source_artifact(
             std::move(manifest),
             "opencl/generated/activation_runtime_beta_" + type_suffix,
             {GfxOpenClSourceScalarArg::ElementCount,
@@ -4543,19 +4549,19 @@ make_opencl_activation_artifact(const std::shared_ptr<const ov::Node> &node) {
       alpha = *beta_value;
     }
   }
-  auto manifest = make_opencl_baseline_manifest(
+  auto manifest = make_opencl_source_manifest(
       GfxKernelStageFamily::Activation,
       "opencl:generated:activation:" + std::string(node->get_type_name()) +
           ":" + type_suffix,
       entry_point,
       /*direct_inputs=*/1,
       /*scalar_arg_count=*/4);
-  return make_opencl_baseline_artifact(
+  return make_opencl_source_artifact(
       std::move(manifest), "opencl/generated/activation_" + type_suffix,
       {GfxOpenClSourceScalarArg::ElementCount, GfxOpenClSourceScalarArg::OpCode,
        GfxOpenClSourceScalarArg::StaticF32,
        GfxOpenClSourceScalarArg::StaticF32},
-      {0}, *op, GfxOpenClBaselineInputMode::Direct, 0.0f, {},
+      {0}, *op, GfxOpenClArtifactInputMode::Direct, 0.0f, {},
       GfxOpenClSourceElementCountSource::Output0, {alpha, beta});
 }
 
@@ -4594,13 +4600,13 @@ make_opencl_eltwise_artifact(const std::shared_ptr<const ov::Node> &node) {
       rhs_matches_output) {
     const std::string entry_point =
         "gfx_opencl_generated_eltwise_binary_" + type_suffix;
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::Eltwise,
         "opencl:generated:eltwise:" + type + ":" + type_suffix + ":same_shape",
         entry_point,
         /*direct_inputs=*/2,
         /*scalar_arg_count=*/2);
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest), source_id({}),
         {GfxOpenClSourceScalarArg::ElementCount,
          GfxOpenClSourceScalarArg::OpCode},
@@ -4612,62 +4618,62 @@ make_opencl_eltwise_artifact(const std::shared_ptr<const ov::Node> &node) {
   }
 
   if (is_f32 && rhs_constant && lhs_matches_output) {
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::Eltwise,
         "opencl:generated:eltwise:" + type + ":f32:rhs_scalar_const",
         "gfx_opencl_generated_eltwise_const_f32",
         /*direct_inputs=*/1,
         /*scalar_arg_count=*/4);
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest), source_id("const_f32"),
         {GfxOpenClSourceScalarArg::ElementCount,
          GfxOpenClSourceScalarArg::OpCode, GfxOpenClSourceScalarArg::InputMode,
          GfxOpenClSourceScalarArg::ScalarConstantF32},
-        {0}, *op, GfxOpenClBaselineInputMode::RhsScalarConstant, *rhs_constant);
+        {0}, *op, GfxOpenClArtifactInputMode::RhsScalarConstant, *rhs_constant);
   }
   if (is_f32 && lhs_constant && rhs_matches_output) {
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::Eltwise,
         "opencl:generated:eltwise:" + type + ":f32:lhs_scalar_const",
         "gfx_opencl_generated_eltwise_const_f32",
         /*direct_inputs=*/1,
         /*scalar_arg_count=*/4);
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest), source_id("const_f32"),
         {GfxOpenClSourceScalarArg::ElementCount,
          GfxOpenClSourceScalarArg::OpCode, GfxOpenClSourceScalarArg::InputMode,
          GfxOpenClSourceScalarArg::ScalarConstantF32},
-        {1}, *op, GfxOpenClBaselineInputMode::LhsScalarConstant, *lhs_constant);
+        {1}, *op, GfxOpenClArtifactInputMode::LhsScalarConstant, *lhs_constant);
   }
   if (is_static_scalar_like_input(node, 1) && lhs_matches_output) {
     const std::string entry_point =
         "gfx_opencl_generated_eltwise_scalar_" + type_suffix;
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::Eltwise,
         "opencl:generated:eltwise:" + type + ":" + type_suffix + ":rhs_scalar",
         entry_point,
         /*direct_inputs=*/2,
         /*scalar_arg_count=*/3);
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest), source_id("scalar_" + type_suffix),
         {GfxOpenClSourceScalarArg::ElementCount,
          GfxOpenClSourceScalarArg::OpCode, GfxOpenClSourceScalarArg::InputMode},
-        {0, 1}, *op, GfxOpenClBaselineInputMode::RhsScalar);
+        {0, 1}, *op, GfxOpenClArtifactInputMode::RhsScalar);
   }
   if (is_static_scalar_like_input(node, 0) && rhs_matches_output) {
     const std::string entry_point =
         "gfx_opencl_generated_eltwise_scalar_" + type_suffix;
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::Eltwise,
         "opencl:generated:eltwise:" + type + ":" + type_suffix + ":lhs_scalar",
         entry_point,
         /*direct_inputs=*/2,
         /*scalar_arg_count=*/3);
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest), source_id("scalar_" + type_suffix),
         {GfxOpenClSourceScalarArg::ElementCount,
          GfxOpenClSourceScalarArg::OpCode, GfxOpenClSourceScalarArg::InputMode},
-        {0, 1}, *op, GfxOpenClBaselineInputMode::LhsScalar);
+        {0, 1}, *op, GfxOpenClArtifactInputMode::LhsScalar);
   }
 
   auto static_u32_scalars = binary_broadcast_static_u32_scalars(node);
@@ -4679,14 +4685,14 @@ make_opencl_eltwise_artifact(const std::shared_ptr<const ov::Node> &node) {
         GfxOpenClSourceScalarArg::OpCode};
     scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
                        GfxOpenClSourceScalarArg::StaticU32);
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::Eltwise,
         "opencl:generated:eltwise:" + type + ":" + type_suffix + ":broadcast",
         entry_point,
         /*direct_inputs=*/2, static_cast<uint32_t>(scalar_args.size()));
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest), source_id("broadcast_" + type_suffix),
-        std::move(scalar_args), {0, 1}, *op, GfxOpenClBaselineInputMode::Direct,
+        std::move(scalar_args), {0, 1}, *op, GfxOpenClArtifactInputMode::Direct,
         0.0f, std::move(*static_u32_scalars));
   }
   return std::nullopt;
@@ -5480,6 +5486,94 @@ matmul_static_u32_scalars(const std::shared_ptr<const ov::Node> &node) {
       rhs_row_stride_u32,
       rhs_col_stride_u32,
   };
+}
+
+std::optional<std::vector<uint32_t>>
+pool2d_static_u32_scalars(const std::shared_ptr<const ov::Node> &node,
+                          GfxOpenClArtifactOp &op) {
+  if (!node || node->get_input_size() != 1 || node->get_output_size() != 1 ||
+      !node->get_input_partial_shape(0).is_static() ||
+      !node->get_output_partial_shape(0).is_static() ||
+      node->get_input_element_type(0) != node->get_output_element_type(0) ||
+      (!is_f32_tensor_type(node->get_output_element_type(0)) &&
+       !is_f16_tensor_type(node->get_output_element_type(0)))) {
+    return std::nullopt;
+  }
+
+  const auto &input_shape = node->get_input_shape(0);
+  const auto &output_shape = node->get_output_shape(0);
+  if (input_shape.size() != 4 || output_shape.size() != 4 ||
+      ov::shape_size(input_shape) == 0 || ov::shape_size(output_shape) == 0) {
+    return std::nullopt;
+  }
+
+  ov::Shape kernel;
+  ov::Strides strides;
+  ov::Strides dilations;
+  ov::Shape pads_begin;
+  ov::Shape pads_end;
+  bool is_avg = false;
+  bool exclude_pad = true;
+
+  if (auto maxpool = ov::as_type_ptr<const ov::op::util::MaxPoolBase>(node)) {
+    op = GfxOpenClArtifactOp::MaxPool;
+    kernel = maxpool->get_kernel();
+    strides = maxpool->get_strides();
+    dilations = ov::Strides(kernel.size(), 1);
+    if (auto p = ov::as_type_ptr<const ov::op::v8::MaxPool>(node)) {
+      dilations = p->get_dilations();
+    } else if (auto p = ov::as_type_ptr<const ov::op::v14::MaxPool>(node)) {
+      dilations = p->get_dilations();
+    }
+    pads_begin = maxpool->get_pads_begin();
+    pads_end = maxpool->get_pads_end();
+  } else if (auto avgpool =
+                 ov::as_type_ptr<const ov::op::util::AvgPoolBase>(node)) {
+    op = GfxOpenClArtifactOp::AvgPool;
+    is_avg = true;
+    kernel = avgpool->get_kernel();
+    strides = avgpool->get_strides();
+    dilations = ov::Strides(kernel.size(), 1);
+    if (auto p = ov::as_type_ptr<const ov::op::v16::AvgPool>(node)) {
+      dilations = p->get_dilations();
+    }
+    pads_begin = avgpool->get_pads_begin();
+    pads_end = avgpool->get_pads_end();
+    exclude_pad = avgpool->get_exclude_pad();
+  } else {
+    return std::nullopt;
+  }
+
+  if (kernel.size() != 2 || strides.size() != 2 || dilations.size() != 2 ||
+      pads_begin.size() != 2 || pads_end.size() != 2 || kernel[0] == 0 ||
+      kernel[1] == 0 || strides[0] == 0 || strides[1] == 0 ||
+      dilations[0] == 0 || dilations[1] == 0) {
+    return std::nullopt;
+  }
+
+  std::vector<uint32_t> scalars;
+  scalars.reserve(18);
+  for (const auto value :
+       {input_shape[0], input_shape[1], input_shape[2], input_shape[3],
+        kernel[0], kernel[1], strides[0], strides[1], dilations[0],
+        dilations[1], pads_begin[0], pads_begin[1], pads_end[0], pads_end[1],
+        output_shape[2], output_shape[3]}) {
+    uint32_t scalar = 0;
+    if (!checked_u32(value, scalar)) {
+      return std::nullopt;
+    }
+    scalars.push_back(scalar);
+  }
+  scalars.push_back(is_avg ? 1u : 0u);
+  scalars.push_back(exclude_pad ? 1u : 0u);
+  return scalars;
+}
+
+std::vector<GfxOpenClSourceScalarArg> pool2d_static_scalar_args() {
+  std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+      GfxOpenClSourceScalarArg::ElementCount};
+  scalar_args.insert(scalar_args.end(), 18, GfxOpenClSourceScalarArg::StaticU32);
+  return scalar_args;
 }
 
 std::optional<std::vector<uint32_t>>
@@ -6909,7 +7003,7 @@ variadic_split_static_u32_scalars(const std::shared_ptr<const ov::Node> &node) {
       /*require_equal_axis_lengths=*/false, &*explicit_axis_lengths);
 }
 
-GfxKernelStageManifest make_opencl_baseline_manifest(
+GfxKernelStageManifest make_opencl_source_manifest(
     GfxKernelStageFamily family, std::string specialization_key,
     std::string entry_point, uint32_t direct_inputs, uint32_t scalar_arg_count,
     uint32_t direct_outputs) {
@@ -6921,9 +7015,23 @@ GfxKernelStageManifest make_opencl_baseline_manifest(
                    GfxKernelBufferRole::TensorOutput);
   abi.roles.insert(abi.roles.end(), scalar_arg_count,
                    GfxKernelBufferRole::ScalarParam);
-  const auto kernel_family = family == GfxKernelStageFamily::Reduction
-                                 ? GfxKernelFamily::ReductionBuffer
-                                 : GfxKernelFamily::EltwiseFusedBuffer;
+  GfxKernelFamily kernel_family = GfxKernelFamily::EltwiseFusedBuffer;
+  if (family == GfxKernelStageFamily::Reduction) {
+    kernel_family = GfxKernelFamily::ReductionBuffer;
+  } else if (family == GfxKernelStageFamily::Softmax) {
+    kernel_family = GfxKernelFamily::SoftmaxBuffer;
+  } else if (family == GfxKernelStageFamily::Pooling) {
+    kernel_family = GfxKernelFamily::Pool2DWindow;
+  } else if (family == GfxKernelStageFamily::Gemm) {
+    kernel_family = GfxKernelFamily::MatMulBuffer;
+  } else if (family == GfxKernelStageFamily::Resize ||
+             family == GfxKernelStageFamily::Layout) {
+    kernel_family = GfxKernelFamily::TransposePackND;
+  } else if (family == GfxKernelStageFamily::ConcatSplit) {
+    kernel_family = GfxKernelFamily::ConcatSplitGeneric;
+  } else if (family == GfxKernelStageFamily::GatherScatter) {
+    kernel_family = GfxKernelFamily::GatherScatterIndexed;
+  }
   auto dispatch = make_gfx_kernel_linear_dispatch_policy(
       /*threads_per_threadgroup=*/64,
       /*precompiled_binary_required=*/false);
@@ -7248,11 +7356,11 @@ static inline void gfx_split_store_word_f16(__global const uint* src,
   return cl.str();
 }
 
-GfxOpenClSourceArtifact make_opencl_baseline_artifact(
+GfxOpenClSourceArtifact make_opencl_source_artifact(
     GfxKernelStageManifest manifest, std::string source_id,
     std::vector<GfxOpenClSourceScalarArg> scalar_args,
-    std::vector<size_t> direct_input_indices, GfxOpenClBaselineOp op,
-    GfxOpenClBaselineInputMode input_mode, float scalar_constant_f32,
+    std::vector<size_t> direct_input_indices, GfxOpenClArtifactOp op,
+    GfxOpenClArtifactInputMode input_mode, float scalar_constant_f32,
     std::vector<uint32_t> static_u32_scalars,
     GfxOpenClSourceElementCountSource element_count_source,
     std::vector<float> static_f32_scalars) {
@@ -7302,15 +7410,25 @@ GfxOpenClSourceArtifact make_opencl_baseline_artifact(
              "gfx_opencl_generated_matmul_f32") {
     artifact.source = opencl_generated_matmul_f32_kernel_source().source;
   } else if (artifact.artifact_ref.entry_point ==
-                 "gfx_opencl_baseline_softmax_f32" ||
-             artifact.artifact_ref.entry_point ==
-                 "gfx_opencl_baseline_softmax_dynamic_f32") {
-    artifact.source = opencl_baseline_softmax_f32_kernel_source().source;
+             "gfx_opencl_generated_softmax_f32") {
+    artifact.source = opencl_generated_softmax_f32_kernel_source().source;
   } else if (artifact.artifact_ref.entry_point ==
-                 "gfx_opencl_baseline_softmax_f16" ||
-             artifact.artifact_ref.entry_point ==
-                 "gfx_opencl_baseline_softmax_dynamic_f16") {
-    artifact.source = opencl_baseline_softmax_f16_kernel_source().source;
+             "gfx_opencl_generated_softmax_dynamic_f32") {
+    artifact.source =
+        opencl_generated_softmax_f32_dynamic_kernel_source().source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_generated_softmax_f16") {
+    artifact.source = opencl_generated_softmax_f16_kernel_source().source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_generated_softmax_dynamic_f16") {
+    artifact.source =
+        opencl_generated_softmax_f16_dynamic_kernel_source().source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_generated_pool2d_f32") {
+    artifact.source = opencl_generated_pool2d_f32_kernel_source().source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_generated_pool2d_f16") {
+    artifact.source = opencl_generated_pool2d_f16_kernel_source().source;
   } else if (artifact.artifact_ref.entry_point ==
              "gfx_opencl_generated_interpolate_f32") {
     artifact.source = opencl_generated_interpolate_f32_kernel_source().source;
@@ -7533,18 +7651,18 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
       const std::string entry_point =
           "gfx_opencl_baseline_concat" +
           std::to_string(dynamic_scalars->input_count) + "_f16";
-      auto manifest = make_opencl_baseline_manifest(
+      auto manifest = make_opencl_source_manifest(
           GfxKernelStageFamily::ConcatSplit,
           "opencl:baseline:Concat:f16:dynamic_static_rank:inputs" +
               std::to_string(dynamic_scalars->input_count),
           entry_point, dynamic_scalars->input_count,
           static_cast<uint32_t>(scalar_args.size()));
-      return make_opencl_baseline_artifact(
+      return make_opencl_source_artifact(
           std::move(manifest),
           "opencl/baseline/concat" +
               std::to_string(dynamic_scalars->input_count) + "_f16_dynamic",
           std::move(scalar_args), std::move(direct_input_indices),
-          GfxOpenClBaselineOp::Identity, GfxOpenClBaselineInputMode::Direct,
+          GfxOpenClArtifactOp::Identity, GfxOpenClArtifactInputMode::Direct,
           0.0f, {dynamic_scalars->inner});
     }
   }
@@ -7559,30 +7677,30 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
       for (uint32_t axis = 0; axis < 4; ++axis) {
         scalar_args.push_back(input_dim_scalar_arg(0, axis));
       }
-      auto manifest = make_opencl_baseline_manifest(
+      auto manifest = make_opencl_source_manifest(
           GfxKernelStageFamily::Layout,
           "opencl:baseline:Broadcast:f16:i64shape:dynamic_static_rank",
           "gfx_opencl_baseline_broadcast_f16_i64shape",
           /*direct_inputs=*/2, static_cast<uint32_t>(scalar_args.size()));
-      return make_opencl_baseline_artifact(
+      return make_opencl_source_artifact(
           std::move(manifest), "opencl/baseline/broadcast_f16_i64shape_dynamic",
-          std::move(scalar_args), {0, 1}, GfxOpenClBaselineOp::Identity,
-          GfxOpenClBaselineInputMode::Direct, 0.0f,
+          std::move(scalar_args), {0, 1}, GfxOpenClArtifactOp::Identity,
+          GfxOpenClArtifactInputMode::Direct, 0.0f,
           {dynamic_scalars->rank, dynamic_scalars->input_rank});
     }
   }
 
   if (type == "Select" && select_dynamic_f16_supported(node)) {
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::Eltwise,
         "opencl:baseline:Select:bool_f16:dynamic_same_shape",
         "gfx_opencl_baseline_select_f16",
         /*direct_inputs=*/3,
         /*scalar_arg_count=*/1);
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest), "opencl/baseline/select_f16_dynamic",
         {GfxOpenClSourceScalarArg::ElementCount}, {0, 1, 2},
-        GfxOpenClBaselineOp::Identity);
+        GfxOpenClArtifactOp::Identity);
   }
 
   if (type == "Slice") {
@@ -7597,15 +7715,15 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
       for (uint32_t axis = 0; axis < 4; ++axis) {
         scalar_args.push_back(input_dim_scalar_arg(0, axis));
       }
-      auto manifest = make_opencl_baseline_manifest(
+      auto manifest = make_opencl_source_manifest(
           GfxKernelStageFamily::GatherScatter,
           "opencl:baseline:Slice:f16:dynamic_static_rank",
           "gfx_opencl_baseline_slice_v8_f16",
           /*direct_inputs=*/4, static_cast<uint32_t>(scalar_args.size()));
-      return make_opencl_baseline_artifact(
+      return make_opencl_source_artifact(
           std::move(manifest), "opencl/baseline/slice_v8_f16_dynamic",
-          std::move(scalar_args), {0, 1, 2, 3}, GfxOpenClBaselineOp::Identity,
-          GfxOpenClBaselineInputMode::Direct, 0.0f, {dynamic_scalars->rank});
+          std::move(scalar_args), {0, 1, 2, 3}, GfxOpenClArtifactOp::Identity,
+          GfxOpenClArtifactInputMode::Direct, 0.0f, {dynamic_scalars->rank});
     }
   }
 
@@ -7621,16 +7739,16 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
       for (uint32_t axis = 0; axis < 4; ++axis) {
         scalar_args.push_back(input_dim_scalar_arg(0, axis));
       }
-      auto manifest = make_opencl_baseline_manifest(
+      auto manifest = make_opencl_source_manifest(
           GfxKernelStageFamily::GatherScatter,
           "opencl:baseline:StridedSlice:f16:dynamic_runtime_static_rank",
           "gfx_opencl_baseline_slice_v8_f16",
           /*direct_inputs=*/4, static_cast<uint32_t>(scalar_args.size()));
-      return make_opencl_baseline_artifact(
+      return make_opencl_source_artifact(
           std::move(manifest),
           "opencl/baseline/strided_slice_f16_dynamic_runtime",
-          std::move(scalar_args), {0, 1, 2, 3}, GfxOpenClBaselineOp::Identity,
-          GfxOpenClBaselineInputMode::Direct, 0.0f, {runtime_scalars->rank});
+          std::move(scalar_args), {0, 1, 2, 3}, GfxOpenClArtifactOp::Identity,
+          GfxOpenClArtifactInputMode::Direct, 0.0f, {runtime_scalars->rank});
     }
 
     auto dynamic_scalars = strided_slice_dynamic_f16_scalars(node);
@@ -7655,29 +7773,29 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
       static_scalars.insert(static_scalars.end(),
                             dynamic_scalars->steps.begin(),
                             dynamic_scalars->steps.end());
-      auto manifest = make_opencl_baseline_manifest(
+      auto manifest = make_opencl_source_manifest(
           GfxKernelStageFamily::GatherScatter,
           "opencl:baseline:StridedSlice:f16:dynamic_static_rank",
           "gfx_opencl_baseline_slice_f16",
           /*direct_inputs=*/2, static_cast<uint32_t>(scalar_args.size()));
-      return make_opencl_baseline_artifact(
+      return make_opencl_source_artifact(
           std::move(manifest), "opencl/baseline/slice_f16_dynamic",
-          std::move(scalar_args), {0, 2}, GfxOpenClBaselineOp::Identity,
-          GfxOpenClBaselineInputMode::Direct, 0.0f, std::move(static_scalars));
+          std::move(scalar_args), {0, 2}, GfxOpenClArtifactOp::Identity,
+          GfxOpenClArtifactInputMode::Direct, 0.0f, std::move(static_scalars));
     }
   }
 
   if (type == "Range" && range_dynamic_i64_unit_supported(node)) {
     auto manifest =
-        make_opencl_baseline_manifest(GfxKernelStageFamily::GatherScatter,
+        make_opencl_source_manifest(GfxKernelStageFamily::GatherScatter,
                                       "opencl:baseline:Range:i64:dynamic_unit",
                                       "gfx_opencl_baseline_range_i64_unit",
                                       /*direct_inputs=*/1,
                                       /*scalar_arg_count=*/1);
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest), "opencl/baseline/range_i64_unit_dynamic",
         {GfxOpenClSourceScalarArg::ElementCount}, {1},
-        GfxOpenClBaselineOp::Identity);
+        GfxOpenClArtifactOp::Identity);
   }
 
   if (type == "Tile") {
@@ -7690,29 +7808,54 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
         return std::nullopt;
       }
       auto scalar_args = tile_dynamic_shape_scalar_args();
-      auto manifest = make_opencl_baseline_manifest(
+      auto manifest = make_opencl_source_manifest(
           GfxKernelStageFamily::Layout,
           "opencl:baseline:Tile:" + type_suffix + ":dynamic_static_rank",
           "gfx_opencl_baseline_tile_dynamic_" + type_suffix,
           /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
-      return make_opencl_baseline_artifact(
+      return make_opencl_source_artifact(
           std::move(manifest), "opencl/baseline/tile_dynamic_" + type_suffix,
-          std::move(scalar_args), {0}, GfxOpenClBaselineOp::Identity,
-          GfxOpenClBaselineInputMode::Direct, 0.0f, {*rank});
+          std::move(scalar_args), {0}, GfxOpenClArtifactOp::Identity,
+          GfxOpenClArtifactInputMode::Direct, 0.0f, {*rank});
     }
     std::vector<GfxOpenClSourceScalarArg> scalar_args = {
         GfxOpenClSourceScalarArg::ElementCount};
     scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
                        GfxOpenClSourceScalarArg::StaticU32);
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::Layout, "opencl:baseline:Tile:" + type_suffix,
         "gfx_opencl_baseline_tile_" + type_suffix,
         /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest), "opencl/baseline/tile_" + type_suffix,
-        std::move(scalar_args), {0}, GfxOpenClBaselineOp::Identity,
-        GfxOpenClBaselineInputMode::Direct, 0.0f,
+        std::move(scalar_args), {0}, GfxOpenClArtifactOp::Identity,
+        GfxOpenClArtifactInputMode::Direct, 0.0f,
         std::move(*static_u32_scalars));
+  }
+
+  if (type == "MaxPool" || type == "AvgPool") {
+    const auto element_type = node->get_output_element_type(0);
+    if (!is_f32_tensor_type(element_type) &&
+        !is_f16_tensor_type(element_type)) {
+      return std::nullopt;
+    }
+    GfxOpenClArtifactOp op = GfxOpenClArtifactOp::Identity;
+    auto static_u32_scalars = pool2d_static_u32_scalars(node, op);
+    if (!static_u32_scalars) {
+      return std::nullopt;
+    }
+    const std::string type_suffix = opencl_scalar_type_suffix(element_type);
+    const std::string entry_point =
+        "gfx_opencl_generated_pool2d_" + type_suffix;
+    auto manifest = make_opencl_source_manifest(
+        GfxKernelStageFamily::Pooling,
+        "opencl:generated:" + type + ":" + type_suffix, entry_point,
+        /*direct_inputs=*/1,
+        static_cast<uint32_t>(1 + static_u32_scalars->size()));
+    return make_opencl_source_artifact(
+        std::move(manifest), "opencl/generated/pool2d_" + type_suffix,
+        pool2d_static_scalar_args(), {0}, op, GfxOpenClArtifactInputMode::Direct,
+        0.0f, std::move(*static_u32_scalars));
   }
 
   if (type == "Softmax") {
@@ -7727,29 +7870,29 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
           GfxOpenClSourceScalarArg::ElementCount};
       scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
                          GfxOpenClSourceScalarArg::StaticU32);
-      auto manifest = make_opencl_baseline_manifest(
+      auto manifest = make_opencl_source_manifest(
           GfxKernelStageFamily::Softmax,
-          "opencl:baseline:Softmax:" + type_suffix,
-          "gfx_opencl_baseline_softmax_" + type_suffix,
+          "opencl:generated:Softmax:" + type_suffix,
+          "gfx_opencl_generated_softmax_" + type_suffix,
           /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
-      return make_opencl_baseline_artifact(
-          std::move(manifest), "opencl/baseline/softmax_" + type_suffix,
-          std::move(scalar_args), {0}, GfxOpenClBaselineOp::Identity,
-          GfxOpenClBaselineInputMode::Direct, 0.0f,
+      return make_opencl_source_artifact(
+          std::move(manifest), "opencl/generated/softmax_" + type_suffix,
+          std::move(scalar_args), {0}, GfxOpenClArtifactOp::Softmax,
+          GfxOpenClArtifactInputMode::Direct, 0.0f,
           std::move(*static_u32_scalars));
     }
     if (auto dynamic_static_rank = softmax_dynamic_static_rank_scalars(node)) {
       auto scalar_args = softmax_dynamic_shape_scalar_args();
-      auto manifest = make_opencl_baseline_manifest(
+      auto manifest = make_opencl_source_manifest(
           GfxKernelStageFamily::Softmax,
-          "opencl:baseline:Softmax:" + type_suffix + ":dynamic_static_rank",
-          "gfx_opencl_baseline_softmax_dynamic_" + type_suffix,
+          "opencl:generated:Softmax:" + type_suffix + ":dynamic_static_rank",
+          "gfx_opencl_generated_softmax_dynamic_" + type_suffix,
           /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
-      return make_opencl_baseline_artifact(
+      return make_opencl_source_artifact(
           std::move(manifest),
-          "opencl/baseline/softmax_" + type_suffix + "_dynamic_static_rank",
-          std::move(scalar_args), {0}, GfxOpenClBaselineOp::Identity,
-          GfxOpenClBaselineInputMode::Direct, 0.0f,
+          "opencl/generated/softmax_" + type_suffix + "_dynamic_static_rank",
+          std::move(scalar_args), {0}, GfxOpenClArtifactOp::Softmax,
+          GfxOpenClArtifactInputMode::Direct, 0.0f,
           std::move(*dynamic_static_rank));
     }
     return std::nullopt;
@@ -7774,15 +7917,15 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
         GfxOpenClSourceScalarArg::Output0Dim3};
     const std::string entry_point =
         "gfx_opencl_generated_interpolate_" + metadata->type_suffix;
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::Layout,
         "opencl:generated:Interpolate:" + metadata->type_suffix, entry_point,
         /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest),
         "opencl/generated/interpolate_" + metadata->type_suffix,
-        std::move(scalar_args), {0}, GfxOpenClBaselineOp::Identity,
-        GfxOpenClBaselineInputMode::Direct, 0.0f,
+        std::move(scalar_args), {0}, GfxOpenClArtifactOp::Identity,
+        GfxOpenClArtifactInputMode::Direct, 0.0f,
         {metadata->nearest, metadata->align_corners, metadata->use_half_pixel,
          metadata->nearest_mode});
   }
@@ -7798,18 +7941,18 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
         !same_static_element_count_input_output(node, 0, 0)) {
       return std::nullopt;
     }
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         type == "Convert" ? GfxKernelStageFamily::Convert
                           : GfxKernelStageFamily::Layout,
         "opencl:baseline:" + type + ":f32:linear_copy",
         "gfx_opencl_baseline_unary_f32",
         /*direct_inputs=*/1,
         /*scalar_arg_count=*/2);
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest), "opencl/baseline/linear_copy_f32",
         {GfxOpenClSourceScalarArg::ElementCount,
          GfxOpenClSourceScalarArg::OpCode},
-        {0}, GfxOpenClBaselineOp::Identity);
+        {0}, GfxOpenClArtifactOp::Identity);
   }
 
   if (type == "Convert") {
@@ -7827,15 +7970,15 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
     const std::string output_suffix = opencl_scalar_type_suffix(output_type);
     const std::string suffix = input_suffix + "_to_" + output_suffix;
     const std::string entry_point = "gfx_opencl_baseline_convert_" + suffix;
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::Convert, "opencl:baseline:Convert:" + suffix,
         entry_point,
         /*direct_inputs=*/1,
         /*scalar_arg_count=*/1);
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest), "opencl/baseline/convert_" + suffix,
         {GfxOpenClSourceScalarArg::ElementCount}, {0},
-        GfxOpenClBaselineOp::Identity);
+        GfxOpenClArtifactOp::Identity);
   }
 
   if (type == "MatMul") {
@@ -7847,14 +7990,14 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
         GfxOpenClSourceScalarArg::ElementCount};
     scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
                        GfxOpenClSourceScalarArg::StaticU32);
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::Gemm, "opencl:generated:MatMul:f32",
         "gfx_opencl_generated_matmul_f32",
         /*direct_inputs=*/2, static_cast<uint32_t>(scalar_args.size()));
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest), "opencl/generated/matmul_f32",
-        std::move(scalar_args), {0, 1}, GfxOpenClBaselineOp::Identity,
-        GfxOpenClBaselineInputMode::Direct, 0.0f,
+        std::move(scalar_args), {0, 1}, GfxOpenClArtifactOp::Identity,
+        GfxOpenClArtifactInputMode::Direct, 0.0f,
         std::move(*static_u32_scalars));
   }
 
@@ -7873,16 +8016,16 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
     scalar_args.push_back(GfxOpenClSourceScalarArg::ElementCount);
     scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
                        GfxOpenClSourceScalarArg::StaticU32);
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::Transpose,
         "opencl:baseline:Transpose:f32:rank" +
             std::to_string(static_u32_scalars->front()),
         "gfx_opencl_baseline_transpose_f32",
         /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest), "opencl/baseline/transpose_f32",
-        std::move(scalar_args), {0}, GfxOpenClBaselineOp::Identity,
-        GfxOpenClBaselineInputMode::Direct, 0.0f,
+        std::move(scalar_args), {0}, GfxOpenClArtifactOp::Identity,
+        GfxOpenClArtifactInputMode::Direct, 0.0f,
         std::move(*static_u32_scalars));
   }
 
@@ -7897,16 +8040,16 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
         GfxOpenClSourceScalarArg::ElementCount};
     scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
                        GfxOpenClSourceScalarArg::StaticU32);
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::GatherScatter,
         "opencl:baseline:" + type + ":f32:rank" +
             std::to_string(static_u32_scalars->front()),
         "gfx_opencl_baseline_slice_f32",
         /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest), "opencl/baseline/slice_f32",
-        std::move(scalar_args), {0}, GfxOpenClBaselineOp::Identity,
-        GfxOpenClBaselineInputMode::Direct, 0.0f,
+        std::move(scalar_args), {0}, GfxOpenClArtifactOp::Identity,
+        GfxOpenClArtifactInputMode::Direct, 0.0f,
         std::move(*static_u32_scalars));
   }
 
@@ -7917,15 +8060,15 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
     const auto output_type = node->get_output_element_type(0);
     const std::string type_suffix = opencl_range_type_suffix(output_type);
     const std::string entry_point = "gfx_opencl_baseline_range_" + type_suffix;
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::GatherScatter,
         "opencl:baseline:Range:" + type_suffix, entry_point,
         /*direct_inputs=*/3,
         /*scalar_arg_count=*/1);
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest), "opencl/baseline/range_" + type_suffix,
         {GfxOpenClSourceScalarArg::ElementCount}, {0, 1, 2},
-        GfxOpenClBaselineOp::Identity, GfxOpenClBaselineInputMode::Direct);
+        GfxOpenClArtifactOp::Identity, GfxOpenClArtifactInputMode::Direct);
   }
 
   if (type == "Gather") {
@@ -7942,18 +8085,18 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
     const std::string entry_point = indices_i64
                                         ? "gfx_opencl_baseline_gather_i64_f32"
                                         : "gfx_opencl_baseline_gather_i32_f32";
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::GatherScatter,
         "opencl:baseline:Gather:" + std::string(indices_i64 ? "i64" : "i32") +
             ":f32",
         entry_point,
         /*direct_inputs=*/2, static_cast<uint32_t>(scalar_args.size()));
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest),
         indices_i64 ? "opencl/baseline/gather_i64_f32"
                     : "opencl/baseline/gather_i32_f32",
-        std::move(scalar_args), {0, 1}, GfxOpenClBaselineOp::Identity,
-        GfxOpenClBaselineInputMode::Direct, 0.0f,
+        std::move(scalar_args), {0, 1}, GfxOpenClArtifactOp::Identity,
+        GfxOpenClArtifactInputMode::Direct, 0.0f,
         std::move(*static_u32_scalars));
   }
 
@@ -7971,18 +8114,18 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
     const std::string entry_point =
         indices_i64 ? "gfx_opencl_baseline_gather_elements_i64_f32"
                     : "gfx_opencl_baseline_gather_elements_i32_f32";
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::GatherScatter,
         "opencl:baseline:GatherElements:" +
             std::string(indices_i64 ? "i64" : "i32") + ":f32",
         entry_point,
         /*direct_inputs=*/2, static_cast<uint32_t>(scalar_args.size()));
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest),
         indices_i64 ? "opencl/baseline/gather_elements_i64_f32"
                     : "opencl/baseline/gather_elements_i32_f32",
-        std::move(scalar_args), {0, 1}, GfxOpenClBaselineOp::Identity,
-        GfxOpenClBaselineInputMode::Direct, 0.0f,
+        std::move(scalar_args), {0, 1}, GfxOpenClArtifactOp::Identity,
+        GfxOpenClArtifactInputMode::Direct, 0.0f,
         std::move(*static_u32_scalars));
   }
 
@@ -8000,18 +8143,18 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
     const std::string entry_point =
         indices_i64 ? "gfx_opencl_baseline_gather_nd_i64_f32"
                     : "gfx_opencl_baseline_gather_nd_i32_f32";
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::GatherScatter,
         "opencl:baseline:GatherND:" + std::string(indices_i64 ? "i64" : "i32") +
             ":f32",
         entry_point,
         /*direct_inputs=*/2, static_cast<uint32_t>(scalar_args.size()));
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest),
         indices_i64 ? "opencl/baseline/gather_nd_i64_f32"
                     : "opencl/baseline/gather_nd_i32_f32",
-        std::move(scalar_args), {0, 1}, GfxOpenClBaselineOp::Identity,
-        GfxOpenClBaselineInputMode::Direct, 0.0f,
+        std::move(scalar_args), {0, 1}, GfxOpenClArtifactOp::Identity,
+        GfxOpenClArtifactInputMode::Direct, 0.0f,
         std::move(*static_u32_scalars));
   }
 
@@ -8029,18 +8172,18 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
     const std::string entry_point =
         indices_i64 ? "gfx_opencl_baseline_scatter_update_i64_f32"
                     : "gfx_opencl_baseline_scatter_update_i32_f32";
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::GatherScatter,
         "opencl:baseline:ScatterUpdate:" +
             std::string(indices_i64 ? "i64" : "i32") + ":f32",
         entry_point,
         /*direct_inputs=*/3, static_cast<uint32_t>(scalar_args.size()));
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest),
         indices_i64 ? "opencl/baseline/scatter_update_i64_f32"
                     : "opencl/baseline/scatter_update_i32_f32",
-        std::move(scalar_args), {0, 1, 2}, GfxOpenClBaselineOp::Identity,
-        GfxOpenClBaselineInputMode::Direct, 0.0f,
+        std::move(scalar_args), {0, 1, 2}, GfxOpenClArtifactOp::Identity,
+        GfxOpenClArtifactInputMode::Direct, 0.0f,
         std::move(*static_u32_scalars));
   }
 
@@ -8058,18 +8201,18 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
     const std::string entry_point =
         indices_i64 ? "gfx_opencl_baseline_scatter_elements_i64_f32"
                     : "gfx_opencl_baseline_scatter_elements_i32_f32";
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::GatherScatter,
         "opencl:baseline:ScatterElementsUpdate:" +
             std::string(indices_i64 ? "i64" : "i32") + ":f32",
         entry_point,
         /*direct_inputs=*/3, static_cast<uint32_t>(scalar_args.size()));
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest),
         indices_i64 ? "opencl/baseline/scatter_elements_i64_f32"
                     : "opencl/baseline/scatter_elements_i32_f32",
-        std::move(scalar_args), {0, 1, 2}, GfxOpenClBaselineOp::Identity,
-        GfxOpenClBaselineInputMode::Direct, 0.0f,
+        std::move(scalar_args), {0, 1, 2}, GfxOpenClArtifactOp::Identity,
+        GfxOpenClArtifactInputMode::Direct, 0.0f,
         std::move(*static_u32_scalars));
   }
 
@@ -8087,18 +8230,18 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
     const std::string entry_point =
         indices_i64 ? "gfx_opencl_baseline_scatter_nd_i64_f32"
                     : "gfx_opencl_baseline_scatter_nd_i32_f32";
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::GatherScatter,
         "opencl:baseline:ScatterNDUpdate:" +
             std::string(indices_i64 ? "i64" : "i32") + ":f32",
         entry_point,
         /*direct_inputs=*/3, static_cast<uint32_t>(scalar_args.size()));
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest),
         indices_i64 ? "opencl/baseline/scatter_nd_i64_f32"
                     : "opencl/baseline/scatter_nd_i32_f32",
-        std::move(scalar_args), {0, 1, 2}, GfxOpenClBaselineOp::Identity,
-        GfxOpenClBaselineInputMode::Direct, 0.0f,
+        std::move(scalar_args), {0, 1, 2}, GfxOpenClArtifactOp::Identity,
+        GfxOpenClArtifactInputMode::Direct, 0.0f,
         std::move(*static_u32_scalars));
   }
 
@@ -8119,18 +8262,18 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
     const std::string entry_point = output_i64
                                         ? "gfx_opencl_baseline_shapeof_i64"
                                         : "gfx_opencl_baseline_shapeof_i32";
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::GatherScatter,
         "opencl:baseline:ShapeOf:" + std::string(output_i64 ? "i64" : "i32") +
             ":rank" + std::to_string(*rank),
         entry_point,
         /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest),
         output_i64 ? "opencl/baseline/shapeof_i64"
                    : "opencl/baseline/shapeof_i32",
-        std::move(scalar_args), {0}, GfxOpenClBaselineOp::Identity,
-        GfxOpenClBaselineInputMode::Direct);
+        std::move(scalar_args), {0}, GfxOpenClArtifactOp::Identity,
+        GfxOpenClArtifactInputMode::Direct);
   }
 
   if (type == "Concat") {
@@ -8150,19 +8293,19 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
          ++input_idx) {
       direct_input_indices.push_back(input_idx);
     }
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::ConcatSplit,
         "opencl:baseline:Concat:" + static_u32_scalars->type_suffix +
             ":inputs" + std::to_string(static_u32_scalars->input_count),
         entry_point, static_u32_scalars->input_count,
         static_cast<uint32_t>(scalar_args.size()));
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest),
         "opencl/baseline/concat" +
             std::to_string(static_u32_scalars->input_count) + "_" +
             static_u32_scalars->type_suffix,
         std::move(scalar_args), std::move(direct_input_indices),
-        GfxOpenClBaselineOp::Identity, GfxOpenClBaselineInputMode::Direct, 0.0f,
+        GfxOpenClArtifactOp::Identity, GfxOpenClArtifactInputMode::Direct, 0.0f,
         std::move(static_u32_scalars->values));
   }
 
@@ -8179,20 +8322,20 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
         "gfx_opencl_baseline_split" +
         std::to_string(static_u32_scalars->output_count) + "_" +
         static_u32_scalars->type_suffix;
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::ConcatSplit,
         "opencl:baseline:" + type + ":" + static_u32_scalars->type_suffix +
             ":outputs" + std::to_string(static_u32_scalars->output_count),
         entry_point,
         /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()),
         static_u32_scalars->output_count);
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest),
         "opencl/baseline/split" +
             std::to_string(static_u32_scalars->output_count) + "_" +
             static_u32_scalars->type_suffix,
-        std::move(scalar_args), {0}, GfxOpenClBaselineOp::Identity,
-        GfxOpenClBaselineInputMode::Direct, 0.0f,
+        std::move(scalar_args), {0}, GfxOpenClArtifactOp::Identity,
+        GfxOpenClArtifactInputMode::Direct, 0.0f,
         std::move(static_u32_scalars->values),
         GfxOpenClSourceElementCountSource::Input0);
   }
@@ -8221,13 +8364,13 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
     if (same_static_shape(node, 0, 1) &&
         input_static_element_count_matches_output(node, 0, 0) &&
         input_static_element_count_matches_output(node, 1, 0)) {
-      auto manifest = make_opencl_baseline_manifest(
+      auto manifest = make_opencl_source_manifest(
           GfxKernelStageFamily::Eltwise,
           "opencl:baseline:" + type + ":f32:same_shape",
           "gfx_opencl_baseline_compare_f32",
           /*direct_inputs=*/2,
           /*scalar_arg_count=*/2);
-      return make_opencl_baseline_artifact(
+      return make_opencl_source_artifact(
           std::move(manifest), "opencl/baseline/compare_f32",
           {GfxOpenClSourceScalarArg::ElementCount,
            GfxOpenClSourceScalarArg::OpCode},
@@ -8240,15 +8383,15 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
           GfxOpenClSourceScalarArg::OpCode};
       scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
                          GfxOpenClSourceScalarArg::StaticU32);
-      auto manifest = make_opencl_baseline_manifest(
+      auto manifest = make_opencl_source_manifest(
           GfxKernelStageFamily::Eltwise,
           "opencl:baseline:" + type + ":f32:broadcast",
           "gfx_opencl_baseline_compare_broadcast_f32",
           /*direct_inputs=*/2, static_cast<uint32_t>(scalar_args.size()));
-      return make_opencl_baseline_artifact(
+      return make_opencl_source_artifact(
           std::move(manifest), "opencl/baseline/compare_broadcast_f32",
           std::move(scalar_args), {0, 1}, *op,
-          GfxOpenClBaselineInputMode::Direct, 0.0f,
+          GfxOpenClArtifactInputMode::Direct, 0.0f,
           std::move(*static_u32_scalars));
     }
     return std::nullopt;
@@ -8265,16 +8408,16 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
     if (input_static_element_count_matches_output(node, 0, 0) &&
         input_static_element_count_matches_output(node, 1, 0) &&
         input_static_element_count_matches_output(node, 2, 0)) {
-      auto manifest = make_opencl_baseline_manifest(
+      auto manifest = make_opencl_source_manifest(
           GfxKernelStageFamily::Eltwise,
           "opencl:baseline:Select:bool_f32:same_shape",
           "gfx_opencl_baseline_select_f32",
           /*direct_inputs=*/3,
           /*scalar_arg_count=*/1);
-      return make_opencl_baseline_artifact(
+      return make_opencl_source_artifact(
           std::move(manifest), "opencl/baseline/select_f32",
           {GfxOpenClSourceScalarArg::ElementCount}, {0, 1, 2},
-          GfxOpenClBaselineOp::Identity);
+          GfxOpenClArtifactOp::Identity);
     }
     auto static_u32_scalars = select_broadcast_static_u32_scalars(node);
     if (static_u32_scalars) {
@@ -8282,15 +8425,15 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
           GfxOpenClSourceScalarArg::ElementCount};
       scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
                          GfxOpenClSourceScalarArg::StaticU32);
-      auto manifest = make_opencl_baseline_manifest(
+      auto manifest = make_opencl_source_manifest(
           GfxKernelStageFamily::Eltwise,
           "opencl:baseline:Select:bool_f32:broadcast",
           "gfx_opencl_baseline_select_broadcast_f32",
           /*direct_inputs=*/3, static_cast<uint32_t>(scalar_args.size()));
-      return make_opencl_baseline_artifact(
+      return make_opencl_source_artifact(
           std::move(manifest), "opencl/baseline/select_broadcast_f32",
-          std::move(scalar_args), {0, 1, 2}, GfxOpenClBaselineOp::Identity,
-          GfxOpenClBaselineInputMode::Direct, 0.0f,
+          std::move(scalar_args), {0, 1, 2}, GfxOpenClArtifactOp::Identity,
+          GfxOpenClArtifactInputMode::Direct, 0.0f,
           std::move(*static_u32_scalars));
     }
     return std::nullopt;
@@ -8303,13 +8446,13 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
         !input_static_element_count_matches_output(node, 0, 0)) {
       return std::nullopt;
     }
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::Eltwise,
         "opencl:baseline:" + type + ":bool:same_shape",
         "gfx_opencl_baseline_logical_unary_bool",
         /*direct_inputs=*/1,
         /*scalar_arg_count=*/2);
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest), "opencl/baseline/logical_unary_bool",
         {GfxOpenClSourceScalarArg::ElementCount,
          GfxOpenClSourceScalarArg::OpCode},
@@ -8326,13 +8469,13 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
     if (same_static_shape(node, 0, 1) &&
         input_static_element_count_matches_output(node, 0, 0) &&
         input_static_element_count_matches_output(node, 1, 0)) {
-      auto manifest = make_opencl_baseline_manifest(
+      auto manifest = make_opencl_source_manifest(
           GfxKernelStageFamily::Eltwise,
           "opencl:baseline:" + type + ":bool:same_shape",
           "gfx_opencl_baseline_logical_binary_bool",
           /*direct_inputs=*/2,
           /*scalar_arg_count=*/2);
-      return make_opencl_baseline_artifact(
+      return make_opencl_source_artifact(
           std::move(manifest), "opencl/baseline/logical_binary_bool",
           {GfxOpenClSourceScalarArg::ElementCount,
            GfxOpenClSourceScalarArg::OpCode},
@@ -8345,15 +8488,15 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
           GfxOpenClSourceScalarArg::OpCode};
       scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
                          GfxOpenClSourceScalarArg::StaticU32);
-      auto manifest = make_opencl_baseline_manifest(
+      auto manifest = make_opencl_source_manifest(
           GfxKernelStageFamily::Eltwise,
           "opencl:baseline:" + type + ":bool:broadcast",
           "gfx_opencl_baseline_logical_binary_broadcast_bool",
           /*direct_inputs=*/2, static_cast<uint32_t>(scalar_args.size()));
-      return make_opencl_baseline_artifact(
+      return make_opencl_source_artifact(
           std::move(manifest), "opencl/baseline/logical_binary_broadcast_bool",
           std::move(scalar_args), {0, 1}, *op,
-          GfxOpenClBaselineInputMode::Direct, 0.0f,
+          GfxOpenClArtifactInputMode::Direct, 0.0f,
           std::move(*static_u32_scalars));
     }
     return std::nullopt;
@@ -8374,14 +8517,14 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
         GfxOpenClSourceScalarArg::OpCode};
     scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
                        GfxOpenClSourceScalarArg::StaticU32);
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::Reduction,
         "opencl:baseline:" + type + ":bool:static_axes",
         "gfx_opencl_baseline_reduce_logical_bool",
         /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest), "opencl/baseline/reduce_logical_bool",
-        std::move(scalar_args), {0}, *op, GfxOpenClBaselineInputMode::Direct,
+        std::move(scalar_args), {0}, *op, GfxOpenClArtifactInputMode::Direct,
         0.0f, std::move(*static_u32_scalars));
   }
 
@@ -8400,14 +8543,14 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
         GfxOpenClSourceScalarArg::OpCode};
     scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
                        GfxOpenClSourceScalarArg::StaticU32);
-    auto manifest = make_opencl_baseline_manifest(
+    auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::Reduction,
         "opencl:generated:" + type + ":f32:static_axes",
         "gfx_opencl_generated_reduction_f32",
         /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
-    return make_opencl_baseline_artifact(
+    return make_opencl_source_artifact(
         std::move(manifest), "opencl/generated/reduction_f32",
-        std::move(scalar_args), {0}, *op, GfxOpenClBaselineInputMode::Direct,
+        std::move(scalar_args), {0}, *op, GfxOpenClArtifactInputMode::Direct,
         0.0f, std::move(*static_u32_scalars));
   }
 
@@ -8470,13 +8613,13 @@ make_gfx_opencl_concat_chunk_source_artifact(
   const std::string entry_point = "gfx_opencl_baseline_concat" +
                                   std::to_string(input_count) + "_" +
                                   type_suffix;
-  auto manifest = make_opencl_baseline_manifest(
+  auto manifest = make_opencl_source_manifest(
       base_artifact.stage_manifest.stage_family,
       base_artifact.stage_manifest.specialization_key + ":chunk" +
           std::to_string(input_begin) + "x" + std::to_string(input_count),
       entry_point, input_count,
       /*scalar_arg_count=*/1);
-  return make_opencl_baseline_artifact(
+  return make_opencl_source_artifact(
       std::move(manifest),
       base_artifact.artifact_ref.source_id + "/chunk" +
           std::to_string(input_begin) + "x" + std::to_string(input_count),
@@ -8533,14 +8676,14 @@ make_gfx_opencl_split_chunk_source_artifact(
   const std::string entry_point = "gfx_opencl_baseline_split" +
                                   std::to_string(output_count) + "_" +
                                   type_suffix;
-  auto manifest = make_opencl_baseline_manifest(
+  auto manifest = make_opencl_source_manifest(
       base_artifact.stage_manifest.stage_family,
       base_artifact.stage_manifest.specialization_key + ":chunk" +
           std::to_string(output_begin) + "x" + std::to_string(output_count),
       entry_point,
       /*direct_inputs=*/1,
       /*scalar_arg_count=*/1, output_count);
-  return make_opencl_baseline_artifact(
+  return make_opencl_source_artifact(
       std::move(manifest),
       base_artifact.artifact_ref.source_id + "/chunk" +
           std::to_string(output_begin) + "x" + std::to_string(output_count),

@@ -10,11 +10,13 @@
 
 #include "kernel_ir/gfx_kernel_source.hpp"
 #include "kernel_ir/metal_kernels/reduction_kernels.hpp"
+#include "kernel_ir/metal_kernels/softmax_kernels.hpp"
 #include "mlir/msl_codegen_apple_msl_activation.hpp"
 #include "mlir/msl_codegen_apple_msl_eltwise.hpp"
 #include "mlir/msl_codegen_apple_msl_reduction.hpp"
 #include "mlir/msl_codegen_apple_msl_shape.hpp"
 #include "mlir/msl_codegen_apple_msl_slice_static.hpp"
+#include "mlir/msl_codegen_apple_msl_softmax.hpp"
 #include "mlir/msl_codegen_apple_msl_split.hpp"
 #include "mlir/msl_codegen_attention.hpp"
 
@@ -38,6 +40,14 @@ constexpr const char *kMetalReductionF32MslKernelUnit =
     "metal/generated/reduction_f32";
 constexpr const char *kMetalReductionLogicalBoolMslKernelUnit =
     "metal/generated/reduction_logical_bool";
+constexpr const char *kMetalSoftmaxF32MslKernelUnit =
+    "metal/generated/softmax_f32";
+constexpr const char *kMetalSoftmaxF16MslKernelUnit =
+    "metal/generated/softmax_f16";
+constexpr const char *kMetalLogSoftmaxF32MslKernelUnit =
+    "metal/generated/logsoftmax_f32";
+constexpr const char *kMetalLogSoftmaxF16MslKernelUnit =
+    "metal/generated/logsoftmax_f16";
 constexpr const char *kMetalMpsSoftmaxVendorUnit = "metal/vendor/mps_softmax";
 constexpr const char *kMetalMpsGemmVendorUnit = "metal/vendor/mps_gemm";
 constexpr const char *kMetalMpsPool2DVendorUnit = "metal/vendor/mps_pool2d";
@@ -240,6 +250,14 @@ resolve_metal_payload(KernelArtifactDescriptor &descriptor,
       descriptor.kernel.kernel_id == kMetalReductionLogicalBoolMslKernelUnit) {
     return materialize_generated_msl_payload(
         descriptor, make_reduction_msl_kernel_source_plan(op.source_node));
+  }
+  if (descriptor.kernel.kernel_id == kMetalSoftmaxF32MslKernelUnit ||
+      descriptor.kernel.kernel_id == kMetalSoftmaxF16MslKernelUnit ||
+      descriptor.kernel.kernel_id == kMetalLogSoftmaxF32MslKernelUnit ||
+      descriptor.kernel.kernel_id == kMetalLogSoftmaxF16MslKernelUnit) {
+    return materialize_generated_msl_payload(
+        descriptor,
+        make_softmax_runtime_params_msl_kernel_source_plan(op.source_node));
   }
 
   return {};

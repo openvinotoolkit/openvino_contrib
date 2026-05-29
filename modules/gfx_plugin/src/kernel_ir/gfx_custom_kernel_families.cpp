@@ -86,6 +86,8 @@ const char *gfx_kernel_family_name(GfxKernelFamily family) {
     return "pool2d_window";
   case GfxKernelFamily::BatchNormBuffer:
     return "batchnorm_buffer";
+  case GfxKernelFamily::SoftmaxBuffer:
+    return "softmax_buffer";
   case GfxKernelFamily::Unknown:
   default:
     return "unknown";
@@ -129,6 +131,8 @@ gfx_kernel_stage_family_from_kernel_family(GfxKernelFamily family) {
     return GfxKernelStageFamily::Pooling;
   case GfxKernelFamily::BatchNormBuffer:
     return GfxKernelStageFamily::Eltwise;
+  case GfxKernelFamily::SoftmaxBuffer:
+    return GfxKernelStageFamily::Softmax;
   case GfxKernelFamily::Unknown:
   default:
     return GfxKernelStageFamily::Unknown;
@@ -149,6 +153,11 @@ gfx_kernel_external_buffer_abi_spec_for_family(GfxKernelFamily family) {
     return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
                                       GfxKernelBufferRole::TensorOutput,
                                       GfxKernelBufferRole::RuntimeParams});
+  case GfxKernelFamily::SoftmaxBuffer:
+    return make_gfx_kernel_roles_abi(
+        {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
+         GfxKernelBufferRole::ScalarParam, GfxKernelBufferRole::ScalarParam,
+         GfxKernelBufferRole::ScalarParam});
   case GfxKernelFamily::Conv2DDirect:
     return spec;
   case GfxKernelFamily::MatMulBuffer:
@@ -265,6 +274,12 @@ gfx_kernel_external_buffer_abi_spec_for_stage(std::string_view stage_type,
          GfxKernelBufferRole::RuntimeParams, GfxKernelBufferRole::RuntimeParams,
          GfxKernelBufferRole::RuntimeParams,
          GfxKernelBufferRole::RuntimeParams});
+  }
+  if (family == GfxKernelFamily::SoftmaxBuffer &&
+      entry_point == "softmax_kernel") {
+    return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
+                                      GfxKernelBufferRole::TensorOutput,
+                                      GfxKernelBufferRole::RuntimeParams});
   }
   if (family == GfxKernelFamily::GatherScatterIndexed &&
       (entry_point == "scatter_elements_init" ||
@@ -421,6 +436,7 @@ gfx_kernel_dispatch_policy_for_family(GfxKernelFamily family) {
   GfxKernelDispatchGrid grid = GfxKernelDispatchGrid::Linear1D;
   switch (family) {
   case GfxKernelFamily::MaskedSoftmaxAttention:
+  case GfxKernelFamily::SoftmaxBuffer:
   case GfxKernelFamily::Conv3DDirect:
   case GfxKernelFamily::ReductionBuffer:
     threads_per_threadgroup = 128;
@@ -528,9 +544,15 @@ classify_gfx_custom_kernel_family(std::string_view stage_type,
     return GfxKernelFamily::RmsnormRopeFused;
   }
   if (stage_type == "Softmax" || stage_type == "LogSoftmax" ||
-      stage_type == "ScaledDotProductAttention" ||
-      entry_point == "softmax_kernel" || entry_point == "sdpa_kernel" ||
-      entry_point == "sdpa_nomask_kernel" ||
+      entry_point == "softmax_kernel" ||
+      entry_point == "gfx_metal_generated_softmax_f32" ||
+      entry_point == "gfx_metal_generated_softmax_f16" ||
+      entry_point == "gfx_metal_generated_logsoftmax_f32" ||
+      entry_point == "gfx_metal_generated_logsoftmax_f16") {
+    return GfxKernelFamily::SoftmaxBuffer;
+  }
+  if (stage_type == "ScaledDotProductAttention" ||
+      entry_point == "sdpa_kernel" || entry_point == "sdpa_nomask_kernel" ||
       entry_point == "sdpa_causal_mask_kernel") {
     return GfxKernelFamily::MaskedSoftmaxAttention;
   }

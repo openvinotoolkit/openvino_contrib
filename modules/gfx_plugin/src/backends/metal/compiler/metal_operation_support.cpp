@@ -11,8 +11,11 @@
 #include "mlir/msl_codegen_apple_msl_activation.hpp"
 #include "mlir/msl_codegen_apple_msl_eltwise.hpp"
 #include "mlir/msl_codegen_apple_msl_reduction.hpp"
+#include "mlir/msl_codegen_apple_msl_softmax.hpp"
+#include "openvino/op/avg_pool.hpp"
 #include "openvino/op/concat.hpp"
 #include "openvino/op/constant.hpp"
+#include "openvino/op/max_pool.hpp"
 #include "openvino/op/range.hpp"
 #include "openvino/op/scaled_dot_product_attention.hpp"
 #include "openvino/op/shape_of.hpp"
@@ -143,6 +146,11 @@ bool supports_mps_pool2d_vendor(const std::shared_ptr<const ov::Node> &node) {
   return gfx_apple_make_mps_pool2d_contract(node, desc, contract);
 }
 
+bool is_pooling_node(const std::shared_ptr<const ov::Node> &node) {
+  return ov::as_type_ptr<const ov::op::util::MaxPoolBase>(node) ||
+         ov::as_type_ptr<const ov::op::util::AvgPoolBase>(node);
+}
+
 bool supports_mps_resize2d_vendor(const std::shared_ptr<const ov::Node> &node) {
   GfxMpsrtResize2DAbiDesc desc{};
   if (!gfx_apple_make_mps_resize2d_desc(node, desc)) {
@@ -173,6 +181,11 @@ bool supports_generated_reduction_msl(
   return make_reduction_msl_kernel_source_plan(node).valid();
 }
 
+bool supports_generated_softmax_msl(
+    const std::shared_ptr<const ov::Node> &node) {
+  return make_softmax_msl_kernel_source_plan(node).valid();
+}
+
 OperationSupportResult
 query_metal_operation(const std::shared_ptr<const ov::Node> &node) {
   try {
@@ -186,10 +199,21 @@ query_metal_operation(const std::shared_ptr<const ov::Node> &node) {
                                       LoweringRouteKind::VendorPrimitive, 0.80,
                                       "metal/vendor/mps_softmax");
     }
+    if (node && supports_generated_softmax_msl(node)) {
+      const auto descriptor = softmax_msl_kernel_descriptor(node);
+      return make_supported_operation(
+          "generated_msl_source", LoweringRouteKind::GeneratedKernel, 0.55,
+          descriptor ? std::string(descriptor->kernel_unit_id)
+                     : "metal/generated/softmax_f32");
+    }
     if (node && supports_mps_pool2d_vendor(node)) {
       return make_supported_operation("mps_vendor_primitive",
                                       LoweringRouteKind::VendorPrimitive, 0.80,
                                       "metal/vendor/mps_pool2d");
+    }
+    if (node && is_pooling_node(node)) {
+      return make_unsupported_operation(
+          "missing_apple_pooling_mps_family_route");
     }
     if (node && supports_mps_resize2d_vendor(node)) {
       return make_supported_operation("mps_vendor_primitive",

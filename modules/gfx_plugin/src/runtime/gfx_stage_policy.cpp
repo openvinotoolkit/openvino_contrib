@@ -547,6 +547,11 @@ select_stage_placement(GpuBackend backend, const std::string &stage_type,
                           /*vendor_primitive=*/true,
                           /*custom_kernel=*/false);
   }
+  if (stage_type == "MaxPool" || stage_type == "AvgPool") {
+    record_stage_policy_counter("mps_pooling_reject_no_vendor_route",
+                                stage_type);
+    return {};
+  }
   if (is_mps_ndarray_candidate(stage_type, node, element_type)) {
     record_stage_policy_counter("mps_ndarray_accept", stage_type);
     return make_placement(GfxStageBackendDomain::AppleMps,

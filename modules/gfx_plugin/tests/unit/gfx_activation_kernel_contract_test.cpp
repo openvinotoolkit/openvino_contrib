@@ -76,7 +76,7 @@ public:
     EXPECT_EQ(artifact->static_f32_scalars, m_case.expected_static_f32_scalars);
     EXPECT_EQ(artifact->op, m_case.expected_op);
     EXPECT_EQ(artifact->scalar_constant_f32, 0.0f);
-    EXPECT_EQ(artifact->input_mode, GfxOpenClBaselineInputMode::Direct);
+    EXPECT_EQ(artifact->input_mode, GfxOpenClArtifactInputMode::Direct);
     EXPECT_EQ(artifact->source,
               opencl_generated_activation_kernel_source().source);
     EXPECT_NE(
@@ -136,6 +136,12 @@ public:
               std::string::npos);
     EXPECT_NE(plan.source.msl_source.find(m_case.expected_source_snippet),
               std::string::npos);
+    if (m_case.expected_source_snippet.find("gfx_msl_erf_approx") !=
+        std::string::npos) {
+      EXPECT_NE(plan.source.msl_source.find("inline float gfx_msl_erf_approx"),
+                std::string::npos);
+      EXPECT_EQ(plan.source.msl_source.find("erf("), std::string::npos);
+    }
   }
 
 private:
@@ -401,7 +407,7 @@ TEST(ActivationRouteContractTest,
                                        GfxOpenClSourceScalarArg::ElementCount,
                                        GfxOpenClSourceScalarArg::OpCode}));
   EXPECT_EQ(artifact->static_f32_scalars, std::vector<float>{});
-  EXPECT_EQ(artifact->op, GfxOpenClBaselineOp::Swish);
+  EXPECT_EQ(artifact->op, GfxOpenClArtifactOp::Swish);
   EXPECT_EQ(artifact->source,
             opencl_generated_activation_kernel_source().source);
   EXPECT_NE(

@@ -101,6 +101,12 @@ Generated reduction MSL routes must stay aligned across
 `src/mlir/msl_codegen_apple_msl_reduction.*`, embedded sources under
 `src/kernel_ir/metal_kernels/reduction_*`, `metal_kernel_registry.cpp`, and
 `metal_kernel_artifacts.cpp`.
+Generated Softmax/LogSoftmax MSL routes must stay aligned across
+`src/mlir/msl_codegen_apple_msl_softmax.*`, embedded sources under
+`src/kernel_ir/metal_kernels/softmax_*` and
+`src/kernel_ir/metal_kernels/logsoftmax_*`, `metal_kernel_registry.cpp`, and
+`metal_kernel_artifacts.cpp`. Metal Pool2D must use the descriptor-backed MPS
+vendor route; do not reintroduce the removed generic MSL Pool2D fallback.
 
 ## OpenCL Work
 
@@ -125,7 +131,10 @@ For OpenCL source-artifact work:
    `tests/unit/gfx_*_contract_cases.*` files.
    For reduction source units, update
    `tests/unit/gfx_reduction_kernel_contract_test.cpp` and the shared
-   `tests/unit/gfx_opencl_source_artifact_verifier.hpp` helper.
+   `tests/unit/gfx_opencl_source_artifact_verifier.hpp` helper. For Softmax
+   and Pool2D source units, update
+   `tests/unit/gfx_softmax_kernel_contract_test.cpp`,
+   `tests/unit/gfx_pool_kernel_contract_test.cpp`, and the shared verifier.
 7. Add runtime coverage only when dynamic OpenCL loading, memory, command
    enqueue, or runtime-shape behavior changed.
 

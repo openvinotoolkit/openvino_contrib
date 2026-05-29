@@ -951,7 +951,7 @@ TEST(GfxStagePolicyTest, MetalF32MaxPoolPlansAppleMpsImageStorage) {
   EXPECT_FALSE(plan.placement.uses_custom_kernel);
 }
 
-TEST(GfxStagePolicyTest, MetalIndexedMaxPoolDoesNotUseMpsPool2DPlacement) {
+TEST(GfxStagePolicyTest, MetalIndexedMaxPoolRequiresExplicitMpsFamilyRoute) {
   auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f16,
                                                        ov::Shape{1, 4, 16, 16});
   auto pool = std::make_shared<ov::op::v8::MaxPool>(
@@ -968,10 +968,26 @@ TEST(GfxStagePolicyTest, MetalIndexedMaxPoolDoesNotUseMpsPool2DPlacement) {
       /*has_activation=*/false,
       /*has_batchnorm=*/false, traits);
 
-  EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::AppleMsl);
-  EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Buffer);
+  EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::Unknown);
+  EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Unknown);
   EXPECT_FALSE(plan.placement.uses_vendor_primitive);
-  EXPECT_TRUE(plan.placement.uses_custom_kernel);
+  EXPECT_FALSE(plan.placement.uses_custom_kernel);
+
+  auto &ctx = gfx_mlir_context();
+  auto module = build_mlir_for_node(pool, ctx);
+  ASSERT_TRUE(module);
+
+  KernelSource source;
+  source.module = module;
+  source.entry_point = "pool2d_kernel";
+  EXPECT_THROW((void)configure_apple_metal_kernel_source_plan_for_stage(
+                   source, pool, nullptr, "MaxPool",
+                   /*has_bias=*/false,
+                   /*has_activation=*/false,
+                   /*has_batchnorm=*/false, ActivationKind::Identity,
+                   ov::element::f16,
+                   /*has_runtime_slice_params=*/false),
+               ov::Exception);
 }
 
 TEST(GfxStagePolicyTest,
@@ -2628,8 +2644,16 @@ TEST(GfxStagePolicyTest,
   ASSERT_TRUE(softmax_binding.valid);
   EXPECT_EQ(softmax_binding.runtime_binding.inputs, std::vector<size_t>({0}));
   EXPECT_EQ(softmax_binding.runtime_binding.input_arg_count, 2u);
+  EXPECT_EQ(softmax_binding.scalar_arg_count, 0u);
+  EXPECT_EQ(softmax_binding.runtime_binding.operand_kinds,
+            std::vector<int32_t>({1, 1, 1}));
   EXPECT_EQ(softmax_binding.runtime_binding.operand_arg_indices,
             std::vector<int32_t>({0, 2, 1}));
+  EXPECT_EQ(
+      softmax_binding.stage_manifest.custom_kernel.external_buffer_abi.roles,
+      std::vector<GfxKernelBufferRole>({GfxKernelBufferRole::TensorInput,
+                                        GfxKernelBufferRole::TensorOutput,
+                                        GfxKernelBufferRole::RuntimeParams}));
 
   const auto split_binding = make_backend_custom_kernel_direct_io_binding_plan(
       "VariadicSplit", "split_kernel", 1, 3);
@@ -2860,10 +2884,10 @@ TEST(GfxStagePolicyTest,
   const auto softmax_plan =
       make_gfx_custom_kernel_stage_plan("Softmax", "softmax_kernel");
   ASSERT_TRUE(softmax_plan.valid);
-  EXPECT_EQ(softmax_plan.family, GfxKernelFamily::MaskedSoftmaxAttention);
+  EXPECT_EQ(softmax_plan.family, GfxKernelFamily::SoftmaxBuffer);
   ASSERT_TRUE(softmax_plan.stage_manifest.valid);
   EXPECT_EQ(softmax_plan.stage_manifest.stage_family,
-            GfxKernelStageFamily::AttentionSoftmax);
+            GfxKernelStageFamily::Softmax);
   EXPECT_EQ(softmax_plan.stage_manifest.backend_domain,
             GfxKernelBackendDomain::AppleMsl);
   EXPECT_EQ(softmax_plan.stage_manifest.execution_kind,
@@ -2871,7 +2895,7 @@ TEST(GfxStagePolicyTest,
   EXPECT_EQ(softmax_plan.stage_manifest.storage, GfxKernelStorageKind::Buffer);
   ASSERT_TRUE(softmax_plan.stage_manifest.custom_kernel.valid);
   EXPECT_EQ(softmax_plan.stage_manifest.custom_kernel.kernel_family,
-            "masked_softmax_attention");
+            "softmax_buffer");
   ASSERT_TRUE(softmax_plan.stage_manifest.custom_kernel.dispatch_policy.valid);
   EXPECT_EQ(softmax_plan.stage_manifest.custom_kernel.dispatch_policy.grid,
             GfxKernelDispatchGrid::Linear1D);
@@ -2882,9 +2906,9 @@ TEST(GfxStagePolicyTest,
       softmax_plan.stage_manifest.custom_kernel.external_buffer_abi.valid);
   EXPECT_EQ(
       softmax_plan.stage_manifest.custom_kernel.external_buffer_abi.roles,
-      std::vector<GfxKernelBufferRole>({GfxKernelBufferRole::TensorInput,
-                                        GfxKernelBufferRole::TensorOutput,
-                                        GfxKernelBufferRole::RuntimeParams}));
+      std::vector<GfxKernelBufferRole>(
+          {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
+           GfxKernelBufferRole::RuntimeParams}));
 
   const auto topk_plan =
       make_gfx_custom_kernel_stage_plan("TopK", "topk_kernel");

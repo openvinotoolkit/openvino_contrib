@@ -64,12 +64,20 @@ KernelRegistry make_opencl_kernel_registry(const BackendTarget &target) {
       target, "opencl/generated/eltwise_broadcast_i32", "Eltwise"));
   units.push_back(make_opencl_generated_kernel_unit(
       target, "opencl/generated/reduction_f32", "Reduction"));
+  units.push_back(make_opencl_generated_kernel_unit(
+      target, "opencl/generated/pool2d_f32", "Pooling"));
+  units.push_back(make_opencl_generated_kernel_unit(
+      target, "opencl/generated/pool2d_f16", "Pooling"));
+  units.push_back(make_opencl_generated_kernel_unit(
+      target, "opencl/generated/softmax_f32", "Softmax"));
+  units.push_back(make_opencl_generated_kernel_unit(
+      target, "opencl/generated/softmax_f16", "Softmax"));
+  units.push_back(make_opencl_generated_kernel_unit(
+      target, "opencl/generated/softmax_f32_dynamic_static_rank", "Softmax"));
+  units.push_back(make_opencl_generated_kernel_unit(
+      target, "opencl/generated/softmax_f16_dynamic_static_rank", "Softmax"));
   units.push_back(make_opencl_exception_unit(
       target, "opencl/baseline/reduce_logical_bool", "Reduction"));
-  units.push_back(make_opencl_exception_unit(
-      target, "opencl/baseline/softmax_f32", "Softmax"));
-  units.push_back(make_opencl_exception_unit(
-      target, "opencl/baseline/softmax_f16", "Softmax"));
   return KernelRegistry(target, std::move(units));
 }
 

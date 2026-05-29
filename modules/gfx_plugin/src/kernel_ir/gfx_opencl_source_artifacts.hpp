@@ -17,7 +17,7 @@
 namespace ov {
 namespace gfx_plugin {
 
-enum class GfxOpenClBaselineOp : uint32_t {
+enum class GfxOpenClArtifactOp : uint32_t {
   Identity = 0,
   Add = 1,
   Subtract = 2,
@@ -83,9 +83,12 @@ enum class GfxOpenClBaselineOp : uint32_t {
   Cosh = 95,
   RoundEven = 96,
   RoundAway = 97,
+  Softmax = 98,
+  MaxPool = 99,
+  AvgPool = 100,
 };
 
-enum class GfxOpenClBaselineInputMode : uint32_t {
+enum class GfxOpenClArtifactInputMode : uint32_t {
   Direct = 0,
   RhsScalar = 1,
   LhsScalar = 2,
@@ -159,13 +162,13 @@ struct GfxOpenClSourceArtifact {
   std::vector<uint32_t> source_static_u32_scalars;
   std::vector<size_t> direct_input_indices;
   uint32_t arg_count = 0;
-  uint32_t baseline_local_size = 64;
+  uint32_t local_size_hint = 64;
   uint32_t direct_input_count = 0;
   uint32_t direct_output_count = 1;
   GfxOpenClSourceElementCountSource element_count_source =
       GfxOpenClSourceElementCountSource::Output0;
-  GfxOpenClBaselineOp op = GfxOpenClBaselineOp::Identity;
-  GfxOpenClBaselineInputMode input_mode = GfxOpenClBaselineInputMode::Direct;
+  GfxOpenClArtifactOp op = GfxOpenClArtifactOp::Identity;
+  GfxOpenClArtifactInputMode input_mode = GfxOpenClArtifactInputMode::Direct;
   float scalar_constant_f32 = 0.0f;
 };
 

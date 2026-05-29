@@ -58,6 +58,13 @@ TEST_F(GfxBackendArchitectureContractTest,
     EXPECT_EQ(activation_unit.kind(), KernelUnitKind::GeneratedKernel);
     EXPECT_EQ(activation_unit.backend_domain(), "opencl");
     EXPECT_EQ(activation_unit.op_family(), "Activation");
+    const auto pool_unit =
+        opencl_registry.resolve_unit(LoweringRouteKind::GeneratedKernel,
+                                     "opencl/generated/pool2d_f32");
+    ASSERT_TRUE(pool_unit.valid());
+    EXPECT_EQ(pool_unit.kind(), KernelUnitKind::GeneratedKernel);
+    EXPECT_EQ(pool_unit.backend_domain(), "opencl");
+    EXPECT_EQ(pool_unit.op_family(), "Pooling");
 
     const auto metal_registry = test::KernelRegistryContract::for_metal();
     ASSERT_TRUE(metal_registry.audit_is_valid());
@@ -79,6 +86,11 @@ TEST_F(GfxBackendArchitectureContractTest,
                                     "metal/generated/activation");
     ASSERT_TRUE(metal_activation_unit.valid());
     EXPECT_EQ(metal_activation_unit.op_family(), "Activation");
+    const auto metal_pool_unit =
+        metal_registry.resolve_unit(LoweringRouteKind::VendorPrimitive,
+                                    "metal/vendor/mps_pool2d");
+    ASSERT_TRUE(metal_pool_unit.valid());
+    EXPECT_EQ(metal_pool_unit.op_family(), "Pooling");
 }
 
 TEST_F(GfxBackendArchitectureContractTest,

@@ -9,15 +9,13 @@
 namespace ov {
 namespace gfx_plugin {
 
-const GfxKernelSource& opencl_baseline_softmax_f32_kernel_source() noexcept {
-    static constexpr GfxKernelSource kKernel{
-        "opencl/baseline/softmax_f32",
-        "opencl",
-        "gfx_opencl_baseline_softmax_f32",
-        GfxKernelSourceLanguage::OpenCL,
-        detail::kOpenClBaselineSoftmaxF32KernelSource};
-    return kKernel;
+const GfxKernelSource &opencl_generated_softmax_f32_kernel_source() noexcept {
+  static constexpr GfxKernelSource kKernel{
+      "opencl/generated/softmax_f32", "opencl",
+      "gfx_opencl_generated_softmax_f32", GfxKernelSourceLanguage::OpenCL,
+      detail::kOpenClGeneratedSoftmaxF32KernelSource};
+  return kKernel;
 }
 
-}  // namespace gfx_plugin
-}  // namespace ov
+} // namespace gfx_plugin
+} // namespace ov

@@ -45,8 +45,8 @@ uint32_t checked_element_count(const ov::Shape& shape, const char* label) {
 
 uint32_t scalar_value_for_opencl_source_arg(GfxOpenClSourceScalarArg scalar,
                                             uint32_t element_count,
-                                            GfxOpenClBaselineOp op,
-                                            GfxOpenClBaselineInputMode input_mode,
+                                            GfxOpenClArtifactOp op,
+                                            GfxOpenClArtifactInputMode input_mode,
                                             float scalar_constant_f32,
                                             const std::vector<ov::Shape>& input_shapes,
                                             const ov::Shape& output0_shape,
@@ -361,7 +361,7 @@ public:
             gfx_log_debug("OpenCLSource") << oss.str();
         }
 
-        const size_t local = std::max<size_t>(1, m_kernel->clamp_threadgroup_size(m_artifact.baseline_local_size));
+        const size_t local = std::max<size_t>(1, m_kernel->clamp_threadgroup_size(m_artifact.local_size_hint));
         KernelDispatch dispatch{};
         dispatch.grid[0] = round_up(count, local);
         dispatch.grid[1] = 1;
@@ -511,7 +511,7 @@ private:
 
             const size_t local = std::max<size_t>(
                 1,
-                kernel->clamp_threadgroup_size(chunk_artifact->baseline_local_size));
+                kernel->clamp_threadgroup_size(chunk_artifact->local_size_hint));
             KernelDispatch dispatch{};
             dispatch.grid[0] = round_up(chunk_count, local);
             dispatch.grid[1] = 1;
@@ -598,7 +598,7 @@ private:
 
             const size_t local = std::max<size_t>(
                 1,
-                kernel->clamp_threadgroup_size(chunk_artifact->baseline_local_size));
+                kernel->clamp_threadgroup_size(chunk_artifact->local_size_hint));
             KernelDispatch dispatch{};
             dispatch.grid[0] = round_up(count, local);
             dispatch.grid[1] = 1;

@@ -59,14 +59,14 @@ std::vector<EltwiseOpenClArtifactCase> eltwise_opencl_artifact_cases() {
        },
        "opencl/generated/eltwise_binary_f32",
        "gfx_opencl_generated_eltwise_binary_f32",
-       GfxOpenClBaselineOp::Add,
+       GfxOpenClArtifactOp::Add,
        5u,
        2u,
        {0, 1},
        {GfxOpenClSourceScalarArg::ElementCount,
         GfxOpenClSourceScalarArg::OpCode},
        {},
-       GfxOpenClBaselineInputMode::Direct},
+       GfxOpenClArtifactInputMode::Direct},
       {"F32RhsConstSubtract",
        [] {
          return std::make_shared<ov::op::v1::Subtract>(
@@ -75,7 +75,7 @@ std::vector<EltwiseOpenClArtifactCase> eltwise_opencl_artifact_cases() {
        },
        "opencl/generated/eltwise_const_f32",
        "gfx_opencl_generated_eltwise_const_f32",
-       GfxOpenClBaselineOp::Subtract,
+       GfxOpenClArtifactOp::Subtract,
        6u,
        1u,
        {0},
@@ -83,7 +83,7 @@ std::vector<EltwiseOpenClArtifactCase> eltwise_opencl_artifact_cases() {
         GfxOpenClSourceScalarArg::OpCode, GfxOpenClSourceScalarArg::InputMode,
         GfxOpenClSourceScalarArg::ScalarConstantF32},
        {},
-       GfxOpenClBaselineInputMode::RhsScalarConstant},
+       GfxOpenClArtifactInputMode::RhsScalarConstant},
       {"F16RhsScalarMultiply",
        [] {
          return std::make_shared<ov::op::v1::Multiply>(
@@ -92,14 +92,14 @@ std::vector<EltwiseOpenClArtifactCase> eltwise_opencl_artifact_cases() {
        },
        "opencl/generated/eltwise_scalar_f16",
        "gfx_opencl_generated_eltwise_scalar_f16",
-       GfxOpenClBaselineOp::Multiply,
+       GfxOpenClArtifactOp::Multiply,
        6u,
        2u,
        {0, 1},
        {GfxOpenClSourceScalarArg::ElementCount,
         GfxOpenClSourceScalarArg::OpCode, GfxOpenClSourceScalarArg::InputMode},
        {},
-       GfxOpenClBaselineInputMode::RhsScalar},
+       GfxOpenClArtifactInputMode::RhsScalar},
       {"I32NumpyBroadcastMod",
        [] {
          return std::make_shared<ov::op::v1::Mod>(
@@ -108,13 +108,13 @@ std::vector<EltwiseOpenClArtifactCase> eltwise_opencl_artifact_cases() {
        },
        "opencl/generated/eltwise_broadcast_i32",
        "gfx_opencl_generated_eltwise_broadcast_i32",
-       GfxOpenClBaselineOp::Mod,
+       GfxOpenClArtifactOp::Mod,
        18u,
        2u,
        {0, 1},
        broadcast_scalar_args(),
        broadcast_234_by_31_scalars(),
-       GfxOpenClBaselineInputMode::Direct},
+       GfxOpenClArtifactInputMode::Direct},
   };
 }
 

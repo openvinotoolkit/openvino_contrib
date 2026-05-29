@@ -16,6 +16,7 @@
 
 #include "common_test_utils/ov_plugin_cache.hpp"
 #include "../gfx_test_utils.hpp"
+#include "openvino/core/type/float16.hpp"
 #include "openvino/op/matmul.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/result.hpp"
@@ -95,6 +96,31 @@ void require_allclose(const ov::Tensor& a, const ov::Tensor& b, float atol, floa
     }
 }
 
+void require_f16_allclose(const ov::Tensor& a, const ov::Tensor& b, float atol, float rtol) {
+    if (a.get_element_type() != ov::element::f16 || b.get_element_type() != ov::element::f16) {
+        throw std::runtime_error("expected f16 tensors");
+    }
+    if (a.get_byte_size() != b.get_byte_size() || a.get_shape() != b.get_shape()) {
+        throw std::runtime_error("tensor shape mismatch");
+    }
+    auto* pa = a.data<const ov::float16>();
+    auto* pb = b.data<const ov::float16>();
+    const size_t count = a.get_size();
+    for (size_t i = 0; i < count; ++i) {
+        const float ref = static_cast<float>(pa[i]);
+        const float actual = static_cast<float>(pb[i]);
+        const float diff = std::abs(ref - actual);
+        const float thresh = std::max(atol, rtol * std::abs(ref));
+        if (diff > thresh) {
+            throw std::runtime_error("tensor mismatch at index " + std::to_string(i) +
+                                     ": ref=" + std::to_string(ref) +
+                                     " gfx=" + std::to_string(actual) +
+                                     " diff=" + std::to_string(diff) +
+                                     " thresh=" + std::to_string(thresh));
+        }
+    }
+}
+
 void require_bool_equal(const ov::Tensor& a, const ov::Tensor& b) {
     if (a.get_element_type() != ov::element::boolean || b.get_element_type() != ov::element::boolean) {
         throw std::runtime_error("expected boolean tensors");
@@ -123,6 +149,10 @@ void require_tensor_match(const ov::Tensor& a, const ov::Tensor& b, float atol, 
     }
     if (a.get_element_type() == ov::element::boolean) {
         require_bool_equal(a, b);
+        return;
+    }
+    if (a.get_element_type() == ov::element::f16) {
+        require_f16_allclose(a, b, atol, rtol);
         return;
     }
     require_allclose(a, b, atol, rtol);

@@ -13,6 +13,10 @@ namespace ov {
 namespace gfx_plugin {
 namespace {
 
+bool is_mps_family_required_pooling_stage(std::string_view stage_type) {
+  return stage_type == "MaxPool" || stage_type == "AvgPool";
+}
+
 bool source_has_owned_exact_external_buffer_abi(const KernelSource &source) {
   if (source.msl_source.empty() || !source.module) {
     return false;
@@ -64,6 +68,20 @@ GfxMpsrtKernelSourcePlan configure_apple_metal_kernel_source_plan_for_stage(
     if (vendor_source_plan.valid()) {
       return vendor_source_plan;
     }
+  }
+
+  if (source.module && is_mps_family_required_pooling_stage(stage_type)) {
+    auto vendor_source_plan =
+        configure_apple_mps_vendor_kernel_source_plan_for_node(
+            source, node, buffer_manager, stage_type, has_bias, has_activation,
+            has_batchnorm, activation, bias_params, traits);
+    if (vendor_source_plan.valid()) {
+      return vendor_source_plan;
+    }
+    OPENVINO_THROW(
+        "GFX Metal: Pooling source planning requires a direct MPS/MPSGraph-"
+        "family route. MSL Pooling fallback is disabled until it has explicit "
+        "MPS-family rejection evidence and an op-owned narrow artifact.");
   }
 
   if (source_has_owned_exact_external_buffer_abi(source)) {

@@ -61,21 +61,21 @@ std::vector<ActivationOpenClArtifactCase> activation_opencl_artifact_cases() {
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Relu},
+       GfxOpenClArtifactOp::Relu},
       {"F32Sigmoid",
        [] {
          return std::make_shared<ov::op::v0::Sigmoid>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Sigmoid},
+       GfxOpenClArtifactOp::Sigmoid},
       {"F16Tanh",
        [] {
          return std::make_shared<ov::op::v0::Tanh>(
              param(ov::element::f16, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f16", "gfx_opencl_generated_activation_f16",
-       GfxOpenClBaselineOp::Tanh},
+       GfxOpenClArtifactOp::Tanh},
       {"F32Elu",
        [] {
          return std::make_shared<ov::op::v0::Elu>(
@@ -83,7 +83,7 @@ std::vector<ActivationOpenClArtifactCase> activation_opencl_artifact_cases() {
        },
        "opencl/generated/activation_f32",
        "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Elu,
+       GfxOpenClArtifactOp::Elu,
        {0.5f, 0.0f}},
       {"F32Clamp",
        [] {
@@ -92,7 +92,7 @@ std::vector<ActivationOpenClArtifactCase> activation_opencl_artifact_cases() {
        },
        "opencl/generated/activation_f32",
        "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Clamp,
+       GfxOpenClArtifactOp::Clamp,
        {-0.25f, 0.75f}},
       {"F32GeluTanh",
        [] {
@@ -101,28 +101,36 @@ std::vector<ActivationOpenClArtifactCase> activation_opencl_artifact_cases() {
              ov::op::GeluApproximationMode::TANH);
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::GeluTanh},
+       GfxOpenClArtifactOp::GeluTanh},
+      {"F32GeluErf",
+       [] {
+         return std::make_shared<ov::op::v7::Gelu>(
+             param(ov::element::f32, ov::Shape{2, 3, 4}),
+             ov::op::GeluApproximationMode::ERF);
+       },
+       "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
+       GfxOpenClArtifactOp::GeluErf},
       {"F32HSwish",
        [] {
          return std::make_shared<ov::op::v4::HSwish>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::HSwish},
+       GfxOpenClArtifactOp::HSwish},
       {"F32HSigmoid",
        [] {
          return std::make_shared<ov::op::v5::HSigmoid>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::HSigmoid},
+       GfxOpenClArtifactOp::HSigmoid},
       {"F32SoftPlus",
        [] {
          return std::make_shared<ov::op::v4::SoftPlus>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::SoftPlus},
+       GfxOpenClArtifactOp::SoftPlus},
       {"F32SwishDefaultBeta",
        [] {
          return std::make_shared<ov::op::v4::Swish>(
@@ -130,7 +138,7 @@ std::vector<ActivationOpenClArtifactCase> activation_opencl_artifact_cases() {
        },
        "opencl/generated/activation_f32",
        "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Swish,
+       GfxOpenClArtifactOp::Swish,
        {1.0f, 0.0f}},
       {"F32SwishStaticBeta",
        [] {
@@ -141,7 +149,7 @@ std::vector<ActivationOpenClArtifactCase> activation_opencl_artifact_cases() {
        },
        "opencl/generated/activation_f32",
        "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Swish,
+       GfxOpenClArtifactOp::Swish,
        {0.5f, 0.0f}},
       {"F32SoftSign",
        [] {
@@ -149,154 +157,154 @@ std::vector<ActivationOpenClArtifactCase> activation_opencl_artifact_cases() {
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::SoftSign},
+       GfxOpenClArtifactOp::SoftSign},
       {"F32Sign",
        [] {
          return std::make_shared<ov::op::v0::Sign>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Sign},
+       GfxOpenClArtifactOp::Sign},
       {"F32Abs",
        [] {
          return std::make_shared<ov::op::v0::Abs>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Abs},
+       GfxOpenClArtifactOp::Abs},
       {"F32Negative",
        [] {
          return std::make_shared<ov::op::v0::Negative>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Negative},
+       GfxOpenClArtifactOp::Negative},
       {"F32Exp",
        [] {
          return std::make_shared<ov::op::v0::Exp>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Exp},
+       GfxOpenClArtifactOp::Exp},
       {"F32Log",
        [] {
          return std::make_shared<ov::op::v0::Log>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Log},
+       GfxOpenClArtifactOp::Log},
       {"F32Sqrt",
        [] {
          return std::make_shared<ov::op::v0::Sqrt>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Sqrt},
+       GfxOpenClArtifactOp::Sqrt},
       {"F32Floor",
        [] {
          return std::make_shared<ov::op::v0::Floor>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Floor},
+       GfxOpenClArtifactOp::Floor},
       {"F32Ceiling",
        [] {
          return std::make_shared<ov::op::v0::Ceiling>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Ceiling},
+       GfxOpenClArtifactOp::Ceiling},
       {"F32Mish",
        [] {
          return std::make_shared<ov::op::v4::Mish>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Mish},
+       GfxOpenClArtifactOp::Mish},
       {"F32Sin",
        [] {
          return std::make_shared<ov::op::v0::Sin>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Sin},
+       GfxOpenClArtifactOp::Sin},
       {"F32Cos",
        [] {
          return std::make_shared<ov::op::v0::Cos>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Cos},
+       GfxOpenClArtifactOp::Cos},
       {"F32Tan",
        [] {
          return std::make_shared<ov::op::v0::Tan>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Tan},
+       GfxOpenClArtifactOp::Tan},
       {"F32Erf",
        [] {
          return std::make_shared<ov::op::v0::Erf>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Erf},
+       GfxOpenClArtifactOp::Erf},
       {"F32Asin",
        [] {
          return std::make_shared<ov::op::v0::Asin>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Asin},
+       GfxOpenClArtifactOp::Asin},
       {"F32Acos",
        [] {
          return std::make_shared<ov::op::v0::Acos>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Acos},
+       GfxOpenClArtifactOp::Acos},
       {"F32Atan",
        [] {
          return std::make_shared<ov::op::v0::Atan>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Atan},
+       GfxOpenClArtifactOp::Atan},
       {"F32Asinh",
        [] {
          return std::make_shared<ov::op::v3::Asinh>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Asinh},
+       GfxOpenClArtifactOp::Asinh},
       {"F32Acosh",
        [] {
          return std::make_shared<ov::op::v3::Acosh>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Acosh},
+       GfxOpenClArtifactOp::Acosh},
       {"F32Atanh",
        [] {
          return std::make_shared<ov::op::v3::Atanh>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Atanh},
+       GfxOpenClArtifactOp::Atanh},
       {"F32Sinh",
        [] {
          return std::make_shared<ov::op::v0::Sinh>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Sinh},
+       GfxOpenClArtifactOp::Sinh},
       {"F32Cosh",
        [] {
          return std::make_shared<ov::op::v0::Cosh>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::Cosh},
+       GfxOpenClArtifactOp::Cosh},
       {"F32RoundEven",
        [] {
          return std::make_shared<ov::op::v5::Round>(
@@ -304,7 +312,7 @@ std::vector<ActivationOpenClArtifactCase> activation_opencl_artifact_cases() {
              ov::op::v5::Round::RoundMode::HALF_TO_EVEN);
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::RoundEven},
+       GfxOpenClArtifactOp::RoundEven},
       {"F32RoundAway",
        [] {
          return std::make_shared<ov::op::v5::Round>(
@@ -312,7 +320,7 @@ std::vector<ActivationOpenClArtifactCase> activation_opencl_artifact_cases() {
              ov::op::v5::Round::RoundMode::HALF_AWAY_FROM_ZERO);
        },
        "opencl/generated/activation_f32", "gfx_opencl_generated_activation_f32",
-       GfxOpenClBaselineOp::RoundAway},
+       GfxOpenClArtifactOp::RoundAway},
   };
 }
 

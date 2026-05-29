@@ -57,22 +57,36 @@ std::vector<std::string> output_shapes(const std::shared_ptr<const ov::Node>& no
     return shapes;
 }
 
-KernelUnitKind kind_for_dynamic_route(LoweringRouteKind route_kind) {
-    switch (route_kind) {
-        case LoweringRouteKind::Common:
-            return KernelUnitKind::Common;
-        case LoweringRouteKind::Metadata:
-            return KernelUnitKind::Metadata;
-        case LoweringRouteKind::VendorPrimitive:
-            return KernelUnitKind::VendorPrimitive;
-        case LoweringRouteKind::GeneratedKernel:
-            return KernelUnitKind::GeneratedKernel;
-        case LoweringRouteKind::HandwrittenKernelException:
-            return KernelUnitKind::HandwrittenException;
-        case LoweringRouteKind::BackendLowering:
-        case LoweringRouteKind::Unsupported:
-        default:
-            return KernelUnitKind::BackendLowering;
+void add_missing_kernel_unit(UnsupportedSummary& summary,
+                             const std::shared_ptr<const ov::Node>& node,
+                             const OperationSupportResult& support) {
+    if (!node) {
+        return;
+    }
+
+    const std::string type = node->get_type_name();
+    bool found_type = false;
+    for (auto& entry : summary.type_counts) {
+        if (entry.first == type) {
+            ++entry.second;
+            found_type = true;
+            break;
+        }
+    }
+    if (!found_type) {
+        summary.type_counts.emplace_back(type, 1);
+    }
+
+    std::ostringstream reason;
+    reason << "missing_kernel_unit:";
+    if (!support.preferred_route.empty()) {
+        reason << support.preferred_route;
+    } else {
+        reason << lowering_route_kind_to_string(support.preferred_route_kind);
+    }
+    if (summary.node_names.size() < 8) {
+        summary.node_names.emplace_back(node->get_friendly_name() + " (" +
+                                        type + "): " + reason.str());
     }
 }
 
@@ -123,12 +137,8 @@ LoweringPlan LoweringPlanner::plan(const std::shared_ptr<const ov::Model>& model
         }
         auto kernel_unit = m_kernel_registry.resolve(record.support.preferred_route_kind,
                                                      record.support.preferred_route);
-        if (!kernel_unit.valid() && !record.support.preferred_route.empty()) {
-            kernel_unit = KernelUnit::describe(record.support.preferred_route_kind,
-                                               kind_for_dynamic_route(record.support.preferred_route_kind),
-                                               record.support.preferred_route,
-                                               m_target.backend_id(),
-                                               record.node->get_type_name());
+        if (!kernel_unit.valid()) {
+            add_missing_kernel_unit(plan.unsupported, record.node, record.support);
         }
         plan.operations.push_back({record.node,
                                    record.node->get_friendly_name(),

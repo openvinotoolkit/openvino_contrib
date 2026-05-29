@@ -118,8 +118,6 @@ std::string generate_msl_for_matmul(const MatMulCodegenDesc& desc, mlir::ModuleO
 std::string generate_msl_for_conv2d(const Conv2DCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_conv3d(const Conv3DCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_eltwise(const EltwiseCodegenDesc& desc, mlir::ModuleOp module);
-std::string generate_msl_for_maxpool2d(const Pool2DCodegenDesc& desc, mlir::ModuleOp module);
-std::string generate_msl_for_avgpool2d(const Pool2DCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_softmax(const SoftmaxCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_concat(const ConcatCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_interpolate(const InterpolateCodegenDesc& desc, mlir::ModuleOp module);
@@ -161,12 +159,6 @@ inline std::string generate_msl_from_mlir(mlir::ModuleOp module, const Conv3DCod
 }
 inline std::string generate_msl_from_mlir(mlir::ModuleOp module, const EltwiseCodegenDesc& desc) {
     return generate_msl_for_eltwise(desc, module);
-}
-inline std::string generate_msl_from_mlir(mlir::ModuleOp module, const Pool2DCodegenDesc& desc) {
-    if (desc.is_avg) {
-        return generate_msl_for_avgpool2d(desc, module);
-    }
-    return generate_msl_for_maxpool2d(desc, module);
 }
 inline std::string generate_msl_from_mlir(mlir::ModuleOp module, const SoftmaxCodegenDesc& desc) {
     return generate_msl_for_softmax(desc, module);

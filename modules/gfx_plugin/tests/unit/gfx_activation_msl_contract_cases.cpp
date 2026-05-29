@@ -91,7 +91,7 @@ std::vector<ActivationMslArtifactCase> activation_msl_artifact_cases() {
              param(ov::element::f32, ov::Shape{2, 3, 4}),
              ov::op::GeluApproximationMode::ERF);
        },
-       "erf(x * 0.70710678118f)"},
+       "gfx_msl_erf_approx(x * 0.70710678118f)"},
       {"GeluTanh",
        [] {
          return std::make_shared<ov::op::v7::Gelu>(
@@ -214,7 +214,7 @@ std::vector<ActivationMslArtifactCase> activation_msl_artifact_cases() {
          return std::make_shared<ov::op::v0::Erf>(
              param(ov::element::f32, ov::Shape{2, 3, 4}));
        },
-       "erf(x)"},
+       "gfx_msl_erf_approx(x)"},
       {"Asin",
        [] {
          return std::make_shared<ov::op::v0::Asin>(

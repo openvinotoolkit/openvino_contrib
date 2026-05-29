@@ -72,7 +72,7 @@ public:
     EXPECT_EQ(artifact->direct_input_count, direct_input_count);
     EXPECT_EQ(artifact->direct_output_count, direct_output_count);
     EXPECT_EQ(artifact->direct_input_indices, direct_input_indices);
-    EXPECT_EQ(artifact->baseline_local_size, 64u);
+    EXPECT_EQ(artifact->local_size_hint, 64u);
     EXPECT_EQ(artifact->scalar_args, scalar_args);
     EXPECT_EQ(artifact->static_u32_scalars, static_u32_scalars);
     EXPECT_NE(artifact->source.find("__kernel void " + entry_point),
@@ -112,7 +112,7 @@ public:
     return *this;
   }
 
-  OpenClSourceArtifactVerifier &has_op(GfxOpenClBaselineOp op) {
+  OpenClSourceArtifactVerifier &has_op(GfxOpenClArtifactOp op) {
     const auto artifact = resolve_gfx_opencl_source_artifact(m_node);
     if (!artifact.has_value()) {
       ADD_FAILURE() << "missing OpenCL source artifact";
@@ -123,7 +123,7 @@ public:
   }
 
   OpenClSourceArtifactVerifier &
-  has_input_mode(GfxOpenClBaselineInputMode mode) {
+  has_input_mode(GfxOpenClArtifactInputMode mode) {
     const auto artifact = resolve_gfx_opencl_source_artifact(m_node);
     if (!artifact.has_value()) {
       ADD_FAILURE() << "missing OpenCL source artifact";

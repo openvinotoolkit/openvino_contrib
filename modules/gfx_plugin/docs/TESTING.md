@@ -117,8 +117,10 @@ For scheduling, cache, or infer-path changes:
   `tests/unit/gfx_matmul_runtime_test.cpp`,
   `tests/unit/gfx_multiply_runtime_test.cpp`,
   `tests/unit/gfx_reduce_logical_runtime_test.cpp`,
-  `tests/unit/gfx_softmax_runtime_test.cpp`, and
   `tests/unit/gfx_split_runtime_test.cpp`
+- `tests/unit/gfx_softmax_kernel_contract_test.cpp` and
+  `tests/unit/gfx_pool_kernel_contract_test.cpp` for Softmax and Pooling
+  lowering, source-artifact, kernel-registry, and payload contracts
 
 For OpenCL source-artifact changes:
 
@@ -130,6 +132,12 @@ For OpenCL source-artifact changes:
 - include `tests/unit/gfx_reduction_kernel_contract_test.cpp` when generated
   f32 reduction, logical-bool reduction, reduction MLIR lowering, or backend
   reduction kernel-unit routing changes
+- include `tests/unit/gfx_softmax_kernel_contract_test.cpp` when generated
+  Metal Softmax/LogSoftmax payloads, OpenCL static or dynamic-static-rank
+  Softmax artifacts, axis metadata, or Softmax kernel-unit routing changes
+- include `tests/unit/gfx_pool_kernel_contract_test.cpp` when OpenCL generated
+  Pool2D artifacts, Metal MPS Pool2D vendor routing, or Pooling kernel-unit
+  registration changes
 - use `tests/unit/gfx_opencl_source_artifact_verifier.hpp` for reusable
   OpenCL source-artifact assertions instead of duplicating role/scalar checks
 - keep reusable generated activation and elementwise case data in
@@ -158,6 +166,10 @@ For Metal placement or MPSRT changes:
   payloads in `tests/unit/gpu_backend_base_test.cpp`
 - cover generated reduction MSL source plans and payload routing in
   `tests/unit/gfx_reduction_kernel_contract_test.cpp`
+- cover generated Softmax/LogSoftmax MSL source plans and payload routing in
+  `tests/unit/gfx_softmax_kernel_contract_test.cpp`
+- cover Pool2D vendor-route and MSL-fallback rejection contracts in
+  `tests/unit/gfx_pool_kernel_contract_test.cpp`
 - cover request-time execution in `tests/backends/metal/gpu_backend_test.mm`
   when the route reaches encode time
 - use `tests/unit/memory_device_integration_test.mm` for Metal memory/device

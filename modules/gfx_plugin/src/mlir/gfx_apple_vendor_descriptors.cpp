@@ -725,8 +725,7 @@ bool gfx_apple_make_mps_pool2d_contract(const std::shared_ptr<const ov::Node>& n
     if (!gfx_apple_make_mps_io_tensor_descs_for_node(node,
                                                      GfxStageStorageKind::Image,
                                                      contract.input_descs,
-                                                     contract.output_descs) ||
-        contract.input_descs.front().image_feature_channels % 4u != 0) {
+                                                     contract.output_descs)) {
         contract = {};
         return false;
     }

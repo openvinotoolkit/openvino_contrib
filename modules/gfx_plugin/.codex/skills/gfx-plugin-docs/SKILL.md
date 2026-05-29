@@ -52,14 +52,15 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
    - `query_model()` or compile behavior
    - MLIR support/lowering/source planning
    - Metal placement, MPSRT records, MPS/MPSGraph descriptors,
-     `VendorDescriptor` payloads, generated activation/elementwise MSL routes,
-     generated reduction MSL routes, `Swish` static/runtime beta contracts, or
-     MSL binding
+     `VendorDescriptor` payloads, generated activation/elementwise/reduction/
+     Softmax/LogSoftmax MSL routes, `Swish` static/runtime beta contracts,
+     Pool2D vendor-route-only behavior, or MSL binding
    - OpenCL source-artifact coverage, runtime-shape handling, static f32
      scalars, constants, generated activation/elementwise/MatMul units,
-     generated f32 reduction units, logical-bool reduction artifacts, `Swish`
-     default/static/runtime beta artifacts, chunking, or boolean-buffer
-     behavior
+     generated f32 reduction units, generated f32/f16 Softmax units,
+     dynamic-static-rank Softmax units, generated f32/f16 Pool2D units,
+     logical-bool reduction artifacts, `Swish` default/static/runtime beta
+     artifacts, chunking, or boolean-buffer behavior
    - stage policy, parallelism, partitioning, submission, caches, or workspace
      allocation
    - stateful `ReadValue` / `Assign`

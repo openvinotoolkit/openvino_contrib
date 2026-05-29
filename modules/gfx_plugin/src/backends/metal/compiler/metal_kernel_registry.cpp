@@ -61,12 +61,20 @@ KernelRegistry make_metal_kernel_registry(const BackendTarget &target) {
       target, "metal/generated/reduction_f32", "Reduction"));
   units.push_back(make_metal_generated_unit(
       target, "metal/generated/reduction_logical_bool", "Reduction"));
+  units.push_back(make_metal_generated_unit(
+      target, "metal/generated/softmax_f32", "Softmax"));
+  units.push_back(make_metal_generated_unit(
+      target, "metal/generated/softmax_f16", "Softmax"));
+  units.push_back(make_metal_generated_unit(
+      target, "metal/generated/logsoftmax_f32", "LogSoftmax"));
+  units.push_back(make_metal_generated_unit(
+      target, "metal/generated/logsoftmax_f16", "LogSoftmax"));
   units.push_back(
       make_metal_vendor_unit(target, "metal/vendor/mps_gemm", "MatMul"));
   units.push_back(
       make_metal_vendor_unit(target, "metal/vendor/mps_softmax", "Softmax"));
   units.push_back(
-      make_metal_vendor_unit(target, "metal/vendor/mps_pool2d", "MaxPool"));
+      make_metal_vendor_unit(target, "metal/vendor/mps_pool2d", "Pooling"));
   units.push_back(make_metal_vendor_unit(target, "metal/vendor/mps_resize2d",
                                          "Interpolate"));
   units.push_back(make_metal_vendor_unit(target, "metal/vendor/mpsgraph_sdpa",

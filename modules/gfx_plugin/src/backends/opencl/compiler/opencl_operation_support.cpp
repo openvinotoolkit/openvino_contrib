@@ -7,8 +7,10 @@
 #include <string_view>
 
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
+#include "openvino/op/avg_pool.hpp"
 #include "openvino/op/interpolate.hpp"
 #include "openvino/op/matmul.hpp"
+#include "openvino/op/max_pool.hpp"
 #include "openvino/op/reduce_l1.hpp"
 #include "openvino/op/reduce_l2.hpp"
 #include "openvino/op/reduce_logical_and.hpp"
@@ -18,6 +20,7 @@
 #include "openvino/op/reduce_min.hpp"
 #include "openvino/op/reduce_prod.hpp"
 #include "openvino/op/reduce_sum.hpp"
+#include "openvino/op/softmax.hpp"
 #include "openvino/op/swish.hpp"
 #include "openvino/op/util/binary_elementwise_arithmetic.hpp"
 #include "openvino/op/util/binary_elementwise_comparison.hpp"
@@ -72,6 +75,16 @@ bool is_reduction_node(const std::shared_ptr<const ov::Node> &node) {
          ov::as_type_ptr<const ov::op::v1::ReduceLogicalOr>(node);
 }
 
+bool is_pooling_node(const std::shared_ptr<const ov::Node> &node) {
+  return ov::as_type_ptr<const ov::op::util::MaxPoolBase>(node) ||
+         ov::as_type_ptr<const ov::op::util::AvgPoolBase>(node);
+}
+
+bool is_softmax_node(const std::shared_ptr<const ov::Node> &node) {
+  return ov::as_type_ptr<const ov::op::v1::Softmax>(node) ||
+         ov::as_type_ptr<const ov::op::v8::Softmax>(node);
+}
+
 OperationSupportResult
 query_opencl_operation(const std::shared_ptr<const ov::Node> &node) {
   if (auto artifact = resolve_gfx_opencl_source_artifact(node)) {
@@ -97,6 +110,12 @@ query_opencl_operation(const std::shared_ptr<const ov::Node> &node) {
   }
   if (is_reduction_node(node)) {
     return make_unsupported_operation("missing_opencl_reduction_kernel_unit");
+  }
+  if (is_pooling_node(node)) {
+    return make_unsupported_operation("missing_opencl_pooling_kernel_unit");
+  }
+  if (is_softmax_node(node)) {
+    return make_unsupported_operation("missing_opencl_softmax_kernel_unit");
   }
   return make_unsupported_operation("missing_opencl_kernel_unit");
 }

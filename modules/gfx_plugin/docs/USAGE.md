@@ -163,19 +163,21 @@ The OpenCL backend dynamically loads the target OpenCL runtime and executes
 source artifacts described by `src/kernel_ir/gfx_opencl_source_artifacts.*`.
 
 Current public coverage includes selected data movement, shape/list movement,
-Range/Tile, MatMul/Softmax, bounded static NCHW spatial Interpolate,
+Range/Tile, MatMul/Softmax, Pool2D, bounded static NCHW spatial Interpolate,
 gather/scatter families, Concat/Split, typed elementwise families,
 compare/select, and boolean logical/reduction families when the model matches
 the artifact contracts.
 
-Generated activation, elementwise, f32 MatMul, and f32/f16 Interpolate sources
-plus generated f32 reduction sources and f32/f16 Softmax or logical-bool
-reduction baseline sources are embedded under `src/kernel_ir/opencl_kernels/`.
-Interpolate is limited to f32/f16 static NCHW spatial resize cases with
-supported modes, axes, padding, coordinate transforms, and nearest-rounding
-metadata. OpenCL operation support requires a matching source artifact and
-registered kernel unit; unsupported variants fail during support probing or
-compilation.
+Generated activation, elementwise, f32 MatMul, f32/f16 Interpolate, f32
+reduction, f32/f16 Softmax, dynamic-static-rank f32/f16 Softmax, and f32/f16
+Pool2D sources are embedded under `src/kernel_ir/opencl_kernels/`. Logical-bool
+reduction remains a baseline exception source. Interpolate is limited to
+f32/f16 static NCHW spatial resize cases with supported modes, axes, padding,
+coordinate transforms, and nearest-rounding metadata. Pool2D is limited to
+f32/f16 static 4D NCHW MaxPool/AvgPool contracts with 2D kernel, stride,
+dilation, and padding metadata. OpenCL operation support requires a matching
+source artifact and registered kernel unit; unsupported variants fail during
+support probing or compilation.
 
 Reduction source artifacts require static shape metadata and constant axes.
 Numeric `ReduceSum`, `ReduceMean`, `ReduceMax`, `ReduceMin`, `ReduceProd`,
@@ -187,6 +189,10 @@ For generated activation artifacts, `Swish` supports default beta, scalar
 constant beta, and runtime scalar beta tensor forms when the beta input is a
 static scalar tensor with the same element type as the data input. Other beta
 shapes or element types are rejected by the artifact contract.
+
+OpenCL `Softmax` supports f32/f16 static shapes and dynamic-output shapes with
+static rank. The dynamic route carries runtime input-shape scalars in the
+artifact ABI. OpenCL `LogSoftmax` is currently not implemented.
 
 Unsupported OpenCL cases fail during support probing, compilation, stage
 creation, or runtime validation. They do not fall back to CPU or switch backend.
@@ -208,7 +214,11 @@ request-time node checks. Generated Metal `Swish` activation follows the same
 static-beta or runtime scalar-beta contract as the shared MLIR lowering.
 Generated Metal reduction sources use the `metal/generated/reduction_f32` and
 `metal/generated/reduction_logical_bool` contracts for the currently supported
-f32 numeric and boolean logical forms.
+f32 numeric and boolean logical forms. Generated Metal Softmax sources use
+`metal/generated/softmax_f32`, `metal/generated/softmax_f16`,
+`metal/generated/logsoftmax_f32`, and `metal/generated/logsoftmax_f16` for
+static-shape f32/f16 Softmax and LogSoftmax. Metal Pool2D requires a valid MPS
+vendor descriptor; the generic MSL Pool2D fallback is not a current route.
 
 `GFX_DIAGNOSTIC_F32_MPS_IMAGE` is a diagnostic compile property for selected
 f32 MPS image placement checks. It should be used for localization, not as a

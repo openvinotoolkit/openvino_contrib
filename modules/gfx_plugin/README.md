@@ -125,12 +125,14 @@ ad-hoc backend switches when adding new Metal routes.
 
 Compiler-owned Metal payloads currently cover generated MSL units such as
 `ShapeOf`, `Range`, `Tile`, `Concat`, `Split`, `Slice`, activation, elementwise,
-numeric and logical reduction, and causal SDPA helper forms. MPS/MPSGraph vendor
-descriptor payloads are consumed by the `MpsrtVendorPrimitive` runtime stage for
-supported MatMul/GEMM, `Softmax`, Pool2D, Resize2D, and SDPA forms. Vendor
-selection remains contract-limited: if the descriptor, storage, or
-external-buffer ABI cannot be built, the route must be rejected or use another
-supported current route.
+numeric and logical reduction, Softmax/LogSoftmax, and causal SDPA helper
+forms. MPS/MPSGraph vendor descriptor payloads are consumed by the
+`MpsrtVendorPrimitive` runtime stage for supported MatMul/GEMM, last-axis
+`Softmax`, Pool2D, Resize2D, and SDPA forms. Vendor selection remains
+contract-limited: if the descriptor, storage, or external-buffer ABI cannot be
+built, the route must be rejected or use another supported current route.
+Pooling on Metal requires a valid MPS-family vendor route; the removed generic
+MSL Pool2D fallback must not be reintroduced as an unvalidated path.
 
 ### OpenCL
 
@@ -148,13 +150,13 @@ Backend operation support and kernel-unit registration live under
 `src/backends/opencl/runtime/`.
 
 Embedded OpenCL source units live under `src/kernel_ir/opencl_kernels/`.
-Current named units include generated activation, elementwise, f32 MatMul, and
-f32/f16 Interpolate helpers, generated f32 reduction helpers, plus f32/f16
-Softmax and logical-bool reduction baseline helpers. The OpenCL compiler
-registry requires an explicit kernel unit for generated routes; there is no
-generic MLIR fallback for OpenCL operation support. Unsupported modes, axes,
-padding, shapes, or element types fail during support probing instead of
-falling through to a hidden runtime path.
+Current named units include generated activation, elementwise, f32 MatMul,
+f32/f16 Interpolate, f32 reduction, f32/f16 Softmax, dynamic-static-rank
+f32/f16 Softmax, and f32/f16 Pool2D helpers, plus a logical-bool reduction
+baseline helper. The OpenCL compiler registry requires an explicit kernel unit
+for generated routes; there is no generic MLIR fallback for OpenCL operation
+support. Unsupported modes, axes, padding, shapes, or element types fail during
+support probing instead of falling through to a hidden runtime path.
 
 Generated activation artifacts cover the shared unary activation family and
 carry op-specific scalar payloads in the manifest. `Swish` supports the default
@@ -180,6 +182,17 @@ second scalar tensor input when the runtime-beta path is supported.
 Reduction lowering uses the same source-plan boundary. Numeric reductions cover
 the current f32 generated-kernel contract; logical reductions cover the current
 boolean contract. Both require static input/output shapes and constant axes.
+
+Softmax lowering is family-owned for `Softmax` and `LogSoftmax` on Metal. The
+generated Metal units cover f32/f16 static-shape Softmax and LogSoftmax with
+runtime-parameter binding. OpenCL currently covers `Softmax` f32/f16 static
+shapes and dynamic-output shapes with static rank; OpenCL `LogSoftmax` is not a
+current source-artifact route.
+
+Pooling lowering is family-owned for `MaxPool` and `AvgPool`. OpenCL generated
+Pool2D units cover f32/f16 static 4D NCHW input/output shapes with 2D kernel,
+stride, dilation, and padding metadata. Metal Pool2D uses the MPS vendor route
+only when the descriptor and external-buffer ABI are valid.
 
 When adding or changing an op, keep support probing, lowering, backend source
 planning, runtime binding, and tests on the same contract.
