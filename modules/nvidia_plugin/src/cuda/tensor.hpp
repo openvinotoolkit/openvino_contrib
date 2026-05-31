@@ -24,7 +24,11 @@ namespace CUDA {
 
 class CuTensorHandle : public Handle<cutensorHandle_t> {
 public:
+#if defined(CUTENSOR_VERSION) && CUTENSOR_VERSION >= 20000
     CuTensorHandle() : Handle(cutensorCreate, cutensorDestroy) {}
+#else
+    CuTensorHandle() : Handle(cutensorInit, nullptr) {}
+#endif
 };
 
 }  // namespace CUDA
