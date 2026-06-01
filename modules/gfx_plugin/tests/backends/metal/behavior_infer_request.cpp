@@ -36,20 +36,20 @@ using ov::test::behavior::OVInferRequestVariableStateTest;
 using ov::test::behavior::OVInferRequestMultithreadingTests;
 using ov::test::behavior::OVInferRequestCheckTensorPrecision;
 
-using GfxInferRequestPropertiesTest = ov::test::utils::GfxSkippedTests<InferRequestPropertiesTest>;
-using GfxOVInferRequestBatchedTests = ov::test::utils::GfxSkippedTests<OVInferRequestBatchedTests>;
-using GfxOVInferRequestCallbackTests = ov::test::utils::GfxSkippedTests<OVInferRequestCallbackTests>;
-using GfxOVInferRequestCancellationTests = ov::test::utils::GfxSkippedTests<OVInferRequestCancellationTests>;
-using GfxOVInferRequestIOTensorTest = ov::test::utils::GfxSkippedTests<OVInferRequestIOTensorTest>;
-using GfxOVInferRequestInferenceTests = ov::test::utils::GfxSkippedTests<OVInferRequestInferenceTests>;
-using GfxOVInferenceChaining = ov::test::utils::GfxSkippedTests<OVInferenceChaining>;
-using GfxOVInferenceChainingStatic = ov::test::utils::GfxSkippedTests<OVInferenceChainingStatic>;
-using GfxOVInferRequestDynamicTests = ov::test::utils::GfxSkippedTests<OVInferRequestDynamicTests>;
-using GfxOVInferRequestWaitTests = ov::test::utils::GfxSkippedTests<OVInferRequestWaitTests>;
-using GfxOVInferRequestVariableStateTest = ov::test::utils::GfxSkippedTests<OVInferRequestVariableStateTest>;
-using GfxOVInferRequestMultithreadingTests = ov::test::utils::GfxSkippedTests<OVInferRequestMultithreadingTests>;
+using GfxInferRequestPropertiesTest = ov::test::utils::GfxBackendRequiredTests<InferRequestPropertiesTest>;
+using GfxOVInferRequestBatchedTests = ov::test::utils::GfxBackendRequiredTests<OVInferRequestBatchedTests>;
+using GfxOVInferRequestCallbackTests = ov::test::utils::GfxBackendRequiredTests<OVInferRequestCallbackTests>;
+using GfxOVInferRequestCancellationTests = ov::test::utils::GfxBackendRequiredTests<OVInferRequestCancellationTests>;
+using GfxOVInferRequestIOTensorTest = ov::test::utils::GfxBackendRequiredTests<OVInferRequestIOTensorTest>;
+using GfxOVInferRequestInferenceTests = ov::test::utils::GfxBackendRequiredTests<OVInferRequestInferenceTests>;
+using GfxOVInferenceChaining = ov::test::utils::GfxBackendRequiredTests<OVInferenceChaining>;
+using GfxOVInferenceChainingStatic = ov::test::utils::GfxBackendRequiredTests<OVInferenceChainingStatic>;
+using GfxOVInferRequestDynamicTests = ov::test::utils::GfxBackendRequiredTests<OVInferRequestDynamicTests>;
+using GfxOVInferRequestWaitTests = ov::test::utils::GfxBackendRequiredTests<OVInferRequestWaitTests>;
+using GfxOVInferRequestVariableStateTest = ov::test::utils::GfxBackendRequiredTests<OVInferRequestVariableStateTest>;
+using GfxOVInferRequestMultithreadingTests = ov::test::utils::GfxBackendRequiredTests<OVInferRequestMultithreadingTests>;
 using GfxOVInferRequestCheckTensorPrecision =
-    ov::test::utils::GfxSkippedTests<OVInferRequestCheckTensorPrecision>;
+    ov::test::utils::GfxBackendRequiredTests<OVInferRequestCheckTensorPrecision>;
 
 namespace {
 

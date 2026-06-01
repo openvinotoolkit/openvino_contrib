@@ -8,8 +8,9 @@ The current implementation has two backend families:
 
 - `metal`: macOS execution through Metal, Apple MPS/MPSGraph vendor stages,
   MPSRT runtime-model records, and generated MSL custom kernels.
-- `opencl`: non-Apple execution through a dynamically loaded OpenCL runtime and
-  manifest-backed source-kernel artifacts.
+- `opencl`: non-Apple execution through a dynamically loaded OpenCL runtime,
+  optional bundled CLVK/CLSPV deployment support, and manifest-backed
+  source-kernel artifacts.
 
 Unsupported models fail during `compile_model()` or support probing. The plugin
 does not silently fall back to CPU for intermediate execution.
@@ -30,6 +31,7 @@ Read these files first:
 - Build-time backend options: `GFX_ENABLE_METAL`, `GFX_ENABLE_OPENCL`
 - Runtime backend property: `GFX_BACKEND=metal|opencl`
 - Default backend: `GFX_DEFAULT_BACKEND=auto|metal|opencl`
+- Raspberry/OpenCL bundle option: `GFX_ENABLE_RASPBERRY_OPENCL_TOOLCHAIN`
 - OpenCL is disabled by CMake on macOS; the Apple route is Metal/MPS/MPSRT/MSL.
 - On non-Apple builds, `auto` resolves to OpenCL when the source backend is
   enabled in the build.
@@ -70,17 +72,20 @@ Read these files first:
 - `bench/`: optional local/remote evaluation helpers
 - `tools/`: profiling and microbench post-processing helpers
 - `third_party/llvm-project/`: vendored LLVM/MLIR used by the build
+- `third_party/clvk/`, `third_party/clspv/`: optional submodules used by the
+  Raspberry/OpenCL bundle flow when `GFX_ENABLE_RASPBERRY_OPENCL_TOOLCHAIN` is
+  enabled
 
 ## Compilation And Execution Pipeline
 
 The high-level path is:
 
 1. `Plugin::compile_model()` parses properties and resolves `GFX_BACKEND`.
-2. `src/compiler/BackendRegistry` resolves the compiled backend module and
-   immutable `BackendTarget`.
+2. `src/compiler/BackendRegistry` resolves the compiled backend module,
+   immutable `BackendTarget`, and backend-owned transform `PipelineOptions`.
 3. `GfxCompilerService` runs backend-aware transforms, operation support
-   checks, lowering-plan creation, manifest building, and executable-bundle
-   assembly.
+   checks, lowering-plan creation, manifest building, executable-bundle
+   assembly, and artifact payload materialization.
 4. `CompiledModel` validates the executable bundle and builds a
    `RuntimeExecutableDescriptor` that is passed into backend stage creation.
 5. `CompiledModel::build_op_pipeline()` creates a sequence of stage descriptors.
@@ -102,6 +107,11 @@ The compiler layer is the public architecture boundary between OpenVINO graph
 semantics and runtime execution. Do not add new support checks directly in
 `Plugin` or backend request code when the same decision belongs in
 `src/compiler/`.
+
+Backend stage creation is descriptor-owned. Stages that need a kernel, source
+artifact, vendor descriptor, or ABI metadata must consume the matching
+`RuntimeStageExecutableDescriptor`; request-time code must not reconstruct
+payloads from the OpenVINO node.
 
 ## Backend Split
 
@@ -150,19 +160,26 @@ Backend operation support and kernel-unit registration live under
 `src/backends/opencl/runtime/`.
 
 Embedded OpenCL source units live under `src/kernel_ir/opencl_kernels/`.
-Current named units include generated activation, elementwise, f32 MatMul,
-f32/f16 Interpolate, f32 reduction, f32/f16 Softmax, dynamic-static-rank
-f32/f16 Softmax, and f32/f16 Pool2D helpers, plus a logical-bool reduction
-baseline helper. The OpenCL compiler registry requires an explicit kernel unit
-for generated routes; there is no generic MLIR fallback for OpenCL operation
-support. Unsupported modes, axes, padding, shapes, or element types fail during
-support probing instead of falling through to a hidden runtime path.
+Current generated units include activation, elementwise, f32 MatMul, f32/f16
+Interpolate, f32 reduction, boolean reduction, f32/f16 Softmax,
+dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D, ShapeOf, Tile,
+logical-bool elementwise, compare/select, and generated Concat/Split helpers.
+The remaining handwritten OpenCL source exception is the f32 Transpose route.
+The OpenCL compiler registry requires an explicit kernel unit for generated
+routes; there is no generic MLIR fallback for OpenCL operation support.
+Unsupported modes, axes, padding, shapes, or element types fail during support
+probing instead of falling through to a hidden runtime path.
 
 Generated activation artifacts cover the shared unary activation family and
 carry op-specific scalar payloads in the manifest. `Swish` supports the default
 beta, a scalar constant beta, and a runtime scalar beta tensor through the
 `opencl/generated/activation_runtime_beta_*` units when shape and type contracts
 match.
+
+On Linux/Raspberry-style deployments, the build can stage a plugin-local OpenCL
+bundle from `third_party/clvk` and `third_party/clspv`. The runtime loader checks
+plugin-local `opencl/`, `clvk/`, and plugin directories before system/vendor
+OpenCL libraries and configures CLVK tool paths when bundled tools are present.
 
 ## MLIR Role
 
@@ -249,6 +266,8 @@ Useful options:
 
 - `-DGFX_ENABLE_METAL=ON|OFF`
 - `-DGFX_ENABLE_OPENCL=ON|OFF`
+- `-DGFX_ENABLE_RASPBERRY_OPENCL_TOOLCHAIN=ON|OFF`
+- `-DGFX_RASPBERRY_OPENCL_BUNDLE_DIR=<path>`
 - `-DGFX_DEFAULT_BACKEND=auto|metal|opencl`
 - `-DENABLE_TESTS=ON|OFF`
 
@@ -303,7 +322,8 @@ evidence, and do not use compare-runner timing as performance evidence.
 - Do not bypass `GfxCompilerService`, `ManifestBundle`, or
   `ExecutableBundle` with ad-hoc backend support checks.
 - Do not modify `third_party/llvm-project/` unless the task explicitly requires
-  vendored LLVM/MLIR changes.
+  vendored LLVM/MLIR changes. Keep `third_party/clvk` and `third_party/clspv`
+  as reviewed submodule gitlinks, not copied source trees.
 - Keep local artifacts, build trees, sensitive access material, machine names, and agent notes
   out of commits.
 
@@ -320,5 +340,7 @@ properties:
 The profiling JSON includes compile and infer sections, target-profile counters
 such as `target_backend_metal` and `target_backend_opencl`, stage estimates such
 as bytes moved and MAC/FLOP counts, and backend-specific Metal/OpenCL segments
-when available. See `docs/PROFILING_RUNBOOK.md` and
+when available. Backend trace exporters are registered through the shared trace
+sink registry; the Metal backend currently registers `signpost` and
+`os_signpost`. See `docs/PROFILING_RUNBOOK.md` and
 `docs/MICROBENCH_SCHEMA.md`.

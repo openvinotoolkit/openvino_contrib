@@ -30,5 +30,17 @@ std::unique_ptr<BackendState> create_backend_state(GpuBackend backend,
     OPENVINO_THROW("GFX: unsupported backend for compiled model");
 }
 
+void register_backend_profiling_trace_sinks(GpuBackend backend) {
+    switch (backend) {
+        case GpuBackend::Metal:
+            register_metal_profiling_trace_sinks();
+            return;
+        case GpuBackend::OpenCL:
+            return;
+        default:
+            return;
+    }
+}
+
 }  // namespace gfx_plugin
 }  // namespace ov

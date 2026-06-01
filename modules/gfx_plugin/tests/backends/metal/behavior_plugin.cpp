@@ -40,27 +40,27 @@ using ov::test::behavior::OVPropertiesTests;
 using ov::test::OVRemoteTest;
 using ov::test::behavior::VersionTests;
 
-using GfxCompileModelCacheTestBase = ov::test::utils::GfxSkippedTests<CompileModelCacheTestBase>;
-using GfxCompileModelLoadFromCacheTest = ov::test::utils::GfxSkippedTests<CompileModelLoadFromCacheTest>;
+using GfxCompileModelCacheTestBase = ov::test::utils::GfxBackendRequiredTests<CompileModelCacheTestBase>;
+using GfxCompileModelLoadFromCacheTest = ov::test::utils::GfxBackendRequiredTests<CompileModelLoadFromCacheTest>;
 using GfxCompileModelLoadFromMemoryTestBase =
-    ov::test::utils::GfxSkippedTests<CompileModelLoadFromMemoryTestBase>;
+    ov::test::utils::GfxBackendRequiredTests<CompileModelLoadFromMemoryTestBase>;
 using GfxCompileModelWithCacheEncryptionTest =
-    ov::test::utils::GfxSkippedTests<CompileModelWithCacheEncryptionTest>;
-using GfxOVBasicPropertiesTestsP = ov::test::utils::GfxSkippedTests<OVBasicPropertiesTestsP>;
+    ov::test::utils::GfxBackendRequiredTests<CompileModelWithCacheEncryptionTest>;
+using GfxOVBasicPropertiesTestsP = ov::test::utils::GfxBackendRequiredTests<OVBasicPropertiesTestsP>;
 using GfxOVCheckGetSupportedROMetricsPropsTests =
-    ov::test::utils::GfxSkippedTests<OVCheckGetSupportedROMetricsPropsTests>;
-using GfxOVClassModelOptionalTestP = ov::test::utils::GfxSkippedTests<OVClassModelOptionalTestP>;
-using GfxOVClassModelTestP = ov::test::utils::GfxSkippedTests<OVClassModelTestP>;
-using GfxOVClassQueryModelTest = ov::test::utils::GfxSkippedTests<OVClassQueryModelTest>;
-using GfxOVGetMetricPropsTest = ov::test::utils::GfxSkippedTests<OVGetMetricPropsTest>;
-using GfxOVHeteroSyntheticTest = ov::test::utils::GfxSkippedTests<OVHeteroSyntheticTest>;
+    ov::test::utils::GfxBackendRequiredTests<OVCheckGetSupportedROMetricsPropsTests>;
+using GfxOVClassModelOptionalTestP = ov::test::utils::GfxBackendRequiredTests<OVClassModelOptionalTestP>;
+using GfxOVClassModelTestP = ov::test::utils::GfxBackendRequiredTests<OVClassModelTestP>;
+using GfxOVClassQueryModelTest = ov::test::utils::GfxBackendRequiredTests<OVClassQueryModelTest>;
+using GfxOVGetMetricPropsTest = ov::test::utils::GfxBackendRequiredTests<OVGetMetricPropsTest>;
+using GfxOVHeteroSyntheticTest = ov::test::utils::GfxBackendRequiredTests<OVHeteroSyntheticTest>;
 using GfxOVPropertiesDefaultSupportedTests =
-    ov::test::utils::GfxSkippedTests<OVPropertiesDefaultSupportedTests>;
-using GfxOVPropertiesDefaultTests = ov::test::utils::GfxSkippedTests<OVPropertiesDefaultTests>;
-using GfxOVPropertiesIncorrectTests = ov::test::utils::GfxSkippedTests<OVPropertiesIncorrectTests>;
-using GfxOVPropertiesTests = ov::test::utils::GfxSkippedTests<OVPropertiesTests>;
-using GfxOVRemoteTest = ov::test::utils::GfxSkippedTests<OVRemoteTest>;
-using GfxOVVersionTest = ov::test::utils::GfxSkippedTests<VersionTests>;
+    ov::test::utils::GfxBackendRequiredTests<OVPropertiesDefaultSupportedTests>;
+using GfxOVPropertiesDefaultTests = ov::test::utils::GfxBackendRequiredTests<OVPropertiesDefaultTests>;
+using GfxOVPropertiesIncorrectTests = ov::test::utils::GfxBackendRequiredTests<OVPropertiesIncorrectTests>;
+using GfxOVPropertiesTests = ov::test::utils::GfxBackendRequiredTests<OVPropertiesTests>;
+using GfxOVRemoteTest = ov::test::utils::GfxBackendRequiredTests<OVRemoteTest>;
+using GfxOVVersionTest = ov::test::utils::GfxBackendRequiredTests<VersionTests>;
 
 namespace {
 

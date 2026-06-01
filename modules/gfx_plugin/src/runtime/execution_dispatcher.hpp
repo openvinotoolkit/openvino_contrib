@@ -12,16 +12,12 @@
 namespace ov {
 namespace gfx_plugin {
 
-// Visibility helper for runtime factory symbols used by tests.
-#if defined(__clang__) || defined(__GNUC__)
-#    define GFX_STAGE_API __attribute__((visibility("default")))
-#else
-#    define GFX_STAGE_API
-#endif
+struct RuntimeStageExecutableDescriptor;
 
-class GFX_STAGE_API GpuStageFactory {
+class GpuStageFactory {
 public:
     using StageFactoryFn = std::unique_ptr<GpuStage> (*)(const std::shared_ptr<const ov::Node>&,
+                                                         const RuntimeStageExecutableDescriptor*,
                                                          void* device,
                                                          void* queue);
 
@@ -29,19 +25,21 @@ public:
     static StageFactoryFn factory_for_backend(GpuBackend backend);
 
     static std::unique_ptr<GpuStage> create(const std::shared_ptr<const ov::Node>& node,
+                                            const RuntimeStageExecutableDescriptor* descriptor,
                                             GpuBackend backend = GpuBackend::Metal,
                                             void* device = nullptr,
                                             void* queue = nullptr);
 };
 
 // Compatibility alias matching the execution-dispatcher naming in docs.
-class GFX_STAGE_API ExecutionDispatcher {
+class ExecutionDispatcher {
 public:
     static std::unique_ptr<GpuStage> create(const std::shared_ptr<const ov::Node>& node,
+                                            const RuntimeStageExecutableDescriptor* descriptor,
                                             GpuBackend backend = GpuBackend::Metal,
                                             void* device = nullptr,
                                             void* queue = nullptr) {
-        return GpuStageFactory::create(node, backend, device, queue);
+        return GpuStageFactory::create(node, descriptor, backend, device, queue);
     }
 };
 

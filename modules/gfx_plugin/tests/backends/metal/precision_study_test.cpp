@@ -6,7 +6,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdlib>
 #include <iostream>
 #include <numeric>
 #include <random>
@@ -24,36 +23,15 @@
 
 namespace {
 
-std::string gfx_skip_reason;
+std::string gfx_setup_failure;
 
 bool register_gfx_plugin(ov::Core& core) {
-    gfx_skip_reason.clear();
-    try {
-#ifdef GFX_PLUGIN_PATH
-        const char* env_path = std::getenv("GFX_PLUGIN_PATH");
-        const char* path = (env_path && *env_path) ? env_path : GFX_PLUGIN_PATH;
-        core.register_plugin(path, "GFX");
-#else
-        // Assume default discovery if path macro is absent.
-#endif
-    } catch (const std::exception& e) {
-        const std::string msg = e.what();
-        if (msg.find("already registered") == std::string::npos) {
-            throw std::runtime_error(std::string("GFX plugin unavailable: ") + e.what());
-        }
-    }
-    try {
-        const auto backend = core.get_property("GFX", "GFX_BACKEND").as<std::string>();
-        if (backend.empty()) {
-            gfx_skip_reason = "GFX backend not available";
-            return false;
-        }
-    } catch (const std::exception& e) {
-        gfx_skip_reason = std::string("GFX backend property unavailable: ") + e.what();
+    gfx_setup_failure.clear();
+    if (!ov::test::utils::ensure_gfx_plugin_available(core, &gfx_setup_failure)) {
         return false;
     }
     if (!ov::test::utils::ensure_template_plugin(core)) {
-        gfx_skip_reason = "TEMPLATE plugin unavailable";
+        gfx_setup_failure = "TEMPLATE plugin unavailable";
         return false;
     }
     return true;
@@ -173,7 +151,7 @@ void log_stats(const std::string& name, const std::vector<double>& maxima) {
 
 TEST(GfxPrecisionStudy, AddBroadcastScalarRandom) {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
     const ov::Shape shape{1, 4};
     auto model = make_add_scalar_model(shape);
     ov::CompiledModel ref_cm = core.compile_model(model, reference_device(core));
@@ -202,7 +180,7 @@ TEST(GfxPrecisionStudy, AddBroadcastScalarRandom) {
 
 TEST(GfxPrecisionStudy, AddBroadcastChannelRandom) {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
     const ov::Shape shape{1, 3, 4, 4};
     auto model = make_add_channel_model(shape, /*channels=*/3);
     ov::CompiledModel ref_cm = core.compile_model(model, reference_device(core));
@@ -231,7 +209,7 @@ TEST(GfxPrecisionStudy, AddBroadcastChannelRandom) {
 
 TEST(GfxPrecisionStudy, SoftmaxRandom) {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
     const ov::Shape shape{2, 16};
     auto model = make_softmax_model(shape, 1);
     ov::CompiledModel ref_cm = core.compile_model(model, reference_device(core));

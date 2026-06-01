@@ -9,7 +9,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <cstdlib>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -25,25 +24,7 @@ namespace ov::test::gfx {
 namespace {
 
 void register_gfx_plugin_or_throw(ov::Core& core) {
-    try {
-        const char* env_path = std::getenv("GFX_PLUGIN_PATH");
-        const char* path = (env_path && *env_path) ? env_path : GFX_PLUGIN_PATH;
-        core.register_plugin(path, "GFX");
-    } catch (const std::exception& e) {
-        const std::string msg = e.what();
-        if (msg.find("already registered") == std::string::npos) {
-            throw std::runtime_error(std::string("GFX plugin unavailable: ") + e.what());
-        }
-    }
-
-    try {
-        const auto backend = core.get_property("GFX", "GFX_BACKEND").as<std::string>();
-        if (backend.empty()) {
-            throw std::runtime_error("GFX backend not available");
-        }
-    } catch (const std::exception& e) {
-        throw std::runtime_error(std::string("GFX backend property unavailable: ") + e.what());
-    }
+    ov::test::utils::ensure_gfx_plugin_available_or_throw(core);
 
     if (!ov::test::utils::ensure_template_plugin(core)) {
         throw std::runtime_error("TEMPLATE plugin unavailable");
@@ -167,7 +148,8 @@ void RuntimeModelRunner::with_gfx_core(const std::function<void(ov::Core&)>& fn,
     try {
         require_gfx_runtime_available_or_throw();
     } catch (const std::exception& e) {
-        GTEST_SKIP() << e.what();
+        ADD_FAILURE() << e.what();
+        return;
     }
 
     execution_->run([&] {

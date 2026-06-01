@@ -15,6 +15,11 @@
 
 namespace ov {
 namespace gfx_plugin {
+
+namespace transforms {
+struct PipelineOptions;
+}
+
 namespace compiler {
 
 class BackendModule {
@@ -27,6 +32,7 @@ public:
     virtual const OperationLegalizer& legalizer() const noexcept = 0;
     virtual const KernelRegistry& kernel_registry() const noexcept = 0;
     virtual const LoweringPlanner& lowering_planner() const noexcept = 0;
+    virtual const transforms::PipelineOptions& pipeline_options() const noexcept = 0;
     virtual std::shared_ptr<const KernelArtifactPayload> materialize_artifact_payload(
         KernelArtifactDescriptor& descriptor,
         const PlannedOperation& op) const = 0;

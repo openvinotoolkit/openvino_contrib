@@ -45,13 +45,13 @@ void gfx_try_compile_or_fail(Fn&& fn) {
     }
 }
 
-// Helper wrapper that skips tests on GFX unless explicitly enabled.
+// Fail-fast wrapper for shared OpenVINO behavior fixtures that require GFX.
 template <class Base>
-class GfxSkippedTests : public Base {
+class GfxBackendRequiredTests : public Base {
 protected:
     void SetUp() override {
         ov::test::utils::require_gfx_backend();
-        // Probe a tiny supported model; if GFX rejects it, skip the whole test
+        // Probe a tiny supported model; unsupported GFX setup is a test failure.
         gfx_try_compile_or_fail([&]() {
             ov::Core core;
             auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});

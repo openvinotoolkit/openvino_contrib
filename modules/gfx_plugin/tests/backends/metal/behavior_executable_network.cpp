@@ -30,27 +30,27 @@ using ov::test::behavior::OVClassCompiledModelPropertiesDefaultTests;
 using ov::test::behavior::OVClassCompiledModelPropertiesIncorrectTests;
 using ov::test::behavior::OVClassCompiledModelEmptyPropertiesTests;
 
-using GfxOVCompiledModelBaseTest = ov::test::utils::GfxSkippedTests<OVCompiledModelBaseTest>;
-using GfxOVCompiledModelBaseTestOptional = ov::test::utils::GfxSkippedTests<OVCompiledModelBaseTestOptional>;
-using GfxOVCompiledModelIncorrectDevice = ov::test::utils::GfxSkippedTests<OVCompiledModelIncorrectDevice>;
+using GfxOVCompiledModelBaseTest = ov::test::utils::GfxBackendRequiredTests<OVCompiledModelBaseTest>;
+using GfxOVCompiledModelBaseTestOptional = ov::test::utils::GfxBackendRequiredTests<OVCompiledModelBaseTestOptional>;
+using GfxOVCompiledModelIncorrectDevice = ov::test::utils::GfxBackendRequiredTests<OVCompiledModelIncorrectDevice>;
 using GfxOVCompiledModelPropertiesDefaultSupportedTests =
-    ov::test::utils::GfxSkippedTests<OVCompiledModelPropertiesDefaultSupportedTests>;
-using GfxOVCompiledModelPropertiesTests = ov::test::utils::GfxSkippedTests<OVClassCompiledModelPropertiesTests>;
+    ov::test::utils::GfxBackendRequiredTests<OVCompiledModelPropertiesDefaultSupportedTests>;
+using GfxOVCompiledModelPropertiesTests = ov::test::utils::GfxBackendRequiredTests<OVClassCompiledModelPropertiesTests>;
 using GfxOVClassCompiledModelPropertiesDefaultTests =
-    ov::test::utils::GfxSkippedTests<OVClassCompiledModelPropertiesDefaultTests>;
+    ov::test::utils::GfxBackendRequiredTests<OVClassCompiledModelPropertiesDefaultTests>;
 using GfxOVClassCompiledModelPropertiesIncorrectTests =
-    ov::test::utils::GfxSkippedTests<OVClassCompiledModelPropertiesIncorrectTests>;
+    ov::test::utils::GfxBackendRequiredTests<OVClassCompiledModelPropertiesIncorrectTests>;
 using GfxOVClassCompiledModelEmptyPropertiesTests =
-    ov::test::utils::GfxSkippedTests<OVClassCompiledModelEmptyPropertiesTests>;
-using GfxOVClassCompiledModelGetPropertyTest = ov::test::utils::GfxSkippedTests<OVClassCompiledModelGetPropertyTest>;
+    ov::test::utils::GfxBackendRequiredTests<OVClassCompiledModelEmptyPropertiesTests>;
+using GfxOVClassCompiledModelGetPropertyTest = ov::test::utils::GfxBackendRequiredTests<OVClassCompiledModelGetPropertyTest>;
 using GfxOVClassCompiledModelGetIncorrectPropertyTest =
-    ov::test::utils::GfxSkippedTests<OVClassCompiledModelGetIncorrectPropertyTest>;
-using GfxOVClassCompiledModelGetConfigTest = ov::test::utils::GfxSkippedTests<OVClassCompiledModelGetConfigTest>;
+    ov::test::utils::GfxBackendRequiredTests<OVClassCompiledModelGetIncorrectPropertyTest>;
+using GfxOVClassCompiledModelGetConfigTest = ov::test::utils::GfxBackendRequiredTests<OVClassCompiledModelGetConfigTest>;
 using GfxOVClassCompiledModelSetIncorrectConfigTest =
-    ov::test::utils::GfxSkippedTests<OVClassCompiledModelSetIncorrectConfigTest>;
-using GfxOVCompiledGraphImportExportTest = ov::test::utils::GfxSkippedTests<OVCompiledGraphImportExportTest>;
+    ov::test::utils::GfxBackendRequiredTests<OVClassCompiledModelSetIncorrectConfigTest>;
+using GfxOVCompiledGraphImportExportTest = ov::test::utils::GfxBackendRequiredTests<OVCompiledGraphImportExportTest>;
 using GfxOVClassCompiledModelGetPropertyTest_EXEC_DEVICES =
-    ov::test::utils::GfxSkippedTests<OVClassCompiledModelGetPropertyTest_EXEC_DEVICES>;
+    ov::test::utils::GfxBackendRequiredTests<OVClassCompiledModelGetPropertyTest_EXEC_DEVICES>;
 
 namespace {
 

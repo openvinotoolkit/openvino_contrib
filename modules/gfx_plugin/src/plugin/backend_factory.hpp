@@ -16,6 +16,7 @@ namespace gfx_plugin {
 std::unique_ptr<BackendState> create_backend_state(GpuBackend backend,
                                                    const ov::AnyMap& properties,
                                                    const ov::SoPtr<ov::IRemoteContext>& context);
+void register_backend_profiling_trace_sinks(GpuBackend backend);
 
 }  // namespace gfx_plugin
 }  // namespace ov

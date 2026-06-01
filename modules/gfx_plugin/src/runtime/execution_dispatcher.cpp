@@ -44,12 +44,17 @@ GpuStageFactory::StageFactoryFn GpuStageFactory::factory_for_backend(GpuBackend 
 }
 
 std::unique_ptr<GpuStage> GpuStageFactory::create(const std::shared_ptr<const ov::Node>& node,
+                                                  const RuntimeStageExecutableDescriptor* descriptor,
                                                   GpuBackend backend,
                                                   void* device,
                                                   void* queue) {
+    OPENVINO_ASSERT(descriptor,
+                    "GFX: stage materialization requires a compiler-owned "
+                    "runtime executable descriptor for op ",
+                    node ? node->get_type_name() : "<null>");
     auto fn = factory_for_backend(backend);
     if (fn) {
-        return fn(node, device, queue);
+        return fn(node, descriptor, device, queue);
     }
     return nullptr;
 }

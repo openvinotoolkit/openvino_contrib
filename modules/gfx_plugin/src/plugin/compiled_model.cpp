@@ -457,6 +457,7 @@ CompiledModel::CompiledModel(
   }
   m_backend = resolved.backend;
   m_backend_name = resolved.backend_name;
+  register_backend_profiling_trace_sinks(m_backend);
   const bool capture_compile_profile =
       m_enable_profiling && profiling_level() != ProfilingLevel::Off;
   GfxProfilingTrace compile_trace;
@@ -714,25 +715,32 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
   m_pipeline.reserve(ordered_ops.size());
   std::unordered_map<const ov::Node *, const RuntimeStageExecutableDescriptor *>
       runtime_stage_descriptors;
-  if (m_runtime_descriptor) {
-    const size_t count =
-        std::min(ordered_ops.size(), m_runtime_descriptor->stages.size());
-    runtime_stage_descriptors.reserve(count);
-    for (size_t i = 0; i < count; ++i) {
-      const auto &node = ordered_ops[i];
-      const auto &descriptor = m_runtime_descriptor->stages[i];
-      if (!node) {
-        continue;
-      }
-      if (descriptor.op_family != node->get_type_name() &&
-          gfx_log_debug_enabled()) {
-        gfx_log_debug("StageFactory")
-            << "Runtime descriptor op-family drift at ordered op " << i
-            << ": descriptor=" << descriptor.op_family
-            << " node=" << node->get_type_name();
-      }
-      runtime_stage_descriptors.emplace(node.get(), &descriptor);
-    }
+  OPENVINO_ASSERT(m_runtime_descriptor,
+                  "GFX: compiled model is missing compiler-owned runtime "
+                  "executable descriptor");
+  OPENVINO_ASSERT(
+      m_runtime_descriptor->stages.size() == ordered_ops.size(),
+      "GFX: runtime executable descriptor stage count drift: descriptor=",
+      m_runtime_descriptor->stages.size(), " ordered_ops=", ordered_ops.size());
+  runtime_stage_descriptors.reserve(m_runtime_descriptor->stages.size());
+  for (size_t i = 0; i < m_runtime_descriptor->stages.size(); ++i) {
+    const auto &node = ordered_ops[i];
+    const auto &descriptor = m_runtime_descriptor->stages[i];
+    OPENVINO_ASSERT(node, "GFX: runtime model ordered op ", i, " is null");
+    OPENVINO_ASSERT(
+        descriptor.stage_index == i,
+        "GFX: runtime executable descriptor stage index drift at ordered op ",
+        i);
+    OPENVINO_ASSERT(
+        descriptor.op_family == node->get_type_name(),
+        "GFX: runtime executable descriptor op-family drift at ordered op ", i,
+        ": descriptor=", descriptor.op_family,
+        " node=", node->get_type_name());
+    const auto inserted = runtime_stage_descriptors.emplace(node.get(), &descriptor);
+    OPENVINO_ASSERT(inserted.second,
+                    "GFX: duplicate runtime executable descriptor for node ",
+                    node->get_friendly_name(), " (", node->get_type_name(),
+                    ")");
   }
   auto runtime_descriptor_for_node =
       [&](const std::shared_ptr<const ov::Node> &node)
@@ -745,7 +753,13 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
   };
   auto create_backend_stage =
       [&](const std::shared_ptr<const ov::Node> &node) {
-    return backend_state->create_stage(node, runtime_descriptor_for_node(node));
+    const auto *descriptor = runtime_descriptor_for_node(node);
+    OPENVINO_ASSERT(descriptor,
+                    "GFX: missing compiler-owned runtime executable "
+                    "descriptor for op ",
+                    node ? node->get_friendly_name() : std::string("<null>"),
+                    " (", node ? node->get_type_name() : "<null>", ")");
+    return backend_state->create_stage(node, descriptor);
   };
 
   const bool has_unobserved_stage_edges = [&]() {

@@ -6,15 +6,20 @@
 #include <memory>
 
 #include "openvino/core/model.hpp"
-#include "runtime/gpu_types.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 namespace transforms {
 
+struct PipelineOptions {
+    bool preserve_scaled_dot_product_attention = false;
+    bool canonicalize_sigmoid_before_ranking = false;
+    bool enable_llm_attention_fusions = false;
+};
+
 // Run GFX-specific transformation pipeline and return transformed clone.
 std::shared_ptr<const ov::Model> run_pipeline(const std::shared_ptr<const ov::Model>& model,
-                                              GpuBackend backend);
+                                              const PipelineOptions& options = {});
 
 }  // namespace transforms
 }  // namespace gfx_plugin

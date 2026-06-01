@@ -17,6 +17,14 @@
 namespace ov {
 namespace gfx_plugin {
 
+struct GfxOpenClSourceArtifact;
+
+struct GfxOpenClSourceChunkArtifact {
+  uint32_t binding_begin = 0;
+  uint32_t binding_count = 0;
+  std::shared_ptr<const GfxOpenClSourceArtifact> artifact;
+};
+
 enum class GfxOpenClArtifactOp : uint32_t {
   Identity = 0,
   Add = 1,
@@ -165,6 +173,9 @@ struct GfxOpenClSourceArtifact {
   uint32_t local_size_hint = 64;
   uint32_t direct_input_count = 0;
   uint32_t direct_output_count = 1;
+  uint32_t input_chunk_size = 0;
+  uint32_t output_chunk_size = 0;
+  std::vector<GfxOpenClSourceChunkArtifact> planned_chunks;
   GfxOpenClSourceElementCountSource element_count_source =
       GfxOpenClSourceElementCountSource::Output0;
   GfxOpenClArtifactOp op = GfxOpenClArtifactOp::Identity;

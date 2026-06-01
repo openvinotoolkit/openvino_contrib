@@ -64,7 +64,8 @@ GfxCompileResult GfxCompilerService::compile(const GfxCompileRequest& request) c
     GfxCompileResult result;
     result.target = backend_module->target();
     result.transformed_model =
-        ov::gfx_plugin::transforms::run_pipeline(request.model, result.target.backend());
+        ov::gfx_plugin::transforms::run_pipeline(request.model,
+                                                 backend_module->pipeline_options());
     result.lowering_plan = backend_module->lowering_planner().plan(result.transformed_model,
                                                                    backend_module->legalizer());
     result.manifest = ManifestBuilder{}.build(result.lowering_plan);

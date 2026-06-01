@@ -18,6 +18,7 @@ namespace gfx_plugin {
 
 std::unique_ptr<MetalBackendState> create_metal_backend_state(const ov::AnyMap& properties,
                                                               const ov::SoPtr<ov::IRemoteContext>& context);
+void register_metal_profiling_trace_sinks();
 
 }  // namespace gfx_plugin
 }  // namespace ov

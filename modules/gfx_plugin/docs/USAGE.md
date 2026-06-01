@@ -138,6 +138,10 @@ counters, stage estimates, and backend-specific timing/counter data when
 available. Confirm `extended.target_profile` or counters such as
 `target_backend_metal` and `target_backend_opencl` before comparing runs.
 
+Optional trace exporters are registered by backend code through the shared trace
+sink registry. The Metal backend currently registers `signpost` and
+`os_signpost` for `OV_GFX_PROFILE_TRACE`.
+
 ## Remote Context And Remote Tensor
 
 The public types are implemented as:
@@ -169,21 +173,23 @@ compare/select, and boolean logical/reduction families when the model matches
 the artifact contracts.
 
 Generated activation, elementwise, f32 MatMul, f32/f16 Interpolate, f32
-reduction, f32/f16 Softmax, dynamic-static-rank f32/f16 Softmax, and f32/f16
-Pool2D sources are embedded under `src/kernel_ir/opencl_kernels/`. Logical-bool
-reduction remains a baseline exception source. Interpolate is limited to
-f32/f16 static NCHW spatial resize cases with supported modes, axes, padding,
-coordinate transforms, and nearest-rounding metadata. Pool2D is limited to
-f32/f16 static 4D NCHW MaxPool/AvgPool contracts with 2D kernel, stride,
-dilation, and padding metadata. OpenCL operation support requires a matching
-source artifact and registered kernel unit; unsupported variants fail during
-support probing or compilation.
+reduction, boolean reduction, f32/f16 Softmax, dynamic-static-rank f32/f16
+Softmax, f32/f16 Pool2D, ShapeOf, Tile, logical-bool elementwise,
+compare/select, and Concat/Split helper sources are embedded under
+`src/kernel_ir/opencl_kernels/`. The remaining handwritten OpenCL source
+exception is the f32 Transpose route. Interpolate is limited to f32/f16 static
+NCHW spatial resize cases with supported modes, axes, padding, coordinate
+transforms, and nearest-rounding metadata. Pool2D is limited to f32/f16 static
+4D NCHW MaxPool/AvgPool contracts with 2D kernel, stride, dilation, and padding
+metadata. OpenCL operation support requires a matching source artifact and
+registered kernel unit; unsupported variants fail during support probing or
+compilation.
 
 Reduction source artifacts require static shape metadata and constant axes.
 Numeric `ReduceSum`, `ReduceMean`, `ReduceMax`, `ReduceMin`, `ReduceProd`,
 `ReduceL1`, and `ReduceL2` currently use the f32 generated source unit. Boolean
-`ReduceLogicalAnd` and `ReduceLogicalOr` use the logical-bool baseline source
-artifact.
+`ReduceLogicalAnd` and `ReduceLogicalOr` use the generated boolean reduction
+source artifact.
 
 For generated activation artifacts, `Swish` supports default beta, scalar
 constant beta, and runtime scalar beta tensor forms when the beta input is a
@@ -193,6 +199,12 @@ shapes or element types are rejected by the artifact contract.
 OpenCL `Softmax` supports f32/f16 static shapes and dynamic-output shapes with
 static rank. The dynamic route carries runtime input-shape scalars in the
 artifact ABI. OpenCL `LogSoftmax` is currently not implemented.
+
+On Linux/Raspberry-style deployments, `GFX_ENABLE_RASPBERRY_OPENCL_TOOLCHAIN`
+can build a plugin-local CLVK/CLSPV OpenCL bundle. The OpenCL loader checks the
+plugin-local `opencl/` and `clvk/` directories before system/vendor OpenCL
+libraries and configures bundled CLVK tool paths when the caller has not set
+them explicitly.
 
 Unsupported OpenCL cases fail during support probing, compilation, stage
 creation, or runtime validation. They do not fall back to CPU or switch backend.

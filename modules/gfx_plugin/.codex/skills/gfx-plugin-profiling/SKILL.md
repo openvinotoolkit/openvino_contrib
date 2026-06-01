@@ -31,6 +31,8 @@ This skill is for performance triage and profiling workflows in
 
 - `ov_gfx_microbench`
 - `GFX_PROFILING_REPORT`
+- `OV_GFX_PROFILE_TRACE` trace sinks registered through
+  `src/runtime/gfx_profiling_trace_sink.*`
 - `tools/gfx_profile_runbook.py`
 - `tools/gfx_microbench_smoke.py`
 - `tools/gfx_calibration_diff.py`
@@ -38,7 +40,8 @@ This skill is for performance triage and profiling workflows in
 
 Native trace surfaces:
 
-- macOS: Instruments, `xcrun xctrace`, Xcode GPU capture, signposts
+- macOS: Instruments, `xcrun xctrace`, Xcode GPU capture, Metal-registered
+  `signpost` / `os_signpost` trace sinks
 - Android: Perfetto or AGI
 - Linux/Raspberry Pi: `perf stat`, `perf record`
 

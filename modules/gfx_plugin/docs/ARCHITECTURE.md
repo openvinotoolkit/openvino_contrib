@@ -171,7 +171,8 @@ runtime execution. The main objects are:
 - `BackendTarget`: immutable backend id, runtime API, feature bits, and cache
   compatibility fingerprint for one selected backend.
 - `BackendRegistry`: compiled-backend registry. It creates Metal and OpenCL
-  modules only when their build-time backend is available.
+  modules only when their build-time backend is available and stores
+  backend-owned transform `PipelineOptions`.
 - `OperationSupportPolicy` and `OperationLegalizer`: backend-aware operation
   legality and route selection.
 - `LoweringPlanner`: converts a transformed model into ordered
@@ -189,6 +190,11 @@ serializes the OpenVINO model.
 
 Backend kernel registries are explicit. Generated and vendor routes must name a
 registered `KernelUnit`; generic catch-all ids are rejected by contract tests.
+Backend stage creation is also descriptor-owned: every runtime stage that needs
+a kernel, source artifact, vendor primitive, or ABI fingerprint consumes the
+matching `RuntimeStageExecutableDescriptor`. The old pattern where a backend
+stage inferred its executable payload from the OpenVINO node is not a current
+route.
 
 ## MLIR Pipeline
 
@@ -338,11 +344,11 @@ reach it through artifact metadata, generated chunk artifacts, shared
 runtime-value planners, static u32/f32 scalar payloads, constant
 materialization, and boolean-buffer contracts.
 
-OpenCL support may be reported as a handwritten source-artifact exception or a
-generated-kernel route. Current source execution still requires a matching
-artifact payload, registered kernel unit, and runtime validation; a route in the
-compiler plan alone is not enough to guarantee backend parity. The OpenCL
-operation support policy intentionally does not fall back to generic MLIR
+OpenCL support may be reported as a generated-kernel route or as a narrow
+handwritten source-artifact exception. Current source execution still requires a
+matching artifact payload, registered kernel unit, and runtime validation; a
+route in the compiler plan alone is not enough to guarantee backend parity. The
+OpenCL operation support policy intentionally does not fall back to generic MLIR
 support when no source artifact exists.
 
 Current OpenCL source artifacts cover data movement, selected converts, MatMul,
@@ -351,29 +357,35 @@ gather/scatter families, ShapeOf, Concat/Split, unary and binary elementwise
 families, compare/select, and boolean logical/reduction families when shapes
 and element types match their contracts.
 
-Some OpenCL sources are baseline exception artifacts and some are generated
-kernel units. Softmax now uses generated f32/f16 units, including
-dynamic-output static-rank variants whose scalar ABI carries runtime shape
-metadata. Pool2D uses generated f32/f16 units for static 4D NCHW MaxPool and
-AvgPool. Interpolate uses embedded f32/f16 generated kernel units with explicit
-scalar metadata for resize mode, coordinate transform, nearest rounding, and
-NCHW spatial dimensions. MatMul, activation, and elementwise OpenCL paths use
-generated source units with explicit source ids under `opencl/generated/*`.
+OpenCL source coverage is mostly generated-kernel based. Softmax uses generated
+f32/f16 units, including dynamic-output static-rank variants whose scalar ABI
+carries runtime shape metadata. Pool2D uses generated f32/f16 units for static
+4D NCHW MaxPool and AvgPool. Interpolate uses embedded f32/f16 generated kernel
+units with explicit scalar metadata for resize mode, coordinate transform,
+nearest rounding, and NCHW spatial dimensions. ShapeOf, Tile, logical-bool
+elementwise, compare/select, boolean reduction, and generated Concat/Split
+helpers also use explicit `opencl/generated/*` source ids. The remaining
+handwritten OpenCL source exception is `opencl/baseline/transpose_f32`.
 Keep those distinctions in the artifact contract rather than duplicating them
 in the OpenCL stage executor.
 
 Reduction OpenCL paths are split by contract. Numeric f32 `ReduceSum`,
 `ReduceMean`, `ReduceMax`, `ReduceMin`, `ReduceProd`, `ReduceL1`, and
 `ReduceL2` use `opencl/generated/reduction_f32`. Boolean `ReduceLogicalAnd` and
-`ReduceLogicalOr` use the `opencl/baseline/reduce_logical_bool` exception
-artifact. Both forms carry static axis/shape metadata as source-static u32
-scalars.
+`ReduceLogicalOr` use `opencl/generated/reduction_bool`. Both forms carry
+static axis/shape metadata as source-static u32 scalars.
 
 Generated activation artifacts use manifest metadata for opcode, static f32
 scalars, direct tensor inputs, and scalar-parameter order. `Swish` supports the
 default beta, scalar constant beta, and runtime scalar beta tensor through
 dedicated `activation_runtime_beta_*` source ids when the beta input is a static
 scalar tensor with the same element type as the data input.
+
+The OpenCL runtime loader checks plugin-local bundle directories before system
+or vendor OpenCL libraries. A Raspberry/Linux bundle can be staged from the
+`third_party/clvk` and `third_party/clspv` submodules; when bundled CLVK tools
+are present, the loader sets the CLVK tool environment only if the caller has
+not already provided it.
 
 ## Stateful And Reusable Inference
 
@@ -403,6 +415,9 @@ Profiling is assembled in shared code and enriched by backend runtimes:
 - stage estimates such as `bytes_in`, `bytes_out`, `macs_est`, and `flops_est`
 - target profile under `extended.target_profile`
 - backend counters such as `target_backend_metal` and `target_backend_opencl`
+- optional trace sinks registered through `src/runtime/gfx_profiling_trace_sink.*`
+  by backend code; the Metal backend currently registers `signpost` and
+  `os_signpost`
 
 Use the target profile to confirm which route actually ran before comparing
 Metal and OpenCL measurements.

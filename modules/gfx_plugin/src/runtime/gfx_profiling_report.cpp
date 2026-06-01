@@ -15,10 +15,7 @@
 #include <thread>
 
 #include "runtime/gfx_backend_utils.hpp"
-
-#if defined(__APPLE__)
-#    include <os/signpost.h>
-#endif
+#include "runtime/gfx_profiling_trace_sink.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -66,7 +63,7 @@ const char* level_to_string(ProfilingLevel level) {
     }
 }
 
-const char* trace_sink_from_env(ProfilingLevel level) {
+std::string trace_sink_from_env(ProfilingLevel level) {
     if (level != ProfilingLevel::Detailed) {
         return "";
     }
@@ -82,11 +79,9 @@ const char* trace_sink_from_env(ProfilingLevel level) {
     if (mode == "perfetto" || mode == "trace_event") {
         return "perfetto";
     }
-#if defined(__APPLE__)
-    if (mode == "signpost" || mode == "os_signpost") {
-        return "signpost";
+    if (gfx_profiling_trace_sink_available(mode)) {
+        return mode;
     }
-#endif
     return "";
 }
 
@@ -133,32 +128,6 @@ void append_target_profile_json(std::ostringstream& oss, const GfxTargetProfile&
         << (profile.supports_conv_channel_block_spatial_tiling ? "true" : "false");
     oss << "},";
 }
-
-#if defined(__APPLE__)
-os_log_t gfx_signpost_log() {
-    static os_log_t log = os_log_create("org.openvino.gfx", "profiling");
-    return log;
-}
-
-void maybe_emit_signpost(std::string_view backend, const GfxProfilingSegmentEntry& segment) {
-    os_log_t log = gfx_signpost_log();
-    if (!os_signpost_enabled(log)) {
-        return;
-    }
-    os_signpost_event_emit(log,
-                           OS_SIGNPOST_ID_EXCLUSIVE,
-                           "gfx.segment",
-                           "backend=%{public}s phase=%{public}s name=%{public}s cpu_us=%llu gpu_us=%llu inflight=%lld queue=%llu cmd=%llu",
-                           std::string(backend).c_str(),
-                           segment.phase.c_str(),
-                           segment.name.c_str(),
-                           static_cast<unsigned long long>(segment.cpu_us),
-                           static_cast<unsigned long long>(segment.gpu_us),
-                           static_cast<long long>(segment.inflight_slot),
-                           static_cast<unsigned long long>(segment.queue_id),
-                           static_cast<unsigned long long>(segment.cmd_buffer_id));
-}
-#endif
 
 struct PhaseSummary {
     std::string phase;
@@ -951,11 +920,10 @@ void GfxProfilingTrace::add_segment(std::string_view phase,
     entry.cmd_buffer_id = cmd_buffer_id;
     entry.inflight_slot = inflight_slot;
     m_report.segments.push_back(std::move(entry));
-#if defined(__APPLE__)
-    if (m_report.trace_sink == "signpost") {
-        maybe_emit_signpost(m_report.backend, m_report.segments.back());
+    if (!m_report.trace_sink.empty() && m_report.trace_sink != "perfetto") {
+        emit_gfx_profiling_trace_sink(m_report.trace_sink, m_report.backend,
+                                      m_report.segments.back());
     }
-#endif
 }
 
 }  // namespace gfx_plugin

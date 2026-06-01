@@ -6,7 +6,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -58,37 +57,15 @@ inline void gfx_try_catch_fail(const std::function<void()>& fn) {
     }
 }
 
-std::string gfx_skip_reason;
+std::string gfx_setup_failure;
 
 bool register_gfx_plugin(ov::Core& core) {
-    gfx_skip_reason.clear();
-    // Always require GFX plugin to be available; fail fast if not.
-    try {
-#ifdef GFX_PLUGIN_PATH
-        const char* env_path = std::getenv("GFX_PLUGIN_PATH");
-        const char* path = (env_path && *env_path) ? env_path : GFX_PLUGIN_PATH;
-        core.register_plugin(path, "GFX");
-#else
-        // Assume default discovery if path macro is absent.
-#endif
-    } catch (const std::exception& e) {
-        const std::string msg = e.what();
-        if (msg.find("already registered") == std::string::npos) {
-            throw std::runtime_error(std::string("GFX plugin unavailable: ") + e.what());
-        }
-    }
-    try {
-        const auto backend = core.get_property("GFX", "GFX_BACKEND").as<std::string>();
-        if (backend.empty()) {
-            gfx_skip_reason = "GFX backend not available";
-            return false;
-        }
-    } catch (const std::exception& e) {
-        gfx_skip_reason = std::string("GFX backend property unavailable: ") + e.what();
+    gfx_setup_failure.clear();
+    if (!ov::test::utils::ensure_gfx_plugin_available(core, &gfx_setup_failure)) {
         return false;
     }
     if (!ov::test::utils::ensure_template_plugin(core)) {
-        gfx_skip_reason = "TEMPLATE plugin unavailable";
+        gfx_setup_failure = "TEMPLATE plugin unavailable";
         return false;
     }
     return true;
@@ -115,7 +92,6 @@ void expect_allclose(const ov::Tensor& a, const ov::Tensor& b, float atol = 1e-5
         float thresh = std::max(atol, rtol * std::abs(pa[i]));
         ASSERT_LE(diff, thresh) << "Mismatch at index " << i << ": " << pa[i] << " vs " << pb[i];
     }
-    return true;
 }
 
 void expect_finite(const ov::Tensor& t) {
@@ -123,7 +99,6 @@ void expect_finite(const ov::Tensor& t) {
     for (size_t i = 0; i < t.get_size(); ++i) {
         ASSERT_TRUE(std::isfinite(p[i])) << "Non-finite at " << i << ": " << p[i];
     }
-    return true;
 }
 
 void expect_shape_type(const ov::Tensor& t, const ov::Shape& shape, ov::element::Type type = ov::element::f32) {
@@ -131,13 +106,13 @@ void expect_shape_type(const ov::Tensor& t, const ov::Shape& shape, ov::element:
     ASSERT_EQ(t.get_shape(), shape);
 }
 
-ov::Tensor get_output_or_skip(ov::InferRequest& req, size_t idx = 0) {
+ov::Tensor get_output_or_fail(ov::InferRequest& req, size_t idx = 0) {
     return req.get_output_tensor(idx);
 }
 
 
 
-inline void expect_or_skip_allclose(const ov::Tensor& a, const ov::Tensor& b, float atol, float rtol, const char* /*msg*/) {
+inline void expect_allclose_or_fail(const ov::Tensor& a, const ov::Tensor& b, float atol, float rtol, const char* /*msg*/) {
     expect_allclose(a, b, atol, rtol);
 }
 
@@ -146,7 +121,7 @@ inline void expect_or_skip_allclose(const ov::Tensor& a, const ov::Tensor& b, fl
 TEST(GfxBasicOps, Add) {
     gfx_try_catch_fail([&]() {
 ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
     auto ref_dev = reference_device(core);
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4});
@@ -175,7 +150,7 @@ ov::Core core;
 
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = get_output_or_skip(metal_req);
+        auto metal_out = get_output_or_fail(metal_req);
 
         expect_shape_type(cpu_out, {1, 4});
         expect_shape_type(metal_out, {1, 4});
@@ -191,7 +166,7 @@ ov::Core core;
 TEST(GfxBasicOps, MulReluFusion) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
     auto ref_dev = reference_device(core);
 
     auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 4, 4});
@@ -225,7 +200,7 @@ TEST(GfxBasicOps, MulReluFusion) {
     gfx_req.set_input_tensor(0, a);
     gfx_req.set_input_tensor(1, b);
     gfx_req.infer();
-    auto gfx_out = get_output_or_skip(gfx_req);
+    auto gfx_out = get_output_or_fail(gfx_req);
 
     expect_shape_type(cpu_out, {1, 4, 4, 4});
     expect_allclose(cpu_out, gfx_out, /*tol=*/1e-4f);
@@ -240,7 +215,7 @@ TEST(GfxBasicOps, MulReluFusion) {
 TEST(GfxBasicOps, MaxReluFusion) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
     auto ref_dev = reference_device(core);
 
     auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 4, 4});
@@ -274,7 +249,7 @@ TEST(GfxBasicOps, MaxReluFusion) {
     gfx_req.set_input_tensor(0, a);
     gfx_req.set_input_tensor(1, b);
     gfx_req.infer();
-    auto gfx_out = get_output_or_skip(gfx_req);
+    auto gfx_out = get_output_or_fail(gfx_req);
 
     expect_shape_type(cpu_out, {1, 4, 4, 4});
     expect_allclose(cpu_out, gfx_out, /*tol=*/1e-4f);
@@ -289,7 +264,7 @@ TEST(GfxBasicOps, MaxReluFusion) {
 TEST(GfxBasicOps, MulBiasReluFusion) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
     auto ref_dev = reference_device(core);
 
     auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 4, 4});
@@ -327,7 +302,7 @@ TEST(GfxBasicOps, MulBiasReluFusion) {
     gfx_req.set_input_tensor(0, a);
     gfx_req.set_input_tensor(1, b);
     gfx_req.infer();
-    auto gfx_out = get_output_or_skip(gfx_req);
+    auto gfx_out = get_output_or_fail(gfx_req);
 
     expect_shape_type(cpu_out, {1, 4, 4, 4});
     expect_allclose(cpu_out, gfx_out, /*tol=*/1e-4f);
@@ -342,7 +317,7 @@ TEST(GfxBasicOps, MulBiasReluFusion) {
 TEST(GfxBasicOps, MaxBiasFusion) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
     auto ref_dev = reference_device(core);
 
     auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 4, 4});
@@ -379,7 +354,7 @@ TEST(GfxBasicOps, MaxBiasFusion) {
     gfx_req.set_input_tensor(0, a);
     gfx_req.set_input_tensor(1, b);
     gfx_req.infer();
-    auto gfx_out = get_output_or_skip(gfx_req);
+    auto gfx_out = get_output_or_fail(gfx_req);
 
     expect_shape_type(cpu_out, {1, 4, 4, 4});
     expect_allclose(cpu_out, gfx_out, /*tol=*/1e-4f);
@@ -390,7 +365,7 @@ TEST(GfxBasicOps, MaxBiasFusion) {
 TEST(GfxBasicOps, MatMulSimpleMlir) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
     auto ref_dev = reference_device(core);
 
     auto p0 = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{2, 3});
@@ -418,18 +393,18 @@ TEST(GfxBasicOps, MatMulSimpleMlir) {
     metal_req.set_input_tensor(0, a);
     metal_req.set_input_tensor(1, b);
     metal_req.infer();
-    auto metal_out = get_output_or_skip(metal_req);
+    auto metal_out = get_output_or_fail(metal_req);
 
     expect_shape_type(cpu_out, {2, 4});
     expect_shape_type(metal_out, {2, 4});
-    expect_or_skip_allclose(cpu_out, metal_out, 1e-5f, 0.f, "GFX pool not yet accurate in pure mode");
+    expect_allclose_or_fail(cpu_out, metal_out, 1e-5f, 0.f, "GFX pool mismatch");
     });
 }
 
 TEST(GfxBasicOps, MatMulSwishFusion) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
     auto ref_dev = reference_device(core);
 
     auto p0 = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{2, 3});
@@ -463,18 +438,18 @@ TEST(GfxBasicOps, MatMulSwishFusion) {
     metal_req.set_input_tensor(0, a);
     metal_req.set_input_tensor(1, b);
     metal_req.infer();
-    auto metal_out = get_output_or_skip(metal_req);
+    auto metal_out = get_output_or_fail(metal_req);
 
     expect_shape_type(cpu_out, {2, 4});
     expect_shape_type(metal_out, {2, 4});
-    expect_or_skip_allclose(cpu_out, metal_out, 1e-4f, 0.f, "GFX MatMul swish mismatch");
+    expect_allclose_or_fail(cpu_out, metal_out, 1e-4f, 0.f, "GFX MatMul swish mismatch");
     });
 }
 
 TEST(GfxBasicOps, AttentionMatMulSoftmaxMatMul) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
     auto ref_dev = reference_device(core);
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4});
@@ -504,7 +479,7 @@ TEST(GfxBasicOps, AttentionMatMulSoftmaxMatMul) {
     auto gfx_req = gfx_cm.create_infer_request();
     gfx_req.set_input_tensor(input);
     gfx_req.infer();
-    auto gfx_out = get_output_or_skip(gfx_req);
+    auto gfx_out = get_output_or_fail(gfx_req);
 
     expect_shape_type(cpu_out, {1, 4});
     expect_allclose(cpu_out, gfx_out, /*atol=*/5e-1f, /*rtol=*/1e-1f);
@@ -515,7 +490,7 @@ TEST(GfxBasicOps, AttentionMatMulSoftmaxMatMul) {
 TEST(GfxBasicOps, AttentionScaleMaskMatMulSoftmaxMatMul) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
     auto ref_dev = reference_device(core);
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4});
@@ -555,7 +530,7 @@ TEST(GfxBasicOps, AttentionScaleMaskMatMulSoftmaxMatMul) {
     auto gfx_req = gfx_cm.create_infer_request();
     gfx_req.set_input_tensor(input);
     gfx_req.infer();
-    auto gfx_out = get_output_or_skip(gfx_req);
+    auto gfx_out = get_output_or_fail(gfx_req);
 
     expect_shape_type(cpu_out, {1, 4});
     expect_allclose(cpu_out, gfx_out, /*atol=*/5e-1f, /*rtol=*/1e-1f);
@@ -566,7 +541,7 @@ TEST(GfxBasicOps, AttentionScaleMaskMatMulSoftmaxMatMul) {
 TEST(GfxBasicOps, MatMulBiasReluFusion) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
     auto ref_dev = reference_device(core);
 
     auto p0 = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{2, 3});
@@ -599,18 +574,18 @@ TEST(GfxBasicOps, MatMulBiasReluFusion) {
     auto metal_req = metal_cm.create_infer_request();
     metal_req.set_input_tensor(0, a);
     metal_req.infer();
-    auto metal_out = get_output_or_skip(metal_req);
+    auto metal_out = get_output_or_fail(metal_req);
 
     expect_shape_type(cpu_out, {2, 4});
     expect_shape_type(metal_out, {2, 4});
-    expect_or_skip_allclose(cpu_out, metal_out, 1e-4f, 0.f, "GFX MatMul bias+relu mismatch");
+    expect_allclose_or_fail(cpu_out, metal_out, 1e-4f, 0.f, "GFX MatMul bias+relu mismatch");
     });
 }
 
 TEST(GfxBasicOps, AddBroadcastScalar) {
     gfx_try_catch_fail([&]() {
 ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
     auto ref_dev = reference_device(core);
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4});
@@ -640,7 +615,7 @@ ov::Core core;
 
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = get_output_or_skip(metal_req);
+        auto metal_out = get_output_or_fail(metal_req);
 
         expect_shape_type(cpu_out, {1, 4});
         expect_shape_type(metal_out, {1, 4});
@@ -652,7 +627,7 @@ ov::Core core;
 TEST(GfxBasicOps, SoftmaxLastAxis) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{2, 4});
     auto sm = std::make_shared<ov::op::v1::Softmax>(param, 1);
@@ -683,7 +658,7 @@ TEST(GfxBasicOps, SoftmaxLastAxis) {
 
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = get_output_or_skip(metal_req);
+        auto metal_out = get_output_or_fail(metal_req);
 
         expect_shape_type(cpu_out, {2, 4});
         expect_shape_type(metal_out, {2, 4});
@@ -707,7 +682,7 @@ TEST(GfxBasicOps, SoftmaxLastAxis) {
 TEST(GfxBasicOps, SoftmaxAxis1Rank3) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{2, 3, 4});
     auto sm = std::make_shared<ov::op::v1::Softmax>(param, 1);  // axis=1 (not last)
@@ -737,7 +712,7 @@ TEST(GfxBasicOps, SoftmaxAxis1Rank3) {
     auto metal_req = metal_cm.create_infer_request();
     metal_req.set_input_tensor(input);
     metal_req.infer();
-    auto metal_out = get_output_or_skip(metal_req);
+    auto metal_out = get_output_or_fail(metal_req);
 
     expect_shape_type(cpu_out, {2, 3, 4});
     expect_shape_type(metal_out, {2, 3, 4});
@@ -765,7 +740,7 @@ TEST(GfxBasicOps, SoftmaxAxis1Rank3) {
 TEST(GfxBasicOps, AddBroadcastChannel) {
     gfx_try_catch_fail([&]() {
 ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 3, 4, 4});
     auto c = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{1, 3, 1, 1},
@@ -797,7 +772,7 @@ ov::Core core;
 
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = get_output_or_skip(metal_req);
+        auto metal_out = get_output_or_fail(metal_req);
 
         expect_shape_type(cpu_out, {1, 3, 4, 4});
         expect_shape_type(metal_out, {1, 3, 4, 4});
@@ -809,7 +784,7 @@ ov::Core core;
 TEST(GfxBasicOps, Relu) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4});
     auto relu = std::make_shared<ov::op::v0::Relu>(param);
@@ -837,7 +812,7 @@ TEST(GfxBasicOps, Relu) {
 
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = get_output_or_skip(metal_req);
+        auto metal_out = get_output_or_fail(metal_req);
 
         expect_allclose(cpu_out, metal_out, /*tol=*/2e-4f);
 
@@ -853,7 +828,7 @@ TEST(GfxBasicOps, Relu) {
 TEST(GfxBasicOps, ActivationsBasic) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     const ov::Shape shape{2, 3};
     std::vector<std::vector<float>> patterns{
@@ -880,7 +855,7 @@ TEST(GfxBasicOps, ActivationsBasic) {
 
             metal_req.set_input_tensor(input);
             metal_req.infer();
-            auto metal_out = get_output_or_skip(metal_req);
+            auto metal_out = get_output_or_fail(metal_req);
 
             SCOPED_TRACE(name);
             expect_shape_type(cpu_out, shape);
@@ -963,7 +938,7 @@ TEST(GfxBasicOps, ActivationsBasic) {
 TEST(GfxBasicOps, MatMul2D) {
     gfx_try_catch_fail([&]() {
 ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     const size_t K = 3;
     const size_t N = 2;
@@ -998,7 +973,7 @@ ov::Core core;
 
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = get_output_or_skip(metal_req);
+        auto metal_out = get_output_or_fail(metal_req);
 
         expect_shape_type(cpu_out, {1, N});
         expect_allclose(cpu_out, metal_out, /*tol=*/2e-4f);
@@ -1009,7 +984,7 @@ ov::Core core;
 TEST(GfxBasicOps, MatMulTransposeB2D) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{2, 3});
     auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{4, 3});
@@ -1039,7 +1014,7 @@ TEST(GfxBasicOps, MatMulTransposeB2D) {
     gfx_req.set_input_tensor(0, a);
     gfx_req.set_input_tensor(1, b);
     gfx_req.infer();
-    auto gfx_out = get_output_or_skip(gfx_req);
+    auto gfx_out = get_output_or_fail(gfx_req);
 
     expect_shape_type(cpu_out, {2, 4});
     expect_allclose(cpu_out, gfx_out, /*tol=*/2e-4f);
@@ -1050,7 +1025,7 @@ TEST(GfxBasicOps, MatMulTransposeB2D) {
 TEST(GfxBasicOps, MatMulBatchNoBroadcast) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     const size_t B = 2;
     const size_t M = 2;
@@ -1095,7 +1070,7 @@ TEST(GfxBasicOps, MatMulBatchNoBroadcast) {
     gfx_req.set_input_tensor(0, a);
     gfx_req.set_input_tensor(1, b);
     gfx_req.infer();
-    auto gfx_out = get_output_or_skip(gfx_req);
+    auto gfx_out = get_output_or_fail(gfx_req);
 
     expect_shape_type(cpu_out, {B, M, N});
     expect_allclose(cpu_out, gfx_out, /*tol=*/2e-4f);
@@ -1106,7 +1081,7 @@ TEST(GfxBasicOps, MatMulBatchNoBroadcast) {
 TEST(GfxBasicOps, MatMulBatchBroadcastLeft) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     const size_t B = 2;
     const size_t M = 2;
@@ -1144,7 +1119,7 @@ TEST(GfxBasicOps, MatMulBatchBroadcastLeft) {
 
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = get_output_or_skip(metal_req);
+        auto metal_out = get_output_or_fail(metal_req);
 
         expect_shape_type(cpu_out, {B, M, N});
         expect_allclose(cpu_out, metal_out, /*tol=*/2e-4f);
@@ -1155,7 +1130,7 @@ TEST(GfxBasicOps, MatMulBatchBroadcastLeft) {
 TEST(GfxBasicOps, MatMulBatchBroadcastRight) {
     gfx_try_catch_fail([&]() {
 ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     const size_t B = 2;
     const size_t M = 2;
@@ -1193,7 +1168,7 @@ ov::Core core;
 
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = get_output_or_skip(metal_req);
+        auto metal_out = get_output_or_fail(metal_req);
 
         expect_shape_type(cpu_out, {B, M, N});
         expect_allclose(cpu_out, metal_out, /*tol=*/2e-4f);
@@ -1204,7 +1179,7 @@ ov::Core core;
 TEST(GfxBasicOps, Softmax) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{2, 4});
     auto sm = std::make_shared<ov::op::v1::Softmax>(param, 1);
@@ -1235,7 +1210,7 @@ TEST(GfxBasicOps, Softmax) {
 
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = get_output_or_skip(metal_req);
+        auto metal_out = get_output_or_fail(metal_req);
 
         expect_allclose(cpu_out, metal_out, /*tol=*/2e-4f);
 
@@ -1260,7 +1235,7 @@ TEST(GfxBasicOps, Softmax) {
 TEST(GfxBasicOps, Gelu) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     const ov::Shape shape{1, 16};
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, shape);
@@ -1289,7 +1264,7 @@ TEST(GfxBasicOps, Gelu) {
 
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = get_output_or_skip(metal_req);
+        auto metal_out = get_output_or_fail(metal_req);
 
         expect_shape_type(cpu_out, shape);
         expect_shape_type(metal_out, shape);
@@ -1303,7 +1278,7 @@ TEST(GfxBasicOps, Gelu) {
 TEST(GfxBasicOps, BatchNormInference) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     const ov::Shape shape{1, 3, 4, 4};  // NCHW
     const size_t elem_count = shape[0] * shape[1] * shape[2] * shape[3];
@@ -1408,7 +1383,7 @@ TEST(GfxBasicOps, BatchNormInference) {
         auto metal_req = metal_cm.create_infer_request();
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = get_output_or_skip(metal_req);
+        auto metal_out = get_output_or_fail(metal_req);
 
         expect_shape_type(cpu_out, shape);
         expect_shape_type(metal_out, shape);
@@ -1430,7 +1405,7 @@ TEST(GfxBasicOps, BatchNormInference) {
 TEST(GfxBasicOps, MatMulSoftmaxMatMul) {
     gfx_try_catch_fail([&]() {
 ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     const ov::Shape shape{2, 4};
     auto X = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, shape);
@@ -1476,7 +1451,7 @@ ov::Core core;
 
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = get_output_or_skip(metal_req);
+        auto metal_out = get_output_or_fail(metal_req);
 
         expect_shape_type(cpu_out, shape);
         expect_shape_type(metal_out, shape);
@@ -1492,7 +1467,7 @@ ov::Core core;
 
 TEST(GfxBasicOps, DevicePropertiesAndQuery) {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     const auto devices = core.get_available_devices();
     EXPECT_NE(std::find(devices.begin(), devices.end(), "GFX"), devices.end());
@@ -1528,7 +1503,7 @@ TEST(GfxBasicOps, DevicePropertiesAndQuery) {
 TEST(GfxBasicOps, Conv2D) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 3, 4, 4});  // NCHW
     auto weights = std::make_shared<ov::op::v0::Constant>(
@@ -1575,10 +1550,10 @@ TEST(GfxBasicOps, Conv2D) {
     auto metal_req = metal_cm.create_infer_request();
     metal_req.set_input_tensor(input);
     metal_req.infer();
-    auto metal_out = get_output_or_skip(metal_req);
+    auto metal_out = get_output_or_fail(metal_req);
 
     expect_shape_type(cpu_out, {1, 2, 4, 4});  // same spatial because stride=1, pad=1
-    expect_or_skip_allclose(cpu_out, metal_out, 1e-4f, 0.f, "GFX conv2d+relu not yet accurate in pure mode");
+    expect_allclose_or_fail(cpu_out, metal_out, 1e-4f, 0.f, "GFX conv2d+relu mismatch");
 
     // Second pattern: delta input to sanity-check kernel wiring
     ov::Tensor delta{ov::element::f32, {1, 3, 4, 4}};
@@ -1589,15 +1564,15 @@ TEST(GfxBasicOps, Conv2D) {
     auto cpu_out2 = cpu_req.get_output_tensor();
     metal_req.set_input_tensor(delta);
     metal_req.infer();
-    auto metal_out2 = get_output_or_skip(metal_req);
-    expect_or_skip_allclose(cpu_out2, metal_out2, 1e-4f, 0.f, "GFX conv2d delta not yet accurate in pure mode");
+    auto metal_out2 = get_output_or_fail(metal_req);
+    expect_allclose_or_fail(cpu_out2, metal_out2, 1e-4f, 0.f, "GFX conv2d delta mismatch");
     });
 }
 
 TEST(GfxBasicOps, DepthwiseGroupConv2D) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 5, 5});
     auto weights = std::make_shared<ov::op::v0::Constant>(
@@ -1646,12 +1621,12 @@ TEST(GfxBasicOps, DepthwiseGroupConv2D) {
 
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = get_output_or_skip(metal_req);
+        auto metal_out = get_output_or_fail(metal_req);
 
         expect_shape_type(cpu_out, {1, 4, 5, 5});
         expect_shape_type(metal_out, {1, 4, 5, 5});
         expect_finite(metal_out);
-        expect_or_skip_allclose(cpu_out, metal_out, 1e-4f, 0.f, "GFX depthwise group conv mismatch");
+        expect_allclose_or_fail(cpu_out, metal_out, 1e-4f, 0.f, "GFX depthwise group conv mismatch");
     }
     });
 }
@@ -1659,7 +1634,7 @@ TEST(GfxBasicOps, DepthwiseGroupConv2D) {
 TEST(GfxBasicOps, Conv2DReluFusion) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 3, 4, 4});  // NCHW
     auto weights = std::make_shared<ov::op::v0::Constant>(
@@ -1700,7 +1675,7 @@ TEST(GfxBasicOps, Conv2DReluFusion) {
 
     metal_req.set_input_tensor(input);
     metal_req.infer();
-    auto metal_out = get_output_or_skip(metal_req);
+    auto metal_out = get_output_or_fail(metal_req);
 
     expect_shape_type(cpu_out, {1, 2, 4, 4});
     expect_allclose(cpu_out, metal_out, /*tol=*/1e-4f);
@@ -1717,7 +1692,7 @@ TEST(GfxBasicOps, Conv2DReluFusion) {
 TEST(GfxBasicOps, Conv2DBiasReluFusion) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 3, 4, 4});
     auto weights = std::make_shared<ov::op::v0::Constant>(
@@ -1757,17 +1732,17 @@ TEST(GfxBasicOps, Conv2DBiasReluFusion) {
 
     metal_req.set_input_tensor(input);
     metal_req.infer();
-    auto metal_out = get_output_or_skip(metal_req);
+    auto metal_out = get_output_or_fail(metal_req);
 
     expect_shape_type(cpu_out, {1, 2, 4, 4});
-    expect_or_skip_allclose(cpu_out, metal_out, 1e-4f, 0.f, "GFX conv2d+bias+relu mismatch");
+    expect_allclose_or_fail(cpu_out, metal_out, 1e-4f, 0.f, "GFX conv2d+bias+relu mismatch");
     });
 }
 
 TEST(GfxBasicOps, Conv2DBatchNormFusion) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 3, 4, 4});  // NCHW
     auto weights = std::make_shared<ov::op::v0::Constant>(
@@ -1819,7 +1794,7 @@ TEST(GfxBasicOps, Conv2DBatchNormFusion) {
 
     metal_req.set_input_tensor(input);
     metal_req.infer();
-    auto metal_out = get_output_or_skip(metal_req);
+    auto metal_out = get_output_or_fail(metal_req);
 
     expect_shape_type(cpu_out, {1, 2, 4, 4});
     expect_allclose(cpu_out, metal_out, /*tol=*/1e-4f);
@@ -1829,7 +1804,7 @@ TEST(GfxBasicOps, Conv2DBatchNormFusion) {
 TEST(GfxBasicOps, Conv2DBatchNormReluFusion) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 3, 4, 4});  // NCHW
     auto weights = std::make_shared<ov::op::v0::Constant>(
@@ -1882,7 +1857,7 @@ TEST(GfxBasicOps, Conv2DBatchNormReluFusion) {
 
     metal_req.set_input_tensor(input);
     metal_req.infer();
-    auto metal_out = get_output_or_skip(metal_req);
+    auto metal_out = get_output_or_fail(metal_req);
 
     expect_shape_type(cpu_out, {1, 2, 4, 4});
     expect_allclose(cpu_out, metal_out, /*tol=*/1e-4f);
@@ -1897,7 +1872,7 @@ TEST(GfxBasicOps, Conv2DBatchNormReluFusion) {
 TEST(GfxBasicOps, Conv2DSwishFusion) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 3, 4, 4});  // NCHW
     auto weights = std::make_shared<ov::op::v0::Constant>(
@@ -1939,7 +1914,7 @@ TEST(GfxBasicOps, Conv2DSwishFusion) {
 
     metal_req.set_input_tensor(input);
     metal_req.infer();
-    auto metal_out = get_output_or_skip(metal_req);
+    auto metal_out = get_output_or_fail(metal_req);
 
     expect_shape_type(cpu_out, {1, 2, 4, 4});
     expect_allclose(cpu_out, metal_out, /*tol=*/1e-4f);
@@ -1949,7 +1924,7 @@ TEST(GfxBasicOps, Conv2DSwishFusion) {
 TEST(GfxBasicOps, Conv2DBatchNormSwishFusion) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 3, 4, 4});  // NCHW
     auto weights = std::make_shared<ov::op::v0::Constant>(
@@ -2004,7 +1979,7 @@ TEST(GfxBasicOps, Conv2DBatchNormSwishFusion) {
 
     metal_req.set_input_tensor(input);
     metal_req.infer();
-    auto metal_out = get_output_or_skip(metal_req);
+    auto metal_out = get_output_or_fail(metal_req);
 
     expect_shape_type(cpu_out, {1, 2, 4, 4});
     expect_allclose(cpu_out, metal_out, /*tol=*/1e-4f);
@@ -2014,7 +1989,7 @@ TEST(GfxBasicOps, Conv2DBatchNormSwishFusion) {
 TEST(GfxBasicOps, MaxPool2D) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 1, 4, 4});  // NCHW
     ov::Strides strides{2, 2};
@@ -2047,7 +2022,7 @@ TEST(GfxBasicOps, MaxPool2D) {
     auto metal_req = metal_cm.create_infer_request();
     metal_req.set_input_tensor(input);
     metal_req.infer();
-    auto metal_out = get_output_or_skip(metal_req);
+    auto metal_out = get_output_or_fail(metal_req);
 
     expect_shape_type(cpu_out, {1, 1, 2, 2});
     // Known expected values for sequential input 0..15 with 2x2 stride2 maxpool
@@ -2063,7 +2038,7 @@ TEST(GfxBasicOps, MaxPool2D) {
 TEST(GfxBasicOps, AvgPool2D) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 1, 4, 4});  // NCHW
     ov::Strides strides{2, 2};
@@ -2097,7 +2072,7 @@ TEST(GfxBasicOps, AvgPool2D) {
     auto metal_req = metal_cm.create_infer_request();
     metal_req.set_input_tensor(input);
     metal_req.infer();
-    auto metal_out = get_output_or_skip(metal_req);
+    auto metal_out = get_output_or_fail(metal_req);
 
     expect_shape_type(cpu_out, {1, 1, 2, 2});
     // Average of each 2x2 block of 0..15 sequence
@@ -2114,7 +2089,7 @@ TEST(GfxBasicOps, AvgPool2D) {
 TEST(GfxBasicOps, AutoGfxReference) {
     gfx_try_catch_fail([&]() {
 ov::Core core;
-    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_setup_failure;
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4});
     auto relu = std::make_shared<ov::op::v0::Relu>(param);  // supported by GFX

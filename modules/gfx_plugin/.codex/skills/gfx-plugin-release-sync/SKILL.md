@@ -59,6 +59,10 @@ The intended plugin content should stay identical across both publication target
 - Check `origin/main` in the mirror before pushing and require a fast-forward or
   otherwise compatible history. Do not force push unless the user explicitly
   authorizes that exact operation.
+- If submodules are part of the change set, keep path mapping explicit:
+  `openvino_contrib` uses `modules/gfx_plugin/third_party/...`, while the
+  mirror root uses `third_party/...`. Stage submodule gitlinks and `.gitmodules`
+  deliberately in both repositories.
 
 If the mirrored repository is not present locally, first discover whether:
 

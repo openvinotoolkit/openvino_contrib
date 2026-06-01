@@ -29,11 +29,6 @@ struct OpenClBackendState final : BackendState {
     bool requires_const_manager() const override { return true; }
     bool has_const_manager() const override { return const_manager != nullptr; }
     void init_infer_state(InferRequestState& state) const override;
-    std::unique_ptr<GpuStage> create_stage(const std::shared_ptr<const ov::Node>& node) const override {
-        return create_opencl_stage(node,
-                                   reinterpret_cast<GpuDeviceHandle>(context ? context->device() : nullptr),
-                                   reinterpret_cast<GpuCommandQueueHandle>(context ? context->queue() : nullptr));
-    }
     std::unique_ptr<GpuStage> create_stage(
         const std::shared_ptr<const ov::Node>& node,
         const RuntimeStageExecutableDescriptor* descriptor) const override {
@@ -51,7 +46,10 @@ struct OpenClBackendState final : BackendState {
             OPENVINO_THROW("GFX OpenCL: runtime descriptor has non-OpenCL source payload for ",
                            node ? node->get_type_name() : "<null>");
         }
-        return create_opencl_stage(node, descriptor);
+        return create_opencl_stage(
+            node, descriptor,
+            reinterpret_cast<GpuDeviceHandle>(context ? context->device() : nullptr),
+            reinterpret_cast<GpuCommandQueueHandle>(context ? context->queue() : nullptr));
     }
     std::unique_ptr<GfxProfiler> create_profiler(const GfxProfilerConfig& cfg) const override;
 };

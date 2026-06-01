@@ -8,7 +8,7 @@
 
 #include "preprocessing/yuv_to_grey_tests.hpp"
 
-using GfxPreprocessingYUV2GreyTest = ov::test::utils::GfxSkippedTests<ov::preprocess::PreprocessingYUV2GreyTest>;
+using GfxPreprocessingYUV2GreyTest = ov::test::utils::GfxBackendRequiredTests<ov::preprocess::PreprocessingYUV2GreyTest>;
 
 INSTANTIATE_TEST_SUITE_P(smoke_Preprocessing,
                          GfxPreprocessingYUV2GreyTest,

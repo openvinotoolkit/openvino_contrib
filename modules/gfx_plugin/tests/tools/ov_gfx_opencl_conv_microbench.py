@@ -1206,7 +1206,7 @@ def run_int8_dot_smoke(cl: OpenCL, count_words: int, iterations: int, print_kern
         for local in local_candidates:
             if local is not None and local_product(local) > max_work_group_size:
                 print(
-                    f"int8_dot,{variant},{local_label(local)},skip,skip,"
+                    f"int8_dot,{variant},{local_label(local)},unavailable,unavailable,"
                     f"max_work_group_size={max_work_group_size}",
                     flush=True,
                 )
@@ -1505,8 +1505,8 @@ def run_oc16_ci4_ptr_autotune(
                     case.name,
                     variant_name,
                     local_label(local),
-                    "skip",
-                    "skip",
+                    "unavailable",
+                    "unavailable",
                     f"max_work_group_size={max_work_group_size}",
                 )
                 continue
@@ -1569,7 +1569,7 @@ def run_ci4_ptr_block_autotune(cl: OpenCL, case: ConvCase, iterations: int, prin
         for local in local_candidates:
             if local is not None and local_product(local) > max_work_group_size:
                 print(
-                    f"{case.name},{variant},{local_label(local)},skip,skip,"
+                    f"{case.name},{variant},{local_label(local)},unavailable,unavailable,"
                     f"max_work_group_size={max_work_group_size}",
                     flush=True,
                 )

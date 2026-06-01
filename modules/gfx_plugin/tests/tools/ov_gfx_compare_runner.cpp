@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "../gfx_accuracy_tolerance.hpp"
+#include "../gfx_plugin_runtime_path.hpp"
 #include "common_test_utils/file_utils.hpp"
 #include "common_test_utils/ov_plugin_cache.hpp"
 #include "openvino/util/file_util.hpp"
@@ -42,16 +43,7 @@ constexpr const char *kGfxDiagnosticF32MpsImageProperty =
     "GFX_DIAGNOSTIC_F32_MPS_IMAGE";
 
 const char *resolve_gfx_plugin_path() {
-  if (const char *env_path = std::getenv("GFX_PLUGIN_PATH")) {
-    if (*env_path) {
-      return env_path;
-    }
-  }
-#ifdef GFX_PLUGIN_PATH
-  return GFX_PLUGIN_PATH;
-#else
-  return nullptr;
-#endif
+  return ov::test::utils::gfx_plugin_runtime_path();
 }
 
 bool trace_compare_phases_enabled() {
@@ -72,12 +64,7 @@ void trace_compare_phase(const std::string &phase,
 }
 
 void register_gfx_plugin(ov::Core &core) {
-  if (const char *path = resolve_gfx_plugin_path()) {
-    try {
-      core.register_plugin(path, "GFX");
-    } catch (...) {
-    }
-  }
+  (void)ov::test::utils::register_gfx_plugin_runtime_path(core);
 }
 
 void register_reference_plugin(ov::Core &core,
@@ -643,7 +630,7 @@ ov::Shape make_static_shape(const ov::PartialShape &ps, int64_t fallback = 1) {
   return shape;
 }
 
-bool is_debug_skippable_node(const std::shared_ptr<ov::Node> &node) {
+bool is_debug_non_executable_node(const std::shared_ptr<ov::Node> &node) {
   return ov::is_type<ov::op::v0::Parameter>(node) ||
          ov::is_type<ov::op::v0::Constant>(node) ||
          ov::is_type<ov::op::v0::Result>(node);
@@ -663,7 +650,7 @@ size_t count_upstream_ops_limited(const ov::Output<ov::Node> &source,
     if (!node || !visited.insert(node.get()).second) {
       continue;
     }
-    if (!is_debug_skippable_node(node)) {
+    if (!is_debug_non_executable_node(node)) {
       ++count;
       if (count > limit) {
         return count;
@@ -1724,7 +1711,7 @@ std::optional<ov::Tensor> evaluate_source_tensor_with_gfx_recursive(
       }
     }
   } else if (depth == 0 && state.trace_every > 0) {
-    std::cout << "GFX_RECURSIVE graph_slice_skipped node=" << node_desc
+    std::cout << "GFX_RECURSIVE graph_slice_unavailable node=" << node_desc
               << " reason=upstream producer count exceeds "
               << kGraphSliceProducerLimit << '\n';
   }
@@ -1979,7 +1966,7 @@ make_full_graph_debug_model(const std::shared_ptr<ov::Model> &model,
   output_descs.clear();
   for (size_t idx = 0; idx < cloned_ops.size(); ++idx) {
     const auto &node = cloned_ops[idx];
-    if (is_debug_skippable_node(node)) {
+    if (is_debug_non_executable_node(node)) {
       continue;
     }
     for (size_t port = 0; port < node->get_output_size(); ++port) {
@@ -2102,7 +2089,7 @@ void prefill_reference_outputs_for_per_op_range(
     if (idx < options.start_op) {
       continue;
     }
-    if (is_debug_skippable_node(node)) {
+    if (is_debug_non_executable_node(node)) {
       continue;
     }
     if (options.stop_after_op.has_value() &&
@@ -2175,7 +2162,7 @@ void prefill_reference_outputs_for_per_op_range(
     }
   } catch (const std::exception &ex) {
     if (options.per_op_recursive_trace_every > 0) {
-      std::cout << "PER_OP_REFERENCE_PREFETCH skipped reason=" << ex.what()
+      std::cout << "PER_OP_REFERENCE_PREFETCH unavailable reason=" << ex.what()
                 << '\n';
     }
   }
@@ -2193,14 +2180,14 @@ int run_per_op_compare(
   std::unordered_map<const ov::Node *, size_t> relevant_pos;
   for (size_t idx = 0; idx < ordered_ops.size(); ++idx) {
     const auto &node = ordered_ops[idx];
-    if (is_debug_skippable_node(node)) {
+    if (is_debug_non_executable_node(node)) {
       continue;
     }
     relevant_pos.emplace(node.get(), relevant_indices.size());
     relevant_indices.push_back(idx);
   }
   size_t checked = 0;
-  size_t skipped = 0;
+  size_t unavailable = 0;
   std::unordered_map<OutputKey, ov::Tensor, OutputKeyHash>
       cached_reference_outputs;
   prefill_reference_outputs_for_per_op_range(
@@ -2211,7 +2198,7 @@ int run_per_op_compare(
     if (idx < options.start_op) {
       continue;
     }
-    if (is_debug_skippable_node(node)) {
+    if (is_debug_non_executable_node(node)) {
       continue;
     }
     if (options.stop_after_op.has_value() &&
@@ -2316,7 +2303,7 @@ int run_per_op_compare(
         if (!ext.has_value()) {
           std::cout << "[op " << idx << "] " << node->get_friendly_name()
                     << " (" << node->get_type_name()
-                    << ") infer_skip=failed to materialize isolated input from "
+                    << ") infer_unavailable=failed to materialize isolated input from "
                     << stage_node->get_friendly_name();
           if (!recursive_state.failure.empty()) {
             std::cout << " reason=" << recursive_state.failure;
@@ -2339,7 +2326,7 @@ int run_per_op_compare(
       cloned_target = cloned;
     }
     if (missing_input) {
-      ++skipped;
+      ++unavailable;
       ++checked;
       continue;
     }
@@ -2355,7 +2342,7 @@ int run_per_op_compare(
           std::make_shared<ov::op::v0::Result>(cloned_target->output(out_idx)));
     }
     if (outputs.empty()) {
-      ++skipped;
+      ++unavailable;
       ++checked;
       continue;
     }
@@ -2371,9 +2358,9 @@ int run_per_op_compare(
                                         make_compile_config(true, &options));
     } catch (const std::exception &ex) {
       std::cout << "[op " << idx << "] " << node->get_friendly_name() << " ("
-                << node->get_type_name() << ") compile_skip=" << ex.what()
+                << node->get_type_name() << ") compile_unavailable=" << ex.what()
                 << '\n';
-      ++skipped;
+      ++unavailable;
       ++checked;
       continue;
     }
@@ -2387,9 +2374,9 @@ int run_per_op_compare(
                                 &options);
     } catch (const std::exception &ex) {
       std::cout << "[op " << idx << "] " << node->get_friendly_name() << " ("
-                << node->get_type_name() << ") infer_skip=" << ex.what()
+                << node->get_type_name() << ") infer_unavailable=" << ex.what()
                 << '\n';
-      ++skipped;
+      ++unavailable;
       ++checked;
       continue;
     }
@@ -2423,8 +2410,8 @@ int run_per_op_compare(
     }
     ++checked;
   }
-  if (skipped > 0) {
-    std::cout << "PER_OP_SKIPPED count=" << skipped << '\n';
+  if (unavailable > 0) {
+    std::cout << "PER_OP_UNAVAILABLE count=" << unavailable << '\n';
     return 4;
   }
   std::cout << "PER_OP_MATCH\n";
@@ -2677,7 +2664,7 @@ int main(int argc, char **argv) try {
     const auto ordered_ops = model->get_ordered_ops();
     for (size_t idx = 0; idx < ordered_ops.size(); ++idx) {
       const auto &node = ordered_ops[idx];
-      if (is_debug_skippable_node(node)) {
+      if (is_debug_non_executable_node(node)) {
         continue;
       }
       std::cout << "[op " << idx << "] " << node->get_friendly_name() << " ("

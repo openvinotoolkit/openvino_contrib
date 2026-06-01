@@ -2,7 +2,30 @@ set(TARGET_NAME ov_gfx_func_tests)
 set(UNIT_TARGET_NAME ov_gfx_unit_tests)
 set(RUNTIME_MICRO_TARGET_NAME ov_gfx_runtime_micro_tests)
 
+set(GFX_TEST_PLUGINS_XML "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/plugins.xml")
+add_custom_target(gfx_test_plugins_xml
+    COMMAND "${CMAKE_COMMAND}"
+        -DOUTPUT_FILE=${GFX_TEST_PLUGINS_XML}
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/WriteGfxTestPluginsXml.cmake"
+    DEPENDS openvino_gfx_plugin
+    COMMENT "Write controlled plugins.xml for GFX tests"
+    VERBATIM)
+if(TARGET openvino_template_plugin)
+    add_dependencies(gfx_test_plugins_xml openvino_template_plugin)
+endif()
+if(TARGET openvino_auto_plugin)
+    add_dependencies(gfx_test_plugins_xml openvino_auto_plugin)
+endif()
+
 set(GFX_TEST_DEPENDENCIES openvino_gfx_plugin)
+if(DEFINED GFX_RASPBERRY_OPENCL_BUNDLE_TARGET AND TARGET ${GFX_RASPBERRY_OPENCL_BUNDLE_TARGET})
+    list(APPEND GFX_TEST_DEPENDENCIES ${GFX_RASPBERRY_OPENCL_BUNDLE_TARGET})
+endif()
+set(GFX_TEST_RUNTIME_ENVIRONMENT
+    "GFX_PLUGIN_PATH=$<TARGET_FILE:openvino_gfx_plugin>")
+if(APPLE)
+    list(APPEND GFX_TEST_RUNTIME_ENVIRONMENT "DISABLE_PLUGIN_CACHE=1")
+endif()
 set(GFX_TEST_LINK_LIBS
     openvino::funcSharedTests
     openvino::runtime::dev
@@ -75,7 +98,6 @@ if(APPLE)
     )
 else()
     list(APPEND GFX_TEST_EXCLUDED_PATHS
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/basic_ops_test.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/set_device_name.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/set_device_name_stub.cpp
     )
@@ -101,22 +123,12 @@ if(APPLE)
     )
 else()
     target_sources(${TARGET_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/memory_device_integration_unavailable_test.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/set_device_name_stub.cpp
     )
 endif()
 
-# Device-specific bits: path to the built plugin and access to local src headers.
-target_compile_definitions(${TARGET_NAME} PRIVATE
-    GFX_PLUGIN_PATH="$<TARGET_FILE:openvino_gfx_plugin>"
-    GFX_BACKEND_METAL_AVAILABLE=$<BOOL:${GFX_BACKEND_METAL_AVAILABLE}>
-    GFX_BACKEND_OPENCL_AVAILABLE=$<BOOL:${GFX_BACKEND_OPENCL_AVAILABLE}>)
-
-add_custom_target(${TARGET_NAME}_remove_plugins_xml
-    COMMAND "${CMAKE_COMMAND}" -E rm -f "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/plugins.xml"
-    COMMENT "Remove implicit plugins.xml so GFX tests use explicit GFX/TEMPLATE registration"
-    VERBATIM)
-add_dependencies(${TARGET_NAME}_remove_plugins_xml ${GFX_TEST_DEPENDENCIES})
-add_dependencies(${TARGET_NAME} ${TARGET_NAME}_remove_plugins_xml)
+add_dependencies(${TARGET_NAME} gfx_test_plugins_xml)
 
 target_include_directories(${TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -130,9 +142,7 @@ target_include_directories(${TARGET_NAME} PRIVATE
 if(TARGET gfx_plugin_build_settings)
     target_link_libraries(${TARGET_NAME} PRIVATE gfx_plugin_build_settings)
 endif()
-if(APPLE)
-    set_tests_properties(${TARGET_NAME} PROPERTIES ENVIRONMENT "DISABLE_PLUGIN_CACHE=1")
-endif()
+set_tests_properties(${TARGET_NAME} PROPERTIES ENVIRONMENT "${GFX_TEST_RUNTIME_ENVIRONMENT}")
 
 if(TARGET GFX::Metal)
     target_link_libraries(${TARGET_NAME} PRIVATE GFX::Metal)
@@ -180,6 +190,9 @@ target_sources(${UNIT_TARGET_NAME} PRIVATE
 if(GFX_BACKEND_OPENCL_AVAILABLE)
     target_sources(${UNIT_TARGET_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_device_profile_contract_test.cpp)
+else()
+    target_sources(${UNIT_TARGET_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_device_profile_contract_unavailable_test.cpp)
 endif()
 if(APPLE)
     target_sources(${UNIT_TARGET_NAME} PRIVATE
@@ -192,13 +205,10 @@ if(APPLE)
 else()
     target_sources(${UNIT_TARGET_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/set_device_name_stub.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/metal_native_contract_unavailable_test.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../src/backends/metal/runtime/dtype.cpp)
 endif()
 target_link_libraries(${UNIT_TARGET_NAME} PRIVATE ${GFX_UNIT_TEST_LINK_LIBS})
-target_compile_definitions(${UNIT_TARGET_NAME} PRIVATE
-    GFX_PLUGIN_PATH="$<TARGET_FILE:openvino_gfx_plugin>"
-    GFX_BACKEND_METAL_AVAILABLE=$<BOOL:${GFX_BACKEND_METAL_AVAILABLE}>
-    GFX_BACKEND_OPENCL_AVAILABLE=$<BOOL:${GFX_BACKEND_OPENCL_AVAILABLE}>)
 target_include_directories(${UNIT_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
@@ -222,10 +232,14 @@ if(TARGET GFX::Metal)
     target_link_libraries(${UNIT_TARGET_NAME} PRIVATE GFX::Metal)
 endif()
 add_test(NAME ${UNIT_TARGET_NAME} COMMAND ${UNIT_TARGET_NAME})
-set_tests_properties(${UNIT_TARGET_NAME} PROPERTIES LABELS "OV;GFX")
+set_tests_properties(${UNIT_TARGET_NAME} PROPERTIES
+    LABELS "OV;GFX"
+    ENVIRONMENT "${GFX_TEST_RUNTIME_ENVIRONMENT}")
+add_dependencies(${UNIT_TARGET_NAME} gfx_test_plugins_xml)
 
 add_executable(${RUNTIME_MICRO_TARGET_NAME})
 add_dependencies(${RUNTIME_MICRO_TARGET_NAME} ${GFX_TEST_DEPENDENCIES})
+add_dependencies(${RUNTIME_MICRO_TARGET_NAME} gfx_test_plugins_xml)
 set(GFX_RUNTIME_EXECUTION_POLICY_SOURCE
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_runtime_execution_fork.cpp)
 if(APPLE OR WIN32 OR ANDROID OR GFX_BACKEND_OPENCL_AVAILABLE)
@@ -248,10 +262,6 @@ target_link_libraries(${RUNTIME_MICRO_TARGET_NAME} PRIVATE
     gmock
     gtest_main
     gtest)
-target_compile_definitions(${RUNTIME_MICRO_TARGET_NAME} PRIVATE
-    GFX_PLUGIN_PATH="$<TARGET_FILE:openvino_gfx_plugin>"
-    GFX_BACKEND_METAL_AVAILABLE=$<BOOL:${GFX_BACKEND_METAL_AVAILABLE}>
-    GFX_BACKEND_OPENCL_AVAILABLE=$<BOOL:${GFX_BACKEND_OPENCL_AVAILABLE}>)
 target_include_directories(${RUNTIME_MICRO_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
@@ -264,7 +274,9 @@ if(TARGET gfx_plugin_build_settings)
     target_link_libraries(${RUNTIME_MICRO_TARGET_NAME} PRIVATE gfx_plugin_build_settings)
 endif()
 add_test(NAME ${RUNTIME_MICRO_TARGET_NAME} COMMAND ${RUNTIME_MICRO_TARGET_NAME})
-set_tests_properties(${RUNTIME_MICRO_TARGET_NAME} PROPERTIES LABELS "OV;GFX")
+set_tests_properties(${RUNTIME_MICRO_TARGET_NAME} PROPERTIES
+    LABELS "OV;GFX"
+    ENVIRONMENT "${GFX_TEST_RUNTIME_ENVIRONMENT}")
 
 add_executable(ov_gfx_compare_runner
     ${CMAKE_CURRENT_SOURCE_DIR}/tools/ov_gfx_compare_runner.cpp
@@ -276,9 +288,6 @@ target_link_libraries(ov_gfx_compare_runner PRIVATE
 if(TARGET gfx_plugin_build_settings)
     target_link_libraries(ov_gfx_compare_runner PRIVATE gfx_plugin_build_settings)
 endif()
-target_compile_definitions(ov_gfx_compare_runner PRIVATE
-    GFX_PLUGIN_PATH="$<TARGET_FILE:openvino_gfx_plugin>"
-)
 
 add_executable(ov_gfx_conv_shape_bench
     ${CMAKE_CURRENT_SOURCE_DIR}/tools/ov_gfx_conv_shape_bench.cpp
@@ -290,9 +299,6 @@ target_link_libraries(ov_gfx_conv_shape_bench PRIVATE
 if(TARGET gfx_plugin_build_settings)
     target_link_libraries(ov_gfx_conv_shape_bench PRIVATE gfx_plugin_build_settings)
 endif()
-target_compile_definitions(ov_gfx_conv_shape_bench PRIVATE
-    GFX_PLUGIN_PATH="$<TARGET_FILE:openvino_gfx_plugin>"
-)
 
 if(ANDROID)
     add_executable(ov_gfx_opencl_conv_microbench_android
@@ -327,9 +333,6 @@ endif()
 if(TARGET gfx_plugin_build_settings)
     target_link_libraries(ov_gfx_microbench PRIVATE gfx_plugin_build_settings)
 endif()
-target_compile_definitions(ov_gfx_microbench PRIVATE
-    GFX_PLUGIN_PATH="$<TARGET_FILE:openvino_gfx_plugin>"
-)
 target_include_directories(ov_gfx_microbench PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../include

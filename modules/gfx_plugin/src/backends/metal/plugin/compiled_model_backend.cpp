@@ -9,6 +9,7 @@
 #include "plugin/gfx_property_utils.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "backends/metal/runtime/metal_memory.hpp"
+#include "backends/metal/runtime/profiling/signpost_trace_sink.hpp"
 #include "backends/metal/runtime/stage_factory.hpp"
 #include "backends/metal/runtime/profiling/profiler.hpp"
 
@@ -18,6 +19,7 @@ namespace gfx_plugin {
 std::unique_ptr<MetalBackendState> create_metal_backend_state(const ov::AnyMap& properties,
                                                               const ov::SoPtr<ov::IRemoteContext>& context) {
     auto state = std::make_unique<MetalBackendState>();
+    register_metal_profiling_trace_sinks();
     ensure_metal_memory_ops_registered();
     ensure_metal_stage_factory_registered();
 
@@ -56,6 +58,10 @@ std::unique_ptr<MetalBackendState> create_metal_backend_state(const ov::AnyMap& 
 std::unique_ptr<GfxProfiler> MetalBackendState::create_profiler(const GfxProfilerConfig& cfg) const {
     OPENVINO_ASSERT(device, "GFX: Metal device is null");
     return std::make_unique<MetalProfiler>(cfg, caps, device);
+}
+
+void register_metal_profiling_trace_sinks() {
+    register_metal_signpost_trace_sink();
 }
 
 }  // namespace gfx_plugin

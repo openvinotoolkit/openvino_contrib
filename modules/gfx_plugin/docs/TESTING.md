@@ -14,6 +14,12 @@ This guide summarizes validation for `modules/gfx_plugin`.
 - `ov_gfx_microbench`: MB0-MB3 microbench and calibration workflow
 - `ov_gfx_conv_shape_bench`: representative Conv2D compile-plus-infer probe
 
+The test CMake flow also creates `gfx_test_plugins_xml`, which writes a
+controlled `plugins.xml` with `GFX`, `TEMPLATE`, and `AUTO`. The AUTO entry has
+startup and runtime fallback disabled so tests do not hide unsupported GFX
+routes behind another plugin. Test binaries receive `GFX_PLUGIN_PATH` through
+their CTest environment.
+
 Build:
 
 ```bash
@@ -53,6 +59,11 @@ DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
 Only Metal has backend-specific runtime tests in the current source tree; OpenCL
 runtime behavior is covered through source-artifact unit tests, integration
 paths, and target execution.
+
+`tests/integration/gfx_no_disabled_test_patterns.cpp` keeps the OpenVINO shared
+test disabled-pattern hook intentionally empty. Backend-unavailable cases are
+covered by explicit `*_unavailable_test.cpp` files instead of hiding coverage
+through skip patterns.
 
 ## What To Test
 
@@ -130,14 +141,18 @@ For OpenCL source-artifact changes:
   `tests/unit/gfx_matmul_kernel_contract_test.cpp` when the generated source
   unit contract for those families changes
 - include `tests/unit/gfx_reduction_kernel_contract_test.cpp` when generated
-  f32 reduction, logical-bool reduction, reduction MLIR lowering, or backend
-  reduction kernel-unit routing changes
+  f32 reduction, generated logical-bool reduction, reduction MLIR lowering, or
+  backend reduction kernel-unit routing changes
 - include `tests/unit/gfx_softmax_kernel_contract_test.cpp` when generated
   Metal Softmax/LogSoftmax payloads, OpenCL static or dynamic-static-rank
   Softmax artifacts, axis metadata, or Softmax kernel-unit routing changes
 - include `tests/unit/gfx_pool_kernel_contract_test.cpp` when OpenCL generated
   Pool2D artifacts, Metal MPS Pool2D vendor routing, or Pooling kernel-unit
   registration changes
+- include `tests/unit/gfx_opencl_source_artifacts_test.cpp` and
+  `tests/unit/gfx_backend_architecture_contract_test.cpp` when generated
+  ShapeOf, Tile, compare/select, logical-bool elementwise, boolean reduction,
+  or generated Concat/Split kernel units move
 - use `tests/unit/gfx_opencl_source_artifact_verifier.hpp` for reusable
   OpenCL source-artifact assertions instead of duplicating role/scalar checks
 - keep reusable generated activation and elementwise case data in
@@ -217,7 +232,8 @@ Treat backend routes separately:
 - Android or Linux targets with a working OpenCL GPU runtime validate the
   OpenCL source-kernel path.
 - Raspberry Pi validation should use the OpenCL runtime that belongs to the
-  target deployment contract.
+  target deployment contract, including the staged CLVK/CLSPV bundle when that
+  is the deployment route.
 
 A Metal pass does not prove OpenCL correctness. An OpenCL failure should be
 fixed in the shared manifest/lowering/artifact path first unless the evidence

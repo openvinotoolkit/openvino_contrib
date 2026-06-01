@@ -73,6 +73,10 @@ Important report areas:
 - counters: backend route, dispatch count, pipeline creation, descriptor/binding
   work, resource allocation, and route-specific MPSRT/OpenCL counters
 
+Trace export is selected by `OV_GFX_PROFILE_TRACE`. Trace sinks are registered
+by backend code through `src/runtime/gfx_profiling_trace_sink.*`; the Metal
+backend currently registers `signpost` and `os_signpost`.
+
 ## Common Bottleneck Categories
 
 ### Fixed Overhead
@@ -155,6 +159,10 @@ OV_GFX_PROFILE_TRACE=signpost \
 OV_GFX_PROFILE_TRACE_FILE=/tmp/gfx-trace-macos.json \
 benchmark_app -m /path/to/model.xml -d GFX -pc -niter 10
 ```
+
+`signpost` and `os_signpost` are Metal-registered trace sink names. They are
+available only when the Metal backend code is present and has registered its
+profiling sink.
 
 For Metal placement issues, capture the GFX profiling report together with
 `ov_gfx_compare_runner --dump-gfx-profile --gfx-profiling-level detailed` so

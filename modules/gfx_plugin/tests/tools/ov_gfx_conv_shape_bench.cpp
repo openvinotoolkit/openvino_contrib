@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "../gfx_accuracy_tolerance.hpp"
+#include "../gfx_plugin_runtime_path.hpp"
 #include "common_test_utils/file_utils.hpp"
 #include "common_test_utils/ov_plugin_cache.hpp"
 #include "openvino/util/file_util.hpp"
@@ -32,25 +33,11 @@
 namespace {
 
 const char *resolve_gfx_plugin_path() {
-  if (const char *env_path = std::getenv("GFX_PLUGIN_PATH")) {
-    if (*env_path) {
-      return env_path;
-    }
-  }
-#ifdef GFX_PLUGIN_PATH
-  return GFX_PLUGIN_PATH;
-#else
-  return nullptr;
-#endif
+  return ov::test::utils::gfx_plugin_runtime_path();
 }
 
 void register_gfx_plugin(ov::Core &core) {
-  if (const char *path = resolve_gfx_plugin_path()) {
-    try {
-      core.register_plugin(path, "GFX");
-    } catch (...) {
-    }
-  }
+  (void)ov::test::utils::register_gfx_plugin_runtime_path(core);
 }
 
 void register_reference_plugin(ov::Core &core,

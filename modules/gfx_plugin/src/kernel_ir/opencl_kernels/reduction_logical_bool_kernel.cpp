@@ -10,12 +10,11 @@ namespace ov {
 namespace gfx_plugin {
 
 const GfxKernelSource &
-opencl_baseline_reduction_logical_bool_kernel_source() noexcept {
+opencl_generated_reduction_bool_kernel_source() noexcept {
   static constexpr GfxKernelSource kKernel{
-      "opencl/baseline/reduce_logical_bool", "opencl",
-      "gfx_opencl_baseline_reduce_logical_bool",
-      GfxKernelSourceLanguage::OpenCL,
-      detail::kOpenClBaselineReductionLogicalBoolKernelSource};
+      "opencl/generated/reduction_bool", "opencl",
+      "gfx_opencl_generated_reduction_bool", GfxKernelSourceLanguage::OpenCL,
+      detail::kOpenClGeneratedReductionBoolKernelSource};
   return kKernel;
 }
 

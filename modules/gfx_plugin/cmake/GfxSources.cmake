@@ -22,7 +22,6 @@ set(GFX_PLUGIN_SOURCES
     ${_gfx_src_dir}/compiler/manifest.cpp
     ${_gfx_src_dir}/compiler/operation_legalizer.cpp
     ${_gfx_src_dir}/compiler/operation_support.cpp
-    ${_gfx_src_dir}/plugin/backend_state.cpp
     ${_gfx_src_dir}/plugin/backend_factory.cpp
     ${_gfx_src_dir}/plugin/compiled_model.cpp
     ${_gfx_src_dir}/plugin/compiled_model_backend_resources.cpp
@@ -102,6 +101,10 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/activation_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_kernel.cl
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_logical_bool_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_logical_bool_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_compare_select_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_compare_select_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/reduction_f32_kernel.cl
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/reduction_f32_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/reduction_logical_bool_kernel.cl
@@ -124,8 +127,13 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f16_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/matmul_f32_kernel.cl
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/matmul_f32_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/shapeof_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/shapeof_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/tile_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/tile_kernel.hpp
     ${_gfx_src_dir}/runtime/gfx_profiler.hpp
     ${_gfx_src_dir}/runtime/gfx_profiling_report.hpp
+    ${_gfx_src_dir}/runtime/gfx_profiling_trace_sink.hpp
     ${_gfx_src_dir}/runtime/gfx_target_profile.hpp
     ${_gfx_src_dir}/runtime/gpu_backend_base.hpp
     ${_gfx_src_dir}/runtime/gpu_buffer.hpp
@@ -168,6 +176,8 @@ set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/kernel_ir/gfx_opencl_source_artifacts.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/activation_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_logical_bool_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_compare_select_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/reduction_f32_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/reduction_logical_bool_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f32_kernel.cpp
@@ -179,6 +189,8 @@ set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f32_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f16_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/matmul_f32_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/shapeof_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/tile_kernel.cpp
     ${_gfx_src_dir}/runtime/execution_dispatcher.cpp
     ${_gfx_src_dir}/runtime/immutable_gpu_buffer_cache.cpp
     ${_gfx_src_dir}/runtime/memory_manager.cpp
@@ -186,6 +198,7 @@ set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/runtime/gfx_op_utils.cpp
     ${_gfx_src_dir}/runtime/gfx_parallelism.cpp
     ${_gfx_src_dir}/runtime/gfx_profiling_report.cpp
+    ${_gfx_src_dir}/runtime/gfx_profiling_trace_sink.cpp
     ${_gfx_src_dir}/runtime/gfx_target_profile.cpp
     ${_gfx_src_dir}/runtime/gfx_remote_context.cpp
     ${_gfx_src_dir}/runtime/gfx_remote_tensor.cpp
@@ -341,6 +354,7 @@ set(GFX_RUNTIME_METAL_SOURCES
     ${_gfx_src_dir}/backends/metal/runtime/profiling/gpu_timestamps.mm
     ${_gfx_src_dir}/backends/metal/runtime/profiling/profiler.mm
     ${_gfx_src_dir}/backends/metal/runtime/profiling/profiling_report.cpp
+    ${_gfx_src_dir}/backends/metal/runtime/profiling/signpost_trace_sink.mm
 )
 
 set(GFX_RUNTIME_METAL_HEADERS
@@ -385,6 +399,7 @@ set(GFX_RUNTIME_METAL_HEADERS
     ${_gfx_src_dir}/backends/metal/runtime/profiling/profiler.hpp
     ${_gfx_src_dir}/backends/metal/runtime/profiling/profiler_config.hpp
     ${_gfx_src_dir}/backends/metal/runtime/profiling/profiling_report.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/profiling/signpost_trace_sink.hpp
     ${_gfx_src_dir}/backends/metal/runtime/metal_executor.hpp
     ${_gfx_src_dir}/backends/metal/runtime/metal_runtime_kernel_loader.hpp
     ${_gfx_src_dir}/backends/metal/runtime/mps_graph_attention_stage.hpp

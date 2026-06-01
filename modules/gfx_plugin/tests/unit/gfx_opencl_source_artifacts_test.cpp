@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <string>
@@ -104,7 +105,9 @@ void expect_opencl_artifact(const std::shared_ptr<const ov::Node> &node,
                                  GfxOpenClSourceScalarArg::OpCode},
                             std::vector<size_t> direct_input_indices = {},
                             std::vector<uint32_t> static_u32_scalars = {},
-                            uint32_t direct_output_count = 1) {
+                            uint32_t direct_output_count = 1,
+                            uint32_t input_chunk_size = 0,
+                            uint32_t output_chunk_size = 0) {
   if (direct_input_indices.empty() && direct_input_count != 0) {
     for (size_t i = 0; i < direct_input_count; ++i) {
       direct_input_indices.push_back(i);
@@ -129,10 +132,48 @@ void expect_opencl_artifact(const std::shared_ptr<const ov::Node> &node,
   EXPECT_EQ(artifact->arg_count, arg_count);
   EXPECT_EQ(artifact->direct_input_count, direct_input_count);
   EXPECT_EQ(artifact->direct_output_count, direct_output_count);
+  EXPECT_EQ(artifact->input_chunk_size, input_chunk_size);
+  EXPECT_EQ(artifact->output_chunk_size, output_chunk_size);
   EXPECT_EQ(artifact->direct_input_indices, direct_input_indices);
   EXPECT_EQ(artifact->local_size_hint, 64u);
   EXPECT_EQ(artifact->scalar_args, scalar_args);
   EXPECT_EQ(artifact->static_u32_scalars, static_u32_scalars);
+  if (input_chunk_size != 0) {
+    ASSERT_FALSE(artifact->planned_chunks.empty());
+    uint32_t input_begin = 0;
+    for (const auto &chunk : artifact->planned_chunks) {
+      const uint32_t chunk_count =
+          std::min<uint32_t>(input_chunk_size, direct_input_count - input_begin);
+      EXPECT_EQ(chunk.binding_begin, input_begin);
+      EXPECT_EQ(chunk.binding_count, chunk_count);
+      ASSERT_TRUE(chunk.artifact);
+      EXPECT_TRUE(chunk.artifact->valid);
+      EXPECT_TRUE(chunk.artifact->planned_chunks.empty());
+      EXPECT_EQ(chunk.artifact->direct_input_count, chunk_count);
+      EXPECT_EQ(chunk.artifact->direct_output_count, 1u);
+      input_begin += chunk_count;
+    }
+    EXPECT_EQ(input_begin, direct_input_count);
+  } else if (output_chunk_size != 0) {
+    ASSERT_FALSE(artifact->planned_chunks.empty());
+    uint32_t output_begin = 0;
+    for (const auto &chunk : artifact->planned_chunks) {
+      const uint32_t chunk_count =
+          std::min<uint32_t>(output_chunk_size,
+                             direct_output_count - output_begin);
+      EXPECT_EQ(chunk.binding_begin, output_begin);
+      EXPECT_EQ(chunk.binding_count, chunk_count);
+      ASSERT_TRUE(chunk.artifact);
+      EXPECT_TRUE(chunk.artifact->valid);
+      EXPECT_TRUE(chunk.artifact->planned_chunks.empty());
+      EXPECT_EQ(chunk.artifact->direct_input_count, 1u);
+      EXPECT_EQ(chunk.artifact->direct_output_count, chunk_count);
+      output_begin += chunk_count;
+    }
+    EXPECT_EQ(output_begin, direct_output_count);
+  } else {
+    EXPECT_TRUE(artifact->planned_chunks.empty());
+  }
   EXPECT_NE(artifact->source.find("__kernel void " + entry_point),
             std::string::npos);
 
@@ -175,7 +216,7 @@ TEST(GfxOpenClSourceArtifactsTest, BackendTargetIsStableAndCapabilityDriven) {
   ASSERT_TRUE(audit.valid());
   EXPECT_EQ(audit.handwritten_exception_count, 1u);
   EXPECT_EQ(kernel_registry.route_count(LoweringRouteKind::GeneratedKernel),
-            22u);
+            162u);
   EXPECT_EQ(kernel_registry.route_count(
                 LoweringRouteKind::HandwrittenKernelException),
             1u);
@@ -606,8 +647,8 @@ TEST(GfxOpenClSourceArtifactsTest,
   };
 
   expect_opencl_artifact(
-      tile, GfxKernelStageFamily::Layout, "opencl/baseline/tile_f32",
-      "gfx_opencl_baseline_tile_f32",
+      tile, GfxKernelStageFamily::Layout, "opencl/generated/tile_f32",
+      "gfx_opencl_generated_tile_f32",
       /*arg_count=*/20,
       /*direct_input_count=*/1, scalar_args, {0}, static_u32_scalars);
   expect_opencl_source_excludes(
@@ -633,8 +674,8 @@ TEST(GfxOpenClSourceArtifactsTest,
   };
 
   expect_opencl_artifact(
-      tile, GfxKernelStageFamily::Layout, "opencl/baseline/tile_f16",
-      "gfx_opencl_baseline_tile_f16",
+      tile, GfxKernelStageFamily::Layout, "opencl/generated/tile_f16",
+      "gfx_opencl_generated_tile_f16",
       /*arg_count=*/20,
       /*direct_input_count=*/1, scalar_args, {0}, static_u32_scalars);
   EXPECT_TRUE(opencl_compiler_supports_node(tile));
@@ -661,8 +702,8 @@ TEST(GfxOpenClSourceArtifactsTest,
       GfxOpenClSourceScalarArg::Input0Dim3};
 
   expect_opencl_artifact(tile, GfxKernelStageFamily::Layout,
-                         "opencl/baseline/tile_dynamic_f16",
-                         "gfx_opencl_baseline_tile_dynamic_f16",
+                         "opencl/generated/tile_dynamic_f16",
+                         "gfx_opencl_generated_tile_dynamic_f16",
                          /*arg_count=*/12,
                          /*direct_input_count=*/1, scalar_args, {0}, {3});
   EXPECT_TRUE(opencl_compiler_supports_node(tile));
@@ -689,8 +730,8 @@ TEST(GfxOpenClSourceArtifactsTest,
       GfxOpenClSourceScalarArg::Input0Dim3};
 
   expect_opencl_artifact(tile, GfxKernelStageFamily::Layout,
-                         "opencl/baseline/tile_dynamic_f32",
-                         "gfx_opencl_baseline_tile_dynamic_f32",
+                         "opencl/generated/tile_dynamic_f32",
+                         "gfx_opencl_generated_tile_dynamic_f32",
                          /*arg_count=*/12,
                          /*direct_input_count=*/1, scalar_args, {0}, {3});
   expect_opencl_source_excludes(
@@ -970,10 +1011,17 @@ TEST(GfxOpenClSourceArtifactsTest, ShapeOfI32ArtifactsUseRuntimeShapeMetadata) {
   }
 
   expect_opencl_artifact(shape_of, GfxKernelStageFamily::GatherScatter,
-                         "opencl/baseline/shapeof_i32",
-                         "gfx_opencl_baseline_shapeof_i32",
+                         "opencl/generated/shapeof_i32",
+                         "gfx_opencl_generated_shapeof_i32",
                          /*arg_count=*/11,
                          /*direct_input_count=*/1, scalar_args, {0});
+  const auto unit = make_opencl_kernel_registry(
+                        BackendTarget::from_backend(GpuBackend::OpenCL))
+                        .resolve(LoweringRouteKind::GeneratedKernel,
+                                 "opencl/generated/shapeof_i32");
+  ASSERT_TRUE(unit.valid());
+  EXPECT_EQ(unit.kind(), KernelUnitKind::GeneratedKernel);
+  EXPECT_EQ(unit.op_family(), "ShapeOf");
   EXPECT_TRUE(opencl_compiler_supports_node(shape_of));
 }
 
@@ -990,10 +1038,17 @@ TEST(GfxOpenClSourceArtifactsTest,
   }
 
   expect_opencl_artifact(shape_of, GfxKernelStageFamily::GatherScatter,
-                         "opencl/baseline/shapeof_i64",
-                         "gfx_opencl_baseline_shapeof_i64",
+                         "opencl/generated/shapeof_i64",
+                         "gfx_opencl_generated_shapeof_i64",
                          /*arg_count=*/11,
                          /*direct_input_count=*/1, scalar_args, {0});
+  const auto unit = make_opencl_kernel_registry(
+                        BackendTarget::from_backend(GpuBackend::OpenCL))
+                        .resolve(LoweringRouteKind::GeneratedKernel,
+                                 "opencl/generated/shapeof_i64");
+  ASSERT_TRUE(unit.valid());
+  EXPECT_EQ(unit.kind(), KernelUnitKind::GeneratedKernel);
+  EXPECT_EQ(unit.op_family(), "ShapeOf");
   EXPECT_TRUE(opencl_compiler_supports_node(shape_of));
 }
 
@@ -1007,7 +1062,7 @@ TEST(GfxOpenClSourceArtifactsTest,
   ASSERT_TRUE(artifact.has_value());
   EXPECT_EQ(artifact->stage_manifest.stage_family,
             GfxKernelStageFamily::GatherScatter);
-  EXPECT_EQ(artifact->artifact_ref.source_id, "opencl/baseline/shapeof_i64");
+  EXPECT_EQ(artifact->artifact_ref.source_id, "opencl/generated/shapeof_i64");
   EXPECT_EQ(artifact->source.find("__global long*"), std::string::npos);
   EXPECT_TRUE(opencl_compiler_supports_node(shape_of));
 }
@@ -1026,8 +1081,8 @@ TEST(GfxOpenClSourceArtifactsTest,
       GfxOpenClSourceScalarArg::Input1Dim1};
 
   expect_opencl_artifact(concat, GfxKernelStageFamily::ConcatSplit,
-                         "opencl/baseline/concat2_f16_dynamic",
-                         "gfx_opencl_baseline_concat2_f16",
+                         "opencl/generated/concat2_f16_dynamic",
+                         "gfx_opencl_generated_concat2_f16",
                          /*arg_count=*/7,
                          /*direct_input_count=*/2, scalar_args, {0, 1}, {4});
   EXPECT_TRUE(opencl_compiler_supports_node(concat));
@@ -1050,8 +1105,8 @@ TEST(GfxOpenClSourceArtifactsTest,
       GfxOpenClSourceScalarArg::Input2Dim1};
 
   expect_opencl_artifact(concat, GfxKernelStageFamily::ConcatSplit,
-                         "opencl/baseline/concat3_f16_dynamic",
-                         "gfx_opencl_baseline_concat3_f16",
+                         "opencl/generated/concat3_f16_dynamic",
+                         "gfx_opencl_generated_concat3_f16",
                          /*arg_count=*/9,
                          /*direct_input_count=*/3, scalar_args, {0, 1, 2}, {4});
   EXPECT_TRUE(opencl_compiler_supports_node(concat));
@@ -1222,8 +1277,8 @@ TEST(GfxOpenClSourceArtifactsTest, BinaryConcatArtifactsUseStaticAxisMetadata) {
   };
 
   expect_opencl_artifact(concat, GfxKernelStageFamily::ConcatSplit,
-                         "opencl/baseline/concat2_f32",
-                         "gfx_opencl_baseline_concat2_f32",
+                         "opencl/generated/concat2_f32",
+                         "gfx_opencl_generated_concat2_f32",
                          /*arg_count=*/4,
                          /*direct_input_count=*/2, scalar_args, {0, 1}, {});
   auto artifact = resolve_gfx_opencl_source_artifact(concat);
@@ -1238,7 +1293,7 @@ TEST(GfxOpenClSourceArtifactsTest, BinaryConcatArtifactsUseStaticAxisMetadata) {
   EXPECT_NE(artifact->source.find("outer_idx * 4u + src_axis_idx"),
             std::string::npos);
   expect_opencl_source_excludes(
-      concat, {"long", "__global long*", "gfx_opencl_baseline_shapeof_i64"});
+      concat, {"long", "__global long*", "gfx_opencl_generated_shapeof_i64"});
   EXPECT_TRUE(opencl_compiler_supports_node(concat));
 }
 
@@ -1260,8 +1315,8 @@ TEST(GfxOpenClSourceArtifactsTest,
   };
 
   expect_opencl_artifact(concat, GfxKernelStageFamily::ConcatSplit,
-                         "opencl/baseline/concat3_f32",
-                         "gfx_opencl_baseline_concat3_f32",
+                         "opencl/generated/concat3_f32",
+                         "gfx_opencl_generated_concat3_f32",
                          /*arg_count=*/5,
                          /*direct_input_count=*/3, scalar_args, {0, 1, 2}, {});
   auto artifact = resolve_gfx_opencl_source_artifact(concat);
@@ -1276,7 +1331,7 @@ TEST(GfxOpenClSourceArtifactsTest,
   EXPECT_NE(artifact->source.find("outer_idx * 1u + src_axis_idx"),
             std::string::npos);
   expect_opencl_source_excludes(
-      concat, {"long", "__global long*", "gfx_opencl_baseline_shapeof_i64"});
+      concat, {"long", "__global long*", "gfx_opencl_generated_shapeof_i64"});
   EXPECT_TRUE(opencl_compiler_supports_node(concat));
 }
 
@@ -1294,10 +1349,12 @@ TEST(GfxOpenClSourceArtifactsTest,
       GfxOpenClSourceScalarArg::ElementCount};
 
   expect_opencl_artifact(concat, GfxKernelStageFamily::ConcatSplit,
-                         "opencl/baseline/concat30_f32",
-                         "gfx_opencl_baseline_concat30_f32",
+                         "opencl/generated/concat30_f32",
+                         "gfx_opencl_generated_concat30_f32",
                          /*arg_count=*/32,
-                         /*direct_input_count=*/30, scalar_args);
+                         /*direct_input_count=*/30, scalar_args, {}, {},
+                         /*direct_output_count=*/1,
+                         /*input_chunk_size=*/1);
   auto artifact = resolve_gfx_opencl_source_artifact(concat);
   ASSERT_TRUE(artifact.has_value());
   EXPECT_NE(artifact->source.find("__global const float* src29"),
@@ -1309,14 +1366,14 @@ TEST(GfxOpenClSourceArtifactsTest,
       artifact->source.find("chunk_axis_idx >= 29u && chunk_axis_idx < 30u"),
       std::string::npos);
   expect_opencl_source_excludes(concat, {"__global long*",
-                                         "gfx_opencl_baseline_shapeof_i64",
-                                         "gfx_opencl_baseline_concat4_f32",
+                                         "gfx_opencl_generated_shapeof_i64",
+                                         "gfx_opencl_generated_concat4_f32",
                                          "__global const float* src30"});
   EXPECT_TRUE(opencl_compiler_supports_node(concat));
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
-     StaticConcatArtifactsCanBuildFourInputChunksForLargeConcat) {
+     StaticConcatArtifactsPreplanArtifactSizedChunksForLargeConcat) {
   ov::OutputVector inputs;
   std::vector<std::shared_ptr<ov::op::v0::Parameter>> params;
   params.reserve(30);
@@ -1327,52 +1384,63 @@ TEST(GfxOpenClSourceArtifactsTest,
   const auto concat = std::make_shared<ov::op::v0::Concat>(inputs, 1);
   auto base = resolve_gfx_opencl_source_artifact(concat);
   ASSERT_TRUE(base.has_value());
+  ASSERT_EQ(base->input_chunk_size, 1u);
+  ASSERT_EQ(base->planned_chunks.size(), 30u);
+  GfxOpenClSourceArtifactPayload payload(*base);
+  EXPECT_TRUE(payload.valid());
+  auto missing_plan = *base;
+  missing_plan.planned_chunks.clear();
+  EXPECT_FALSE(GfxOpenClSourceArtifactPayload(std::move(missing_plan)).valid());
+  EXPECT_FALSE(make_gfx_opencl_concat_chunk_source_artifact(*base, 0, 4));
 
-  auto chunk0 = make_gfx_opencl_concat_chunk_source_artifact(*base, 0, 4);
-  ASSERT_TRUE(chunk0.has_value());
-  EXPECT_EQ(chunk0->artifact_ref.entry_point,
-            "gfx_opencl_baseline_concat4_f32");
-  EXPECT_EQ(chunk0->arg_count, 6u);
-  EXPECT_EQ(chunk0->direct_input_count, 4u);
-  EXPECT_EQ(chunk0->direct_output_count, 1u);
-  EXPECT_EQ(chunk0->scalar_args, std::vector<GfxOpenClSourceScalarArg>{
+  ASSERT_TRUE(base->planned_chunks[0].artifact);
+  EXPECT_EQ(base->planned_chunks[0].binding_begin, 0u);
+  EXPECT_EQ(base->planned_chunks[0].binding_count, 1u);
+  const auto &chunk0 = *base->planned_chunks[0].artifact;
+  EXPECT_EQ(chunk0.artifact_ref.entry_point,
+            "gfx_opencl_generated_concat1_f32");
+  EXPECT_EQ(chunk0.arg_count, 3u);
+  EXPECT_EQ(chunk0.direct_input_count, 1u);
+  EXPECT_EQ(chunk0.direct_output_count, 1u);
+  EXPECT_EQ(chunk0.scalar_args, std::vector<GfxOpenClSourceScalarArg>{
                                      GfxOpenClSourceScalarArg::ElementCount});
-  EXPECT_EQ(chunk0->direct_input_indices, std::vector<size_t>({0, 1, 2, 3}));
-  EXPECT_TRUE(chunk0->static_u32_scalars.empty());
-  EXPECT_NE(chunk0->source.find("__global const float* src3"),
+  EXPECT_EQ(chunk0.direct_input_indices, std::vector<size_t>({0}));
+  EXPECT_TRUE(chunk0.static_u32_scalars.empty());
+  EXPECT_NE(chunk0.source.find("__global const float* src0"),
             std::string::npos);
-  EXPECT_NE(chunk0->source.find("chunk_axis_idx >= 3u && chunk_axis_idx < 4u"),
+  EXPECT_NE(chunk0.source.find("chunk_axis_idx >= 0u && chunk_axis_idx < 1u"),
             std::string::npos);
-  EXPECT_EQ(chunk0->source.find("__global const float* src4"),
-            std::string::npos);
-
-  auto chunk_tail = make_gfx_opencl_concat_chunk_source_artifact(*base, 28, 2);
-  ASSERT_TRUE(chunk_tail.has_value());
-  EXPECT_EQ(chunk_tail->artifact_ref.entry_point,
-            "gfx_opencl_baseline_concat2_f32");
-  EXPECT_EQ(chunk_tail->arg_count, 4u);
-  EXPECT_EQ(chunk_tail->direct_input_count, 2u);
-  EXPECT_EQ(chunk_tail->direct_input_indices, std::vector<size_t>({28, 29}));
-  EXPECT_NE(
-      chunk_tail->source.find("chunk_axis_idx >= 0u && chunk_axis_idx < 1u"),
-      std::string::npos);
-  EXPECT_NE(
-      chunk_tail->source.find("chunk_axis_idx >= 1u && chunk_axis_idx < 2u"),
-      std::string::npos);
-  EXPECT_EQ(chunk_tail->source.find("__global const float* src2"),
+  EXPECT_EQ(chunk0.source.find("__global const float* src1"),
             std::string::npos);
 
-  auto single_tail = make_gfx_opencl_concat_chunk_source_artifact(*base, 29, 1);
-  ASSERT_TRUE(single_tail.has_value());
-  EXPECT_EQ(single_tail->artifact_ref.entry_point,
-            "gfx_opencl_baseline_concat1_f32");
-  EXPECT_EQ(single_tail->arg_count, 3u);
-  EXPECT_EQ(single_tail->direct_input_count, 1u);
-  EXPECT_EQ(single_tail->direct_input_indices, std::vector<size_t>({29}));
+  ASSERT_TRUE(base->planned_chunks[28].artifact);
+  EXPECT_EQ(base->planned_chunks[28].binding_begin, 28u);
+  EXPECT_EQ(base->planned_chunks[28].binding_count, 1u);
+  const auto &chunk_tail = *base->planned_chunks[28].artifact;
+  EXPECT_EQ(chunk_tail.artifact_ref.entry_point,
+            "gfx_opencl_generated_concat1_f32");
+  EXPECT_EQ(chunk_tail.arg_count, 3u);
+  EXPECT_EQ(chunk_tail.direct_input_count, 1u);
+  EXPECT_EQ(chunk_tail.direct_input_indices, std::vector<size_t>({28}));
   EXPECT_NE(
-      single_tail->source.find("chunk_axis_idx >= 0u && chunk_axis_idx < 1u"),
+      chunk_tail.source.find("chunk_axis_idx >= 0u && chunk_axis_idx < 1u"),
       std::string::npos);
-  EXPECT_EQ(single_tail->source.find("__global const float* src1"),
+  EXPECT_EQ(chunk_tail.source.find("__global const float* src1"),
+            std::string::npos);
+
+  ASSERT_TRUE(base->planned_chunks[29].artifact);
+  EXPECT_EQ(base->planned_chunks[29].binding_begin, 29u);
+  EXPECT_EQ(base->planned_chunks[29].binding_count, 1u);
+  const auto &single_tail = *base->planned_chunks[29].artifact;
+  EXPECT_EQ(single_tail.artifact_ref.entry_point,
+            "gfx_opencl_generated_concat1_f32");
+  EXPECT_EQ(single_tail.arg_count, 3u);
+  EXPECT_EQ(single_tail.direct_input_count, 1u);
+  EXPECT_EQ(single_tail.direct_input_indices, std::vector<size_t>({29}));
+  EXPECT_NE(
+      single_tail.source.find("chunk_axis_idx >= 0u && chunk_axis_idx < 1u"),
+      std::string::npos);
+  EXPECT_EQ(single_tail.source.find("__global const float* src1"),
             std::string::npos);
 }
 
@@ -1389,10 +1457,12 @@ TEST(GfxOpenClSourceArtifactsTest,
       GfxOpenClSourceScalarArg::ElementCount};
 
   expect_opencl_artifact(concat, GfxKernelStageFamily::ConcatSplit,
-                         "opencl/baseline/concat5_f16",
-                         "gfx_opencl_baseline_concat5_f16",
+                         "opencl/generated/concat5_f16",
+                         "gfx_opencl_generated_concat5_f16",
                          /*arg_count=*/7,
-                         /*direct_input_count=*/5, scalar_args);
+                         /*direct_input_count=*/5, scalar_args, {}, {},
+                         /*direct_output_count=*/1,
+                         /*input_chunk_size=*/4);
   auto artifact = resolve_gfx_opencl_source_artifact(concat);
   ASSERT_TRUE(artifact.has_value());
   EXPECT_NE(artifact->source.find("__global const uint* src4"),
@@ -1409,8 +1479,49 @@ TEST(GfxOpenClSourceArtifactsTest,
   EXPECT_EQ(artifact->source.find("chunk_axis_idx1"), std::string::npos);
   expect_opencl_source_excludes(
       concat, {"__global long*", "(long)", "__global half",
-               "gfx_opencl_baseline_concat4_f16", "__global const uint* src5"});
+               "gfx_opencl_generated_concat4_f16", "__global const uint* src5"});
   EXPECT_TRUE(opencl_compiler_supports_node(concat));
+}
+
+TEST(GfxOpenClSourceArtifactsTest,
+     StaticF16ConcatArtifactsPreplanFourInputChunksFromArtifactContract) {
+  const auto src0 = param(ov::element::f16, ov::Shape{1, 1, 2});
+  const auto src1 = param(ov::element::f16, ov::Shape{1, 2, 2});
+  const auto src2 = param(ov::element::f16, ov::Shape{1, 3, 2});
+  const auto src3 = param(ov::element::f16, ov::Shape{1, 4, 2});
+  const auto src4 = param(ov::element::f16, ov::Shape{1, 5, 2});
+  const auto concat = std::make_shared<ov::op::v0::Concat>(
+      ov::OutputVector{src0, src1, src2, src3, src4}, 1);
+  auto base = resolve_gfx_opencl_source_artifact(concat);
+  ASSERT_TRUE(base.has_value());
+  ASSERT_EQ(base->input_chunk_size, 4u);
+  ASSERT_EQ(base->planned_chunks.size(), 2u);
+
+  ASSERT_TRUE(base->planned_chunks[0].artifact);
+  EXPECT_EQ(base->planned_chunks[0].binding_begin, 0u);
+  EXPECT_EQ(base->planned_chunks[0].binding_count, 4u);
+  const auto &chunk0 = *base->planned_chunks[0].artifact;
+  EXPECT_EQ(chunk0.artifact_ref.entry_point,
+            "gfx_opencl_generated_concat4_f16");
+  EXPECT_EQ(chunk0.arg_count, 6u);
+  EXPECT_EQ(chunk0.direct_input_count, 4u);
+  EXPECT_EQ(chunk0.direct_input_indices, std::vector<size_t>({0, 1, 2, 3}));
+  EXPECT_NE(chunk0.source.find("__global const uint* src3"),
+            std::string::npos);
+  EXPECT_EQ(chunk0.source.find("__global const uint* src4"),
+            std::string::npos);
+
+  ASSERT_TRUE(base->planned_chunks[1].artifact);
+  EXPECT_EQ(base->planned_chunks[1].binding_begin, 4u);
+  EXPECT_EQ(base->planned_chunks[1].binding_count, 1u);
+  const auto &chunk_tail = *base->planned_chunks[1].artifact;
+  EXPECT_EQ(chunk_tail.artifact_ref.entry_point,
+            "gfx_opencl_generated_concat1_f16");
+  EXPECT_EQ(chunk_tail.arg_count, 3u);
+  EXPECT_EQ(chunk_tail.direct_input_count, 1u);
+  EXPECT_EQ(chunk_tail.direct_input_indices, std::vector<size_t>({4}));
+  EXPECT_EQ(chunk_tail.source.find("__global const uint* src1"),
+            std::string::npos);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -1421,8 +1532,8 @@ TEST(GfxOpenClSourceArtifactsTest,
   std::vector<GfxOpenClSourceScalarArg> scalar_args = {
       GfxOpenClSourceScalarArg::ElementCount};
   expect_opencl_artifact(split, GfxKernelStageFamily::ConcatSplit,
-                         "opencl/baseline/split3_f32",
-                         "gfx_opencl_baseline_split3_f32",
+                         "opencl/generated/split3_f32",
+                         "gfx_opencl_generated_split3_f32",
                          /*arg_count=*/5,
                          /*direct_input_count=*/1, scalar_args, {0}, {},
                          /*direct_output_count=*/3);
@@ -1435,7 +1546,7 @@ TEST(GfxOpenClSourceArtifactsTest,
   EXPECT_NE(artifact->source.find("const uint inner = 2u;"), std::string::npos);
   EXPECT_NE(artifact->source.find(", 4u, 2u);"), std::string::npos);
   expect_opencl_source_excludes(
-      split, {"long", "__global long*", "gfx_opencl_baseline_shapeof_i64"});
+      split, {"long", "__global long*", "gfx_opencl_generated_shapeof_i64"});
   EXPECT_TRUE(opencl_compiler_supports_node(split));
 }
 
@@ -1447,8 +1558,8 @@ TEST(GfxOpenClSourceArtifactsTest,
   std::vector<GfxOpenClSourceScalarArg> scalar_args = {
       GfxOpenClSourceScalarArg::ElementCount};
   expect_opencl_artifact(split, GfxKernelStageFamily::ConcatSplit,
-                         "opencl/baseline/split3_f16",
-                         "gfx_opencl_baseline_split3_f16",
+                         "opencl/generated/split3_f16",
+                         "gfx_opencl_generated_split3_f16",
                          /*arg_count=*/5,
                          /*direct_input_count=*/1, scalar_args, {0}, {},
                          /*direct_output_count=*/3);
@@ -1473,8 +1584,8 @@ TEST(GfxOpenClSourceArtifactsTest,
   std::vector<GfxOpenClSourceScalarArg> scalar_args = {
       GfxOpenClSourceScalarArg::ElementCount};
   expect_opencl_artifact(split, GfxKernelStageFamily::ConcatSplit,
-                         "opencl/baseline/split3_f32",
-                         "gfx_opencl_baseline_split3_f32",
+                         "opencl/generated/split3_f32",
+                         "gfx_opencl_generated_split3_f32",
                          /*arg_count=*/5,
                          /*direct_input_count=*/1, scalar_args, {0}, {},
                          /*direct_output_count=*/3);
@@ -1487,7 +1598,7 @@ TEST(GfxOpenClSourceArtifactsTest,
   EXPECT_NE(artifact->source.find("const uint inner = 2u;"), std::string::npos);
   EXPECT_NE(artifact->source.find(", 5u, 2u);"), std::string::npos);
   expect_opencl_source_excludes(
-      split, {"long", "__global long*", "gfx_opencl_baseline_shapeof_i64"});
+      split, {"long", "__global long*", "gfx_opencl_generated_shapeof_i64"});
   EXPECT_TRUE(opencl_compiler_supports_node(split));
 }
 
@@ -1499,8 +1610,8 @@ TEST(GfxOpenClSourceArtifactsTest,
   std::vector<GfxOpenClSourceScalarArg> scalar_args = {
       GfxOpenClSourceScalarArg::ElementCount};
   expect_opencl_artifact(split, GfxKernelStageFamily::ConcatSplit,
-                         "opencl/baseline/split3_f16",
-                         "gfx_opencl_baseline_split3_f16",
+                         "opencl/generated/split3_f16",
+                         "gfx_opencl_generated_split3_f16",
                          /*arg_count=*/5,
                          /*direct_input_count=*/1, scalar_args, {0}, {},
                          /*direct_output_count=*/3);
@@ -1526,11 +1637,13 @@ TEST(GfxOpenClSourceArtifactsTest,
       GfxOpenClSourceScalarArg::ElementCount};
 
   expect_opencl_artifact(split, GfxKernelStageFamily::ConcatSplit,
-                         "opencl/baseline/split30_f32",
-                         "gfx_opencl_baseline_split30_f32",
+                         "opencl/generated/split30_f32",
+                         "gfx_opencl_generated_split30_f32",
                          /*arg_count=*/32,
                          /*direct_input_count=*/1, scalar_args, {0}, {},
-                         /*direct_output_count=*/30);
+                         /*direct_output_count=*/30,
+                         /*input_chunk_size=*/0,
+                         /*output_chunk_size=*/4);
   auto artifact = resolve_gfx_opencl_source_artifact(split);
   ASSERT_TRUE(artifact.has_value());
   EXPECT_EQ(artifact->element_count_source,
@@ -1542,40 +1655,65 @@ TEST(GfxOpenClSourceArtifactsTest,
             std::string::npos);
   EXPECT_NE(artifact->source.find(", 29u, 1u);"), std::string::npos);
   expect_opencl_source_excludes(
-      split, {"__global long*", "gfx_opencl_baseline_shapeof_i64",
-              "gfx_opencl_baseline_split4_f32", "__global float* dst30"});
+      split, {"__global long*", "gfx_opencl_generated_shapeof_i64",
+              "gfx_opencl_generated_split4_f32", "__global float* dst30"});
   EXPECT_TRUE(opencl_compiler_supports_node(split));
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
-     EqualSplitArtifactsCanBuildFourOutputChunksForLargeSplit) {
+     EqualSplitArtifactsPreplanFourOutputChunksForLargeSplit) {
   const auto data = param(ov::element::f32, ov::Shape{30, 30, 30, 30});
   const auto split = std::make_shared<ov::op::v1::Split>(
       data, i64_const(ov::Shape{}, {0}), 30);
   auto base = resolve_gfx_opencl_source_artifact(split);
   ASSERT_TRUE(base.has_value());
+  ASSERT_EQ(base->output_chunk_size, 4u);
+  ASSERT_EQ(base->planned_chunks.size(), 8u);
 
-  auto chunk0 = make_gfx_opencl_split_chunk_source_artifact(*base, 0, 4);
-  ASSERT_TRUE(chunk0.has_value());
-  EXPECT_EQ(chunk0->artifact_ref.entry_point, "gfx_opencl_baseline_split4_f32");
-  EXPECT_EQ(chunk0->arg_count, 6u);
-  EXPECT_EQ(chunk0->direct_output_count, 4u);
-  EXPECT_EQ(chunk0->scalar_args, std::vector<GfxOpenClSourceScalarArg>{
+  ASSERT_TRUE(base->planned_chunks[0].artifact);
+  EXPECT_EQ(base->planned_chunks[0].binding_begin, 0u);
+  EXPECT_EQ(base->planned_chunks[0].binding_count, 4u);
+  const auto &chunk0 = *base->planned_chunks[0].artifact;
+  EXPECT_EQ(chunk0.artifact_ref.entry_point, "gfx_opencl_generated_split4_f32");
+  EXPECT_EQ(chunk0.arg_count, 6u);
+  EXPECT_EQ(chunk0.direct_output_count, 4u);
+  EXPECT_EQ(chunk0.scalar_args, std::vector<GfxOpenClSourceScalarArg>{
                                      GfxOpenClSourceScalarArg::ElementCount});
-  EXPECT_TRUE(chunk0->static_u32_scalars.empty());
-  EXPECT_NE(chunk0->source.find("__global float* dst3"), std::string::npos);
-  EXPECT_NE(chunk0->source.find(", 3u, 1u);"), std::string::npos);
-  EXPECT_EQ(chunk0->source.find("__global float* dst4"), std::string::npos);
+  EXPECT_TRUE(chunk0.static_u32_scalars.empty());
+  EXPECT_NE(chunk0.source.find("__global float* dst3"), std::string::npos);
+  EXPECT_NE(chunk0.source.find(", 3u, 1u);"), std::string::npos);
+  EXPECT_EQ(chunk0.source.find("__global float* dst4"), std::string::npos);
 
-  auto chunk_tail = make_gfx_opencl_split_chunk_source_artifact(*base, 28, 2);
-  ASSERT_TRUE(chunk_tail.has_value());
-  EXPECT_EQ(chunk_tail->artifact_ref.entry_point,
-            "gfx_opencl_baseline_split2_f32");
-  EXPECT_EQ(chunk_tail->arg_count, 4u);
-  EXPECT_EQ(chunk_tail->direct_output_count, 2u);
-  EXPECT_NE(chunk_tail->source.find(", 28u, 1u);"), std::string::npos);
-  EXPECT_NE(chunk_tail->source.find(", 29u, 1u);"), std::string::npos);
-  EXPECT_EQ(chunk_tail->source.find("__global float* dst2"), std::string::npos);
+  ASSERT_TRUE(base->planned_chunks[7].artifact);
+  EXPECT_EQ(base->planned_chunks[7].binding_begin, 28u);
+  EXPECT_EQ(base->planned_chunks[7].binding_count, 2u);
+  const auto &chunk_tail = *base->planned_chunks[7].artifact;
+  EXPECT_EQ(chunk_tail.artifact_ref.entry_point,
+            "gfx_opencl_generated_split2_f32");
+  EXPECT_EQ(chunk_tail.arg_count, 4u);
+  EXPECT_EQ(chunk_tail.direct_output_count, 2u);
+  EXPECT_NE(chunk_tail.source.find(", 28u, 1u);"), std::string::npos);
+  EXPECT_NE(chunk_tail.source.find(", 29u, 1u);"), std::string::npos);
+  EXPECT_EQ(chunk_tail.source.find("__global float* dst2"), std::string::npos);
+}
+
+TEST(GfxOpenClSourceArtifactsTest,
+     SplitChunkBuilderRejectsRequestsOutsideArtifactContract) {
+  const auto data = param(ov::element::f32, ov::Shape{30, 30, 30, 30});
+  const auto split = std::make_shared<ov::op::v1::Split>(
+      data, i64_const(ov::Shape{}, {0}), 30);
+  auto base = resolve_gfx_opencl_source_artifact(split);
+  ASSERT_TRUE(base.has_value());
+  auto two_output_contract = *base;
+  two_output_contract.output_chunk_size = 2;
+
+  EXPECT_FALSE(
+      make_gfx_opencl_split_chunk_source_artifact(two_output_contract, 0, 3));
+  auto chunk0 =
+      make_gfx_opencl_split_chunk_source_artifact(two_output_contract, 0, 2);
+  ASSERT_TRUE(chunk0.has_value());
+  EXPECT_EQ(chunk0->artifact_ref.entry_point, "gfx_opencl_generated_split2_f32");
+  EXPECT_EQ(chunk0->direct_output_count, 2u);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -1588,11 +1726,13 @@ TEST(GfxOpenClSourceArtifactsTest,
       GfxOpenClSourceScalarArg::ElementCount};
 
   expect_opencl_artifact(split, GfxKernelStageFamily::ConcatSplit,
-                         "opencl/baseline/split5_f16",
-                         "gfx_opencl_baseline_split5_f16",
+                         "opencl/generated/split5_f16",
+                         "gfx_opencl_generated_split5_f16",
                          /*arg_count=*/7,
                          /*direct_input_count=*/1, scalar_args, {0}, {},
-                         /*direct_output_count=*/5);
+                         /*direct_output_count=*/5,
+                         /*input_chunk_size=*/0,
+                         /*output_chunk_size=*/4);
   auto artifact = resolve_gfx_opencl_source_artifact(split);
   ASSERT_TRUE(artifact.has_value());
   EXPECT_EQ(artifact->element_count_source,
@@ -1604,7 +1744,7 @@ TEST(GfxOpenClSourceArtifactsTest,
   EXPECT_NE(artifact->source.find(", 10u, 5u);"), std::string::npos);
   expect_opencl_source_excludes(
       split, {"__global long*", "(long)", "__global half",
-              "gfx_opencl_baseline_split4_f16", "__global uint* dst5"});
+              "gfx_opencl_generated_split4_f16", "__global uint* dst5"});
   EXPECT_TRUE(opencl_compiler_supports_node(split));
 }
 

@@ -4,17 +4,31 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <string_view>
 
 #include "plugin/gfx_profiling_utils.hpp"
 #include "runtime/gfx_compile_profiling.hpp"
 #include "runtime/gfx_profiling_report.hpp"
+#include "runtime/gfx_profiling_trace_sink.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 namespace {
+
+std::atomic<int>& unit_trace_sink_emit_count() {
+    static std::atomic<int> count{0};
+    return count;
+}
+
+void unit_trace_sink(std::string_view backend, const GfxProfilingSegmentEntry& segment) {
+    if (backend == "opencl" && segment.phase == "submit" && segment.name == "window#unit") {
+        unit_trace_sink_emit_count().fetch_add(1);
+    }
+}
 
 TEST(GfxProfilingReportTest, TraceAggregatesCountersSegmentsAndTransfers) {
     GfxProfilingTrace trace;
@@ -96,6 +110,30 @@ TEST(GfxProfilingReportTest, TraceAggregatesCountersSegmentsAndTransfers) {
     EXPECT_NE(json.find("\"category\":\"roofline\""), std::string::npos);
     EXPECT_NE(json.find("\"input_h2d\""), std::string::npos);
     EXPECT_NE(json.find("\"window#0\""), std::string::npos);
+}
+
+TEST(GfxProfilingReportTest, BackendRegisteredTraceSinkIsSelectedWithoutPlatformDefines) {
+    const char* old_value = std::getenv("OV_GFX_PROFILE_TRACE");
+    const std::string saved = old_value ? old_value : "";
+    unit_trace_sink_emit_count().store(0);
+    register_gfx_profiling_trace_sink("unit_trace_sink", unit_trace_sink);
+    setenv("OV_GFX_PROFILE_TRACE", "unit_trace_sink", 1);
+
+    GfxProfilingTrace trace;
+    trace.reset(ProfilingLevel::Detailed);
+    trace.set_backend("opencl");
+    trace.add_segment("submit", "window#unit", 1);
+    const auto json = trace.to_json();
+
+    if (old_value) {
+        setenv("OV_GFX_PROFILE_TRACE", saved.c_str(), 1);
+    } else {
+        unsetenv("OV_GFX_PROFILE_TRACE");
+    }
+
+    EXPECT_EQ(unit_trace_sink_emit_count().load(), 1);
+    EXPECT_NE(json.find("\"trace_sink\":\"unit_trace_sink\""), std::string::npos);
+    EXPECT_EQ(json.find("\"traceEvents\""), std::string::npos);
 }
 
 TEST(GfxProfilingReportTest, RootJsonCanEmbedCompileAndExtendedReports) {

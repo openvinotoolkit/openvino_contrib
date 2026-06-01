@@ -399,6 +399,8 @@ if(ENABLE_GFX_MLIR)
     set(GFX_LLVM_EXTERNAL_TARGET gfx_llvm_external CACHE INTERNAL "External llvm-project target for GFX plugin")
 endif()
 
+include(cmake/GfxRaspberryOpenCLToolchain.cmake)
+
 ov_option(ENABLE_GFX_REGISTRATION "Enables registration of GFX plugin" ON)
 
 if(CMAKE_COMPILER_IS_GNUCXX)

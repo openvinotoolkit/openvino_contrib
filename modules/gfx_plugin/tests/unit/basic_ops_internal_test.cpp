@@ -93,6 +93,13 @@ dispatch_spec_from_stage(const ov::gfx_plugin::GfxMpsrtStageDesc &stage) {
       stage.stage_manifest.custom_kernel);
 }
 
+ov::gfx_plugin::transforms::PipelineOptions
+ranking_pipeline_options() {
+  ov::gfx_plugin::transforms::PipelineOptions options;
+  options.canonicalize_sigmoid_before_ranking = true;
+  return options;
+}
+
 } // namespace
 
 TEST(GfxTransforms, MlirFusionConvReluPlan) {
@@ -6143,8 +6150,7 @@ TEST(GfxTransforms, CommonOptimizationsConstantFolding) {
   auto model = std::make_shared<ov::Model>(ov::ResultVector{res},
                                            ov::ParameterVector{}, "const_fold");
 
-  auto transformed = ov::gfx_plugin::transforms::run_pipeline(
-      model, ov::gfx_plugin::GpuBackend::Metal);
+  auto transformed = ov::gfx_plugin::transforms::run_pipeline(model);
 
   // Expect only Result + Constant to remain after folding (Add and Relu folded
   // away).
@@ -6178,8 +6184,7 @@ TEST(GfxTransforms, PrecisionPolicyPreservesDeclaredF32ElementTypesByDefault) {
                                            ov::ParameterVector{input},
                                            "precision_policy_plain_f32");
 
-  auto transformed = ov::gfx_plugin::transforms::run_pipeline(
-      model, ov::gfx_plugin::GpuBackend::Metal);
+  auto transformed = ov::gfx_plugin::transforms::run_pipeline(model);
 
   bool saw_add = false;
   bool saw_relu = false;
@@ -6209,8 +6214,7 @@ TEST(GfxTransforms, PrecisionPolicyMarksExpReducePathForFp32) {
                                            ov::ParameterVector{input},
                                            "precision_policy_exp_reduce");
 
-  auto transformed = ov::gfx_plugin::transforms::run_pipeline(
-      model, ov::gfx_plugin::GpuBackend::Metal);
+  auto transformed = ov::gfx_plugin::transforms::run_pipeline(model);
 
   bool saw_marked_exp = false;
   bool saw_marked_reduce = false;
@@ -6240,8 +6244,7 @@ TEST(GfxTransforms, PrecisionPolicyMarksLargeTopKIslandForFp32) {
                                            ov::ParameterVector{input},
                                            "precision_policy_large_topk");
 
-  auto transformed = ov::gfx_plugin::transforms::run_pipeline(
-      model, ov::gfx_plugin::GpuBackend::Metal);
+  auto transformed = ov::gfx_plugin::transforms::run_pipeline(model);
 
   bool saw_marked_topk = false;
   bool saw_marked_parameter = false;
@@ -6282,7 +6285,7 @@ TEST(
       "ranking_canonicalization_sigmoid_topk");
 
   auto transformed = ov::gfx_plugin::transforms::run_pipeline(
-      model, ov::gfx_plugin::GpuBackend::Metal);
+      model, ranking_pipeline_options());
 
   bool saw_topk = false;
   bool saw_values_sigmoid_after_topk = false;
@@ -6333,7 +6336,7 @@ TEST(GfxTransforms,
       "ranking_canonicalization_observable_values_indices");
 
   auto transformed = ov::gfx_plugin::transforms::run_pipeline(
-      model, ov::gfx_plugin::GpuBackend::Metal);
+      model, ranking_pipeline_options());
 
   bool saw_restored_sigmoid_after_topk = false;
   bool saw_topk_on_sigmoid_domain = false;
@@ -6395,7 +6398,7 @@ TEST(GfxTransforms,
       "ranking_canonicalization_indices_only");
 
   auto transformed = ov::gfx_plugin::transforms::run_pipeline(
-      model, ov::gfx_plugin::GpuBackend::Metal);
+      model, ranking_pipeline_options());
 
   bool saw_topk = false;
   bool saw_topk_on_sigmoid_domain = false;
@@ -6463,7 +6466,7 @@ TEST(GfxTransforms,
       "ranking_canonicalization_yolo_score_path");
 
   auto transformed = ov::gfx_plugin::transforms::run_pipeline(
-      model, ov::gfx_plugin::GpuBackend::Metal);
+      model, ranking_pipeline_options());
 
   bool saw_topk = false;
   bool saw_values_sigmoid_after_topk = false;
@@ -6515,8 +6518,7 @@ TEST(GfxTransforms,
                                            ov::ParameterVector{input},
                                            "precision_policy_conv_bias_topk");
 
-  auto transformed = ov::gfx_plugin::transforms::run_pipeline(
-      model, ov::gfx_plugin::GpuBackend::Metal);
+  auto transformed = ov::gfx_plugin::transforms::run_pipeline(model);
 
   bool saw_marked_add = false;
   bool saw_marked_topk = false;
@@ -6579,8 +6581,7 @@ TEST(GfxTransforms,
                                            ov::ParameterVector{input},
                                            "precision_policy_score_head_topk");
 
-  auto transformed = ov::gfx_plugin::transforms::run_pipeline(
-      model, ov::gfx_plugin::GpuBackend::Metal);
+  auto transformed = ov::gfx_plugin::transforms::run_pipeline(model);
 
   bool saw_marked_add0 = false;
   bool saw_marked_swish0 = false;
@@ -6649,8 +6650,7 @@ TEST(GfxTransforms,
       ov::ResultVector{tap_result, values, indices}, ov::ParameterVector{input},
       "precision_policy_shared_boundary_topk");
 
-  auto transformed = ov::gfx_plugin::transforms::run_pipeline(
-      model, ov::gfx_plugin::GpuBackend::Metal);
+  auto transformed = ov::gfx_plugin::transforms::run_pipeline(model);
 
   bool saw_shared_conv = false;
   bool saw_marked_score_conv = false;
@@ -6716,8 +6716,7 @@ TEST(GfxTransforms,
       ov::ParameterVector{input, gather_data},
       "precision_policy_index_amplified_topk");
 
-  auto transformed = ov::gfx_plugin::transforms::run_pipeline(
-      model, ov::gfx_plugin::GpuBackend::Metal);
+  auto transformed = ov::gfx_plugin::transforms::run_pipeline(model);
 
   bool saw_marked_input = false;
   bool saw_marked_shared_conv = false;

@@ -37,7 +37,7 @@ protected:
 };
 
 TEST_P(GfxEltwiseLayerTest, CompareWithTemplate) {
-    run_compare();  // No fallback/skip: GFX is sole target
+    run_compare();  // No fallback path: GFX is the sole target under test.
 }
 
 namespace {

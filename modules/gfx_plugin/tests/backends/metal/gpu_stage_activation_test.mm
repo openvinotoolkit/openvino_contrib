@@ -16,6 +16,7 @@
 #include "backends/metal/runtime/metal_memory.hpp"
 #include "backends/metal/runtime/stage_factory.hpp"
 #include "runtime/execution_dispatcher.hpp"
+#include "runtime/executable_descriptor.hpp"
 
 using namespace ov::gfx_plugin;
 
@@ -25,6 +26,26 @@ struct ActivationCase {
     std::vector<float> in;
     std::vector<float> expected;
 };
+
+RuntimeStageExecutableDescriptor make_metal_test_descriptor(
+    const std::shared_ptr<const ov::Node>& node) {
+    RuntimeStageExecutableDescriptor descriptor;
+    descriptor.stage_index = 0;
+    descriptor.stage_record_key = 1;
+    descriptor.artifact_descriptor_index = 0;
+    descriptor.manifest_ref = "test_manifest";
+    descriptor.abi_fingerprint = "test_abi";
+    descriptor.artifact_key = "test_artifact";
+    descriptor.backend_domain = "metal";
+    descriptor.kernel_id =
+        std::string("metal/generated/") + (node ? node->get_type_name() : "null");
+    descriptor.op_family = node ? node->get_type_name() : "null";
+    descriptor.origin = compiler::KernelArtifactOrigin::Generated;
+    descriptor.payload_kind = compiler::KernelArtifactPayloadKind::None;
+    descriptor.entry_point = descriptor.kernel_id;
+    descriptor.dispatch_contract = "manifest";
+    return descriptor;
+}
 
 template <typename OpFactory>
 void run_activation(const ActivationCase& tc) {
@@ -67,7 +88,8 @@ void run_activation(const ActivationCase& tc) {
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{tc.in.size()});
     auto node = OpFactory::make_node(param);
-    auto stage = GpuStageFactory::create(node, GpuBackend::Metal, device, queue);
+    const auto descriptor = make_metal_test_descriptor(node);
+    auto stage = GpuStageFactory::create(node, &descriptor, GpuBackend::Metal, device, queue);
     ASSERT_NE(stage, nullptr);
     stage->set_inputs({&input});
     stage->set_output(&output);

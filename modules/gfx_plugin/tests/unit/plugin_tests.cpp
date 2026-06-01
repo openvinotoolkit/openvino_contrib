@@ -5,12 +5,12 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
-#include <cstdlib>
 #include <cctype>
 #include <cstdint>
 #include <string>
 #include <vector>
 
+#include "../gfx_plugin_runtime_path.hpp"
 #include "openvino/core/type/float16.hpp"
 #include "openvino/openvino.hpp"
 #include "plugin/gfx_backend_config.hpp"
@@ -45,20 +45,10 @@
 namespace {
 
 void register_gfx_plugin(ov::Core& core) {
-#ifdef GFX_PLUGIN_PATH
-    try {
-        const char* env_path = std::getenv("GFX_PLUGIN_PATH");
-        const char* path = (env_path && *env_path) ? env_path : GFX_PLUGIN_PATH;
-        core.register_plugin(path, "GFX");
-    } catch (const std::exception& e) {
-        const std::string msg = e.what();
-        if (msg.find("already registered") == std::string::npos) {
-            FAIL() << "GFX plugin unavailable: " << e.what();
-        }
+    std::string error;
+    if (!ov::test::utils::register_gfx_plugin_runtime_path(core, &error)) {
+        FAIL() << error;
     }
-#else
-    (void)core;
-#endif
 }
 
 ov::Tensor make_f16_tensor(const ov::Shape& shape, const std::vector<float>& values) {
@@ -216,7 +206,7 @@ TEST(GfxPrecisionProperty, PluginAndCompiledModelHonorExplicitPrecision) {
     register_gfx_plugin(core);
 
     if (!ov::gfx_plugin::kGfxBackendMetalAvailable && !ov::gfx_plugin::kGfxBackendOpenCLAvailable) {
-        GTEST_SKIP() << "GFX backend unavailable";
+        FAIL() << "GFX backend unavailable";
     }
 
     core.set_property("GFX", {{ov::hint::inference_precision.name(), ov::element::f32}});

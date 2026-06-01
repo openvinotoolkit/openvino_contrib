@@ -13,11 +13,9 @@ namespace ov {
 namespace gfx_plugin {
 
 std::unique_ptr<GpuStage> create_opencl_stage(const std::shared_ptr<const ov::Node>& node,
+                                              const RuntimeStageExecutableDescriptor* descriptor,
                                               void* device,
                                               void* queue);
-std::unique_ptr<GpuStage> create_opencl_stage(
-    const std::shared_ptr<const ov::Node>& node,
-    const RuntimeStageExecutableDescriptor* descriptor);
 void ensure_opencl_stage_factory_registered();
 
 }  // namespace gfx_plugin

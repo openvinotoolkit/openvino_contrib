@@ -10,6 +10,7 @@
 #include "backends/metal/compiler/metal_operation_support.hpp"
 #include "backends/opencl/compiler/opencl_operation_support.hpp"
 #include "runtime/gfx_backend_utils.hpp"
+#include "transforms/pipeline.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -21,6 +22,7 @@ public:
     StaticBackendModule(BackendTarget target,
                         std::shared_ptr<const OperationSupportPolicy> operation_policy,
                         KernelRegistry kernel_registry,
+                        transforms::PipelineOptions pipeline_options = {},
                         KernelArtifactPayloadResolver artifact_payload_resolver = {})
         : m_id(target.backend_id()),
           m_target(std::move(target)),
@@ -28,6 +30,7 @@ public:
           m_legalizer(m_capabilities),
           m_kernel_registry(std::move(kernel_registry)),
           m_lowering_planner(m_target, m_kernel_registry),
+          m_pipeline_options(pipeline_options),
           m_artifact_payload_resolver(std::move(artifact_payload_resolver)) {}
 
     const std::string& id() const noexcept override {
@@ -54,6 +57,10 @@ public:
         return m_lowering_planner;
     }
 
+    const transforms::PipelineOptions& pipeline_options() const noexcept override {
+        return m_pipeline_options;
+    }
+
     std::shared_ptr<const KernelArtifactPayload> materialize_artifact_payload(
         KernelArtifactDescriptor& descriptor,
         const PlannedOperation& op) const override {
@@ -70,8 +77,17 @@ private:
     OperationLegalizer m_legalizer;
     KernelRegistry m_kernel_registry;
     LoweringPlanner m_lowering_planner;
+    transforms::PipelineOptions m_pipeline_options;
     KernelArtifactPayloadResolver m_artifact_payload_resolver;
 };
+
+transforms::PipelineOptions make_attention_pipeline_options() {
+    transforms::PipelineOptions options;
+    options.preserve_scaled_dot_product_attention = true;
+    options.canonicalize_sigmoid_before_ranking = true;
+    options.enable_llm_attention_fusions = true;
+    return options;
+}
 
 std::vector<std::shared_ptr<const BackendModule>> make_default_modules() {
     std::vector<std::shared_ptr<const BackendModule>> modules;
@@ -81,6 +97,7 @@ std::vector<std::shared_ptr<const BackendModule>> make_default_modules() {
             target,
             make_metal_operation_support_policy(),
             make_metal_kernel_registry(target),
+            make_attention_pipeline_options(),
             make_metal_kernel_artifact_payload_resolver()));
     }
     if (backend_supported(GpuBackend::OpenCL)) {

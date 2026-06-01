@@ -9,10 +9,14 @@ This guide is for contributors working inside `modules/gfx_plugin`.
 - OpenVINO Developer Package
 - Metal SDK/frameworks on macOS for the Metal backend
 - OpenCL runtime on non-Apple targets for the OpenCL source-kernel backend
+- Optional `third_party/clvk` and `third_party/clspv` submodules when building
+  the Raspberry/Linux OpenCL bundle
 
 The module vendors LLVM/MLIR in `third_party/llvm-project` and builds the
-required MLIR components as part of the CMake flow. Do not modify vendored LLVM
-unless a task explicitly requires it.
+required MLIR components as part of the CMake flow. The CLVK and CLSPV
+directories are submodules used only by the optional Raspberry/OpenCL bundle.
+Do not modify vendored LLVM or third-party submodule contents unless a task
+explicitly requires it.
 
 ## Configure And Build
 
@@ -38,6 +42,11 @@ Useful CMake options:
 
 - `GFX_ENABLE_METAL`
 - `GFX_ENABLE_OPENCL`
+- `GFX_ENABLE_RASPBERRY_OPENCL_TOOLCHAIN`
+- `GFX_RASPBERRY_CLVK_SOURCE_DIR`
+- `GFX_RASPBERRY_CLSPV_SOURCE_DIR`
+- `GFX_RASPBERRY_OPENCL_BUILD_DIR`
+- `GFX_RASPBERRY_OPENCL_BUNDLE_DIR`
 - `GFX_DEFAULT_BACKEND=auto|metal|opencl`
 - `ENABLE_TESTS`
 
@@ -60,6 +69,16 @@ Build-system notes:
   backend availability booleans and the resolved default backend.
 - The OpenCL backend dynamically loads the target OpenCL runtime; it does not
   require a compile-time OpenCL SDK link.
+- `cmake/GfxRaspberryOpenCLToolchain.cmake` can build and stage a plugin-local
+  CLVK/CLSPV OpenCL bundle on Linux ARM targets when OpenCL support is
+  available. It expects initialized `third_party/clvk`, `third_party/clspv`,
+  and CLVK dependency submodules, plus host LLVM tools from the target
+  toolchain layout.
+- `cmake/InstallRaspberryOpenCLBundle.cmake` stages `libOpenCL.so.0.1`,
+  `clspv`, optional `llvm-spirv`, and local `libOpenCL.so*` symlinks into
+  `GFX_RASPBERRY_OPENCL_BUNDLE_DIR`.
+- `cmake/WriteGfxTestPluginsXml.cmake` writes the controlled test
+  `plugins.xml` used by GFX test binaries.
 - Android and generic cross builds forward toolchain settings into the vendored
   LLVM/MLIR configure step.
 - The build treats warnings as errors through `-Werror` on Clang/GCC and `/WX`
@@ -91,6 +110,7 @@ For runtime planning, also inspect:
 - `src/runtime/executable_descriptor.*`
 - `src/runtime/view_only_stage.*`
 - `src/runtime/gfx_target_profile.*`
+- `src/runtime/gfx_profiling_trace_sink.*`
 - `src/kernel_ir/gfx_kernel_manifest.hpp`
 - `src/kernel_ir/gfx_custom_kernel_families.*`
 - `src/kernel_ir/gfx_kernel_source.*`
@@ -156,6 +176,9 @@ For OpenCL source execution, start with:
    - OpenCL source artifact for source-kernel execution
    - MPSRT/Apple MSL source plan for Metal execution
 5. Add backend code only where the shared contract crosses into Metal or OpenCL.
+   Backend stage creation now requires the matching runtime executable
+   descriptor for executable routes; do not reconstruct kernel or vendor
+   payloads from the OpenVINO node in request-time code.
 6. Add focused unit tests first.
 7. Add backend or functional tests when behavior is externally visible.
 8. Update docs when public properties, supported shapes, route selection,
@@ -172,10 +195,12 @@ Common operation families that need extra care:
 - OpenCL source artifacts with scalar ABI, static u32/f32 scalars, constants,
   chunking, and boolean output padding
 - OpenCL generated kernel units such as activation, elementwise, f32 MatMul,
-  bounded f32/f16 Interpolate, f32 reduction, f32/f16 Softmax,
-  dynamic-static-rank f32/f16 Softmax, and f32/f16 Pool2D
+  bounded f32/f16 Interpolate, f32 reduction, boolean reduction, f32/f16
+  Softmax, dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D, ShapeOf, Tile,
+  compare/select, logical-bool elementwise, and generated Concat/Split
 - OpenCL reduction routes, where numeric f32 reductions and logical boolean
-  reductions use separate source ids but the same static axis metadata contract
+  reductions use separate generated source ids but the same static axis
+  metadata contract
 - generated activation `Swish` routes, where default/static beta and runtime
   scalar beta must keep the MLIR, Metal MSL, and OpenCL artifact contracts
   aligned
@@ -233,6 +258,10 @@ Do not duplicate shared ABI, route, or shape rules in backend request code.
 artifact executor. Add metadata to artifacts rather than adding op-specific
 branches to the executor.
 
+The current handwritten OpenCL source exception is `opencl/baseline/transpose_f32`.
+Do not introduce a new baseline exception unless the generated-source contract
+cannot express the route and the exception is documented, tested, and reviewed.
+
 Generated or embedded source payloads should flow through compiler artifact
 descriptors and runtime kernel loaders. Do not pass ad-hoc source strings
 through plugin or infer-request properties.
@@ -263,8 +292,8 @@ elementwise OpenCL changes, update `tests/unit/gfx_eltwise_contract_cases.hpp`,
 For reduction source-unit changes, update
 `tests/unit/gfx_reduction_kernel_contract_test.cpp` and the shared
 `tests/unit/gfx_opencl_source_artifact_verifier.hpp` helper. Keep numeric f32
-and logical boolean reduction source ids, entry points, static u32 metadata,
-kernel registry entries, and Metal/OpenCL artifact payloads aligned.
+and logical boolean generated reduction source ids, entry points, static u32
+metadata, kernel registry entries, and Metal/OpenCL artifact payloads aligned.
 
 For Softmax source-unit changes, update
 `tests/unit/gfx_softmax_kernel_contract_test.cpp` and the shared
@@ -382,6 +411,8 @@ Do not use `git add .`. Stage only reviewed files.
 ## Files To Avoid Without Explicit Reason
 
 - `third_party/llvm-project/`
+- `third_party/clvk/` and `third_party/clspv/` contents; stage them as
+  submodule gitlinks only when the submodule pointers intentionally change
 - local ignored artifacts
 - root-level technical notes outside this module
 - backend source files unrelated to the requested behavior

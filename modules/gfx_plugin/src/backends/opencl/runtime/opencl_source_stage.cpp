@@ -21,12 +21,9 @@
 #include "mlir/gfx_stage_runtime_values.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
-#include "openvino/op/concat.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/slice.hpp"
-#include "openvino/op/split.hpp"
 #include "openvino/op/strided_slice.hpp"
-#include "openvino/op/variadic_split.hpp"
 #include "runtime/gfx_shape_utils.hpp"
 #include "runtime/gpu_backend_base.hpp"
 #include "runtime/gfx_logger.hpp"
@@ -169,8 +166,12 @@ public:
         if (m_kernel) {
             return;
         }
-        if (should_execute_chunked_static_concat() ||
-            should_execute_chunked_static_split()) {
+        if (should_execute_chunked_static_concat()) {
+            prepare_planned_chunk_kernels(m_concat_chunk_kernels);
+            return;
+        }
+        if (should_execute_chunked_static_split()) {
+            prepare_planned_chunk_kernels(m_split_chunk_kernels);
             return;
         }
         m_kernel = m_program_cache->get_or_create(m_artifact.artifact_ref.source_id,
@@ -416,15 +417,36 @@ public:
 
 private:
     bool should_execute_chunked_static_concat() const {
-        if (!m_node ||
+        if (m_artifact.input_chunk_size == 0 ||
+            m_artifact.stage_manifest.stage_family != GfxKernelStageFamily::ConcatSplit ||
             m_artifact.direct_input_count <= 4 ||
             m_artifact.direct_output_count != 1 ||
             m_artifact.direct_input_indices.size() != m_artifact.direct_input_count ||
             m_artifact.source_static_u32_scalars.size() !=
-                2 + static_cast<size_t>(m_artifact.direct_input_count) * 2) {
+                2 + static_cast<size_t>(m_artifact.direct_input_count) * 2 ||
+            m_artifact.planned_chunks.empty()) {
             return false;
         }
-        return ov::as_type_ptr<const ov::op::v0::Concat>(m_node) != nullptr;
+        uint32_t next_input_begin = 0;
+        for (const auto& chunk : m_artifact.planned_chunks) {
+            if (chunk.binding_begin != next_input_begin ||
+                chunk.binding_count == 0 ||
+                chunk.binding_count > m_artifact.input_chunk_size ||
+                !chunk.artifact ||
+                !chunk.artifact->valid ||
+                chunk.artifact->direct_input_count != chunk.binding_count ||
+                chunk.artifact->direct_output_count != 1 ||
+                chunk.artifact->direct_input_indices.size() != chunk.binding_count ||
+                chunk.artifact->source_static_u32_scalars.size() !=
+                    2 + static_cast<size_t>(chunk.binding_count) * 2) {
+                return false;
+            }
+            next_input_begin += chunk.binding_count;
+        }
+        if (next_input_begin != m_artifact.direct_input_count) {
+            return false;
+        }
+        return true;
     }
 
     bool try_execute_chunked_static_concat(GpuCommandBufferHandle command_buffer,
@@ -439,23 +461,20 @@ private:
                         m_name);
         GpuTensor* output = outputs.front();
 
-        constexpr uint32_t kConcatChunkInputs = 4;
-        size_t chunk_slot = 0;
-        for (uint32_t input_begin = 0;
-             input_begin < m_artifact.direct_input_count;
-             input_begin += kConcatChunkInputs, ++chunk_slot) {
-            const uint32_t chunk_inputs =
-                std::min<uint32_t>(kConcatChunkInputs,
-                                   m_artifact.direct_input_count - input_begin);
-            const uint32_t axis_total = m_artifact.source_static_u32_scalars[0];
+        for (size_t chunk_slot = 0; chunk_slot < m_artifact.planned_chunks.size();
+             ++chunk_slot) {
+            const auto& planned_chunk = m_artifact.planned_chunks[chunk_slot];
+            const auto& chunk_artifact = *planned_chunk.artifact;
+            const uint32_t chunk_inputs = planned_chunk.binding_count;
+            const uint32_t axis_total = chunk_artifact.source_static_u32_scalars[0];
             OPENVINO_ASSERT(axis_total > 0 && count % axis_total == 0,
                             "GFX OpenCL: chunked Concat has invalid axis/count metadata for ",
                             m_name);
             uint64_t chunk_axis_total = 0;
             for (uint32_t local_input = 0; local_input < chunk_inputs; ++local_input) {
                 const size_t len_idx =
-                    2 + static_cast<size_t>(input_begin + local_input) * 2 + 1;
-                chunk_axis_total += m_artifact.source_static_u32_scalars[len_idx];
+                    2 + static_cast<size_t>(local_input) * 2 + 1;
+                chunk_axis_total += chunk_artifact.source_static_u32_scalars[len_idx];
             }
             const uint64_t chunk_count64 = (static_cast<uint64_t>(count) / axis_total) *
                                            chunk_axis_total;
@@ -464,37 +483,15 @@ private:
                             "GFX OpenCL: chunked Concat element count exceeds OpenCL scalar range for ",
                             m_name);
             const uint32_t chunk_count = static_cast<uint32_t>(chunk_count64);
-            auto chunk_artifact = make_gfx_opencl_concat_chunk_source_artifact(
-                m_artifact, input_begin, chunk_inputs);
-            OPENVINO_ASSERT(chunk_artifact && chunk_artifact->valid,
-                            "GFX OpenCL: failed to build chunked Concat artifact for ",
-                            m_name);
 
-            if (m_concat_chunk_kernels.size() <= chunk_slot) {
-                m_concat_chunk_kernels.resize(chunk_slot + 1);
-            }
-            auto& kernel = m_concat_chunk_kernels[chunk_slot];
-            if (!kernel) {
-                kernel = m_program_cache->get_or_create(
-                    chunk_artifact->artifact_ref.source_id,
-                    chunk_artifact->source,
-                    chunk_artifact->artifact_ref.entry_point,
-                    gfx_opencl_source_artifact_build_options(*chunk_artifact));
-                kernel->set_args_count(chunk_artifact->arg_count);
-            }
+            auto& kernel =
+                prepare_planned_chunk_kernel(m_concat_chunk_kernels, chunk_slot, chunk_artifact);
 
             std::vector<KernelArg> args;
             args.reserve(2 + chunk_inputs);
             for (uint32_t local_input = 0; local_input < chunk_inputs; ++local_input) {
-                const size_t artifact_input_idx =
-                    static_cast<size_t>(input_begin + local_input);
-                OPENVINO_ASSERT(artifact_input_idx < m_artifact.direct_input_indices.size(),
-                                "GFX OpenCL: chunked Concat input slot ",
-                                artifact_input_idx,
-                                " is not mapped for ",
-                                m_name);
                 const size_t node_input_idx =
-                    m_artifact.direct_input_indices[artifact_input_idx];
+                    chunk_artifact.direct_input_indices[local_input];
                 GpuTensor* input = resolve_tensor_input(node_input_idx);
                 OPENVINO_ASSERT(input && input->buf.valid(),
                                 "GFX OpenCL: chunked Concat input ",
@@ -511,7 +508,7 @@ private:
 
             const size_t local = std::max<size_t>(
                 1,
-                kernel->clamp_threadgroup_size(chunk_artifact->local_size_hint));
+                kernel->clamp_threadgroup_size(chunk_artifact.local_size_hint));
             KernelDispatch dispatch{};
             dispatch.grid[0] = round_up(chunk_count, local);
             dispatch.grid[1] = 1;
@@ -525,15 +522,34 @@ private:
     }
 
     bool should_execute_chunked_static_split() const {
-        if (!m_node ||
+        if (m_artifact.output_chunk_size == 0 ||
+            m_artifact.stage_manifest.stage_family != GfxKernelStageFamily::ConcatSplit ||
             m_artifact.direct_output_count <= 4 ||
             m_artifact.direct_input_count != 1 ||
             m_artifact.source_static_u32_scalars.size() !=
-                2 + static_cast<size_t>(m_artifact.direct_output_count) * 2) {
+                2 + static_cast<size_t>(m_artifact.direct_output_count) * 2 ||
+            m_artifact.planned_chunks.empty()) {
             return false;
         }
-        return ov::as_type_ptr<const ov::op::v1::Split>(m_node) ||
-               ov::as_type_ptr<const ov::op::v1::VariadicSplit>(m_node);
+        uint32_t next_output_begin = 0;
+        for (const auto& chunk : m_artifact.planned_chunks) {
+            if (chunk.binding_begin != next_output_begin ||
+                chunk.binding_count == 0 ||
+                chunk.binding_count > m_artifact.output_chunk_size ||
+                !chunk.artifact ||
+                !chunk.artifact->valid ||
+                chunk.artifact->direct_input_count != 1 ||
+                chunk.artifact->direct_output_count != chunk.binding_count ||
+                chunk.artifact->source_static_u32_scalars.size() !=
+                    2 + static_cast<size_t>(chunk.binding_count) * 2) {
+                return false;
+            }
+            next_output_begin += chunk.binding_count;
+        }
+        if (next_output_begin != m_artifact.direct_output_count) {
+            return false;
+        }
+        return true;
     }
 
     bool try_execute_chunked_static_split(GpuCommandBufferHandle command_buffer,
@@ -549,32 +565,14 @@ private:
                         "GFX OpenCL: chunked Split input is not materialized for ",
                         m_name);
 
-        constexpr uint32_t kSplitChunkOutputs = 4;
-        size_t chunk_slot = 0;
-        for (uint32_t output_begin = 0;
-             output_begin < m_artifact.direct_output_count;
-             output_begin += kSplitChunkOutputs, ++chunk_slot) {
-            const uint32_t chunk_outputs =
-                std::min<uint32_t>(kSplitChunkOutputs,
-                                   m_artifact.direct_output_count - output_begin);
-            auto chunk_artifact = make_gfx_opencl_split_chunk_source_artifact(
-                m_artifact, output_begin, chunk_outputs);
-            OPENVINO_ASSERT(chunk_artifact && chunk_artifact->valid,
-                            "GFX OpenCL: failed to build chunked Split artifact for ",
-                            m_name);
-
-            if (m_split_chunk_kernels.size() <= chunk_slot) {
-                m_split_chunk_kernels.resize(chunk_slot + 1);
-            }
-            auto& kernel = m_split_chunk_kernels[chunk_slot];
-            if (!kernel) {
-                kernel = m_program_cache->get_or_create(
-                    chunk_artifact->artifact_ref.source_id,
-                    chunk_artifact->source,
-                    chunk_artifact->artifact_ref.entry_point,
-                    gfx_opencl_source_artifact_build_options(*chunk_artifact));
-                kernel->set_args_count(chunk_artifact->arg_count);
-            }
+        for (size_t chunk_slot = 0; chunk_slot < m_artifact.planned_chunks.size();
+             ++chunk_slot) {
+            const auto& planned_chunk = m_artifact.planned_chunks[chunk_slot];
+            const auto& chunk_artifact = *planned_chunk.artifact;
+            const uint32_t output_begin = planned_chunk.binding_begin;
+            const uint32_t chunk_outputs = planned_chunk.binding_count;
+            auto& kernel =
+                prepare_planned_chunk_kernel(m_split_chunk_kernels, chunk_slot, chunk_artifact);
 
             std::vector<KernelArg> args;
             args.reserve(2 + chunk_outputs);
@@ -598,7 +596,7 @@ private:
 
             const size_t local = std::max<size_t>(
                 1,
-                kernel->clamp_threadgroup_size(chunk_artifact->local_size_hint));
+                kernel->clamp_threadgroup_size(chunk_artifact.local_size_hint));
             KernelDispatch dispatch{};
             dispatch.grid[0] = round_up(count, local);
             dispatch.grid[1] = 1;
@@ -609,6 +607,40 @@ private:
             kernel->execute(command_buffer, dispatch, args);
         }
         return true;
+    }
+
+    std::shared_ptr<ICompiledKernel>& prepare_planned_chunk_kernel(
+        std::vector<std::shared_ptr<ICompiledKernel>>& kernels,
+        size_t chunk_slot,
+        const GfxOpenClSourceArtifact& chunk_artifact) {
+        OPENVINO_ASSERT(chunk_artifact.valid,
+                        "GFX OpenCL: invalid planned chunk artifact for ",
+                        m_name);
+        if (kernels.size() <= chunk_slot) {
+            kernels.resize(chunk_slot + 1);
+        }
+        auto& kernel = kernels[chunk_slot];
+        if (!kernel) {
+            kernel = m_program_cache->get_or_create(
+                chunk_artifact.artifact_ref.source_id,
+                chunk_artifact.source,
+                chunk_artifact.artifact_ref.entry_point,
+                gfx_opencl_source_artifact_build_options(chunk_artifact));
+            kernel->set_args_count(chunk_artifact.arg_count);
+        }
+        return kernel;
+    }
+
+    void prepare_planned_chunk_kernels(
+        std::vector<std::shared_ptr<ICompiledKernel>>& kernels) {
+        for (size_t chunk_slot = 0; chunk_slot < m_artifact.planned_chunks.size();
+             ++chunk_slot) {
+            const auto& planned_chunk = m_artifact.planned_chunks[chunk_slot];
+            OPENVINO_ASSERT(planned_chunk.artifact,
+                            "GFX OpenCL: missing planned chunk artifact for ",
+                            m_name);
+            prepare_planned_chunk_kernel(kernels, chunk_slot, *planned_chunk.artifact);
+        }
     }
 
     std::vector<GpuTensor*> resolve_outputs() const {

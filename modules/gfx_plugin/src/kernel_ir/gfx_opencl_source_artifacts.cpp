@@ -18,7 +18,9 @@
 
 #include "kernel_ir/gfx_custom_kernel_families.hpp"
 #include "kernel_ir/opencl_kernels/activation_kernel.hpp"
+#include "kernel_ir/opencl_kernels/eltwise_compare_select_kernel.hpp"
 #include "kernel_ir/opencl_kernels/eltwise_kernel.hpp"
+#include "kernel_ir/opencl_kernels/eltwise_logical_bool_kernel.hpp"
 #include "kernel_ir/opencl_kernels/interpolate_f16_kernel.hpp"
 #include "kernel_ir/opencl_kernels/interpolate_f32_kernel.hpp"
 #include "kernel_ir/opencl_kernels/matmul_f32_kernel.hpp"
@@ -26,10 +28,12 @@
 #include "kernel_ir/opencl_kernels/pool2d_f32_kernel.hpp"
 #include "kernel_ir/opencl_kernels/reduction_f32_kernel.hpp"
 #include "kernel_ir/opencl_kernels/reduction_logical_bool_kernel.hpp"
+#include "kernel_ir/opencl_kernels/shapeof_kernel.hpp"
 #include "kernel_ir/opencl_kernels/softmax_f16_dynamic_kernel.hpp"
 #include "kernel_ir/opencl_kernels/softmax_f16_kernel.hpp"
 #include "kernel_ir/opencl_kernels/softmax_f32_dynamic_kernel.hpp"
 #include "kernel_ir/opencl_kernels/softmax_f32_kernel.hpp"
+#include "kernel_ir/opencl_kernels/tile_kernel.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/core/type/element_type.hpp"
 #include "openvino/op/abs.hpp"
@@ -63,13 +67,13 @@
 #include "openvino/op/interpolate.hpp"
 #include "openvino/op/log.hpp"
 #include "openvino/op/matmul.hpp"
+#include "openvino/op/max_pool.hpp"
 #include "openvino/op/maximum.hpp"
 #include "openvino/op/minimum.hpp"
 #include "openvino/op/mish.hpp"
 #include "openvino/op/mod.hpp"
 #include "openvino/op/multiply.hpp"
 #include "openvino/op/negative.hpp"
-#include "openvino/op/max_pool.hpp"
 #include "openvino/op/power.hpp"
 #include "openvino/op/range.hpp"
 #include "openvino/op/reduce_l1.hpp"
@@ -153,24 +157,6 @@ static inline float gfx_binary_f32(float lhs, float rhs, uint op) {
     }
     default: return lhs;
     }
-}
-
-static inline uchar gfx_compare_f32(float lhs, float rhs, uint op) {
-    uint result = 0u;
-    if (op == 32u) {
-        result = lhs == rhs ? 1u : 0u;
-    } else if (op == 33u) {
-        result = lhs != rhs ? 1u : 0u;
-    } else if (op == 34u) {
-        result = lhs > rhs ? 1u : 0u;
-    } else if (op == 35u) {
-        result = lhs >= rhs ? 1u : 0u;
-    } else if (op == 36u) {
-        result = lhs < rhs ? 1u : 0u;
-    } else if (op == 37u) {
-        result = lhs <= rhs ? 1u : 0u;
-    }
-    return (uchar)result;
 }
 
 __kernel void gfx_opencl_baseline_unary_f32(__global const float* src,
@@ -371,30 +357,6 @@ __kernel void gfx_opencl_baseline_binary_const_f32(__global const float* tensor,
     dst[gid] = gfx_binary_f32(l, r, op);
 }
 
-__kernel void gfx_opencl_baseline_compare_f32(__global const float* lhs,
-                                              __global const float* rhs,
-                                              __global uchar* dst,
-                                              uint count,
-                                              uint op) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    dst[gid] = gfx_compare_f32(lhs[gid], rhs[gid], op);
-}
-
-__kernel void gfx_opencl_baseline_select_f32(__global const uchar* cond,
-                                             __global const float* then_data,
-                                             __global const float* else_data,
-                                             __global float* dst,
-                                             uint count) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    dst[gid] = cond[gid] ? then_data[gid] : else_data[gid];
-}
-
 __kernel void gfx_opencl_baseline_transpose_f32(__global const float* src,
                                                 __global float* dst,
                                                 uint count,
@@ -520,81 +482,6 @@ __kernel void gfx_opencl_baseline_range_i64(__global const long* start,
     }
     (void)stop;
     dst[gid] = start[0] + (long)gid * step[0];
-}
-
-__kernel void gfx_opencl_baseline_tile_f32(__global const float* src,
-                                           __global float* dst,
-                                           uint count,
-                                           uint rank,
-                                           uint out_dim0,
-                                           uint out_dim1,
-                                           uint out_dim2,
-                                           uint out_dim3,
-                                           uint in_dim0,
-                                           uint in_dim1,
-                                           uint in_dim2,
-                                           uint in_dim3,
-                                           uint out_stride0,
-                                           uint out_stride1,
-                                           uint out_stride2,
-                                           uint out_stride3,
-                                           uint in_stride0,
-                                           uint in_stride1,
-                                           uint in_stride2,
-                                           uint in_stride3) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint out_dim[4] = {out_dim0, out_dim1, out_dim2, out_dim3};
-    const uint in_dim[4] = {in_dim0, in_dim1, in_dim2, in_dim3};
-    const uint out_stride[4] = {out_stride0, out_stride1, out_stride2, out_stride3};
-    const uint in_stride[4] = {in_stride0, in_stride1, in_stride2, in_stride3};
-
-    uint src_offset = 0u;
-    for (uint axis = 0u; axis < rank; ++axis) {
-        const uint out_axis_coord =
-            out_stride[axis] == 0u ? 0u : (gid / out_stride[axis]) % out_dim[axis];
-        const uint in_axis_coord =
-            in_dim[axis] == 0u ? 0u : out_axis_coord % in_dim[axis];
-        src_offset += in_axis_coord * in_stride[axis];
-    }
-    dst[gid] = src[src_offset];
-}
-
-__kernel void gfx_opencl_baseline_tile_dynamic_f32(__global const float* src,
-                                                   __global float* dst,
-                                                   uint count,
-                                                   uint rank,
-                                                   uint out_dim0,
-                                                   uint out_dim1,
-                                                   uint out_dim2,
-                                                   uint out_dim3,
-                                                   uint in_dim0,
-                                                   uint in_dim1,
-                                                   uint in_dim2,
-                                                   uint in_dim3) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint out_dim[4] = {out_dim0, out_dim1, out_dim2, out_dim3};
-    const uint in_dim[4] = {in_dim0, in_dim1, in_dim2, in_dim3};
-    uint rem = gid;
-    uint src_offset = 0u;
-    for (uint axis = 0u; axis < rank; ++axis) {
-        uint out_suffix = 1u;
-        uint in_suffix = 1u;
-        for (uint inner_axis = axis + 1u; inner_axis < rank; ++inner_axis) {
-            out_suffix *= out_dim[inner_axis];
-            in_suffix *= in_dim[inner_axis];
-        }
-        const uint coord = out_suffix == 0u ? 0u : rem / out_suffix;
-        rem = out_suffix == 0u ? 0u : rem - coord * out_suffix;
-        const uint in_coord = in_dim[axis] == 0u ? 0u : coord % in_dim[axis];
-        src_offset += in_coord * in_suffix;
-    }
-    dst[gid] = src[src_offset];
 }
 
 __kernel void gfx_opencl_baseline_gather_i32_f32(__global const float* data,
@@ -1269,46 +1156,6 @@ __kernel void gfx_opencl_baseline_scatter_nd_i64_f32(__global const float* data,
     dst[gid] = value;
 }
 
-__kernel void gfx_opencl_baseline_shapeof_i32(__global const uchar* src,
-                                              __global int* dst,
-                                              uint count,
-                                              uint dim0,
-                                              uint dim1,
-                                              uint dim2,
-                                              uint dim3,
-                                              uint dim4,
-                                              uint dim5,
-                                              uint dim6,
-                                              uint dim7) {
-    (void)src;
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint dims[8] = {dim0, dim1, dim2, dim3, dim4, dim5, dim6, dim7};
-    dst[gid] = (int)dims[gid];
-}
-
-__kernel void gfx_opencl_baseline_shapeof_i64(__global const uchar* src,
-                                              __global long* dst,
-                                              uint count,
-                                              uint dim0,
-                                              uint dim1,
-                                              uint dim2,
-                                              uint dim3,
-                                              uint dim4,
-                                              uint dim5,
-                                              uint dim6,
-                                              uint dim7) {
-    (void)src;
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint dims[8] = {dim0, dim1, dim2, dim3, dim4, dim5, dim6, dim7};
-    dst[gid] = (long)dims[gid];
-}
-
 static inline uint gfx_concat_load_f32(__global const float* src,
                                        __private float* value,
                                        uint axis_idx,
@@ -1326,7 +1173,7 @@ static inline uint gfx_concat_load_f32(__global const float* src,
     return 1u;
 }
 
-__kernel void gfx_opencl_baseline_concat2_f32(__global const float* src0,
+__kernel void gfx_opencl_generated_concat2_f32(__global const float* src0,
                                               __global const float* src1,
                                               __global float* dst,
                                               uint count,
@@ -1351,7 +1198,7 @@ __kernel void gfx_opencl_baseline_concat2_f32(__global const float* src0,
     dst[gid] = value;
 }
 
-__kernel void gfx_opencl_baseline_concat3_f32(__global const float* src0,
+__kernel void gfx_opencl_generated_concat3_f32(__global const float* src0,
                                               __global const float* src1,
                                               __global const float* src2,
                                               __global float* dst,
@@ -1381,7 +1228,7 @@ __kernel void gfx_opencl_baseline_concat3_f32(__global const float* src0,
     dst[gid] = value;
 }
 
-__kernel void gfx_opencl_baseline_concat4_f32(__global const float* src0,
+__kernel void gfx_opencl_generated_concat4_f32(__global const float* src0,
                                               __global const float* src1,
                                               __global const float* src2,
                                               __global const float* src3,
@@ -1522,83 +1369,6 @@ __kernel void gfx_opencl_baseline_range_f32(__global const float* start,
     }
     (void)stop;
     dst[gid] = start[0] + (float)gid * step[0];
-}
-)CLC";
-
-constexpr const char *kOpenClTileF32Source = R"CLC(
-__kernel void gfx_opencl_baseline_tile_f32(__global const float* src,
-                                           __global float* dst,
-                                           uint count,
-                                           uint rank,
-                                           uint out_dim0,
-                                           uint out_dim1,
-                                           uint out_dim2,
-                                           uint out_dim3,
-                                           uint in_dim0,
-                                           uint in_dim1,
-                                           uint in_dim2,
-                                           uint in_dim3,
-                                           uint out_stride0,
-                                           uint out_stride1,
-                                           uint out_stride2,
-                                           uint out_stride3,
-                                           uint in_stride0,
-                                           uint in_stride1,
-                                           uint in_stride2,
-                                           uint in_stride3) {
-    const uint gid = (uint)get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint out_dim[4] = {out_dim0, out_dim1, out_dim2, out_dim3};
-    const uint in_dim[4] = {in_dim0, in_dim1, in_dim2, in_dim3};
-    const uint out_stride[4] = {out_stride0, out_stride1, out_stride2, out_stride3};
-    const uint in_stride[4] = {in_stride0, in_stride1, in_stride2, in_stride3};
-
-    uint src_offset = 0u;
-    for (uint axis = 0u; axis < rank; ++axis) {
-        const uint out_axis_coord =
-            out_stride[axis] == 0u ? 0u : (gid / out_stride[axis]) % out_dim[axis];
-        const uint in_axis_coord =
-            in_dim[axis] == 0u ? 0u : out_axis_coord % in_dim[axis];
-        src_offset += in_axis_coord * in_stride[axis];
-    }
-    dst[gid] = src[src_offset];
-}
-
-__kernel void gfx_opencl_baseline_tile_dynamic_f32(__global const float* src,
-                                                   __global float* dst,
-                                                   uint count,
-                                                   uint rank,
-                                                   uint out_dim0,
-                                                   uint out_dim1,
-                                                   uint out_dim2,
-                                                   uint out_dim3,
-                                                   uint in_dim0,
-                                                   uint in_dim1,
-                                                   uint in_dim2,
-                                                   uint in_dim3) {
-    const uint gid = (uint)get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint out_dim[4] = {out_dim0, out_dim1, out_dim2, out_dim3};
-    const uint in_dim[4] = {in_dim0, in_dim1, in_dim2, in_dim3};
-    uint rem = gid;
-    uint src_offset = 0u;
-    for (uint axis = 0u; axis < rank; ++axis) {
-        uint out_suffix = 1u;
-        uint in_suffix = 1u;
-        for (uint inner_axis = axis + 1u; inner_axis < rank; ++inner_axis) {
-            out_suffix *= out_dim[inner_axis];
-            in_suffix *= in_dim[inner_axis];
-        }
-        const uint coord = out_suffix == 0u ? 0u : rem / out_suffix;
-        rem = out_suffix == 0u ? 0u : rem - coord * out_suffix;
-        const uint in_coord = in_dim[axis] == 0u ? 0u : coord % in_dim[axis];
-        src_offset += in_coord * in_suffix;
-    }
-    dst[gid] = src[src_offset];
 }
 )CLC";
 
@@ -2100,7 +1870,7 @@ static inline uint gfx_concat_load_f32(__global const float* src,
     return 1u;
 }
 
-__kernel void gfx_opencl_baseline_concat2_f32(__global const float* src0,
+__kernel void gfx_opencl_generated_concat2_f32(__global const float* src0,
                                               __global const float* src1,
                                               __global float* dst,
                                               uint count,
@@ -2125,7 +1895,7 @@ __kernel void gfx_opencl_baseline_concat2_f32(__global const float* src0,
     dst[gid] = value;
 }
 
-__kernel void gfx_opencl_baseline_concat3_f32(__global const float* src0,
+__kernel void gfx_opencl_generated_concat3_f32(__global const float* src0,
                                               __global const float* src1,
                                               __global const float* src2,
                                               __global float* dst,
@@ -2155,7 +1925,7 @@ __kernel void gfx_opencl_baseline_concat3_f32(__global const float* src0,
     dst[gid] = value;
 }
 
-__kernel void gfx_opencl_baseline_concat4_f32(__global const float* src0,
+__kernel void gfx_opencl_generated_concat4_f32(__global const float* src0,
                                               __global const float* src1,
                                               __global const float* src2,
                                               __global const float* src3,
@@ -2190,50 +1960,6 @@ __kernel void gfx_opencl_baseline_concat4_f32(__global const float* src0,
     dst[gid] = value;
 }
 
-)CLC";
-
-constexpr const char *kOpenClShapeOfSource = R"CLC(
-__kernel void gfx_opencl_baseline_shapeof_i32(__global const uchar* src,
-                                              __global int* dst,
-                                              uint count,
-                                              uint dim0,
-                                              uint dim1,
-                                              uint dim2,
-                                              uint dim3,
-                                              uint dim4,
-                                              uint dim5,
-                                              uint dim6,
-                                              uint dim7) {
-    (void)src;
-    const uint gid = (uint)get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint dims[8] = {dim0, dim1, dim2, dim3, dim4, dim5, dim6, dim7};
-    dst[gid] = (int)dims[gid];
-}
-
-__kernel void gfx_opencl_baseline_shapeof_i64(__global const uchar* src,
-                                              __global uint* dst,
-                                              uint count,
-                                              uint dim0,
-                                              uint dim1,
-                                              uint dim2,
-                                              uint dim3,
-                                              uint dim4,
-                                              uint dim5,
-                                              uint dim6,
-                                              uint dim7) {
-    (void)src;
-    const uint gid = (uint)get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint dims[8] = {dim0, dim1, dim2, dim3, dim4, dim5, dim6, dim7};
-    const uint word = gid * 2u;
-    dst[word] = dims[gid];
-    dst[word + 1u] = 0u;
-}
 )CLC";
 
 constexpr const char *kOpenClUnaryF32Source = R"CLC(
@@ -2349,264 +2075,13 @@ __kernel void gfx_opencl_baseline_binary_const_f32(__global const float* tensor,
 }
 )CLC";
 
-constexpr const char *kOpenClCompareF32Source = R"CLC(
-static inline uchar gfx_compare_f32(float lhs, float rhs, uint op) {
-    uint result = 0u;
-    if (op == 32u) {
-        result = lhs == rhs ? 1u : 0u;
-    } else if (op == 33u) {
-        result = lhs != rhs ? 1u : 0u;
-    } else if (op == 34u) {
-        result = lhs > rhs ? 1u : 0u;
-    } else if (op == 35u) {
-        result = lhs >= rhs ? 1u : 0u;
-    } else if (op == 36u) {
-        result = lhs < rhs ? 1u : 0u;
-    } else if (op == 37u) {
-        result = lhs <= rhs ? 1u : 0u;
-    }
-    return (uchar)result;
-}
-
-__kernel void gfx_opencl_baseline_compare_f32(__global const float* lhs,
-                                              __global const float* rhs,
-                                              __global uchar* dst,
-                                              uint count,
-                                              uint op) {
-    const uint word_idx = (uint)get_global_id(0);
-    const uint base = word_idx * 4u;
-    if (base >= count) {
-        return;
-    }
-    uint packed = 0u;
-    if (base < count) {
-        packed |= ((uint)gfx_compare_f32(lhs[base], rhs[base], op)) << 0u;
-    }
-    if (base + 1u < count) {
-        packed |= ((uint)gfx_compare_f32(lhs[base + 1u], rhs[base + 1u], op)) << 8u;
-    }
-    if (base + 2u < count) {
-        packed |= ((uint)gfx_compare_f32(lhs[base + 2u], rhs[base + 2u], op)) << 16u;
-    }
-    if (base + 3u < count) {
-        packed |= ((uint)gfx_compare_f32(lhs[base + 3u], rhs[base + 3u], op)) << 24u;
-    }
-    ((__global uint*)dst)[word_idx] = packed;
-}
-)CLC";
-
-constexpr const char *kOpenClCompareBroadcastF32Source = R"CLC(
-static inline uchar gfx_compare_f32(float lhs, float rhs, uint op) {
-    uint result = 0u;
-    if (op == 32u) {
-        result = lhs == rhs ? 1u : 0u;
-    } else if (op == 33u) {
-        result = lhs != rhs ? 1u : 0u;
-    } else if (op == 34u) {
-        result = lhs > rhs ? 1u : 0u;
-    } else if (op == 35u) {
-        result = lhs >= rhs ? 1u : 0u;
-    } else if (op == 36u) {
-        result = lhs < rhs ? 1u : 0u;
-    } else if (op == 37u) {
-        result = lhs <= rhs ? 1u : 0u;
-    }
-    return (uchar)result;
-}
-
-static inline uint gfx_broadcast_offset(uint idx,
-                                        uint rank,
-                                        uint out_dim1,
-                                        uint out_dim2,
-                                        uint out_dim3,
-                                        uint stride0,
-                                        uint stride1,
-                                        uint stride2,
-                                        uint stride3) {
-    uint coord0 = 0u;
-    uint coord1 = 0u;
-    uint coord2 = 0u;
-    uint coord3 = 0u;
-    if (rank == 1u) {
-        coord0 = idx;
-    } else if (rank == 2u) {
-        coord0 = idx / out_dim1;
-        coord1 = idx - coord0 * out_dim1;
-    } else if (rank == 3u) {
-        const uint plane0 = out_dim1 * out_dim2;
-        const uint rem0 = idx - (idx / plane0) * plane0;
-        coord0 = idx / plane0;
-        coord1 = rem0 / out_dim2;
-        coord2 = rem0 - coord1 * out_dim2;
-    } else {
-        const uint plane0 = out_dim1 * out_dim2 * out_dim3;
-        const uint rem0 = idx - (idx / plane0) * plane0;
-        const uint plane1 = out_dim2 * out_dim3;
-        const uint rem1 = rem0 - (rem0 / plane1) * plane1;
-        coord0 = idx / plane0;
-        coord1 = rem0 / plane1;
-        coord2 = rem1 / out_dim3;
-        coord3 = rem1 - coord2 * out_dim3;
-    }
-    return coord0 * stride0 + coord1 * stride1 + coord2 * stride2 + coord3 * stride3;
-}
-
-__kernel void gfx_opencl_baseline_compare_broadcast_f32(__global const float* lhs,
-                                                        __global const float* rhs,
-                                                        __global uchar* dst,
-                                                        uint count,
-                                                        uint op,
-                                                        uint rank,
-                                                        uint out_dim0,
-                                                        uint out_dim1,
-                                                        uint out_dim2,
-                                                        uint out_dim3,
-                                                        uint lhs_stride0,
-                                                        uint lhs_stride1,
-                                                        uint lhs_stride2,
-                                                        uint lhs_stride3,
-                                                        uint rhs_stride0,
-                                                        uint rhs_stride1,
-                                                        uint rhs_stride2,
-                                                        uint rhs_stride3) {
-    const uint word_idx = (uint)get_global_id(0);
-    const uint base = word_idx * 4u;
-    if (base >= count) {
-        return;
-    }
-    (void)out_dim0;
-
-    uint packed = 0u;
-    if (base < count) {
-        const uint lhs_offset = gfx_broadcast_offset(base, rank, out_dim1, out_dim2, out_dim3,
-                                                     lhs_stride0, lhs_stride1, lhs_stride2, lhs_stride3);
-        const uint rhs_offset = gfx_broadcast_offset(base, rank, out_dim1, out_dim2, out_dim3,
-                                                     rhs_stride0, rhs_stride1, rhs_stride2, rhs_stride3);
-        packed |= ((uint)gfx_compare_f32(lhs[lhs_offset], rhs[rhs_offset], op)) << 0u;
-    }
-    if (base + 1u < count) {
-        const uint idx = base + 1u;
-        const uint lhs_offset = gfx_broadcast_offset(idx, rank, out_dim1, out_dim2, out_dim3,
-                                                     lhs_stride0, lhs_stride1, lhs_stride2, lhs_stride3);
-        const uint rhs_offset = gfx_broadcast_offset(idx, rank, out_dim1, out_dim2, out_dim3,
-                                                     rhs_stride0, rhs_stride1, rhs_stride2, rhs_stride3);
-        packed |= ((uint)gfx_compare_f32(lhs[lhs_offset], rhs[rhs_offset], op)) << 8u;
-    }
-    if (base + 2u < count) {
-        const uint idx = base + 2u;
-        const uint lhs_offset = gfx_broadcast_offset(idx, rank, out_dim1, out_dim2, out_dim3,
-                                                     lhs_stride0, lhs_stride1, lhs_stride2, lhs_stride3);
-        const uint rhs_offset = gfx_broadcast_offset(idx, rank, out_dim1, out_dim2, out_dim3,
-                                                     rhs_stride0, rhs_stride1, rhs_stride2, rhs_stride3);
-        packed |= ((uint)gfx_compare_f32(lhs[lhs_offset], rhs[rhs_offset], op)) << 16u;
-    }
-    if (base + 3u < count) {
-        const uint idx = base + 3u;
-        const uint lhs_offset = gfx_broadcast_offset(idx, rank, out_dim1, out_dim2, out_dim3,
-                                                     lhs_stride0, lhs_stride1, lhs_stride2, lhs_stride3);
-        const uint rhs_offset = gfx_broadcast_offset(idx, rank, out_dim1, out_dim2, out_dim3,
-                                                     rhs_stride0, rhs_stride1, rhs_stride2, rhs_stride3);
-        packed |= ((uint)gfx_compare_f32(lhs[lhs_offset], rhs[rhs_offset], op)) << 24u;
-    }
-    ((__global uint*)dst)[word_idx] = packed;
-}
-)CLC";
-
-constexpr const char *kOpenClSelectF32Source = R"CLC(
-__kernel void gfx_opencl_baseline_select_f32(__global const uchar* cond,
-                                             __global const float* then_data,
-                                             __global const float* else_data,
-                                             __global float* dst,
-                                             uint count) {
-    const uint gid = (uint)get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const float then_value = then_data[gid];
-    const float else_value = else_data[gid];
-    const float mask = convert_float(cond[gid]);
-    dst[gid] = else_value + mask * (then_value - else_value);
-}
-)CLC";
-
-constexpr const char *kOpenClSelectBroadcastF32Source = R"CLC(
-__kernel void gfx_opencl_baseline_select_broadcast_f32(__global const uchar* cond,
-                                                       __global const float* then_data,
-                                                       __global const float* else_data,
-                                                       __global float* dst,
-                                                       uint count,
-                                                       uint rank,
-                                                       uint out_dim0,
-                                                       uint out_dim1,
-                                                       uint out_dim2,
-                                                       uint out_dim3,
-                                                       uint cond_stride0,
-                                                       uint cond_stride1,
-                                                       uint cond_stride2,
-                                                       uint cond_stride3,
-                                                       uint then_stride0,
-                                                       uint then_stride1,
-                                                       uint then_stride2,
-                                                       uint then_stride3,
-                                                       uint else_stride0,
-                                                       uint else_stride1,
-                                                       uint else_stride2,
-                                                       uint else_stride3) {
-    const uint gid = (uint)get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    (void)out_dim0;
-
-    uint coord0 = 0u;
-    uint coord1 = 0u;
-    uint coord2 = 0u;
-    uint coord3 = 0u;
-    if (rank == 1u) {
-        coord0 = gid;
-    } else if (rank == 2u) {
-        coord0 = gid / out_dim1;
-        coord1 = gid - coord0 * out_dim1;
-    } else if (rank == 3u) {
-        const uint plane0 = out_dim1 * out_dim2;
-        const uint rem0 = gid - (gid / plane0) * plane0;
-        coord0 = gid / plane0;
-        coord1 = rem0 / out_dim2;
-        coord2 = rem0 - coord1 * out_dim2;
-    } else {
-        const uint plane0 = out_dim1 * out_dim2 * out_dim3;
-        const uint rem0 = gid - (gid / plane0) * plane0;
-        const uint plane1 = out_dim2 * out_dim3;
-        const uint rem1 = rem0 - (rem0 / plane1) * plane1;
-        coord0 = gid / plane0;
-        coord1 = rem0 / plane1;
-        coord2 = rem1 / out_dim3;
-        coord3 = rem1 - coord2 * out_dim3;
-    }
-    const uint cond_offset = coord0 * cond_stride0 + coord1 * cond_stride1 +
-                             coord2 * cond_stride2 + coord3 * cond_stride3;
-    const uint then_offset = coord0 * then_stride0 + coord1 * then_stride1 +
-                             coord2 * then_stride2 + coord3 * then_stride3;
-    const uint else_offset = coord0 * else_stride0 + coord1 * else_stride1 +
-                             coord2 * else_stride2 + coord3 * else_stride3;
-    const float then_value = then_data[then_offset];
-    const float else_value = else_data[else_offset];
-    const float mask = convert_float(cond[cond_offset]);
-    dst[gid] = else_value + mask * (then_value - else_value);
-}
-)CLC";
-
 constexpr const char *kOpenClDynamicDataMovementF16Source = R"CLC(
 #define GFX_LOW_U32_SHAPE_VALUE(words, idx) ((words)[(idx) * 2u])
 #define GFX_LOAD_I32_SHAPE_VALUE(words, idx) ((int)GFX_LOW_U32_SHAPE_VALUE((words), (idx)))
-#define GFX_LOAD_BOOL_MASK(src, idx) \
-    (0u - (((((src)[(idx) >> 2u]) >> (((idx) & 3u) * 8u)) & 255u) != 0u))
 #define GFX_LOAD_F16_BITS(src, idx) \
     (((idx) & 1u) == 0u ? ((src)[(idx) >> 1u] & 65535u) : (((src)[(idx) >> 1u] >> 16u) & 65535u))
 #define GFX_STORE_F16_PAIR(dst, word_idx, lo, hi) \
     ((dst)[(word_idx)] = ((lo) & 65535u) | (((hi) & 65535u) << 16u))
-#define GFX_SELECT_F16_BITS(mask, then_bits, else_bits) \
-    (((else_bits) & ~(mask)) | ((then_bits) & (mask)))
 
 static inline float gfx_f16_bits_to_f32(uint bits) {
     const uint sign = (bits & 32768u) << 16u;
@@ -2704,30 +2179,6 @@ static inline uint gfx_offset_from_dims(uint idx,
     return coord0 * stride0 + coord1 * stride1 + coord2 * stride2 + coord3 * stride3;
 }
 
-__kernel void gfx_opencl_baseline_select_f16(__global const uint* cond,
-                                             __global const uint* then_data,
-                                             __global const uint* else_data,
-                                             __global uint* dst,
-                                             uint count) {
-    const uint word_idx = (uint)get_global_id(0);
-    const uint elem0 = word_idx * 2u;
-    if (elem0 >= count) {
-        return;
-    }
-    const uint lo_mask = GFX_LOAD_BOOL_MASK(cond, elem0);
-    const uint lo = GFX_SELECT_F16_BITS(lo_mask,
-                                        GFX_LOAD_F16_BITS(then_data, elem0),
-                                        GFX_LOAD_F16_BITS(else_data, elem0));
-    uint hi = 0u;
-    if (elem0 + 1u < count) {
-        const uint hi_mask = GFX_LOAD_BOOL_MASK(cond, elem0 + 1u);
-        hi = GFX_SELECT_F16_BITS(hi_mask,
-                                 GFX_LOAD_F16_BITS(then_data, elem0 + 1u),
-                                 GFX_LOAD_F16_BITS(else_data, elem0 + 1u));
-    }
-    GFX_STORE_F16_PAIR(dst, word_idx, lo, hi);
-}
-
 #define GFX_CONCAT2_LOAD_F16_BITS(out_idx, dst_value, src0, src1, inner, src0_axis_len, src1_axis_len) \
     do { \
         const uint out_axis__ = (src0_axis_len) + (src1_axis_len); \
@@ -2742,7 +2193,7 @@ __kernel void gfx_opencl_baseline_select_f16(__global const uint* cond,
         } \
     } while (0)
 
-__kernel void gfx_opencl_baseline_concat2_f16(__global const uint* src0,
+__kernel void gfx_opencl_generated_concat2_f16(__global const uint* src0,
                                               __global const uint* src1,
                                               __global uint* dst,
                                               uint count,
@@ -2780,7 +2231,7 @@ __kernel void gfx_opencl_baseline_concat2_f16(__global const uint* src0,
         } \
     } while (0)
 
-__kernel void gfx_opencl_baseline_concat3_f16(__global const uint* src0,
+__kernel void gfx_opencl_generated_concat3_f16(__global const uint* src0,
                                               __global const uint* src1,
                                               __global const uint* src2,
                                               __global uint* dst,
@@ -2831,7 +2282,7 @@ __kernel void gfx_opencl_baseline_concat3_f16(__global const uint* src0,
         } \
     } while (0)
 
-__kernel void gfx_opencl_baseline_concat4_f16(__global const uint* src0,
+__kernel void gfx_opencl_generated_concat4_f16(__global const uint* src0,
                                               __global const uint* src1,
                                               __global const uint* src2,
                                               __global const uint* src3,
@@ -2941,137 +2392,6 @@ __kernel void gfx_opencl_baseline_broadcast_f16_i64shape(__global const uint* sr
                                                       in_stride[2],
                                                       in_stride[3]);
         hi = GFX_LOAD_F16_BITS(src, src_offset1);
-    }
-    GFX_STORE_F16_PAIR(dst, word_idx, lo, hi);
-}
-
-__kernel void gfx_opencl_baseline_tile_f16(__global const uint* src,
-                                           __global uint* dst,
-                                           uint count,
-                                           uint rank,
-                                           uint out_dim0,
-                                           uint out_dim1,
-                                           uint out_dim2,
-                                           uint out_dim3,
-                                           uint in_dim0,
-                                           uint in_dim1,
-                                           uint in_dim2,
-                                           uint in_dim3,
-                                           uint out_stride0,
-                                           uint out_stride1,
-                                           uint out_stride2,
-                                           uint out_stride3,
-                                           uint in_stride0,
-                                           uint in_stride1,
-                                           uint in_stride2,
-                                           uint in_stride3) {
-    const uint word_idx = (uint)get_global_id(0);
-    const uint elem0 = word_idx * 2u;
-    if (elem0 >= count) {
-        return;
-    }
-    const uint out_dim[4] = {out_dim0, out_dim1, out_dim2, out_dim3};
-    const uint in_dim[4] = {in_dim0, in_dim1, in_dim2, in_dim3};
-    const uint out_stride[4] = {out_stride0, out_stride1, out_stride2, out_stride3};
-    const uint in_stride[4] = {in_stride0, in_stride1, in_stride2, in_stride3};
-
-    uint src_offset0 = 0u;
-    for (uint axis = 0u; axis < rank; ++axis) {
-        const uint out_axis_coord =
-            out_stride[axis] == 0u ? 0u : (elem0 / out_stride[axis]) % out_dim[axis];
-        const uint in_axis_coord =
-            in_dim[axis] == 0u ? 0u : out_axis_coord % in_dim[axis];
-        src_offset0 += in_axis_coord * in_stride[axis];
-    }
-    const uint lo = GFX_LOAD_F16_BITS(src, src_offset0);
-    uint hi = 0u;
-    if (elem0 + 1u < count) {
-        uint src_offset1 = 0u;
-        const uint elem1 = elem0 + 1u;
-        for (uint axis = 0u; axis < rank; ++axis) {
-            const uint out_axis_coord =
-                out_stride[axis] == 0u ? 0u : (elem1 / out_stride[axis]) % out_dim[axis];
-            const uint in_axis_coord =
-                in_dim[axis] == 0u ? 0u : out_axis_coord % in_dim[axis];
-            src_offset1 += in_axis_coord * in_stride[axis];
-        }
-        hi = GFX_LOAD_F16_BITS(src, src_offset1);
-    }
-    GFX_STORE_F16_PAIR(dst, word_idx, lo, hi);
-}
-
-static inline uint gfx_tile_dynamic_src_offset(uint elem,
-                                               uint rank,
-                                               uint out_dim0,
-                                               uint out_dim1,
-                                               uint out_dim2,
-                                               uint out_dim3,
-                                               uint in_dim0,
-                                               uint in_dim1,
-                                               uint in_dim2,
-                                               uint in_dim3) {
-    const uint out_dim[4] = {out_dim0, out_dim1, out_dim2, out_dim3};
-    const uint in_dim[4] = {in_dim0, in_dim1, in_dim2, in_dim3};
-    uint rem = elem;
-    uint src_offset = 0u;
-    for (uint axis = 0u; axis < rank; ++axis) {
-        uint out_suffix = 1u;
-        uint in_suffix = 1u;
-        for (uint inner_axis = axis + 1u; inner_axis < rank; ++inner_axis) {
-            out_suffix *= out_dim[inner_axis];
-            in_suffix *= in_dim[inner_axis];
-        }
-        const uint coord = out_suffix == 0u ? 0u : rem / out_suffix;
-        rem = out_suffix == 0u ? 0u : rem - coord * out_suffix;
-        const uint in_coord = in_dim[axis] == 0u ? 0u : coord % in_dim[axis];
-        src_offset += in_coord * in_suffix;
-    }
-    return src_offset;
-}
-
-__kernel void gfx_opencl_baseline_tile_dynamic_f16(__global const uint* src,
-                                                   __global uint* dst,
-                                                   uint count,
-                                                   uint rank,
-                                                   uint out_dim0,
-                                                   uint out_dim1,
-                                                   uint out_dim2,
-                                                   uint out_dim3,
-                                                   uint in_dim0,
-                                                   uint in_dim1,
-                                                   uint in_dim2,
-                                                   uint in_dim3) {
-    const uint word_idx = (uint)get_global_id(0);
-    const uint elem0 = word_idx * 2u;
-    if (elem0 >= count) {
-        return;
-    }
-    const uint lo = GFX_LOAD_F16_BITS(
-        src,
-        gfx_tile_dynamic_src_offset(elem0,
-                                    rank,
-                                    out_dim0,
-                                    out_dim1,
-                                    out_dim2,
-                                    out_dim3,
-                                    in_dim0,
-                                    in_dim1,
-                                    in_dim2,
-                                    in_dim3));
-    uint hi = 0u;
-    if (elem0 + 1u < count) {
-        hi = GFX_LOAD_F16_BITS(
-            src,
-            gfx_tile_dynamic_src_offset(elem0 + 1u,
-                                        rank,
-                                        out_dim0,
-                                        out_dim1,
-                                        out_dim2,
-                                        out_dim3,
-                                        in_dim0,
-                                        in_dim1,
-                                        in_dim2,
-                                        in_dim3));
     }
     GFX_STORE_F16_PAIR(dst, word_idx, lo, hi);
 }
@@ -3272,222 +2592,6 @@ __kernel void gfx_opencl_baseline_range_i64_unit(__global const uint* stop_words
     const uint word = gid * 2u;
     dst[word] = gid;
     dst[word + 1u] = 0u;
-}
-)CLC";
-
-constexpr const char *kOpenClLogicalUnaryBoolSource = R"CLC(
-static inline uint gfx_load_bool(__global const uchar* src, uint idx) {
-    const uint word = ((__global const uint*)src)[idx >> 2u];
-    return ((word >> ((idx & 3u) * 8u)) & 255u) == 0u ? 0u : 1u;
-}
-
-static inline uint gfx_logical_unary_bool(uint value, uint op) {
-    if (op == 48u) {
-        return value == 0u ? 1u : 0u;
-    }
-    return value == 0u ? 0u : 1u;
-}
-
-__kernel void gfx_opencl_baseline_logical_unary_bool(__global const uchar* src,
-                                                     __global uchar* dst,
-                                                     uint count,
-                                                     uint op) {
-    const uint word_idx = (uint)get_global_id(0);
-    const uint base = word_idx * 4u;
-    if (base >= count) {
-        return;
-    }
-    uint packed = 0u;
-    if (base < count) {
-        packed |= gfx_logical_unary_bool(gfx_load_bool(src, base), op) << 0u;
-    }
-    if (base + 1u < count) {
-        packed |= gfx_logical_unary_bool(gfx_load_bool(src, base + 1u), op) << 8u;
-    }
-    if (base + 2u < count) {
-        packed |= gfx_logical_unary_bool(gfx_load_bool(src, base + 2u), op) << 16u;
-    }
-    if (base + 3u < count) {
-        packed |= gfx_logical_unary_bool(gfx_load_bool(src, base + 3u), op) << 24u;
-    }
-    ((__global uint*)dst)[word_idx] = packed;
-}
-)CLC";
-
-constexpr const char *kOpenClLogicalBinaryBoolSource = R"CLC(
-static inline uint gfx_load_bool(__global const uchar* src, uint idx) {
-    const uint word = ((__global const uint*)src)[idx >> 2u];
-    return ((word >> ((idx & 3u) * 8u)) & 255u) == 0u ? 0u : 1u;
-}
-
-static inline uint gfx_logical_binary_bool(uint l, uint r, uint op) {
-    uint result = 0u;
-    if (op == 49u) {
-        result = l & r;
-    } else if (op == 50u) {
-        result = l | r;
-    } else if (op == 51u) {
-        result = l ^ r;
-    }
-    return result;
-}
-
-__kernel void gfx_opencl_baseline_logical_binary_bool(__global const uchar* lhs,
-                                                      __global const uchar* rhs,
-                                                      __global uchar* dst,
-                                                      uint count,
-                                                      uint op) {
-    const uint word_idx = (uint)get_global_id(0);
-    const uint base = word_idx * 4u;
-    if (base >= count) {
-        return;
-    }
-    uint packed = 0u;
-    if (base < count) {
-        packed |= gfx_logical_binary_bool(gfx_load_bool(lhs, base),
-                                          gfx_load_bool(rhs, base),
-                                          op) << 0u;
-    }
-    if (base + 1u < count) {
-        packed |= gfx_logical_binary_bool(gfx_load_bool(lhs, base + 1u),
-                                          gfx_load_bool(rhs, base + 1u),
-                                          op) << 8u;
-    }
-    if (base + 2u < count) {
-        packed |= gfx_logical_binary_bool(gfx_load_bool(lhs, base + 2u),
-                                          gfx_load_bool(rhs, base + 2u),
-                                          op) << 16u;
-    }
-    if (base + 3u < count) {
-        packed |= gfx_logical_binary_bool(gfx_load_bool(lhs, base + 3u),
-                                          gfx_load_bool(rhs, base + 3u),
-                                          op) << 24u;
-    }
-    ((__global uint*)dst)[word_idx] = packed;
-}
-)CLC";
-
-constexpr const char *kOpenClLogicalBinaryBroadcastBoolSource = R"CLC(
-static inline uint gfx_load_bool(__global const uchar* src, uint idx) {
-    const uint word = ((__global const uint*)src)[idx >> 2u];
-    return ((word >> ((idx & 3u) * 8u)) & 255u) == 0u ? 0u : 1u;
-}
-
-static inline uint gfx_logical_binary_bool(uint l, uint r, uint op) {
-    uint result = 0u;
-    if (op == 49u) {
-        result = l & r;
-    } else if (op == 50u) {
-        result = l | r;
-    } else if (op == 51u) {
-        result = l ^ r;
-    }
-    return result;
-}
-
-static inline uint gfx_broadcast_offset(uint idx,
-                                        uint rank,
-                                        uint out_dim1,
-                                        uint out_dim2,
-                                        uint out_dim3,
-                                        uint stride0,
-                                        uint stride1,
-                                        uint stride2,
-                                        uint stride3) {
-    uint coord0 = 0u;
-    uint coord1 = 0u;
-    uint coord2 = 0u;
-    uint coord3 = 0u;
-    if (rank == 1u) {
-        coord0 = idx;
-    } else if (rank == 2u) {
-        coord0 = idx / out_dim1;
-        coord1 = idx - coord0 * out_dim1;
-    } else if (rank == 3u) {
-        const uint plane0 = out_dim1 * out_dim2;
-        const uint rem0 = idx - (idx / plane0) * plane0;
-        coord0 = idx / plane0;
-        coord1 = rem0 / out_dim2;
-        coord2 = rem0 - coord1 * out_dim2;
-    } else {
-        const uint plane0 = out_dim1 * out_dim2 * out_dim3;
-        const uint rem0 = idx - (idx / plane0) * plane0;
-        const uint plane1 = out_dim2 * out_dim3;
-        const uint rem1 = rem0 - (rem0 / plane1) * plane1;
-        coord0 = idx / plane0;
-        coord1 = rem0 / plane1;
-        coord2 = rem1 / out_dim3;
-        coord3 = rem1 - coord2 * out_dim3;
-    }
-    return coord0 * stride0 + coord1 * stride1 + coord2 * stride2 + coord3 * stride3;
-}
-
-__kernel void gfx_opencl_baseline_logical_binary_broadcast_bool(__global const uchar* lhs,
-                                                                __global const uchar* rhs,
-                                                                __global uchar* dst,
-                                                                uint count,
-                                                                uint op,
-                                                                uint rank,
-                                                                uint out_dim0,
-                                                                uint out_dim1,
-                                                                uint out_dim2,
-                                                                uint out_dim3,
-                                                                uint lhs_stride0,
-                                                                uint lhs_stride1,
-                                                                uint lhs_stride2,
-                                                                uint lhs_stride3,
-                                                                uint rhs_stride0,
-                                                                uint rhs_stride1,
-                                                                uint rhs_stride2,
-                                                                uint rhs_stride3) {
-    const uint word_idx = (uint)get_global_id(0);
-    const uint base = word_idx * 4u;
-    if (base >= count) {
-        return;
-    }
-    (void)out_dim0;
-
-    uint packed = 0u;
-    if (base < count) {
-        const uint lhs_offset = gfx_broadcast_offset(base, rank, out_dim1, out_dim2, out_dim3,
-                                                     lhs_stride0, lhs_stride1, lhs_stride2, lhs_stride3);
-        const uint rhs_offset = gfx_broadcast_offset(base, rank, out_dim1, out_dim2, out_dim3,
-                                                     rhs_stride0, rhs_stride1, rhs_stride2, rhs_stride3);
-        packed |= gfx_logical_binary_bool(gfx_load_bool(lhs, lhs_offset),
-                                          gfx_load_bool(rhs, rhs_offset),
-                                          op) << 0u;
-    }
-    if (base + 1u < count) {
-        const uint idx = base + 1u;
-        const uint lhs_offset = gfx_broadcast_offset(idx, rank, out_dim1, out_dim2, out_dim3,
-                                                     lhs_stride0, lhs_stride1, lhs_stride2, lhs_stride3);
-        const uint rhs_offset = gfx_broadcast_offset(idx, rank, out_dim1, out_dim2, out_dim3,
-                                                     rhs_stride0, rhs_stride1, rhs_stride2, rhs_stride3);
-        packed |= gfx_logical_binary_bool(gfx_load_bool(lhs, lhs_offset),
-                                          gfx_load_bool(rhs, rhs_offset),
-                                          op) << 8u;
-    }
-    if (base + 2u < count) {
-        const uint idx = base + 2u;
-        const uint lhs_offset = gfx_broadcast_offset(idx, rank, out_dim1, out_dim2, out_dim3,
-                                                     lhs_stride0, lhs_stride1, lhs_stride2, lhs_stride3);
-        const uint rhs_offset = gfx_broadcast_offset(idx, rank, out_dim1, out_dim2, out_dim3,
-                                                     rhs_stride0, rhs_stride1, rhs_stride2, rhs_stride3);
-        packed |= gfx_logical_binary_bool(gfx_load_bool(lhs, lhs_offset),
-                                          gfx_load_bool(rhs, rhs_offset),
-                                          op) << 16u;
-    }
-    if (base + 3u < count) {
-        const uint idx = base + 3u;
-        const uint lhs_offset = gfx_broadcast_offset(idx, rank, out_dim1, out_dim2, out_dim3,
-                                                     lhs_stride0, lhs_stride1, lhs_stride2, lhs_stride3);
-        const uint rhs_offset = gfx_broadcast_offset(idx, rank, out_dim1, out_dim2, out_dim3,
-                                                     rhs_stride0, rhs_stride1, rhs_stride2, rhs_stride3);
-        packed |= gfx_logical_binary_bool(gfx_load_bool(lhs, lhs_offset),
-                                          gfx_load_bool(rhs, rhs_offset),
-                                          op) << 24u;
-    }
-    ((__global uint*)dst)[word_idx] = packed;
 }
 )CLC";
 
@@ -4606,11 +3710,10 @@ make_opencl_eltwise_artifact(const std::shared_ptr<const ov::Node> &node) {
         entry_point,
         /*direct_inputs=*/2,
         /*scalar_arg_count=*/2);
-    return make_opencl_source_artifact(
-        std::move(manifest), source_id({}),
-        {GfxOpenClSourceScalarArg::ElementCount,
-         GfxOpenClSourceScalarArg::OpCode},
-        {0, 1}, *op);
+    return make_opencl_source_artifact(std::move(manifest), source_id({}),
+                                       {GfxOpenClSourceScalarArg::ElementCount,
+                                        GfxOpenClSourceScalarArg::OpCode},
+                                       {0, 1}, *op);
   }
 
   if (!is_numpy_aligned_binary_broadcast(*eltwise)) {
@@ -5572,7 +4675,8 @@ pool2d_static_u32_scalars(const std::shared_ptr<const ov::Node> &node,
 std::vector<GfxOpenClSourceScalarArg> pool2d_static_scalar_args() {
   std::vector<GfxOpenClSourceScalarArg> scalar_args = {
       GfxOpenClSourceScalarArg::ElementCount};
-  scalar_args.insert(scalar_args.end(), 18, GfxOpenClSourceScalarArg::StaticU32);
+  scalar_args.insert(scalar_args.end(), 18,
+                     GfxOpenClSourceScalarArg::StaticU32);
   return scalar_args;
 }
 
@@ -7047,11 +6151,20 @@ GfxKernelStageManifest make_opencl_source_manifest(
 std::optional<uint32_t>
 split_output_count_from_entry_point(std::string_view entry_point,
                                     std::string_view type_suffix) {
-  constexpr std::string_view prefix = "gfx_opencl_baseline_split";
+  constexpr std::string_view generated_prefix = "gfx_opencl_generated_split";
+  constexpr std::string_view baseline_prefix = "gfx_opencl_baseline_split";
+  std::string_view prefix;
+  if (entry_point.size() > generated_prefix.size() &&
+      entry_point.substr(0, generated_prefix.size()) == generated_prefix) {
+    prefix = generated_prefix;
+  } else if (entry_point.size() > baseline_prefix.size() &&
+             entry_point.substr(0, baseline_prefix.size()) == baseline_prefix) {
+    prefix = baseline_prefix;
+  } else {
+    return std::nullopt;
+  }
   if (entry_point.size() <= prefix.size() + type_suffix.size() + 1 ||
-      entry_point.substr(0, prefix.size()) != prefix ||
-      entry_point.substr(entry_point.size() - type_suffix.size()) !=
-          type_suffix ||
+      entry_point.substr(entry_point.size() - type_suffix.size()) != type_suffix ||
       entry_point[entry_point.size() - type_suffix.size() - 1] != '_') {
     return std::nullopt;
   }
@@ -7074,9 +6187,19 @@ split_output_count_from_entry_point(std::string_view entry_point,
 std::optional<uint32_t>
 concat_input_count_from_entry_point(std::string_view entry_point,
                                     std::string_view type_suffix) {
-  constexpr std::string_view prefix = "gfx_opencl_baseline_concat";
+  constexpr std::string_view generated_prefix = "gfx_opencl_generated_concat";
+  constexpr std::string_view baseline_prefix = "gfx_opencl_baseline_concat";
+  std::string_view prefix;
+  if (entry_point.size() > generated_prefix.size() &&
+      entry_point.substr(0, generated_prefix.size()) == generated_prefix) {
+    prefix = generated_prefix;
+  } else if (entry_point.size() > baseline_prefix.size() &&
+             entry_point.substr(0, baseline_prefix.size()) == baseline_prefix) {
+    prefix = baseline_prefix;
+  } else {
+    return std::nullopt;
+  }
   if (entry_point.size() <= prefix.size() + type_suffix.size() + 1 ||
-      entry_point.substr(0, prefix.size()) != prefix ||
       entry_point.substr(entry_point.size() - type_suffix.size()) !=
           type_suffix ||
       entry_point[entry_point.size() - type_suffix.size() - 1] != '_') {
@@ -7231,6 +6354,24 @@ std::string make_opencl_static_concat_f16_source(
 }
 )CLC";
   return cl.str();
+}
+
+std::string make_opencl_dynamic_concat_f16_source(
+    std::string_view entry_point) {
+  std::string source = kOpenClDynamicDataMovementF16Source;
+  const auto input_count = concat_input_count_from_entry_point(entry_point,
+                                                              "f16");
+  if (!input_count) {
+    return source;
+  }
+  const std::string baseline_name = "gfx_opencl_generated_concat" +
+                                    std::to_string(*input_count) + "_f16";
+  const auto pos = source.find(baseline_name);
+  if (pos == std::string::npos) {
+    return {};
+  }
+  source.replace(pos, baseline_name.size(), std::string(entry_point));
+  return source;
 }
 
 std::string make_opencl_static_split_f32_source(
@@ -7396,6 +6537,39 @@ GfxOpenClSourceArtifact make_opencl_source_artifact(
     artifact.source = make_opencl_static_split_f16_source(
         *split_outputs, artifact.artifact_ref.entry_point, static_u32_scalars);
     source_inlines_static_u32_scalars = true;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_generated_eltwise_logical_unary_bool") {
+    artifact.source =
+        opencl_generated_eltwise_logical_unary_bool_kernel_source().source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_generated_eltwise_logical_binary_bool") {
+    artifact.source =
+        opencl_generated_eltwise_logical_binary_bool_kernel_source().source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_generated_eltwise_logical_binary_broadcast_bool") {
+    artifact.source =
+        opencl_generated_eltwise_logical_binary_broadcast_bool_kernel_source()
+            .source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_generated_eltwise_compare_f32") {
+    artifact.source =
+        opencl_generated_eltwise_compare_f32_kernel_source().source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_generated_eltwise_compare_broadcast_f32") {
+    artifact.source =
+        opencl_generated_eltwise_compare_broadcast_f32_kernel_source().source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_generated_eltwise_select_f32") {
+    artifact.source =
+        opencl_generated_eltwise_select_f32_kernel_source().source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_generated_eltwise_select_broadcast_f32") {
+    artifact.source =
+        opencl_generated_eltwise_select_broadcast_f32_kernel_source().source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_generated_eltwise_select_f16_dynamic") {
+    artifact.source =
+        opencl_generated_eltwise_select_f16_dynamic_kernel_source().source;
   } else if (std::string_view(artifact.artifact_ref.entry_point)
                  .substr(0, std::string_view("gfx_opencl_generated_eltwise_")
                                 .size()) ==
@@ -7436,10 +6610,23 @@ GfxOpenClSourceArtifact make_opencl_source_artifact(
              "gfx_opencl_generated_interpolate_f16") {
     artifact.source = opencl_generated_interpolate_f16_kernel_source().source;
   } else if (artifact.artifact_ref.entry_point ==
-                 "gfx_opencl_baseline_shapeof_i32" ||
-             artifact.artifact_ref.entry_point ==
-                 "gfx_opencl_baseline_shapeof_i64") {
-    artifact.source = kOpenClShapeOfSource;
+             "gfx_opencl_generated_shapeof_i32") {
+    artifact.source = opencl_generated_shapeof_i32_kernel_source().source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_generated_shapeof_i64") {
+    artifact.source = opencl_generated_shapeof_i64_kernel_source().source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_generated_tile_f32") {
+    artifact.source = opencl_generated_tile_f32_kernel_source().source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_generated_tile_dynamic_f32") {
+    artifact.source = opencl_generated_tile_dynamic_f32_kernel_source().source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_generated_tile_f16") {
+    artifact.source = opencl_generated_tile_f16_kernel_source().source;
+  } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_generated_tile_dynamic_f16") {
+    artifact.source = opencl_generated_tile_dynamic_f16_kernel_source().source;
   } else if (artifact.artifact_ref.entry_point ==
              "gfx_opencl_baseline_unary_f32") {
     artifact.source = kOpenClUnaryF32Source;
@@ -7467,18 +6654,6 @@ GfxOpenClSourceArtifact make_opencl_source_artifact(
                  "gfx_opencl_baseline_binary_broadcast_f16") {
     artifact.source = kOpenClBinaryF16Source;
   } else if (artifact.artifact_ref.entry_point ==
-             "gfx_opencl_baseline_compare_f32") {
-    artifact.source = kOpenClCompareF32Source;
-  } else if (artifact.artifact_ref.entry_point ==
-             "gfx_opencl_baseline_compare_broadcast_f32") {
-    artifact.source = kOpenClCompareBroadcastF32Source;
-  } else if (artifact.artifact_ref.entry_point ==
-             "gfx_opencl_baseline_select_f32") {
-    artifact.source = kOpenClSelectF32Source;
-  } else if (artifact.artifact_ref.entry_point ==
-             "gfx_opencl_baseline_select_broadcast_f32") {
-    artifact.source = kOpenClSelectBroadcastF32Source;
-  } else if (artifact.artifact_ref.entry_point ==
              "gfx_opencl_baseline_transpose_f32") {
     artifact.source = kOpenClTransposeF32Source;
   } else if (artifact.artifact_ref.entry_point ==
@@ -7487,11 +6662,6 @@ GfxOpenClSourceArtifact make_opencl_source_artifact(
   } else if (artifact.artifact_ref.entry_point ==
              "gfx_opencl_baseline_range_f32") {
     artifact.source = kOpenClRangeF32Source;
-  } else if (artifact.artifact_ref.entry_point ==
-                 "gfx_opencl_baseline_tile_f32" ||
-             artifact.artifact_ref.entry_point ==
-                 "gfx_opencl_baseline_tile_dynamic_f32") {
-    artifact.source = kOpenClTileF32Source;
   } else if (artifact.artifact_ref.entry_point ==
                  "gfx_opencl_baseline_gather_i32_f32" ||
              artifact.artifact_ref.entry_point ==
@@ -7514,26 +6684,20 @@ GfxOpenClSourceArtifact make_opencl_source_artifact(
                  "gfx_opencl_baseline_scatter_nd_i32_f32") {
     artifact.source = kOpenClScatterF32I32Source;
   } else if (artifact.artifact_ref.entry_point ==
-                 "gfx_opencl_baseline_concat2_f32" ||
+                 "gfx_opencl_generated_concat2_f32" ||
              artifact.artifact_ref.entry_point ==
-                 "gfx_opencl_baseline_concat3_f32" ||
+                 "gfx_opencl_generated_concat3_f32" ||
              artifact.artifact_ref.entry_point ==
-                 "gfx_opencl_baseline_concat4_f32") {
+                 "gfx_opencl_generated_concat4_f32") {
     artifact.source = kOpenClConcatSplitF32Source;
+  } else if (auto concat_inputs = concat_input_count_from_entry_point(
+                 artifact.artifact_ref.entry_point, "f16");
+             concat_inputs && *concat_inputs >= 2 && *concat_inputs <= 4 &&
+             static_u32_scalars.size() == 1) {
+    artifact.source =
+        make_opencl_dynamic_concat_f16_source(artifact.artifact_ref.entry_point);
   } else if (artifact.artifact_ref.entry_point ==
-                 "gfx_opencl_baseline_select_f16" ||
-             artifact.artifact_ref.entry_point ==
-                 "gfx_opencl_baseline_concat2_f16" ||
-             artifact.artifact_ref.entry_point ==
-                 "gfx_opencl_baseline_concat3_f16" ||
-             artifact.artifact_ref.entry_point ==
-                 "gfx_opencl_baseline_concat4_f16" ||
-             artifact.artifact_ref.entry_point ==
                  "gfx_opencl_baseline_broadcast_f16_i64shape" ||
-             artifact.artifact_ref.entry_point ==
-                 "gfx_opencl_baseline_tile_f16" ||
-             artifact.artifact_ref.entry_point ==
-                 "gfx_opencl_baseline_tile_dynamic_f16" ||
              artifact.artifact_ref.entry_point ==
                  "gfx_opencl_baseline_range_f16" ||
              artifact.artifact_ref.entry_point ==
@@ -7544,21 +6708,11 @@ GfxOpenClSourceArtifact make_opencl_source_artifact(
                  "gfx_opencl_baseline_range_i64_unit") {
     artifact.source = kOpenClDynamicDataMovementF16Source;
   } else if (artifact.artifact_ref.entry_point ==
-             "gfx_opencl_baseline_logical_unary_bool") {
-    artifact.source = kOpenClLogicalUnaryBoolSource;
-  } else if (artifact.artifact_ref.entry_point ==
-             "gfx_opencl_baseline_logical_binary_bool") {
-    artifact.source = kOpenClLogicalBinaryBoolSource;
-  } else if (artifact.artifact_ref.entry_point ==
-             "gfx_opencl_baseline_logical_binary_broadcast_bool") {
-    artifact.source = kOpenClLogicalBinaryBroadcastBoolSource;
-  } else if (artifact.artifact_ref.entry_point ==
              "gfx_opencl_generated_reduction_f32") {
     artifact.source = opencl_generated_reduction_f32_kernel_source().source;
   } else if (artifact.artifact_ref.entry_point ==
-             "gfx_opencl_baseline_reduce_logical_bool") {
-    artifact.source =
-        opencl_baseline_reduction_logical_bool_kernel_source().source;
+             "gfx_opencl_generated_reduction_bool") {
+    artifact.source = opencl_generated_reduction_bool_kernel_source().source;
   } else {
     artifact.source = kOpenClBaselineSource;
   }
@@ -7592,6 +6746,57 @@ GfxOpenClSourceArtifact make_opencl_source_artifact(
   return artifact;
 }
 
+void materialize_gfx_opencl_source_chunk_plan(
+    GfxOpenClSourceArtifact &artifact) {
+  artifact.planned_chunks.clear();
+  if (!artifact.valid) {
+    return;
+  }
+
+  if (artifact.input_chunk_size != 0) {
+    for (uint32_t input_begin = 0; input_begin < artifact.direct_input_count;
+         input_begin += artifact.input_chunk_size) {
+      const uint32_t input_count =
+          std::min<uint32_t>(artifact.input_chunk_size,
+                             artifact.direct_input_count - input_begin);
+      auto chunk_artifact = make_gfx_opencl_concat_chunk_source_artifact(
+          artifact, input_begin, input_count);
+      if (!chunk_artifact || !chunk_artifact->valid) {
+        artifact.valid = false;
+        artifact.planned_chunks.clear();
+        return;
+      }
+      artifact.planned_chunks.push_back(
+          {input_begin, input_count,
+           std::make_shared<const GfxOpenClSourceArtifact>(
+               std::move(*chunk_artifact))});
+    }
+    artifact.valid = !artifact.planned_chunks.empty();
+    return;
+  }
+
+  if (artifact.output_chunk_size != 0) {
+    for (uint32_t output_begin = 0; output_begin < artifact.direct_output_count;
+         output_begin += artifact.output_chunk_size) {
+      const uint32_t output_count =
+          std::min<uint32_t>(artifact.output_chunk_size,
+                             artifact.direct_output_count - output_begin);
+      auto chunk_artifact = make_gfx_opencl_split_chunk_source_artifact(
+          artifact, output_begin, output_count);
+      if (!chunk_artifact || !chunk_artifact->valid) {
+        artifact.valid = false;
+        artifact.planned_chunks.clear();
+        return;
+      }
+      artifact.planned_chunks.push_back(
+          {output_begin, output_count,
+           std::make_shared<const GfxOpenClSourceArtifact>(
+               std::move(*chunk_artifact))});
+    }
+    artifact.valid = !artifact.planned_chunks.empty();
+  }
+}
+
 } // namespace
 
 GfxOpenClSourceArtifactPayload::GfxOpenClSourceArtifactPayload(
@@ -7617,11 +6822,33 @@ std::string_view GfxOpenClSourceArtifactPayload::entry_point() const noexcept {
 }
 
 bool GfxOpenClSourceArtifactPayload::valid() const noexcept {
-  return m_artifact.valid && m_artifact.artifact_ref.valid &&
-         m_artifact.artifact_ref.kind == GfxKernelArtifactKind::OpenClSource &&
-         m_artifact.artifact_ref.backend_domain ==
-             GfxKernelBackendDomain::OpenCl &&
-         !m_artifact.source.empty();
+  if (!m_artifact.valid || !m_artifact.artifact_ref.valid ||
+      m_artifact.artifact_ref.kind != GfxKernelArtifactKind::OpenClSource ||
+      m_artifact.artifact_ref.backend_domain != GfxKernelBackendDomain::OpenCl ||
+      m_artifact.source.empty()) {
+    return false;
+  }
+  const bool expects_chunks =
+      m_artifact.input_chunk_size != 0 || m_artifact.output_chunk_size != 0;
+  if (!expects_chunks) {
+    return m_artifact.planned_chunks.empty();
+  }
+  if (m_artifact.planned_chunks.empty()) {
+    return false;
+  }
+  for (const auto &chunk : m_artifact.planned_chunks) {
+    if (chunk.binding_count == 0 || !chunk.artifact ||
+        !chunk.artifact->valid || !chunk.artifact->artifact_ref.valid ||
+        chunk.artifact->artifact_ref.kind !=
+            GfxKernelArtifactKind::OpenClSource ||
+        chunk.artifact->artifact_ref.backend_domain !=
+            GfxKernelBackendDomain::OpenCl ||
+        chunk.artifact->source.empty() ||
+        !chunk.artifact->planned_chunks.empty()) {
+      return false;
+    }
+  }
+  return true;
 }
 
 std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
@@ -7649,17 +6876,17 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
         direct_input_indices.push_back(input_idx);
       }
       const std::string entry_point =
-          "gfx_opencl_baseline_concat" +
+          "gfx_opencl_generated_concat" +
           std::to_string(dynamic_scalars->input_count) + "_f16";
       auto manifest = make_opencl_source_manifest(
           GfxKernelStageFamily::ConcatSplit,
-          "opencl:baseline:Concat:f16:dynamic_static_rank:inputs" +
+          "opencl:generated:Concat:f16:dynamic_static_rank:inputs" +
               std::to_string(dynamic_scalars->input_count),
           entry_point, dynamic_scalars->input_count,
           static_cast<uint32_t>(scalar_args.size()));
       return make_opencl_source_artifact(
           std::move(manifest),
-          "opencl/baseline/concat" +
+          "opencl/generated/concat" +
               std::to_string(dynamic_scalars->input_count) + "_f16_dynamic",
           std::move(scalar_args), std::move(direct_input_indices),
           GfxOpenClArtifactOp::Identity, GfxOpenClArtifactInputMode::Direct,
@@ -7693,12 +6920,12 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
   if (type == "Select" && select_dynamic_f16_supported(node)) {
     auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::Eltwise,
-        "opencl:baseline:Select:bool_f16:dynamic_same_shape",
-        "gfx_opencl_baseline_select_f16",
+        "opencl:generated:eltwise:Select:bool_f16:dynamic_same_shape",
+        "gfx_opencl_generated_eltwise_select_f16_dynamic",
         /*direct_inputs=*/3,
         /*scalar_arg_count=*/1);
     return make_opencl_source_artifact(
-        std::move(manifest), "opencl/baseline/select_f16_dynamic",
+        std::move(manifest), "opencl/generated/eltwise_select_f16_dynamic",
         {GfxOpenClSourceScalarArg::ElementCount}, {0, 1, 2},
         GfxOpenClArtifactOp::Identity);
   }
@@ -7788,14 +7015,14 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
   if (type == "Range" && range_dynamic_i64_unit_supported(node)) {
     auto manifest =
         make_opencl_source_manifest(GfxKernelStageFamily::GatherScatter,
-                                      "opencl:baseline:Range:i64:dynamic_unit",
-                                      "gfx_opencl_baseline_range_i64_unit",
-                                      /*direct_inputs=*/1,
-                                      /*scalar_arg_count=*/1);
-    return make_opencl_source_artifact(
-        std::move(manifest), "opencl/baseline/range_i64_unit_dynamic",
-        {GfxOpenClSourceScalarArg::ElementCount}, {1},
-        GfxOpenClArtifactOp::Identity);
+                                    "opencl:baseline:Range:i64:dynamic_unit",
+                                    "gfx_opencl_baseline_range_i64_unit",
+                                    /*direct_inputs=*/1,
+                                    /*scalar_arg_count=*/1);
+    return make_opencl_source_artifact(std::move(manifest),
+                                       "opencl/baseline/range_i64_unit_dynamic",
+                                       {GfxOpenClSourceScalarArg::ElementCount},
+                                       {1}, GfxOpenClArtifactOp::Identity);
   }
 
   if (type == "Tile") {
@@ -7810,11 +7037,11 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
       auto scalar_args = tile_dynamic_shape_scalar_args();
       auto manifest = make_opencl_source_manifest(
           GfxKernelStageFamily::Layout,
-          "opencl:baseline:Tile:" + type_suffix + ":dynamic_static_rank",
-          "gfx_opencl_baseline_tile_dynamic_" + type_suffix,
+          "opencl:generated:Tile:" + type_suffix + ":dynamic_static_rank",
+          "gfx_opencl_generated_tile_dynamic_" + type_suffix,
           /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
       return make_opencl_source_artifact(
-          std::move(manifest), "opencl/baseline/tile_dynamic_" + type_suffix,
+          std::move(manifest), "opencl/generated/tile_dynamic_" + type_suffix,
           std::move(scalar_args), {0}, GfxOpenClArtifactOp::Identity,
           GfxOpenClArtifactInputMode::Direct, 0.0f, {*rank});
     }
@@ -7823,11 +7050,11 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
     scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
                        GfxOpenClSourceScalarArg::StaticU32);
     auto manifest = make_opencl_source_manifest(
-        GfxKernelStageFamily::Layout, "opencl:baseline:Tile:" + type_suffix,
-        "gfx_opencl_baseline_tile_" + type_suffix,
+        GfxKernelStageFamily::Layout, "opencl:generated:Tile:" + type_suffix,
+        "gfx_opencl_generated_tile_" + type_suffix,
         /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
     return make_opencl_source_artifact(
-        std::move(manifest), "opencl/baseline/tile_" + type_suffix,
+        std::move(manifest), "opencl/generated/tile_" + type_suffix,
         std::move(scalar_args), {0}, GfxOpenClArtifactOp::Identity,
         GfxOpenClArtifactInputMode::Direct, 0.0f,
         std::move(*static_u32_scalars));
@@ -7852,10 +7079,11 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
         "opencl:generated:" + type + ":" + type_suffix, entry_point,
         /*direct_inputs=*/1,
         static_cast<uint32_t>(1 + static_u32_scalars->size()));
-    return make_opencl_source_artifact(
-        std::move(manifest), "opencl/generated/pool2d_" + type_suffix,
-        pool2d_static_scalar_args(), {0}, op, GfxOpenClArtifactInputMode::Direct,
-        0.0f, std::move(*static_u32_scalars));
+    return make_opencl_source_artifact(std::move(manifest),
+                                       "opencl/generated/pool2d_" + type_suffix,
+                                       pool2d_static_scalar_args(), {0}, op,
+                                       GfxOpenClArtifactInputMode::Direct, 0.0f,
+                                       std::move(*static_u32_scalars));
   }
 
   if (type == "Softmax") {
@@ -7948,11 +7176,11 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
         "gfx_opencl_baseline_unary_f32",
         /*direct_inputs=*/1,
         /*scalar_arg_count=*/2);
-    return make_opencl_source_artifact(
-        std::move(manifest), "opencl/baseline/linear_copy_f32",
-        {GfxOpenClSourceScalarArg::ElementCount,
-         GfxOpenClSourceScalarArg::OpCode},
-        {0}, GfxOpenClArtifactOp::Identity);
+    return make_opencl_source_artifact(std::move(manifest),
+                                       "opencl/baseline/linear_copy_f32",
+                                       {GfxOpenClSourceScalarArg::ElementCount,
+                                        GfxOpenClSourceScalarArg::OpCode},
+                                       {0}, GfxOpenClArtifactOp::Identity);
   }
 
   if (type == "Convert") {
@@ -7975,10 +7203,10 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
         entry_point,
         /*direct_inputs=*/1,
         /*scalar_arg_count=*/1);
-    return make_opencl_source_artifact(
-        std::move(manifest), "opencl/baseline/convert_" + suffix,
-        {GfxOpenClSourceScalarArg::ElementCount}, {0},
-        GfxOpenClArtifactOp::Identity);
+    return make_opencl_source_artifact(std::move(manifest),
+                                       "opencl/baseline/convert_" + suffix,
+                                       {GfxOpenClSourceScalarArg::ElementCount},
+                                       {0}, GfxOpenClArtifactOp::Identity);
   }
 
   if (type == "MatMul") {
@@ -8260,18 +7488,18 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
           static_cast<uint32_t>(GfxOpenClSourceScalarArg::Input0Dim0) + axis));
     }
     const std::string entry_point = output_i64
-                                        ? "gfx_opencl_baseline_shapeof_i64"
-                                        : "gfx_opencl_baseline_shapeof_i32";
+                                        ? "gfx_opencl_generated_shapeof_i64"
+                                        : "gfx_opencl_generated_shapeof_i32";
     auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::GatherScatter,
-        "opencl:baseline:ShapeOf:" + std::string(output_i64 ? "i64" : "i32") +
+        "opencl:generated:shapeof:" + std::string(output_i64 ? "i64" : "i32") +
             ":rank" + std::to_string(*rank),
         entry_point,
         /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
     return make_opencl_source_artifact(
         std::move(manifest),
-        output_i64 ? "opencl/baseline/shapeof_i64"
-                   : "opencl/baseline/shapeof_i32",
+        output_i64 ? "opencl/generated/shapeof_i64"
+                   : "opencl/generated/shapeof_i32",
         std::move(scalar_args), {0}, GfxOpenClArtifactOp::Identity,
         GfxOpenClArtifactInputMode::Direct);
   }
@@ -8284,7 +7512,7 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
     std::vector<GfxOpenClSourceScalarArg> scalar_args = {
         GfxOpenClSourceScalarArg::ElementCount};
     const std::string entry_point =
-        "gfx_opencl_baseline_concat" +
+        "gfx_opencl_generated_concat" +
         std::to_string(static_u32_scalars->input_count) + "_" +
         static_u32_scalars->type_suffix;
     std::vector<size_t> direct_input_indices;
@@ -8295,18 +7523,24 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
     }
     auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::ConcatSplit,
-        "opencl:baseline:Concat:" + static_u32_scalars->type_suffix +
+        "opencl:generated:Concat:" + static_u32_scalars->type_suffix +
             ":inputs" + std::to_string(static_u32_scalars->input_count),
         entry_point, static_u32_scalars->input_count,
         static_cast<uint32_t>(scalar_args.size()));
-    return make_opencl_source_artifact(
+    auto artifact = make_opencl_source_artifact(
         std::move(manifest),
-        "opencl/baseline/concat" +
+        "opencl/generated/concat" +
             std::to_string(static_u32_scalars->input_count) + "_" +
             static_u32_scalars->type_suffix,
         std::move(scalar_args), std::move(direct_input_indices),
         GfxOpenClArtifactOp::Identity, GfxOpenClArtifactInputMode::Direct, 0.0f,
         std::move(static_u32_scalars->values));
+    if (static_u32_scalars->input_count > 4) {
+      artifact.input_chunk_size =
+          static_u32_scalars->type_suffix == "f16" ? 4u : 1u;
+      materialize_gfx_opencl_source_chunk_plan(artifact);
+    }
+    return artifact;
   }
 
   if (type == "Split" || type == "VariadicSplit") {
@@ -8319,25 +7553,30 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
     std::vector<GfxOpenClSourceScalarArg> scalar_args = {
         GfxOpenClSourceScalarArg::ElementCount};
     const std::string entry_point =
-        "gfx_opencl_baseline_split" +
+        "gfx_opencl_generated_split" +
         std::to_string(static_u32_scalars->output_count) + "_" +
         static_u32_scalars->type_suffix;
     auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::ConcatSplit,
-        "opencl:baseline:" + type + ":" + static_u32_scalars->type_suffix +
+        "opencl:generated:" + type + ":" + static_u32_scalars->type_suffix +
             ":outputs" + std::to_string(static_u32_scalars->output_count),
         entry_point,
         /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()),
         static_u32_scalars->output_count);
-    return make_opencl_source_artifact(
+    auto artifact = make_opencl_source_artifact(
         std::move(manifest),
-        "opencl/baseline/split" +
+        "opencl/generated/split" +
             std::to_string(static_u32_scalars->output_count) + "_" +
             static_u32_scalars->type_suffix,
         std::move(scalar_args), {0}, GfxOpenClArtifactOp::Identity,
         GfxOpenClArtifactInputMode::Direct, 0.0f,
         std::move(static_u32_scalars->values),
         GfxOpenClSourceElementCountSource::Input0);
+    if (static_u32_scalars->output_count > 4) {
+      artifact.output_chunk_size = 4;
+      materialize_gfx_opencl_source_chunk_plan(artifact);
+    }
+    return artifact;
   }
 
   if (auto activation_artifact = make_opencl_activation_artifact(node)) {
@@ -8366,12 +7605,12 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
         input_static_element_count_matches_output(node, 1, 0)) {
       auto manifest = make_opencl_source_manifest(
           GfxKernelStageFamily::Eltwise,
-          "opencl:baseline:" + type + ":f32:same_shape",
-          "gfx_opencl_baseline_compare_f32",
+          "opencl:generated:eltwise:" + type + ":f32:same_shape",
+          "gfx_opencl_generated_eltwise_compare_f32",
           /*direct_inputs=*/2,
           /*scalar_arg_count=*/2);
       return make_opencl_source_artifact(
-          std::move(manifest), "opencl/baseline/compare_f32",
+          std::move(manifest), "opencl/generated/eltwise_compare_f32",
           {GfxOpenClSourceScalarArg::ElementCount,
            GfxOpenClSourceScalarArg::OpCode},
           {0, 1}, *op);
@@ -8385,11 +7624,11 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
                          GfxOpenClSourceScalarArg::StaticU32);
       auto manifest = make_opencl_source_manifest(
           GfxKernelStageFamily::Eltwise,
-          "opencl:baseline:" + type + ":f32:broadcast",
-          "gfx_opencl_baseline_compare_broadcast_f32",
+          "opencl:generated:eltwise:" + type + ":f32:broadcast",
+          "gfx_opencl_generated_eltwise_compare_broadcast_f32",
           /*direct_inputs=*/2, static_cast<uint32_t>(scalar_args.size()));
       return make_opencl_source_artifact(
-          std::move(manifest), "opencl/baseline/compare_broadcast_f32",
+          std::move(manifest), "opencl/generated/eltwise_compare_broadcast_f32",
           std::move(scalar_args), {0, 1}, *op,
           GfxOpenClArtifactInputMode::Direct, 0.0f,
           std::move(*static_u32_scalars));
@@ -8410,12 +7649,12 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
         input_static_element_count_matches_output(node, 2, 0)) {
       auto manifest = make_opencl_source_manifest(
           GfxKernelStageFamily::Eltwise,
-          "opencl:baseline:Select:bool_f32:same_shape",
-          "gfx_opencl_baseline_select_f32",
+          "opencl:generated:eltwise:Select:bool_f32:same_shape",
+          "gfx_opencl_generated_eltwise_select_f32",
           /*direct_inputs=*/3,
           /*scalar_arg_count=*/1);
       return make_opencl_source_artifact(
-          std::move(manifest), "opencl/baseline/select_f32",
+          std::move(manifest), "opencl/generated/eltwise_select_f32",
           {GfxOpenClSourceScalarArg::ElementCount}, {0, 1, 2},
           GfxOpenClArtifactOp::Identity);
     }
@@ -8427,11 +7666,11 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
                          GfxOpenClSourceScalarArg::StaticU32);
       auto manifest = make_opencl_source_manifest(
           GfxKernelStageFamily::Eltwise,
-          "opencl:baseline:Select:bool_f32:broadcast",
-          "gfx_opencl_baseline_select_broadcast_f32",
+          "opencl:generated:eltwise:Select:bool_f32:broadcast",
+          "gfx_opencl_generated_eltwise_select_broadcast_f32",
           /*direct_inputs=*/3, static_cast<uint32_t>(scalar_args.size()));
       return make_opencl_source_artifact(
-          std::move(manifest), "opencl/baseline/select_broadcast_f32",
+          std::move(manifest), "opencl/generated/eltwise_select_broadcast_f32",
           std::move(scalar_args), {0, 1, 2}, GfxOpenClArtifactOp::Identity,
           GfxOpenClArtifactInputMode::Direct, 0.0f,
           std::move(*static_u32_scalars));
@@ -8448,12 +7687,12 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
     }
     auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::Eltwise,
-        "opencl:baseline:" + type + ":bool:same_shape",
-        "gfx_opencl_baseline_logical_unary_bool",
+        "opencl:generated:eltwise:" + type + ":bool:same_shape",
+        "gfx_opencl_generated_eltwise_logical_unary_bool",
         /*direct_inputs=*/1,
         /*scalar_arg_count=*/2);
     return make_opencl_source_artifact(
-        std::move(manifest), "opencl/baseline/logical_unary_bool",
+        std::move(manifest), "opencl/generated/eltwise_logical_unary_bool",
         {GfxOpenClSourceScalarArg::ElementCount,
          GfxOpenClSourceScalarArg::OpCode},
         {0}, *op);
@@ -8471,12 +7710,12 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
         input_static_element_count_matches_output(node, 1, 0)) {
       auto manifest = make_opencl_source_manifest(
           GfxKernelStageFamily::Eltwise,
-          "opencl:baseline:" + type + ":bool:same_shape",
-          "gfx_opencl_baseline_logical_binary_bool",
+          "opencl:generated:eltwise:" + type + ":bool:same_shape",
+          "gfx_opencl_generated_eltwise_logical_binary_bool",
           /*direct_inputs=*/2,
           /*scalar_arg_count=*/2);
       return make_opencl_source_artifact(
-          std::move(manifest), "opencl/baseline/logical_binary_bool",
+          std::move(manifest), "opencl/generated/eltwise_logical_binary_bool",
           {GfxOpenClSourceScalarArg::ElementCount,
            GfxOpenClSourceScalarArg::OpCode},
           {0, 1}, *op);
@@ -8490,11 +7729,12 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
                          GfxOpenClSourceScalarArg::StaticU32);
       auto manifest = make_opencl_source_manifest(
           GfxKernelStageFamily::Eltwise,
-          "opencl:baseline:" + type + ":bool:broadcast",
-          "gfx_opencl_baseline_logical_binary_broadcast_bool",
+          "opencl:generated:eltwise:" + type + ":bool:broadcast",
+          "gfx_opencl_generated_eltwise_logical_binary_broadcast_bool",
           /*direct_inputs=*/2, static_cast<uint32_t>(scalar_args.size()));
       return make_opencl_source_artifact(
-          std::move(manifest), "opencl/baseline/logical_binary_broadcast_bool",
+          std::move(manifest),
+          "opencl/generated/eltwise_logical_binary_broadcast_bool",
           std::move(scalar_args), {0, 1}, *op,
           GfxOpenClArtifactInputMode::Direct, 0.0f,
           std::move(*static_u32_scalars));
@@ -8519,11 +7759,11 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
                        GfxOpenClSourceScalarArg::StaticU32);
     auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::Reduction,
-        "opencl:baseline:" + type + ":bool:static_axes",
-        "gfx_opencl_baseline_reduce_logical_bool",
+        "opencl:generated:" + type + ":bool:static_axes",
+        "gfx_opencl_generated_reduction_bool",
         /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
     return make_opencl_source_artifact(
-        std::move(manifest), "opencl/baseline/reduce_logical_bool",
+        std::move(manifest), "opencl/generated/reduction_bool",
         std::move(scalar_args), {0}, *op, GfxOpenClArtifactInputMode::Direct,
         0.0f, std::move(*static_u32_scalars));
   }
@@ -8561,7 +7801,9 @@ std::optional<GfxOpenClSourceArtifact>
 make_gfx_opencl_concat_chunk_source_artifact(
     const GfxOpenClSourceArtifact &base_artifact, uint32_t input_begin,
     uint32_t input_count) {
-  if (!base_artifact.valid || input_count < 1 || input_count > 4 ||
+  if (!base_artifact.valid || base_artifact.input_chunk_size == 0 ||
+      input_count < 1 || input_count > base_artifact.input_chunk_size ||
+      input_count > 4 ||
       base_artifact.direct_output_count != 1 ||
       base_artifact.direct_input_indices.size() !=
           base_artifact.direct_input_count) {
@@ -8610,7 +7852,7 @@ make_gfx_opencl_concat_chunk_source_artifact(
         base_artifact.direct_input_indices[input_begin + local_input]);
   }
 
-  const std::string entry_point = "gfx_opencl_baseline_concat" +
+  const std::string entry_point = "gfx_opencl_generated_concat" +
                                   std::to_string(input_count) + "_" +
                                   type_suffix;
   auto manifest = make_opencl_source_manifest(
@@ -8633,7 +7875,9 @@ std::optional<GfxOpenClSourceArtifact>
 make_gfx_opencl_split_chunk_source_artifact(
     const GfxOpenClSourceArtifact &base_artifact, uint32_t output_begin,
     uint32_t output_count) {
-  if (!base_artifact.valid || output_count < 1 || output_count > 4 ||
+  if (!base_artifact.valid || base_artifact.output_chunk_size == 0 ||
+      output_count < 1 || output_count > base_artifact.output_chunk_size ||
+      output_count > 4 ||
       base_artifact.direct_input_count != 1 ||
       base_artifact.direct_input_indices.empty()) {
     return std::nullopt;
@@ -8673,7 +7917,7 @@ make_gfx_opencl_split_chunk_source_artifact(
         base_artifact.source_static_u32_scalars[source_idx + 1]);
   }
 
-  const std::string entry_point = "gfx_opencl_baseline_split" +
+  const std::string entry_point = "gfx_opencl_generated_split" +
                                   std::to_string(output_count) + "_" +
                                   type_suffix;
   auto manifest = make_opencl_source_manifest(

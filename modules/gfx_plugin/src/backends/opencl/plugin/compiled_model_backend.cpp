@@ -7,6 +7,7 @@
 #include "backends/opencl/plugin/compiled_model_state.hpp"
 #include "backends/opencl/runtime/memory_api.hpp"
 #include "openvino/core/except.hpp"
+#include "runtime/gfx_remote_context.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -14,7 +15,12 @@ namespace gfx_plugin {
 std::unique_ptr<BackendState> create_opencl_backend_state(
     const ov::AnyMap&,
     const ov::SoPtr<ov::IRemoteContext>& context) {
-    OPENVINO_ASSERT(!context, "GFX OpenCL: remote context import is not implemented yet");
+    if (context) {
+        auto gfx_context = std::dynamic_pointer_cast<GfxRemoteContext>(context._ptr);
+        OPENVINO_ASSERT(gfx_context, "GFX OpenCL: remote context type mismatch");
+        OPENVINO_ASSERT(gfx_context->backend() == GpuBackend::OpenCL,
+                        "GFX OpenCL: remote context backend mismatch");
+    }
     ensure_opencl_memory_ops_registered();
     ensure_opencl_stage_factory_registered();
     auto runtime = OpenClRuntimeContext::instance();

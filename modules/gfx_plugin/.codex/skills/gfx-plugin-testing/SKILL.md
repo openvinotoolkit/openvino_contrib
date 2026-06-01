@@ -18,8 +18,9 @@ validation in `modules/gfx_plugin/`.
   binding.
 - The task changes OpenCL source artifacts, dynamic OpenCL runtime selection,
   source-stage execution, generated activation/elementwise/MatMul units,
-  runtime-shape allocation, chunked Concat/Split, boolean-buffer behavior,
-  constant materialization, or OpenCL op coverage.
+  generated ShapeOf/Tile, generated compare/select or logical-bool elementwise
+  units, runtime-shape allocation, chunked Concat/Split, boolean-buffer
+  behavior, constant materialization, or OpenCL op coverage.
 - The user wants compare-runner, microbench, profiling-runbook, Android, Linux,
   or Raspberry Pi validation guidance.
 
@@ -43,6 +44,8 @@ validation in `modules/gfx_plugin/`.
 - `ov_gfx_microbench`: MB0-MB3 microbench and calibration workflow
 - `ov_gfx_conv_shape_bench`: representative Conv2D compile-plus-infer probe
 - standalone OpenCL Conv2D microbenches: kernel-family experiments only
+- `gfx_test_plugins_xml`: CMake helper target that writes a controlled
+  `plugins.xml` with AUTO fallback disabled for test runs
 
 ## Test Selection Rules
 
@@ -149,6 +152,10 @@ For OpenCL source-artifact changes:
 - include `tests/unit/gfx_pool_kernel_contract_test.cpp` when generated Pool2D
   source ids, static 4D NCHW window metadata, or backend kernel-unit routes
   change
+- include `tests/unit/gfx_backend_architecture_contract_test.cpp` and
+  `tests/unit/gfx_opencl_source_artifacts_test.cpp` when generated ShapeOf,
+  Tile, compare/select, logical-bool elementwise, boolean reduction, or
+  generated Concat/Split routes move
 - add `tests/unit/gpu_backend_base_test.cpp` coverage when the artifact should
   be present in the compiler executable bundle
 - add runtime coverage when dynamic runtime loading, buffer binding,
@@ -156,6 +163,10 @@ For OpenCL source-artifact changes:
   boolean storage, chunking, or command execution changes
 - validate with an OpenCL-capable target when the change depends on the real
   runtime rather than manifest-only logic
+
+The current handwritten OpenCL source exception is
+`opencl/baseline/transpose_f32`. Boolean reductions are generated
+`opencl/generated/reduction_bool` routes, not baseline exceptions.
 
 ## Command Pattern
 
@@ -169,8 +180,9 @@ DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
 ctest --test-dir build-gfx-plugin --output-on-failure -L GFX
 ```
 
-For docs-only changes, `git diff --check` plus stale-reference grep is usually
-enough unless CMake, source lists, or public properties changed.
+For docs-only or documentation/security publication changes, `git diff --check`
+plus stale-reference/security grep and staged diff review are the expected gate
+unless the user explicitly requests build or test targets.
 
 ## Compare And Profiling Tools
 

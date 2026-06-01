@@ -56,6 +56,9 @@ Then inspect the relevant code path:
   compiled-model properties, and docs.
 - Do not modify `third_party/llvm-project/` unless the task explicitly requires
   vendored LLVM changes.
+- Keep `third_party/clvk` and `third_party/clspv` as submodule gitlinks for the
+  optional Raspberry/OpenCL bundle; do not vendor-copy their contents into a
+  plugin commit.
 
 ## Metal Work
 
@@ -138,6 +141,12 @@ For OpenCL source-artifact work:
 7. Add runtime coverage only when dynamic OpenCL loading, memory, command
    enqueue, or runtime-shape behavior changed.
 
+Current generated OpenCL routes include activation, elementwise, f32 MatMul,
+f32/f16 Interpolate, f32 reduction, boolean reduction, f32/f16 Softmax,
+dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D, ShapeOf, Tile,
+compare/select, logical-bool elementwise, and generated Concat/Split helpers.
+The current handwritten source exception is `opencl/baseline/transpose_f32`.
+
 Standalone OpenCL Conv2D microbench tools are experiments. A result there is
 not plugin support until it is promoted through support probing, source
 artifacts, runtime binding, and tests.
@@ -154,7 +163,10 @@ artifacts, runtime binding, and tests.
 4. Express the shared contract through compiler manifest/executable records,
    stage policy, kernel manifests, runtime-value payloads, OpenCL artifacts, or
    MPSRT/Apple MSL plans.
-5. Add backend code only at a real Metal/OpenCL boundary.
+5. Add backend code only at a real Metal/OpenCL boundary. Executable backend
+   stages must consume their `RuntimeStageExecutableDescriptor`; do not
+   reconstruct kernel source, artifact payload, or vendor descriptors from the
+   OpenVINO node in request-time code.
 6. Add focused unit tests, then backend/functional tests if externally visible.
 7. Update docs if supported shapes, route selection, properties, profiling, or
    test workflows changed.

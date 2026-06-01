@@ -26,6 +26,14 @@ gfx_embed_kernel_source(
     "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/eltwise_kernel_source.hpp"
     "kOpenClGeneratedEltwiseKernelSource")
 gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/eltwise_logical_bool_kernel.cl"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/eltwise_logical_bool_kernel_source.hpp"
+    "kOpenClGeneratedEltwiseLogicalBoolKernelSource")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/eltwise_compare_select_kernel.cl"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/eltwise_compare_select_kernel_source.hpp"
+    "kOpenClGeneratedEltwiseCompareSelectKernelSource")
+gfx_embed_kernel_source(
     "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/activation_kernel.cl"
     "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/activation_kernel_source.hpp"
     "kOpenClGeneratedActivationKernelSource")
@@ -36,7 +44,7 @@ gfx_embed_kernel_source(
 gfx_embed_kernel_source(
     "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/reduction_logical_bool_kernel.cl"
     "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/reduction_logical_bool_kernel_source.hpp"
-    "kOpenClBaselineReductionLogicalBoolKernelSource")
+    "kOpenClGeneratedReductionBoolKernelSource")
 gfx_embed_kernel_source(
     "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/softmax_f32_kernel.cl"
     "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/softmax_f32_kernel_source.hpp"
@@ -73,6 +81,14 @@ gfx_embed_kernel_source(
     "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/matmul_f32_kernel.cl"
     "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/matmul_f32_kernel_source.hpp"
     "kOpenClGeneratedMatMulF32KernelSource")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/shapeof_kernel.cl"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/shapeof_kernel_source.hpp"
+    "kOpenClGeneratedShapeOfKernelSource")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/tile_kernel.cl"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/tile_kernel_source.hpp"
+    "kOpenClGeneratedTileKernelSource")
 
 gfx_embed_kernel_source(
     "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/metal_kernels/mpsrt_buffer_to_image_f32.metal"
@@ -178,9 +194,6 @@ add_subdirectory(mlir)
 
 # Build settings shared by plugin and runtime objects.
 add_library(gfx_plugin_build_settings INTERFACE)
-target_compile_definitions(gfx_plugin_build_settings INTERFACE
-    GFX_BACKEND_METAL_AVAILABLE=$<BOOL:${GFX_BACKEND_METAL_AVAILABLE}>
-    GFX_BACKEND_OPENCL_AVAILABLE=$<BOOL:${GFX_BACKEND_OPENCL_AVAILABLE}>)
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(gfx_plugin_build_settings INTERFACE -Werror)
 elseif(MSVC)
@@ -364,6 +377,9 @@ set_target_properties(${TARGET_NAME} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_REL
 if(DEFINED GFX_LLVM_EXTERNAL_TARGET)
     add_dependencies(${TARGET_NAME} ${GFX_LLVM_EXTERNAL_TARGET})
 endif()
+if(DEFINED GFX_RASPBERRY_OPENCL_BUNDLE_TARGET AND TARGET ${GFX_RASPBERRY_OPENCL_BUNDLE_TARGET})
+    add_dependencies(${TARGET_NAME} ${GFX_RASPBERRY_OPENCL_BUNDLE_TARGET})
+endif()
 
 if (ENABLE_GFX_REGISTRATION)
     # Register plugin for plugins.xml/plugins.hpp generation
@@ -382,6 +398,18 @@ install(TARGETS ${TARGET_NAME}
 
 install(TARGETS ${TARGET_NAME}
         LIBRARY DESTINATION tests COMPONENT tests EXCLUDE_FROM_ALL)
+
+if(DEFINED GFX_RASPBERRY_OPENCL_BUNDLE_DIR)
+    install(DIRECTORY "${GFX_RASPBERRY_OPENCL_BUNDLE_DIR}/"
+            DESTINATION "${OV_CPACK_PLUGINSDIR}/opencl"
+            COMPONENT gfx
+            OPTIONAL)
+    install(DIRECTORY "${GFX_RASPBERRY_OPENCL_BUNDLE_DIR}/"
+            DESTINATION tests/opencl
+            COMPONENT tests
+            EXCLUDE_FROM_ALL
+            OPTIONAL)
+endif()
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../include/openvino/gfx_plugin
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/openvino

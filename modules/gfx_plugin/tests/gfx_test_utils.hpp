@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 
 #include "common_test_utils/ov_plugin_cache.hpp"
+#include "gfx_plugin_runtime_path.hpp"
 #include "openvino/openvino.hpp"
 
 namespace ov {
@@ -18,22 +19,18 @@ namespace test {
 namespace utils {
 
 inline void try_register_gfx_plugin(ov::Core& core) {
-    const char* env_path = std::getenv("GFX_PLUGIN_PATH");
+    const char* env_path = gfx_plugin_runtime_path();
     if (!env_path || !*env_path) {
         return;
     }
     target_device = "GFX";
     target_plugin_name = env_path;
-    try {
-        core.register_plugin(env_path, "GFX");
-    } catch (...) {
-        // Ignore registration errors (e.g. already registered).
-    }
+    (void)register_gfx_plugin_runtime_path(core);
 }
 
 inline void configure_gfx_plugin_cache_from_env() {
     static bool configured = false;
-    const char* env_path = std::getenv("GFX_PLUGIN_PATH");
+    const char* env_path = gfx_plugin_runtime_path();
     if (!env_path || !*env_path) {
         return;
     }

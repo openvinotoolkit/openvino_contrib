@@ -93,11 +93,11 @@ std::vector<uint32_t> reduce_axis1_static_u32_scalars(bool keep_dims) {
 std::vector<std::string> non_reduction_opencl_sources() {
   return {"float",
           "long",
-          "gfx_opencl_baseline_logical_unary_bool",
-          "gfx_opencl_baseline_logical_binary_bool",
-          "gfx_opencl_baseline_logical_binary_broadcast_bool",
-          "gfx_opencl_baseline_select_f32",
-          "gfx_opencl_baseline_compare_f32"};
+          "gfx_opencl_generated_eltwise_logical_unary_bool",
+          "gfx_opencl_generated_eltwise_logical_binary_bool",
+          "gfx_opencl_generated_eltwise_logical_binary_broadcast_bool",
+          "gfx_opencl_generated_eltwise_select_f32",
+          "gfx_opencl_generated_eltwise_compare_f32"};
 }
 
 struct ReductionOpCase {
@@ -278,7 +278,7 @@ public:
             "gfx_opencl_generated_reduction_f32", 19u, 1u,
             reduction_static_scalar_args(), {0}, m_case.static_u32_scalars)
         .uses_source(opencl_generated_reduction_f32_kernel_source())
-        .excludes({"gfx_opencl_baseline_reduce_logical_bool",
+        .excludes({"gfx_opencl_generated_reduction_bool",
                    "gfx_opencl_baseline_binary_f32"})
         .has_op(m_case.op)
         .supports_opencl_compiler();
@@ -313,11 +313,11 @@ TEST(ReductionOpenClArtifactContract,
       data, i64_const(ov::Shape{1}, {1}), false);
   OpenClSourceArtifactVerifier(reduce_and)
       .expect_artifact(GfxKernelStageFamily::Reduction,
-                       "opencl/baseline/reduce_logical_bool",
-                       "gfx_opencl_baseline_reduce_logical_bool", 19u, 1u,
+                       "opencl/generated/reduction_bool",
+                       "gfx_opencl_generated_reduction_bool", 19u, 1u,
                        reduction_static_scalar_args(), {0},
                        reduce_axis1_static_u32_scalars(false))
-      .uses_source(opencl_baseline_reduction_logical_bool_kernel_source())
+      .uses_source(opencl_generated_reduction_bool_kernel_source())
       .excludes(non_reduction_opencl_sources())
       .has_op(GfxOpenClArtifactOp::ReduceLogicalAnd)
       .supports_opencl_compiler();
@@ -327,12 +327,11 @@ TEST(ReductionOpenClArtifactContract,
   const std::vector<uint32_t> or_static_u32_scalars = {3, 3, 2, 3, 4, 1, 2, 1,
                                                        1, 1, 6, 0, 4, 4, 4};
   OpenClSourceArtifactVerifier(reduce_or)
-      .expect_artifact(GfxKernelStageFamily::Reduction,
-                       "opencl/baseline/reduce_logical_bool",
-                       "gfx_opencl_baseline_reduce_logical_bool", 19u, 1u,
-                       reduction_static_scalar_args(), {0},
-                       or_static_u32_scalars)
-      .uses_source(opencl_baseline_reduction_logical_bool_kernel_source())
+      .expect_artifact(
+          GfxKernelStageFamily::Reduction, "opencl/generated/reduction_bool",
+          "gfx_opencl_generated_reduction_bool", 19u, 1u,
+          reduction_static_scalar_args(), {0}, or_static_u32_scalars)
+      .uses_source(opencl_generated_reduction_bool_kernel_source())
       .excludes(non_reduction_opencl_sources())
       .has_op(GfxOpenClArtifactOp::ReduceLogicalOr)
       .supports_opencl_compiler();
@@ -494,6 +493,9 @@ public:
     EXPECT_EQ(artifact.entry_point, m_route.expected_entry_point);
     EXPECT_EQ(artifact.abi_arg_count, m_route.expected_abi_arg_count);
     EXPECT_EQ(artifact.abi_output_arg_count, 1u);
+    EXPECT_TRUE(artifact.kernel.exception_ticket.empty());
+    EXPECT_TRUE(artifact.kernel.exception_reason.empty());
+    EXPECT_TRUE(artifact.kernel.exception_removal_condition.empty());
 
     const auto payload =
         compiled.executable.find_artifact_payload(artifact.artifact_key);
@@ -582,16 +584,16 @@ ReductionRouteCase opencl_reduction_f32_case() {
 
 ReductionRouteCase opencl_reduction_logical_case() {
   const auto target = compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
-  return {"OpenClExceptionReduceLogicalAndBool",
+  return {"OpenClGeneratedReduceLogicalAndBool",
           target,
           compiler::make_opencl_operation_support_policy(),
           compiler::make_opencl_kernel_registry(target),
           {},
-          LoweringRouteKind::HandwrittenKernelException,
-          KernelArtifactOrigin::HandwrittenException,
+          LoweringRouteKind::GeneratedKernel,
+          KernelArtifactOrigin::Generated,
           KernelArtifactPayloadKind::OpenClSource,
-          "opencl/baseline/reduce_logical_bool",
-          "gfx_opencl_baseline_reduce_logical_bool",
+          "opencl/generated/reduction_bool",
+          "gfx_opencl_generated_reduction_bool",
           19u,
           reduce_logical_and_model};
 }

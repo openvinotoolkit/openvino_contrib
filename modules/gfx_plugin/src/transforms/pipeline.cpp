@@ -1390,7 +1390,7 @@ size_t fuse_llama_rotate_half_rope(const std::shared_ptr<ov::Model>& model) {
 }  // namespace
 
 std::shared_ptr<const ov::Model> run_pipeline(const std::shared_ptr<const ov::Model>& model,
-                                              GpuBackend backend) {
+                                              const PipelineOptions& options) {
     OPENVINO_ASSERT(model, "run_pipeline: model is null");
     // Work on a clone to preserve the original model passed by the caller.
     auto cloned = model->clone();
@@ -1411,7 +1411,7 @@ std::shared_ptr<const ov::Model> run_pipeline(const std::shared_ptr<const ov::Mo
     pass_config->disable<ov::pass::ConvertAvgPool14ToAvgPool1>();
     pass_config->disable<ov::pass::ConvertReduceSumToPooling>();
     pass_config->disable<ov::pass::ConvertMod>();
-    if (backend == GpuBackend::Metal) {
+    if (options.preserve_scaled_dot_product_attention) {
         pass_config->disable<ov::pass::ScaledDotProductAttentionDecomposition>();
     }
 
@@ -1419,7 +1419,7 @@ std::shared_ptr<const ov::Model> run_pipeline(const std::shared_ptr<const ov::Mo
     pass_config->disable<ov::pass::ConvertCompressedOnlyToLegacy>();
 
     const bool canonicalize_sigmoid_ranking =
-        backend == GpuBackend::Metal;
+        options.canonicalize_sigmoid_before_ranking;
     size_t sigmoid_ranking_rewrites = 0;
     if (canonicalize_sigmoid_ranking) {
         sigmoid_ranking_rewrites = canonicalize_sigmoid_before_ranking_ops(cloned);
@@ -1439,7 +1439,7 @@ std::shared_ptr<const ov::Model> run_pipeline(const std::shared_ptr<const ov::Mo
         gfx_log_debug("GfxTransforms") << "Marked fp32 precision-sensitive nodes="
                                        << precision_sensitive_count;
     }
-    if (backend == GpuBackend::Metal) {
+    if (options.enable_llm_attention_fusions) {
         fuse_llama_rotate_half_rope(cloned);
         fuse_llm_sdpa_causal_mask(cloned);
     }

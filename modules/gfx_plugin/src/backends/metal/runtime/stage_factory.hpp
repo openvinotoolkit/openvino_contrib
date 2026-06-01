@@ -14,13 +14,9 @@ namespace gfx_plugin {
 struct RuntimeStageExecutableDescriptor;
 
 std::unique_ptr<GpuStage> create_metal_stage(const std::shared_ptr<const ov::Node>& node,
+                                             const RuntimeStageExecutableDescriptor* descriptor,
                                              void* device,
                                              void* queue);
-std::unique_ptr<GpuStage> create_metal_stage(
-    const std::shared_ptr<const ov::Node>& node,
-    void* device,
-    void* queue,
-    const RuntimeStageExecutableDescriptor* descriptor);
 void ensure_metal_stage_factory_registered();
 
 }  // namespace gfx_plugin

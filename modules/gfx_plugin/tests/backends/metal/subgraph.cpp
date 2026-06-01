@@ -9,7 +9,7 @@
 #include "shared_test_classes/subgraph/stateful_model.hpp"
 
 using GfxStatefulModelStateInLoopBody =
-    ov::test::utils::GfxSkippedTests<ov::test::StatefulModelStateInLoopBody>;
+    ov::test::utils::GfxBackendRequiredTests<ov::test::StatefulModelStateInLoopBody>;
 
 INSTANTIATE_TEST_SUITE_P(smoke,
                          GfxStatefulModelStateInLoopBody,

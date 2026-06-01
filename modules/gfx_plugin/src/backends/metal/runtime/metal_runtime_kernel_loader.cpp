@@ -4,7 +4,6 @@
 
 #include "backends/metal/runtime/metal_runtime_kernel_loader.hpp"
 
-#include <algorithm>
 #include <memory>
 #include <string_view>
 
@@ -26,21 +25,12 @@ bool is_source_origin(compiler::KernelArtifactOrigin origin) noexcept {
 
 uint32_t descriptor_output_arg_count(
     const RuntimeStageExecutableDescriptor& descriptor) {
-    if (descriptor.abi_output_arg_count != 0) {
-        return descriptor.abi_output_arg_count;
-    }
-    return static_cast<uint32_t>(std::count(descriptor.tensor_roles.begin(),
-                                            descriptor.tensor_roles.end(),
-                                            "tensor_output"));
+    return descriptor.abi_output_arg_count;
 }
 
 uint32_t descriptor_arg_count(
     const RuntimeStageExecutableDescriptor& descriptor) {
-    if (descriptor.abi_arg_count != 0) {
-        return descriptor.abi_arg_count;
-    }
-    return static_cast<uint32_t>(descriptor.tensor_roles.size() +
-                                 descriptor.scalar_roles.size());
+    return descriptor.abi_arg_count;
 }
 
 void verify_msl_source_descriptor(

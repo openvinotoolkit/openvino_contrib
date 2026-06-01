@@ -9,8 +9,13 @@
 #include <utility>
 #include <vector>
 
+#include "backends/opencl/compiler/opencl_operation_support.hpp"
+#include "compiler/kernel_registry.hpp"
+#include "compiler/lowering_planner.hpp"
+#include "compiler/operation_support.hpp"
 #include "gfx_opencl_source_artifact_verifier.hpp"
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
+#include "openvino/core/model.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/divide.hpp"
 #include "openvino/op/floor_mod.hpp"
@@ -23,6 +28,7 @@
 #include "openvino/op/multiply.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/power.hpp"
+#include "openvino/op/result.hpp"
 #include "openvino/op/select.hpp"
 #include "openvino/op/squared_difference.hpp"
 #include "openvino/op/subtract.hpp"
@@ -92,6 +98,48 @@ std::vector<GfxOpenClSourceScalarArg> scalar_constant_args() {
   };
 }
 
+void expect_generated_opencl_kernel_unit(
+    const std::shared_ptr<ov::Node> &node,
+    const std::string &expected_kernel_unit_id,
+    ov::ParameterVector parameters) {
+  const auto target = compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
+  const compiler::BackendCapabilities capabilities(
+      target, compiler::make_opencl_operation_support_policy());
+  const auto support = capabilities.query_operation({node});
+  ASSERT_TRUE(support.semantic_legal);
+  EXPECT_EQ(support.preferred_route_kind,
+            compiler::LoweringRouteKind::GeneratedKernel);
+  EXPECT_EQ(support.preferred_route, expected_kernel_unit_id);
+
+  const auto registry = compiler::make_opencl_kernel_registry(target);
+  const auto unit = registry.resolve(
+      compiler::LoweringRouteKind::GeneratedKernel, expected_kernel_unit_id);
+  ASSERT_TRUE(unit.valid());
+  EXPECT_EQ(unit.kind(), compiler::KernelUnitKind::GeneratedKernel);
+  EXPECT_EQ(unit.backend_domain(), "opencl");
+  EXPECT_EQ(unit.op_family(), "Eltwise");
+
+  compiler::OperationLegalizer legalizer(capabilities);
+  compiler::LoweringPlanner planner(target, registry);
+  auto model = std::make_shared<ov::Model>(
+      ov::ResultVector{std::make_shared<ov::op::v0::Result>(node)},
+      std::move(parameters));
+  const auto plan = planner.plan(model, legalizer);
+  ASSERT_TRUE(plan.executable());
+
+  bool found = false;
+  for (const auto &operation : plan.operations) {
+    if (operation.kernel_unit.id() == expected_kernel_unit_id) {
+      found = true;
+      EXPECT_EQ(operation.kernel_unit.kind(),
+                compiler::KernelUnitKind::GeneratedKernel);
+      EXPECT_EQ(operation.kernel_unit.route_kind(),
+                compiler::LoweringRouteKind::GeneratedKernel);
+    }
+  }
+  EXPECT_TRUE(found);
+}
+
 } // namespace
 
 TEST(EltwiseOpenClSourceArtifactsTest,
@@ -107,8 +155,8 @@ TEST(EltwiseOpenClSourceArtifactsTest,
       .excludes({"long", "gfx_opencl_baseline_binary_broadcast_f32",
                  "gfx_opencl_baseline_binary_scalar_f32",
                  "gfx_opencl_baseline_binary_const_f32",
-                 "gfx_opencl_baseline_compare_f32",
-                 "gfx_opencl_baseline_select_f32"})
+                 "gfx_opencl_generated_eltwise_compare_f32",
+                 "gfx_opencl_generated_eltwise_select_f32"})
       .supports_opencl_compiler();
 }
 
@@ -271,7 +319,7 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                        rhs_31_broadcast_to_234_strides())
       .excludes({"long", "out_dim[4]", "lhs_stride[4]",
                  "gfx_opencl_baseline_binary_scalar_f32",
-                 "gfx_opencl_baseline_select_f32"})
+                 "gfx_opencl_generated_eltwise_select_f32"})
       .supports_opencl_compiler();
 }
 
@@ -312,8 +360,8 @@ TEST(EltwiseOpenClSourceArtifactsTest,
       .excludes({"long", "gfx_opencl_baseline_binary_f32",
                  "gfx_opencl_baseline_binary_broadcast_f32",
                  "gfx_opencl_baseline_binary_const_f32",
-                 "gfx_opencl_baseline_compare_f32",
-                 "gfx_opencl_baseline_select_f32"})
+                 "gfx_opencl_generated_eltwise_compare_f32",
+                 "gfx_opencl_generated_eltwise_select_f32"})
       .has_input_mode(GfxOpenClArtifactInputMode::RhsScalar)
       .supports_opencl_compiler();
 
@@ -333,8 +381,8 @@ TEST(EltwiseOpenClSourceArtifactsTest,
       .excludes({"long", "gfx_opencl_baseline_binary_f32",
                  "gfx_opencl_baseline_binary_broadcast_f32",
                  "gfx_opencl_baseline_binary_scalar_f32",
-                 "gfx_opencl_baseline_compare_f32",
-                 "gfx_opencl_baseline_select_f32"})
+                 "gfx_opencl_generated_eltwise_compare_f32",
+                 "gfx_opencl_generated_eltwise_select_f32"})
       .has_input_mode(GfxOpenClArtifactInputMode::RhsScalarConstant)
       .has_scalar_constant(2.0f)
       .supports_opencl_compiler();
@@ -358,31 +406,29 @@ TEST(EltwiseOpenClSourceArtifactsTest,
 
   OpenClSourceArtifactVerifier(greater)
       .expect_artifact(GfxKernelStageFamily::Eltwise,
-                       "opencl/baseline/compare_f32",
-                       "gfx_opencl_baseline_compare_f32", 5u, 2u)
+                       "opencl/generated/eltwise_compare_f32",
+                       "gfx_opencl_generated_eltwise_compare_f32", 5u, 2u)
       .excludes({"long", "gfx_opencl_baseline_binary_f32",
                  "gfx_opencl_baseline_binary_broadcast_f32",
                  "gfx_opencl_baseline_binary_scalar_f32",
-                 "gfx_opencl_baseline_binary_const_f32",
-                 "gfx_opencl_baseline_compare_broadcast_f32",
-                 "gfx_opencl_baseline_select_f32",
-                 "gfx_opencl_baseline_select_broadcast_f32"})
+                 "gfx_opencl_baseline_binary_const_f32"})
       .has_op(GfxOpenClArtifactOp::Greater)
       .supports_opencl_compiler();
+  expect_generated_opencl_kernel_unit(
+      greater, "opencl/generated/eltwise_compare_f32", {lhs, rhs});
 
   OpenClSourceArtifactVerifier(select)
       .expect_artifact(GfxKernelStageFamily::Eltwise,
-                       "opencl/baseline/select_f32",
-                       "gfx_opencl_baseline_select_f32", 5u, 3u,
+                       "opencl/generated/eltwise_select_f32",
+                       "gfx_opencl_generated_eltwise_select_f32", 5u, 3u,
                        {GfxOpenClSourceScalarArg::ElementCount}, {0, 1, 2})
       .excludes({"long", "gfx_opencl_baseline_binary_f32",
                  "gfx_opencl_baseline_binary_broadcast_f32",
                  "gfx_opencl_baseline_binary_scalar_f32",
-                 "gfx_opencl_baseline_binary_const_f32",
-                 "gfx_opencl_baseline_compare_f32",
-                 "gfx_opencl_baseline_compare_broadcast_f32",
-                 "gfx_opencl_baseline_select_broadcast_f32"})
+                 "gfx_opencl_baseline_binary_const_f32"})
       .supports_opencl_compiler();
+  expect_generated_opencl_kernel_unit(
+      select, "opencl/generated/eltwise_select_f32", {condition, lhs, rhs});
 }
 
 TEST(EltwiseOpenClSourceArtifactsTest,
@@ -401,18 +447,18 @@ TEST(EltwiseOpenClSourceArtifactsTest,
 
   OpenClSourceArtifactVerifier(greater)
       .expect_artifact(GfxKernelStageFamily::Eltwise,
-                       "opencl/baseline/compare_broadcast_f32",
-                       "gfx_opencl_baseline_compare_broadcast_f32", 18u, 2u,
-                       compare_args, {0, 1}, compare_static_u32_scalars)
+                       "opencl/generated/eltwise_compare_broadcast_f32",
+                       "gfx_opencl_generated_eltwise_compare_broadcast_f32",
+                       18u, 2u, compare_args, {0, 1},
+                       compare_static_u32_scalars)
       .excludes({"long", "gfx_opencl_baseline_binary_f32",
                  "gfx_opencl_baseline_binary_broadcast_f32",
                  "gfx_opencl_baseline_binary_scalar_f32",
-                 "gfx_opencl_baseline_binary_const_f32",
-                 "gfx_opencl_baseline_compare_f32",
-                 "gfx_opencl_baseline_select_f32",
-                 "gfx_opencl_baseline_select_broadcast_f32"})
+                 "gfx_opencl_baseline_binary_const_f32"})
       .has_op(GfxOpenClArtifactOp::Greater)
       .supports_opencl_compiler();
+  expect_generated_opencl_kernel_unit(
+      greater, "opencl/generated/eltwise_compare_broadcast_f32", {lhs, rhs});
 
   const auto cond = param(ov::element::boolean, ov::Shape{1, 3, 1});
   const auto then_data = param(ov::element::f32, ov::Shape{2, 3, 4});
@@ -430,17 +476,17 @@ TEST(EltwiseOpenClSourceArtifactsTest,
 
   OpenClSourceArtifactVerifier(select)
       .expect_artifact(GfxKernelStageFamily::Eltwise,
-                       "opencl/baseline/select_broadcast_f32",
-                       "gfx_opencl_baseline_select_broadcast_f32", 22u, 3u,
-                       select_args, {0, 1, 2}, select_static_u32_scalars)
+                       "opencl/generated/eltwise_select_broadcast_f32",
+                       "gfx_opencl_generated_eltwise_select_broadcast_f32", 22u,
+                       3u, select_args, {0, 1, 2}, select_static_u32_scalars)
       .excludes({"long", "gfx_opencl_baseline_binary_f32",
                  "gfx_opencl_baseline_binary_broadcast_f32",
                  "gfx_opencl_baseline_binary_scalar_f32",
-                 "gfx_opencl_baseline_binary_const_f32",
-                 "gfx_opencl_baseline_compare_f32",
-                 "gfx_opencl_baseline_compare_broadcast_f32",
-                 "gfx_opencl_baseline_select_f32"})
+                 "gfx_opencl_baseline_binary_const_f32"})
       .supports_opencl_compiler();
+  expect_generated_opencl_kernel_unit(
+      select, "opencl/generated/eltwise_select_broadcast_f32",
+      {cond, then_data, else_data});
 }
 
 TEST(EltwiseOpenClSourceArtifactsTest,
@@ -451,16 +497,17 @@ TEST(EltwiseOpenClSourceArtifactsTest,
   const auto logical_not = std::make_shared<ov::op::v1::LogicalNot>(lhs);
   OpenClSourceArtifactVerifier(logical_not)
       .expect_artifact(GfxKernelStageFamily::Eltwise,
-                       "opencl/baseline/logical_unary_bool",
-                       "gfx_opencl_baseline_logical_unary_bool", 4u, 1u)
-      .excludes({"float", "long", "gfx_opencl_baseline_compare_f32",
-                 "gfx_opencl_baseline_compare_broadcast_f32",
-                 "gfx_opencl_baseline_select_f32",
-                 "gfx_opencl_baseline_select_broadcast_f32",
-                 "gfx_opencl_baseline_logical_binary_bool",
-                 "gfx_opencl_baseline_logical_binary_broadcast_bool"})
+                       "opencl/generated/eltwise_logical_unary_bool",
+                       "gfx_opencl_generated_eltwise_logical_unary_bool", 4u,
+                       1u)
+      .excludes({"float", "long", "gfx_opencl_generated_eltwise_compare_f32",
+                 "gfx_opencl_generated_eltwise_compare_broadcast_f32",
+                 "gfx_opencl_generated_eltwise_select_f32",
+                 "gfx_opencl_generated_eltwise_select_broadcast_f32"})
       .has_op(GfxOpenClArtifactOp::LogicalNot)
       .supports_opencl_compiler();
+  expect_generated_opencl_kernel_unit(
+      logical_not, "opencl/generated/eltwise_logical_unary_bool", {lhs});
 
   struct BinaryCase {
     std::string name;
@@ -480,16 +527,18 @@ TEST(EltwiseOpenClSourceArtifactsTest,
     SCOPED_TRACE(test_case.name);
     OpenClSourceArtifactVerifier(test_case.node)
         .expect_artifact(GfxKernelStageFamily::Eltwise,
-                         "opencl/baseline/logical_binary_bool",
-                         "gfx_opencl_baseline_logical_binary_bool", 5u, 2u)
-        .excludes({"float", "long", "gfx_opencl_baseline_compare_f32",
-                   "gfx_opencl_baseline_compare_broadcast_f32",
-                   "gfx_opencl_baseline_select_f32",
-                   "gfx_opencl_baseline_select_broadcast_f32",
-                   "gfx_opencl_baseline_logical_unary_bool",
-                   "gfx_opencl_baseline_logical_binary_broadcast_bool"})
+                         "opencl/generated/eltwise_logical_binary_bool",
+                         "gfx_opencl_generated_eltwise_logical_binary_bool", 5u,
+                         2u)
+        .excludes({"float", "long", "gfx_opencl_generated_eltwise_compare_f32",
+                   "gfx_opencl_generated_eltwise_compare_broadcast_f32",
+                   "gfx_opencl_generated_eltwise_select_f32",
+                   "gfx_opencl_generated_eltwise_select_broadcast_f32"})
         .has_op(test_case.op)
         .supports_opencl_compiler();
+    expect_generated_opencl_kernel_unit(
+        test_case.node, "opencl/generated/eltwise_logical_binary_bool",
+        {lhs, rhs});
   }
 }
 
@@ -508,18 +557,20 @@ TEST(EltwiseOpenClSourceArtifactsTest,
   };
 
   OpenClSourceArtifactVerifier(logical_or)
-      .expect_artifact(GfxKernelStageFamily::Eltwise,
-                       "opencl/baseline/logical_binary_broadcast_bool",
-                       "gfx_opencl_baseline_logical_binary_broadcast_bool", 18u,
-                       2u, scalar_args, {0, 1}, static_u32_scalars)
-      .excludes({"float", "long", "gfx_opencl_baseline_compare_f32",
-                 "gfx_opencl_baseline_compare_broadcast_f32",
-                 "gfx_opencl_baseline_select_f32",
-                 "gfx_opencl_baseline_select_broadcast_f32",
-                 "gfx_opencl_baseline_logical_unary_bool",
-                 "gfx_opencl_baseline_logical_binary_bool"})
+      .expect_artifact(
+          GfxKernelStageFamily::Eltwise,
+          "opencl/generated/eltwise_logical_binary_broadcast_bool",
+          "gfx_opencl_generated_eltwise_logical_binary_broadcast_bool", 18u, 2u,
+          scalar_args, {0, 1}, static_u32_scalars)
+      .excludes({"float", "long", "gfx_opencl_generated_eltwise_compare_f32",
+                 "gfx_opencl_generated_eltwise_compare_broadcast_f32",
+                 "gfx_opencl_generated_eltwise_select_f32",
+                 "gfx_opencl_generated_eltwise_select_broadcast_f32"})
       .has_op(GfxOpenClArtifactOp::LogicalOr)
       .supports_opencl_compiler();
+  expect_generated_opencl_kernel_unit(
+      logical_or, "opencl/generated/eltwise_logical_binary_broadcast_bool",
+      {lhs, rhs});
 }
 
 TEST(EltwiseOpenClSourceArtifactsTest,
@@ -535,10 +586,13 @@ TEST(EltwiseOpenClSourceArtifactsTest,
 
   OpenClSourceArtifactVerifier(select)
       .expect_artifact(GfxKernelStageFamily::Eltwise,
-                       "opencl/baseline/select_f16_dynamic",
-                       "gfx_opencl_baseline_select_f16", 5u, 3u,
-                       {GfxOpenClSourceScalarArg::ElementCount}, {0, 1, 2})
+                       "opencl/generated/eltwise_select_f16_dynamic",
+                       "gfx_opencl_generated_eltwise_select_f16_dynamic", 5u,
+                       3u, {GfxOpenClSourceScalarArg::ElementCount}, {0, 1, 2})
       .supports_opencl_compiler();
+  expect_generated_opencl_kernel_unit(
+      select, "opencl/generated/eltwise_select_f16_dynamic",
+      {cond, then_data, else_data});
 }
 
 } // namespace gfx_plugin

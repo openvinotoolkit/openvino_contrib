@@ -9,9 +9,9 @@
 #ifdef YES
 #undef YES
 #endif
-#include <cstdlib>
 #include <gtest/gtest.h>
 
+#include "../../gfx_plugin_runtime_path.hpp"
 #include "openvino/openvino.hpp"
 #include "openvino/core/type/element_type.hpp"
 #include "openvino/runtime/tensor.hpp"
@@ -27,17 +27,9 @@ namespace {
 
 // Local helper to register GFX plugin in tests (mirrors metal/basic_ops_test.cpp).
 inline void register_gfx_plugin(ov::Core& core) {
-    try {
-#ifdef GFX_PLUGIN_PATH
-        const char* env_path = std::getenv("GFX_PLUGIN_PATH");
-        const char* path = (env_path && *env_path) ? env_path : GFX_PLUGIN_PATH;
-        core.register_plugin(path, "GFX");
-#endif
-    } catch (const std::exception& e) {
-        const std::string msg = e.what();
-        if (msg.find("already registered") == std::string::npos) {
-            FAIL() << "GFX plugin unavailable: " << e.what();
-        }
+    std::string error;
+    if (!ov::test::utils::register_gfx_plugin_runtime_path(core, &error)) {
+        FAIL() << error;
     }
 }
 

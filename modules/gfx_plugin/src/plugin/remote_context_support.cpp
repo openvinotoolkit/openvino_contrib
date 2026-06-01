@@ -20,6 +20,35 @@ ov::SoPtr<ov::IRemoteContext> create_metal_remote_context(const std::string& res
 namespace ov {
 namespace gfx_plugin {
 
+namespace {
+
+class OpenClRemoteContext final : public GfxRemoteContext {
+public:
+    OpenClRemoteContext(const std::string& device, const RemoteContextParams& params)
+        : GfxRemoteContext(device,
+                           params.device_id,
+                           GpuBackend::OpenCL,
+                           nullptr,
+                           params.backend_name,
+                           params.merged) {}
+
+private:
+    RemoteTensorCreateResult create_remote_tensor(const ov::element::Type&,
+                                                  const ov::Shape&,
+                                                  const ov::AnyMap&,
+                                                  size_t) override {
+        OPENVINO_THROW("GFX OpenCL: remote tensor creation is not implemented yet");
+    }
+};
+
+ov::SoPtr<ov::IRemoteContext> create_opencl_remote_context(const std::string& resolved_name,
+                                                           const RemoteContextParams& params) {
+    auto ctx = std::make_shared<OpenClRemoteContext>(resolved_name, params);
+    return ov::SoPtr<ov::IRemoteContext>{ctx, nullptr};
+}
+
+}  // namespace
+
 int get_remote_device_id(const ov::SoPtr<ov::IRemoteContext>& context) {
     auto gfx_ctx = std::dynamic_pointer_cast<GfxRemoteContext>(context._ptr);
     OPENVINO_ASSERT(gfx_ctx, "GFX: remote context type mismatch");
@@ -42,6 +71,9 @@ ov::SoPtr<ov::IRemoteContext> make_gfx_remote_context(const std::string& device_
     switch (params.backend) {
         case GpuBackend::Metal: {
             return create_metal_remote_context(resolved_name, params);
+        }
+        case GpuBackend::OpenCL: {
+            return create_opencl_remote_context(resolved_name, params);
         }
         default:
             break;
