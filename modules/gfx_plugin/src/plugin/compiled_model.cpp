@@ -12,7 +12,7 @@
 #include "plugin/backend_factory.hpp"
 #include "plugin/backend_state.hpp"
 #include "plugin/compiled_model_backend_resources.hpp"
-#include "plugin/gfx_backend_config.hpp"
+#include "compiler/backend_config.hpp"
 #include "plugin/gfx_profiling_utils.hpp"
 #include "plugin/gfx_property_lists.hpp"
 #include "plugin/gfx_property_utils.hpp"
@@ -680,8 +680,14 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
                   backend_to_string(m_backend));
   const auto &backend_capabilities = backend_module->capabilities();
   const auto &fusion_capabilities = backend_capabilities.fusion();
+  const auto stage_compiler_policy =
+      gfx_stage_compiler_policy_from_capabilities(backend_capabilities);
   GpuStageRuntimeOptions stage_runtime_options{};
   stage_runtime_options.diagnostic_f32_vendor_image = m_diagnostic_f32_vendor_image;
+  stage_runtime_options.stage_placement_policy =
+      stage_compiler_policy.placement;
+  stage_runtime_options.post_op_fusion_capabilities =
+      stage_compiler_policy.post_ops;
   auto configure_stage_runtime_options =
       [&](const std::unique_ptr<GpuStage> &stage) {
         if (stage) {
@@ -856,7 +862,7 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
             resources.const_manager, GpuBackend::Metal, stage_type, primary,
             primary->get_output_element_type(0), group.bias.has_value(),
             group.activation.has_value(),
-            /*has_batchnorm=*/false, {});
+            /*has_batchnorm=*/false, {}, &stage_compiler_policy);
         return plan.placement.domain == GfxStageBackendDomain::AppleMps &&
                plan.placement.storage == GfxStageStorageKind::Image &&
                plan.placement.uses_vendor_primitive &&

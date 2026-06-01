@@ -9,7 +9,6 @@
 #include <utility>
 #include <vector>
 
-#include "compiler/backend_registry.hpp"
 #include "openvino/op/avg_pool.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/convolution.hpp"
@@ -222,13 +221,12 @@ select_stage_precision_plan(const std::shared_ptr<const ov::Node> &node) {
 }
 
 GfxStagePlacementPlan
-select_stage_placement(GpuBackend backend, const std::string &stage_type,
+select_stage_placement(const GfxStageCompilerPolicy *compiler_policy,
+                       GpuBackend backend, const std::string &stage_type,
                        const std::shared_ptr<const ov::Node> &node,
                        const ov::element::Type &element_type,
                        const GfxStageRuntimeTraits &traits) {
-  const auto backend_module =
-      compiler::BackendRegistry::default_registry().resolve(backend);
-  if (!backend_module || !backend_module->capabilities().stage_placement()) {
+  if (!compiler_policy || !compiler_policy->placement) {
     return {};
   }
   compiler::StagePlacementQuery query{};
@@ -237,8 +235,7 @@ select_stage_placement(GpuBackend backend, const std::string &stage_type,
   query.node = node;
   query.element_type = element_type;
   query.traits = traits;
-  return backend_module->capabilities().stage_placement()->select_placement(
-      query);
+  return compiler_policy->placement->select_placement(query);
 }
 
 GfxStageArchetype
@@ -629,16 +626,14 @@ gfx_conv_multi_kernel_stage_kind_name(GfxConvMultiKernelStageKind kind) {
 }
 
 GfxStagePostOpSupport
-select_stage_post_op_support(GpuBackend backend, GfxStageArchetype archetype,
+select_stage_post_op_support(const GfxStageCompilerPolicy *compiler_policy,
+                             GfxStageArchetype archetype,
                              const std::string &stage_type) {
   GfxStagePostOpSupport support{};
-  const auto backend_module =
-      compiler::BackendRegistry::default_registry().resolve(backend);
-  const auto fallback_post_ops =
-      compiler::make_post_op_fusion_capabilities(backend);
-  const auto &post_ops =
-      backend_module ? backend_module->capabilities().post_ops()
-                     : fallback_post_ops;
+  if (!compiler_policy || !compiler_policy->post_ops) {
+    return support;
+  }
+  const auto &post_ops = *compiler_policy->post_ops;
   switch (archetype) {
   case GfxStageArchetype::Convolution:
   case GfxStageArchetype::GroupConvolution:
@@ -653,18 +648,28 @@ select_stage_post_op_support(GpuBackend backend, GfxStageArchetype archetype,
   return support;
 }
 
+GfxStageCompilerPolicy gfx_stage_compiler_policy_from_capabilities(
+    const compiler::BackendCapabilities &capabilities) {
+  GfxStageCompilerPolicy policy{};
+  policy.placement = capabilities.stage_placement();
+  policy.post_ops = &capabilities.post_ops();
+  return policy;
+}
+
 GfxStageOptimizationPlan select_stage_optimization_plan(
     const GpuBufferManager *buffer_manager, GpuBackend backend,
     const std::string &stage_type, const std::shared_ptr<const ov::Node> &node,
     const ov::element::Type &element_type, bool has_bias, bool has_activation,
-    bool has_batchnorm, const GfxStageRuntimeTraits &traits) {
+    bool has_batchnorm, const GfxStageRuntimeTraits &traits,
+    const GfxStageCompilerPolicy *compiler_policy) {
   GfxStageOptimizationPlan plan{};
   plan.archetype = classify_stage_archetype(stage_type, node, traits);
   plan.placement =
-      select_stage_placement(backend, stage_type, node, element_type, traits);
+      select_stage_placement(compiler_policy, backend, stage_type, node,
+                             element_type, traits);
   plan.precision = select_stage_precision_plan(node);
-  plan.post_ops =
-      select_stage_post_op_support(backend, plan.archetype, stage_type);
+  plan.post_ops = select_stage_post_op_support(compiler_policy, plan.archetype,
+                                               stage_type);
   plan.execution.fusion.allow_bias = plan.post_ops.bias;
   plan.execution.fusion.allow_batchnorm = plan.post_ops.batchnorm;
   plan.execution.fusion.allow_activation = plan.post_ops.activation;
@@ -775,10 +780,11 @@ GfxStageOptimizationPlan select_stage_optimization_plan(
 GfxStageExecutionPolicy
 select_stage_execution_policy(const GpuBufferManager *buffer_manager,
                               GpuBackend backend, const std::string &stage_type,
-                              const GfxStageRuntimeTraits &traits) {
+                              const GfxStageRuntimeTraits &traits,
+                              const GfxStageCompilerPolicy *compiler_policy) {
   return select_stage_optimization_plan(buffer_manager, backend, stage_type,
                                         nullptr, ov::element::dynamic, false,
-                                        false, false, traits)
+                                        false, false, traits, compiler_policy)
       .execution;
 }
 

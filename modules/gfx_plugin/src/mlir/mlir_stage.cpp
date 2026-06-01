@@ -12,7 +12,6 @@
 #include <optional>
 #include <sstream>
 
-#include "compiler/backend_registry.hpp"
 #include "compiler/tensor_layout.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
 #include "kernel_ir/gfx_kernel_plan.hpp"
@@ -3855,6 +3854,8 @@ void MlirStage::set_input_transform(size_t input_idx,
 void MlirStage::set_runtime_options(const GpuStageRuntimeOptions &options) {
   m_runtime_traits.diagnostic_f32_vendor_image =
       options.diagnostic_f32_vendor_image;
+  m_compiler_policy.placement = options.stage_placement_policy;
+  m_compiler_policy.post_ops = options.post_op_fusion_capabilities;
 }
 
 void MlirStage::enable_profiling(bool enable) { m_profiling_enabled = enable; }
@@ -3875,14 +3876,8 @@ void MlirStage::on_command_buffer_complete() {
 }
 
 bool MlirStage::fuse_activation(ActivationKind kind, float alpha) {
-  const auto backend_module =
-      compiler::BackendRegistry::default_registry().resolve(backend_kind());
-  const auto fallback_post_ops =
-      compiler::make_post_op_fusion_capabilities(backend_kind());
-  const auto &post_ops =
-      backend_module ? backend_module->capabilities().post_ops()
-                     : fallback_post_ops;
-  if (!post_ops.allow_stage_activation_fusion(m_type, kind) ||
+  if (!m_compiler_policy.post_ops ||
+      !m_compiler_policy.post_ops->allow_stage_activation_fusion(m_type, kind) ||
       !stage_optimization_plan().execution.fusion.allow_activation) {
     return false;
   }
@@ -4033,7 +4028,8 @@ GfxStageOptimizationPlan MlirStage::stage_optimization_plan() const {
   auto plan = select_stage_optimization_plan(
       m_buffer_manager, backend_kind(), m_type, m_node,
       m_node ? m_node->get_output_element_type(0) : ov::element::dynamic,
-      m_has_bias, m_has_activation, m_has_bn, m_runtime_traits);
+      m_has_bias, m_has_activation, m_has_bn, m_runtime_traits,
+      &m_compiler_policy);
   if (m_runtime_descriptor) {
     plan.layout = compiler::tensor_layout_plan_from_contract(
         m_runtime_descriptor->layout_contract,
@@ -4081,6 +4077,7 @@ void MlirStage::clone_into(MlirStage &dst) const {
   dst.m_has_bias = m_has_bias;
   dst.m_bias_params = m_bias_params;
   dst.m_runtime_traits = m_runtime_traits;
+  dst.m_compiler_policy = m_compiler_policy;
   dst.m_kernel_extra_inputs = m_kernel_extra_inputs;
 }
 

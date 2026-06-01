@@ -46,6 +46,9 @@ Then inspect the relevant code path:
 - Keep backend target, operation support, lowering plans, manifests,
   executable bundles, tensor-layout plans, stage-placement value objects, and
   artifact descriptors in `src/compiler/`.
+- Keep configured backend availability in `src/compiler/backend_config.hpp.in`;
+  the default `BackendRegistry` contains only backend modules available in the
+  configured build.
 - Keep Metal-specific code under `src/backends/metal/` and OpenCL-specific code
   under `src/backends/opencl/`.
 - Do not add CPU fallback for unsupported GPU stages.
@@ -58,6 +61,9 @@ Then inspect the relevant code path:
   operation.
 - Do not add plugin-side support tables that bypass `GfxCompilerService` or
   `BackendRegistry`.
+- Do not make runtime or MLIR stages resolve `BackendRegistry::default_registry()`
+  to discover placement or post-op capabilities. Pass the selected backend
+  policy through `GpuStageRuntimeOptions` and `GfxStageCompilerPolicy`.
 - When changing plugin-visible behavior, check properties, `query_model()`,
   compiled-model properties, and docs.
 - Do not modify `third_party/llvm-project/` unless the task explicitly requires
@@ -220,7 +226,10 @@ DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
 Before publication, run `git diff --check` and the relevant GFX tests for normal
 source changes. For documentation/security publication tasks, do not run build
 or test targets unless the user explicitly asks; use source inspection,
-security grep, stale-reference grep, and staged diff review.
+security grep, stale-reference grep, and staged diff review. Use
+`tests/tools/gfx_gtest_source_contract.py` for native/unavailable-adapter source
+parity and `tests/tools/gfx_gtest_matrix.py` for production gtest registration
+checks when test source layout changes.
 
 ## Output Expectations
 

@@ -18,7 +18,7 @@
 #include "openvino/op/result.hpp"
 #include "openvino/op/softmax.hpp"
 #include "../../gfx_test_utils.hpp"
-#include "plugin/gfx_backend_config.hpp"
+#include "compiler/backend_config.hpp"
 #include "common_test_utils/ov_plugin_cache.hpp"
 
 namespace {

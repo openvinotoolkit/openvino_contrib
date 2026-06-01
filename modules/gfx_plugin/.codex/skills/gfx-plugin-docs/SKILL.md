@@ -46,6 +46,8 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
 1. Inspect the live source tree and current diff first.
 2. Identify whether the change affects:
    - backend availability or default backend resolution
+   - configured backend availability generated from
+     `src/compiler/backend_config.hpp.in`
    - compiler service, backend registry, lowering-plan, manifest, executable
      bundle, stage-placement policy, or runtime descriptor behavior
    - compiler-owned tensor-layout classification
@@ -79,7 +81,8 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
    - compare-runner, profiling, trace sinks, microbench, or target-profile
      output
    - test layout, controlled test `plugins.xml`, gtest matrix checks,
-     disabled-pattern hooks, or validation workflow
+     native/unavailable-adapter source-contract checks, disabled-pattern hooks,
+     or validation workflow
 3. Patch only docs/skills whose contract changed.
 4. Keep wording concrete and tied to actual files that exist.
 

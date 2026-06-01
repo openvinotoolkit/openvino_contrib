@@ -17,6 +17,11 @@
 namespace ov {
 namespace gfx_plugin {
 
+namespace compiler {
+class StagePlacementPolicy;
+struct PostOpFusionCapabilities;
+} // namespace compiler
+
 struct GpuStageSubmitPolicy {
   size_t weight = 1;
   bool isolate = false;
@@ -35,6 +40,9 @@ struct GpuStageOutputLifetime {
 
 struct GpuStageRuntimeOptions {
   bool diagnostic_f32_vendor_image = false;
+  const compiler::StagePlacementPolicy *stage_placement_policy = nullptr;
+  const compiler::PostOpFusionCapabilities *post_op_fusion_capabilities =
+      nullptr;
 };
 
 // Backend-neutral execution stage interface.

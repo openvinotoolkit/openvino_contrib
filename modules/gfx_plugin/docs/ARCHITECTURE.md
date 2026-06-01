@@ -27,7 +27,7 @@ notes or deleted backend code as current behavior.
 - `src/runtime/`: backend-neutral stage interfaces, execution dispatcher,
   descriptor-backed view-only stages, submission windows, target profiles,
   profiling reports, remote tensor/context helpers, common buffer abstractions,
-  MPSRT model records, and reusable caches
+  MPSRT model records, selected compiler policy handoff, and reusable caches
 - `src/kernel_ir/`: kernel manifests, custom-kernel family registry, dispatch
   metadata, argument helpers, cache keys, embedded helper kernel sources, and
   OpenCL source artifacts
@@ -116,15 +116,18 @@ Runtime selection is requested with:
 
 On macOS, CMake disables OpenCL and uses Metal. On non-Apple builds, OpenCL is
 the source-kernel backend when enabled and available. Backend support checks are
-compiled into `plugin/gfx_backend_config.hpp` from
-`src/plugin/gfx_backend_config.hpp.in`.
+compiled into `compiler/backend_config.hpp` from
+`src/compiler/backend_config.hpp.in`. Explicit `GFX_DEFAULT_BACKEND=metal` or
+`GFX_DEFAULT_BACKEND=opencl` is a hard configure-time request: CMake fails if the
+requested backend is unavailable instead of silently falling back to a different
+backend.
 
-The compiler registry and runtime availability are separate contracts. The
-default `BackendRegistry` contains the production Metal and OpenCL compiler
-modules so query, lowering, manifest, and architecture contract tests can reason
-about both backends. `backend_supported()` and
-`src/plugin/backend_factory.*` decide whether a backend can create runtime state
-in the current build.
+The compiler registry and runtime availability share the generated availability
+contract. The default `BackendRegistry` contains only the production backend
+modules available in the current build, while query, lowering, manifest, and
+architecture contract tests reason about that configured backend set.
+`backend_supported()` and `src/plugin/backend_factory.*` decide whether a backend
+can create runtime state in the current build.
 
 ## Stage Pipeline
 
@@ -151,6 +154,12 @@ The current use is limited to view-compatible stage-policy contracts such as
 compatible Split/VariadicSplit aliases. It must not become a hidden fallback for
 ops that need real computation.
 
+Concrete stages receive `GpuStageRuntimeOptions` from `CompiledModel`. These
+options carry the selected backend `StagePlacementPolicy` and
+`PostOpFusionCapabilities` as `GfxStageCompilerPolicy` inputs to shared stage
+policy. Runtime stages and MLIR stages should consume that explicit policy
+instead of resolving `BackendRegistry::default_registry()` themselves.
+
 ## Planning And Scheduling
 
 `src/runtime/gfx_stage_policy.*` selects:
@@ -164,9 +173,11 @@ Backend domain and storage placement are selected through
 `compiler::StagePlacementPolicy`. The shared value types live in
 `src/compiler/stage_placement.*`; backend-specific placement decisions live in
 `src/backends/metal/compiler/metal_stage_placement.*` and
-`src/backends/opencl/compiler/opencl_stage_placement.*`. The runtime stage
-policy consumes the selected backend module instead of carrying all backend
-placement rules inline.
+`src/backends/opencl/compiler/opencl_stage_placement.*`. `CompiledModel` builds
+`GfxStageCompilerPolicy` from the selected backend capabilities and passes it to
+stage creation, MPS/MSL planning helpers, and shared stage-policy calls. Shared
+stage policy must use that explicit policy instead of carrying all backend
+placement rules inline or resolving a registry on its own.
 
 `src/runtime/gfx_parallelism.*` and `src/runtime/gfx_partitioning.*` derive
 workgroup and partitioning decisions from `GpuExecutionDeviceInfo` reported by
@@ -185,11 +196,11 @@ runtime execution. The main objects are:
 
 - `BackendTarget`: immutable backend id, runtime API, feature bits, and cache
   compatibility fingerprint for one selected backend.
-- `BackendRegistry`: compiled-backend registry. It owns the production Metal
-  and OpenCL compiler modules, with backend-owned transform `PipelineOptions`,
-  fusion capabilities, post-op fusion capabilities, stage-placement policies,
-  and artifact payload resolvers. Runtime availability is filtered outside the
-  compiler registry.
+- `BackendRegistry`: compiled-backend registry. Its default instance contains
+  only the production backend modules available in the configured build, as
+  reported by `compiler/backend_config.hpp`. Each module owns backend transform
+  `PipelineOptions`, fusion capabilities, post-op fusion capabilities,
+  stage-placement policy, and artifact payload resolver.
 - `OperationSupportPolicy` and `OperationLegalizer`: backend-aware operation
   legality and route selection.
 - `LoweringPlanner`: converts a transformed model into ordered
@@ -423,7 +434,9 @@ The OpenCL runtime loader checks plugin-local bundle directories before system
 or vendor OpenCL libraries. A Raspberry/Linux bundle can be staged from the
 `third_party/clvk` and `third_party/clspv` submodules; when bundled CLVK tools
 are present, the loader sets the CLVK tool environment only if the caller has
-not already provided it.
+not already provided it. The bundle staging script also copies optional TBB
+runtime library families from known runtime output directories, `TBBROOT`, or
+`TBB_DIR` when those libraries are available.
 
 ## Stateful And Reusable Inference
 
@@ -493,6 +506,9 @@ Do not move OpenCL source payload materialization back into
 - Keep backend stage placement in `src/compiler/stage_placement.*` and
   `src/backends/*/compiler/*_stage_placement.*`; do not move backend-specific
   placement rules back into request code.
+- Keep selected backend compiler policy explicit through `CompiledModel`,
+  `GpuStageRuntimeOptions`, and `GfxStageCompilerPolicy`; do not make runtime
+  stages rediscover compiler modules through the default registry.
 - Keep Metal MPSRT records, MSL source plans, and runtime binding on the
   compiler manifest/MPSRT contract.
 - Do not reintroduce removed backend routes, CPU fallback, runtime defines, or

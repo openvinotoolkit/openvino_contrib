@@ -4,7 +4,7 @@
 
 #include <gtest/gtest.h>
 
-#include "plugin/gfx_backend_config.hpp"
+#include "compiler/backend_config.hpp"
 
 namespace ov {
 namespace gfx_plugin {

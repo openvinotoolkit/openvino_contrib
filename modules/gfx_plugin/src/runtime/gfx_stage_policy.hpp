@@ -10,6 +10,7 @@
 
 #include "compiler/stage_placement.hpp"
 #include "compiler/tensor_layout.hpp"
+#include "compiler/operation_support.hpp"
 #include "openvino/core/node.hpp"
 #include "openvino/core/type/element_type.hpp"
 #include "runtime/gfx_backend_utils.hpp"
@@ -153,16 +154,27 @@ struct GfxStageOptimizationPlan {
   GfxConvRoutePlan conv{};
 };
 
+struct GfxStageCompilerPolicy {
+  const compiler::StagePlacementPolicy *placement = nullptr;
+  const compiler::PostOpFusionCapabilities *post_ops = nullptr;
+};
+
+GfxStageCompilerPolicy
+gfx_stage_compiler_policy_from_capabilities(
+    const compiler::BackendCapabilities &capabilities);
+
 GfxStageOptimizationPlan select_stage_optimization_plan(
     const GpuBufferManager *buffer_manager, GpuBackend backend,
     const std::string &stage_type, const std::shared_ptr<const ov::Node> &node,
     const ov::element::Type &element_type, bool has_bias, bool has_activation,
-    bool has_batchnorm, const GfxStageRuntimeTraits &traits);
+    bool has_batchnorm, const GfxStageRuntimeTraits &traits,
+    const GfxStageCompilerPolicy *compiler_policy = nullptr);
 
 GfxStageExecutionPolicy
 select_stage_execution_policy(const GpuBufferManager *buffer_manager,
                               GpuBackend backend, const std::string &stage_type,
-                              const GfxStageRuntimeTraits &traits);
+                              const GfxStageRuntimeTraits &traits,
+                              const GfxStageCompilerPolicy *compiler_policy = nullptr);
 GfxConvRoutePlan
 select_conv_route_plan(const GpuBufferManager *buffer_manager,
                        GpuBackend backend,

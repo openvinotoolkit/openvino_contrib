@@ -75,7 +75,9 @@
 #include "openvino/op/relu.hpp"
 #include "openvino/op/result.hpp"
 #include "openvino/op/sigmoid.hpp"
-#include "plugin/gfx_backend_config.hpp"
+#include "backends/metal/compiler/metal_stage_placement.hpp"
+#include "backends/opencl/compiler/opencl_stage_placement.hpp"
+#include "compiler/operation_support.hpp"
 #include "runtime/gfx_mpsrt_builder_plan.hpp"
 #include "runtime/gfx_mpsrt_kernel_manifest_adapter.hpp"
 #include "runtime/gfx_stage_policy.hpp"
@@ -85,6 +87,48 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 namespace {
+
+ov::gfx_plugin::GfxStageCompilerPolicy
+test_stage_compiler_policy(ov::gfx_plugin::GpuBackend backend) {
+  static const auto opencl_stage_placement =
+      ov::gfx_plugin::compiler::make_opencl_stage_placement_policy();
+  static const auto metal_stage_placement =
+      ov::gfx_plugin::compiler::make_metal_stage_placement_policy();
+  static const auto opencl_post_ops =
+      ov::gfx_plugin::compiler::make_post_op_fusion_capabilities(
+          ov::gfx_plugin::GpuBackend::OpenCL);
+  static const auto metal_post_ops =
+      ov::gfx_plugin::compiler::make_post_op_fusion_capabilities(
+          ov::gfx_plugin::GpuBackend::Metal);
+
+  ov::gfx_plugin::GfxStageCompilerPolicy policy{};
+  switch (backend) {
+  case ov::gfx_plugin::GpuBackend::OpenCL:
+    policy.placement = opencl_stage_placement.get();
+    policy.post_ops = &opencl_post_ops;
+    break;
+  case ov::gfx_plugin::GpuBackend::Metal:
+    policy.placement = metal_stage_placement.get();
+    policy.post_ops = &metal_post_ops;
+    break;
+  case ov::gfx_plugin::GpuBackend::Unknown:
+  default:
+    break;
+  }
+  return policy;
+}
+
+ov::gfx_plugin::GfxStageOptimizationPlan select_test_stage_optimization_plan(
+    const ov::gfx_plugin::GpuBufferManager *buffer_manager,
+    ov::gfx_plugin::GpuBackend backend, const std::string &stage_type,
+    const std::shared_ptr<const ov::Node> &node,
+    const ov::element::Type &element_type, bool has_bias, bool has_activation,
+    bool has_batchnorm, const ov::gfx_plugin::GfxStageRuntimeTraits &traits) {
+  const auto policy = test_stage_compiler_policy(backend);
+  return ov::gfx_plugin::select_stage_optimization_plan(
+      buffer_manager, backend, stage_type, node, element_type, has_bias,
+      has_activation, has_batchnorm, traits, &policy);
+}
 
 ov::gfx_plugin::GfxMpsrtCustomKernelDispatchSpec
 dispatch_spec_from_stage(const ov::gfx_plugin::GfxMpsrtStageDesc &stage) {
@@ -97,6 +141,21 @@ ranking_pipeline_options() {
   ov::gfx_plugin::transforms::PipelineOptions options;
   options.canonicalize_sigmoid_before_ranking = true;
   return options;
+}
+
+ov::gfx_plugin::GfxStageOptimizationPlan make_opencl_contract_stage_plan(
+    const std::string &stage_type, const std::shared_ptr<const ov::Node> &node,
+    const ov::element::Type &element_type) {
+  ov::gfx_plugin::compiler::StagePlacementQuery query{};
+  query.backend = ov::gfx_plugin::GpuBackend::OpenCL;
+  query.stage_type = stage_type;
+  query.node = node;
+  query.element_type = element_type;
+
+  ov::gfx_plugin::GfxStageOptimizationPlan plan{};
+  plan.placement = ov::gfx_plugin::compiler::make_opencl_stage_placement_policy()
+                       ->select_placement(query);
+  return plan;
 }
 
 } // namespace
@@ -995,7 +1054,7 @@ TEST(GfxMlir, MatMulMpsrtMetadataAnnotatesPlacementAndTensorDescriptors) {
           ov::gfx_plugin::GfxStageStorageKind::Matrix,
           ov::gfx_plugin::GfxMpsrtTensorFlagExternalIo),
       contract));
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "MatMul", matmul,
       ov::element::f16, false, false, false, {});
   const auto materialized =
@@ -1153,7 +1212,7 @@ TEST(GfxMlir, ConvMpsrtMetadataAnnotatesVendorDescriptorFromOpenVINONode) {
   auto module = ov::gfx_plugin::build_mlir_for_node(conv, ctx);
   ASSERT_TRUE(module);
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "Convolution", conv,
       ov::element::f16,
       /*has_bias=*/false,
@@ -1350,7 +1409,7 @@ TEST(GfxMlir, GroupConvMpsrtMetadataDerivesStageTypeFromManifest) {
   auto module = ov::gfx_plugin::build_mlir_for_node(group_conv, ctx);
   ASSERT_TRUE(module);
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "GroupConvolution",
       group_conv, ov::element::f16,
       /*has_bias=*/false,
@@ -1429,7 +1488,7 @@ TEST(GfxMlir, MpsrtTypedProgramMaterializesMatrixStorageConversionOps) {
   auto output = ov::gfx_plugin::gfx_mpsrt_make_tensor_desc(
       {1, 8, 4}, ov::element::f16, ov::gfx_plugin::GfxStageStorageKind::Matrix,
       ov::gfx_plugin::GfxMpsrtTensorFlagExternalIo);
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "MatMul", nullptr,
       ov::element::f16,
       /*has_bias=*/false,
@@ -1782,7 +1841,7 @@ TEST(GfxMlir, AppleMpsrtProgramPlanMaterializesExplicitMixedValueEdges) {
       {1, 8, 4}, ov::element::f16, ov::gfx_plugin::GfxStageStorageKind::Buffer,
       ov::gfx_plugin::GfxMpsrtTensorFlagExternalIo);
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "MatMul", nullptr,
       ov::element::f16,
       /*has_bias=*/false,
@@ -1893,7 +1952,7 @@ TEST(GfxMlir, MatMulMpsrtLoweringEntryPointSelectsSingleAndMultiStagePlans) {
   desc.N = 64;
   desc.K = 256;
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "MatMul", matmul,
       ov::element::f16,
       /*has_bias=*/false,
@@ -2025,7 +2084,7 @@ TEST(GfxMlir, AppleMpsrtTypedProgramMaterializesMultiStageBuilderRecords) {
   desc.has_activation = true;
   desc.activation = ov::gfx_plugin::ActivationKind::Swish;
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "MatMul", matmul,
       ov::element::f16,
       /*has_bias=*/true,
@@ -2244,7 +2303,7 @@ TEST(GfxMlir, AddMslMetadataUsesRequiredMpsrtKernelFamily) {
   ASSERT_TRUE(module);
   mlir::Builder builder(module.getContext());
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -2456,7 +2515,7 @@ TEST(GfxMlir, AppleMslLoweringMaterializesStageManifestBeforeTypedProgram) {
   auto module = ov::gfx_plugin::build_mlir_for_node(add, ctx);
   ASSERT_TRUE(module);
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -2521,7 +2580,7 @@ TEST(GfxMlir, AppleStagePipelineRunsNamedPassBoundariesBeforeTypedProgram) {
   auto module = ov::gfx_plugin::build_mlir_for_node(add, ctx);
   ASSERT_TRUE(module);
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -2579,12 +2638,8 @@ TEST(GfxMlir, OpenClStageManifestDoesNotMaterializeAppleMpsrtOps) {
   auto module = ov::gfx_plugin::build_mlir_for_node(multiply, ctx);
   ASSERT_TRUE(module);
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::OpenCL, "Multiply", multiply,
-      ov::element::f32,
-      /*has_bias=*/false,
-      /*has_activation=*/false,
-      /*has_batchnorm=*/false, {});
+  const auto plan =
+      make_opencl_contract_stage_plan("Multiply", multiply, ov::element::f32);
   ASSERT_EQ(plan.placement.domain,
             ov::gfx_plugin::GfxStageBackendDomain::OpenCl);
 
@@ -2616,7 +2671,7 @@ TEST(GfxMlir, AppleStagePipelineOwnsImageStorageBridgeAssignment) {
   auto module = ov::gfx_plugin::build_mlir_for_node(conv, ctx);
   ASSERT_TRUE(module);
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "Convolution", conv,
       ov::element::f16,
       /*has_bias=*/false,
@@ -2672,7 +2727,7 @@ TEST(GfxMlir, AppleMpsPrimitiveMaterializersOwnDescriptorEnrichment) {
   ASSERT_TRUE(softmax_module);
   ASSERT_TRUE(topk_module);
 
-  const auto pool_plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto pool_plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "MaxPool", max_pool,
       ov::element::f16, false, false, false, {});
   ov::gfx_plugin::GfxMpsrtPool2DAbiDesc pool_desc{};
@@ -2691,7 +2746,7 @@ TEST(GfxMlir, AppleMpsPrimitiveMaterializersOwnDescriptorEnrichment) {
   ASSERT_TRUE(pool_materialized.valid);
   ASSERT_TRUE(pool_materialized.typed_program_materialized);
 
-  const auto softmax_plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto softmax_plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "Softmax", softmax,
       ov::element::f16, false, false, false, {});
   ov::gfx_plugin::GfxMpsrtSoftmaxAbiDesc softmax_desc{};
@@ -2705,7 +2760,7 @@ TEST(GfxMlir, AppleMpsPrimitiveMaterializersOwnDescriptorEnrichment) {
   ASSERT_TRUE(softmax_materialized.valid);
   ASSERT_TRUE(softmax_materialized.typed_program_materialized);
 
-  const auto topk_plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto topk_plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "TopK", topk,
       ov::element::f16, false, false, false, {});
   ov::gfx_plugin::GfxMpsrtTopKAbiDesc topk_desc{};
@@ -2819,7 +2874,7 @@ TEST(GfxMlir,
   ASSERT_TRUE(module);
   mlir::Builder builder(module.getContext());
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -2909,7 +2964,7 @@ TEST(GfxMlir, StageManifestAloneDoesNotMaterializeMpsrtStageOrProgramReader) {
   auto module = ov::gfx_plugin::build_mlir_for_node(add, ctx);
   ASSERT_TRUE(module);
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -2988,7 +3043,7 @@ TEST(GfxMlir, StageManifestOverridesConflictingGeneratedStageAttrs) {
   ASSERT_TRUE(module);
   mlir::Builder builder(module.getContext());
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -3069,7 +3124,7 @@ TEST(GfxMlir, StageManifestSuppliesRoleAbiWithoutModuleMpsrtAttrs) {
   auto module = ov::gfx_plugin::build_mlir_for_node(add, ctx);
   ASSERT_TRUE(module);
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -3117,7 +3172,7 @@ TEST(GfxMlir, TypedProgramExternalBufferAbiWinsOverStaleModuleManifest) {
   auto module = ov::gfx_plugin::build_mlir_for_node(add, ctx);
   ASSERT_TRUE(module);
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -3173,7 +3228,7 @@ TEST(GfxMlir,
   auto module = ov::gfx_plugin::build_mlir_for_node(add, ctx);
   ASSERT_TRUE(module);
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -3212,7 +3267,7 @@ TEST(GfxMlir,
   mlir::MLIRContext ctx;
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", nullptr,
       ov::element::f16,
       /*has_bias=*/false,
@@ -3248,7 +3303,7 @@ TEST(GfxMlir, OpenClMetadataReaderIgnoresAppleMslStageManifest) {
   mlir::MLIRContext ctx;
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", nullptr,
       ov::element::f16,
       /*has_bias=*/false,
@@ -3562,7 +3617,7 @@ TEST(GfxMlir, MpsrtOpsExternalAbiSuppliesKernelRuntimeMetadata) {
   auto output = ov::gfx_plugin::gfx_mpsrt_make_tensor_desc(
       {1, 8, 4}, ov::element::f16, ov::gfx_plugin::GfxStageStorageKind::Matrix,
       ov::gfx_plugin::GfxMpsrtTensorFlagExternalIo);
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "MatMul", nullptr,
       ov::element::f16,
       /*has_bias=*/false,
@@ -3615,7 +3670,7 @@ TEST(GfxMlir, TypedVendorProgramDerivesExternalIoAbiFromTypedStagePlan) {
   auto output = ov::gfx_plugin::gfx_mpsrt_make_tensor_desc(
       {1, 8, 4}, ov::element::f16, ov::gfx_plugin::GfxStageStorageKind::Matrix,
       ov::gfx_plugin::GfxMpsrtTensorFlagExternalIo);
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "MatMul", nullptr,
       ov::element::f16,
       /*has_bias=*/false,
@@ -3996,7 +4051,7 @@ TEST(GfxMlir, TypedMpsrtProgramMaterializationErasesLegacyExternalAbiAttrs) {
   auto output = ov::gfx_plugin::gfx_mpsrt_make_tensor_desc(
       {1, 4}, ov::element::f32, ov::gfx_plugin::GfxStageStorageKind::Buffer,
       ov::gfx_plugin::GfxMpsrtTensorFlagExternalIo);
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "MatMul", nullptr,
       ov::element::f16,
       /*has_bias=*/false,
@@ -4229,7 +4284,7 @@ TEST(GfxMlir, StageManifestSuppliesElementwiseRoleAbiWithoutLegacyMpsrtAttrs) {
   mlir::MLIRContext ctx;
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", nullptr,
       ov::element::f16,
       /*has_bias=*/false,
@@ -4253,7 +4308,7 @@ TEST(GfxMlir,
   mlir::MLIRContext ctx;
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "Softmax", nullptr,
       ov::element::f16,
       /*has_bias=*/false,
@@ -4282,7 +4337,7 @@ TEST(
   mlir::MLIRContext ctx;
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "Gather", nullptr,
       ov::element::f32,
       /*has_bias=*/false,
@@ -4310,7 +4365,7 @@ TEST(GfxMlir, SoftmaxMslMetadataUsesRoleBasedExternalAbi) {
   mlir::MLIRContext ctx;
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "Softmax", nullptr,
       ov::element::f16,
       /*has_bias=*/false,
@@ -4352,7 +4407,7 @@ TEST(GfxMlir, MslSourcePlanKeepsExactManifestAbiOverLegacySignature) {
   auto module = ov::gfx_plugin::build_mlir_for_node(add, ctx);
   ASSERT_TRUE(module);
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4809,7 +4864,7 @@ TEST(GfxMlir, TopKMslMetadataUsesRoleBasedExternalAbi) {
   mlir::MLIRContext ctx;
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "TopK", nullptr,
       ov::element::f32,
       /*has_bias=*/false,
@@ -4897,7 +4952,7 @@ TEST(GfxMlir, GatherMslMetadataUsesRolePatternWithRuntimeParams) {
   mlir::MLIRContext ctx;
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "Gather", nullptr,
       ov::element::f32,
       /*has_bias=*/false,
@@ -4929,7 +4984,7 @@ TEST(GfxMlir, SliceMslMetadataUsesRolePatternForTrailingRuntimeParams) {
   mlir::MLIRContext ctx;
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "Slice", nullptr,
       ov::element::f32,
       /*has_bias=*/false,
@@ -5061,7 +5116,7 @@ TEST(GfxMlir, MslKernelManifestAdapterResolvesExactRolesWithoutSignatureHints) {
   mlir::MLIRContext ctx;
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
-  const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, ov::gfx_plugin::GpuBackend::Metal, "GatherElements", nullptr,
       ov::element::f32,
       /*has_bias=*/false,

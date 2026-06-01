@@ -22,7 +22,7 @@
 #include "openvino/runtime/remote_context.hpp"
 #include "openvino/runtime/remote_tensor.hpp"
 
-#include "plugin/gfx_backend_config.hpp"
+#include "compiler/backend_config.hpp"
 #include "runtime/gfx_tensor_utils.hpp"
 
 #include "integration/test_constants.hpp"

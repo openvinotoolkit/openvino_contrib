@@ -19,7 +19,7 @@
 #include "openvino/runtime/internal_properties.hpp"
 #include "openvino/runtime/properties.hpp"
 #include "openvino/util/common_util.hpp"
-#include "plugin/gfx_backend_config.hpp"
+#include "compiler/backend_config.hpp"
 #include "plugin/gfx_device_info.hpp"
 #include "plugin/gfx_profiling_utils.hpp"
 #include "plugin/gfx_property_lists.hpp"

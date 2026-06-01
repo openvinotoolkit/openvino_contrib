@@ -8,7 +8,7 @@
 #include "openvino/core/except.hpp"
 #include "openvino/runtime/so_ptr.hpp"
 #include "openvino/runtime/iremote_context.hpp"
-#include "plugin/gfx_backend_config.hpp"
+#include "compiler/backend_config.hpp"
 #include "backends/metal/plugin/compiled_model_state.hpp"
 #include "runtime/gpu_buffer_manager.hpp"
 #include "runtime/gpu_buffer.hpp"

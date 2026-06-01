@@ -151,6 +151,7 @@ protected:
   bool m_has_bias = false;
   BiasParams m_bias_params{};
   GfxStageRuntimeTraits m_runtime_traits{};
+  GfxStageCompilerPolicy m_compiler_policy{};
   void *m_profiler = nullptr;
   uint32_t m_profile_node_id = 0;
   std::string m_profile_node_name;

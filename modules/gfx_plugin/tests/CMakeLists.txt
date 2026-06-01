@@ -2,6 +2,8 @@ set(TARGET_NAME ov_gfx_func_tests)
 set(UNIT_TARGET_NAME ov_gfx_unit_tests)
 set(RUNTIME_MICRO_TARGET_NAME ov_gfx_runtime_micro_tests)
 
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
 function(gfx_assert_forbidden_test_source_patterns)
     file(GLOB_RECURSE _gfx_guard_sources CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
@@ -52,6 +54,74 @@ function(gfx_assert_forbidden_test_source_patterns)
 endfunction()
 
 gfx_assert_forbidden_test_source_patterns()
+
+set(GFX_GTEST_SOURCE_CONTRACT_TOOL
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/gfx_gtest_source_contract.py")
+set(GFX_GTEST_MATRIX_TOOL
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/gfx_gtest_matrix.py")
+
+function(gfx_assert_gtest_source_contract label native_sources_var adapter_sources_var)
+    set(_gfx_native_sources ${${native_sources_var}})
+    set(_gfx_adapter_sources ${${adapter_sources_var}})
+    if(NOT _gfx_native_sources OR NOT _gfx_adapter_sources)
+        message(FATAL_ERROR
+            "GFX test source contract ${label}: native and adapter source lists must be non-empty")
+    endif()
+    string(REPLACE ";" "," _gfx_native_arg "${_gfx_native_sources}")
+    string(REPLACE ";" "," _gfx_adapter_arg "${_gfx_adapter_sources}")
+    execute_process(
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${GFX_GTEST_SOURCE_CONTRACT_TOOL}"
+            "${label}::${_gfx_native_arg}::${_gfx_adapter_arg}"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        RESULT_VARIABLE _gfx_contract_result
+        OUTPUT_VARIABLE _gfx_contract_output
+        ERROR_VARIABLE _gfx_contract_error)
+    if(NOT _gfx_contract_result EQUAL 0)
+        message(FATAL_ERROR
+            "GFX test source contract failed for ${label}\n"
+            "${_gfx_contract_output}${_gfx_contract_error}")
+    endif()
+endfunction()
+
+set(GFX_MEMORY_DEVICE_CONTRACT_NATIVE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/memory_device_integration_test.mm)
+set(GFX_MEMORY_DEVICE_CONTRACT_UNAVAILABLE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/memory_device_integration_unavailable_test.cpp)
+set(GFX_OPENCL_DEVICE_PROFILE_CONTRACT_NATIVE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_device_profile_contract_test.cpp)
+set(GFX_OPENCL_DEVICE_PROFILE_CONTRACT_UNAVAILABLE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_device_profile_contract_unavailable_test.cpp)
+set(GFX_OPENCL_RUNTIME_BUNDLE_CONTRACT_NATIVE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_runtime_bundle_contract_test.cpp)
+set(GFX_OPENCL_RUNTIME_BUNDLE_CONTRACT_UNAVAILABLE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_runtime_bundle_contract_unavailable_test.cpp)
+set(GFX_METAL_NATIVE_CONTRACT_NATIVE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/memory_test.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_memory_copy_test.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_stage_factory_test.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_stage_activation_test.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_backend_test.mm)
+set(GFX_METAL_NATIVE_CONTRACT_UNAVAILABLE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/metal_native_contract_unavailable_test.cpp)
+
+gfx_assert_gtest_source_contract(
+    "memory-device"
+    GFX_MEMORY_DEVICE_CONTRACT_NATIVE_SOURCES
+    GFX_MEMORY_DEVICE_CONTRACT_UNAVAILABLE_SOURCES)
+gfx_assert_gtest_source_contract(
+    "opencl-device-profile"
+    GFX_OPENCL_DEVICE_PROFILE_CONTRACT_NATIVE_SOURCES
+    GFX_OPENCL_DEVICE_PROFILE_CONTRACT_UNAVAILABLE_SOURCES)
+gfx_assert_gtest_source_contract(
+    "opencl-runtime-bundle"
+    GFX_OPENCL_RUNTIME_BUNDLE_CONTRACT_NATIVE_SOURCES
+    GFX_OPENCL_RUNTIME_BUNDLE_CONTRACT_UNAVAILABLE_SOURCES)
+gfx_assert_gtest_source_contract(
+    "metal-native"
+    GFX_METAL_NATIVE_CONTRACT_NATIVE_SOURCES
+    GFX_METAL_NATIVE_CONTRACT_UNAVAILABLE_SOURCES)
 
 set(GFX_TEST_PLUGINS_XML "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/plugins.xml")
 add_custom_target(gfx_test_plugins_xml
@@ -170,11 +240,11 @@ target_sources(${TARGET_NAME} PRIVATE
 )
 if(APPLE)
     target_sources(${TARGET_NAME} PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/memory_device_integration_test.mm
+        ${GFX_MEMORY_DEVICE_CONTRACT_NATIVE_SOURCES}
     )
 else()
     target_sources(${TARGET_NAME} PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/memory_device_integration_unavailable_test.cpp
+        ${GFX_MEMORY_DEVICE_CONTRACT_UNAVAILABLE_SOURCES}
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/set_device_name_stub.cpp
     )
 endif()
@@ -240,25 +310,21 @@ target_sources(${UNIT_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/mlir_conv_parallel_test.cpp)
 if(GFX_BACKEND_OPENCL_AVAILABLE)
     target_sources(${UNIT_TARGET_NAME} PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_device_profile_contract_test.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_runtime_bundle_contract_test.cpp)
+        ${GFX_OPENCL_DEVICE_PROFILE_CONTRACT_NATIVE_SOURCES}
+        ${GFX_OPENCL_RUNTIME_BUNDLE_CONTRACT_NATIVE_SOURCES})
 else()
     target_sources(${UNIT_TARGET_NAME} PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_device_profile_contract_unavailable_test.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_runtime_bundle_contract_unavailable_test.cpp)
+        ${GFX_OPENCL_DEVICE_PROFILE_CONTRACT_UNAVAILABLE_SOURCES}
+        ${GFX_OPENCL_RUNTIME_BUNDLE_CONTRACT_UNAVAILABLE_SOURCES})
 endif()
 if(APPLE)
     target_sources(${UNIT_TARGET_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/set_device_name.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/memory_test.mm
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_memory_copy_test.mm
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_stage_factory_test.mm
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_stage_activation_test.mm
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_backend_test.mm)
+        ${GFX_METAL_NATIVE_CONTRACT_NATIVE_SOURCES})
 else()
     target_sources(${UNIT_TARGET_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/set_device_name_stub.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/metal_native_contract_unavailable_test.cpp
+        ${GFX_METAL_NATIVE_CONTRACT_UNAVAILABLE_SOURCES}
         ${CMAKE_CURRENT_SOURCE_DIR}/../src/backends/metal/runtime/dtype.cpp)
 endif()
 target_link_libraries(${UNIT_TARGET_NAME} PRIVATE ${GFX_UNIT_TEST_LINK_LIBS})
@@ -330,6 +396,49 @@ add_test(NAME ${RUNTIME_MICRO_TARGET_NAME} COMMAND ${RUNTIME_MICRO_TARGET_NAME})
 set_tests_properties(${RUNTIME_MICRO_TARGET_NAME} PROPERTIES
     LABELS "OV;GFX"
     ENVIRONMENT "${GFX_TEST_RUNTIME_ENVIRONMENT}")
+
+set(GFX_GTEST_MATRIX_OUTPUT_DIR
+    "${CMAKE_CURRENT_BINARY_DIR}/gtest-matrix")
+set(GFX_GTEST_MATRIX_CAPTURE_ARGS
+    "--capture"
+        "${TARGET_NAME}::$<TARGET_FILE:${TARGET_NAME}>::${GFX_GTEST_MATRIX_OUTPUT_DIR}/${TARGET_NAME}.txt"
+    "--capture"
+        "${UNIT_TARGET_NAME}::$<TARGET_FILE:${UNIT_TARGET_NAME}>::${GFX_GTEST_MATRIX_OUTPUT_DIR}/${UNIT_TARGET_NAME}.txt"
+    "--capture"
+        "${RUNTIME_MICRO_TARGET_NAME}::$<TARGET_FILE:${RUNTIME_MICRO_TARGET_NAME}>::${GFX_GTEST_MATRIX_OUTPUT_DIR}/${RUNTIME_MICRO_TARGET_NAME}.txt")
+
+set(GFX_GTEST_MATRIX_CAPTURE_ON_HOST TRUE)
+if(CMAKE_CROSSCOMPILING AND NOT CMAKE_CROSSCOMPILING_EMULATOR)
+    set(GFX_GTEST_MATRIX_CAPTURE_ON_HOST FALSE)
+endif()
+
+if(GFX_GTEST_MATRIX_CAPTURE_ON_HOST)
+    add_custom_target(gfx_gtest_matrix_capture
+        COMMAND "${CMAKE_COMMAND}" -E env ${GFX_TEST_RUNTIME_ENVIRONMENT}
+            "${Python3_EXECUTABLE}"
+            "${GFX_GTEST_MATRIX_TOOL}"
+            --check-only
+            ${GFX_GTEST_MATRIX_CAPTURE_ARGS}
+        DEPENDS
+            ${TARGET_NAME}
+            ${UNIT_TARGET_NAME}
+            ${RUNTIME_MICRO_TARGET_NAME}
+            gfx_test_plugins_xml
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+        COMMENT "Capture GFX production --gtest_list_tests registrations"
+        VERBATIM)
+
+    add_test(
+        NAME ov_gfx_gtest_matrix_capture
+        COMMAND "${CMAKE_COMMAND}" -E env ${GFX_TEST_RUNTIME_ENVIRONMENT}
+            "${Python3_EXECUTABLE}"
+            "${GFX_GTEST_MATRIX_TOOL}"
+            --check-only
+            ${GFX_GTEST_MATRIX_CAPTURE_ARGS})
+    set_tests_properties(ov_gfx_gtest_matrix_capture PROPERTIES
+        LABELS "OV;GFX"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+endif()
 
 add_executable(ov_gfx_compare_runner
     ${CMAKE_CURRENT_SOURCE_DIR}/tools/ov_gfx_compare_runner.cpp

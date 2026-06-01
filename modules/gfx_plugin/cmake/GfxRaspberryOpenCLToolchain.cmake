@@ -166,6 +166,34 @@ if(DEFINED _gfx_llvm_optional_deps_off)
     list(APPEND _gfx_raspberry_opencl_cmake_args ${_gfx_llvm_optional_deps_off})
 endif()
 
+set(_gfx_raspberry_opencl_runtime_dep_search_dirs "")
+foreach(_gfx_runtime_dep_dir IN ITEMS
+        "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
+        "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
+    if(IS_DIRECTORY "${_gfx_runtime_dep_dir}")
+        list(APPEND _gfx_raspberry_opencl_runtime_dep_search_dirs "${_gfx_runtime_dep_dir}")
+    endif()
+endforeach()
+if(DEFINED TBBROOT AND NOT TBBROOT STREQUAL "")
+    foreach(_gfx_runtime_dep_dir IN ITEMS
+            "${TBBROOT}/lib"
+            "${TBBROOT}/lib64")
+        if(IS_DIRECTORY "${_gfx_runtime_dep_dir}")
+            list(APPEND _gfx_raspberry_opencl_runtime_dep_search_dirs "${_gfx_runtime_dep_dir}")
+        endif()
+    endforeach()
+endif()
+if(DEFINED TBB_DIR AND NOT TBB_DIR STREQUAL "")
+    get_filename_component(_gfx_tbb_cmake_parent_dir "${TBB_DIR}" DIRECTORY)
+    get_filename_component(_gfx_tbb_lib_dir "${_gfx_tbb_cmake_parent_dir}" DIRECTORY)
+    if(IS_DIRECTORY "${_gfx_tbb_lib_dir}")
+        list(APPEND _gfx_raspberry_opencl_runtime_dep_search_dirs "${_gfx_tbb_lib_dir}")
+    endif()
+endif()
+list(REMOVE_DUPLICATES _gfx_raspberry_opencl_runtime_dep_search_dirs)
+string(REPLACE ";" "," _gfx_raspberry_opencl_runtime_dep_search_dirs_arg
+       "${_gfx_raspberry_opencl_runtime_dep_search_dirs}")
+
 ExternalProject_Add(gfx_raspberry_opencl_toolchain
     SOURCE_DIR ${GFX_RASPBERRY_CLVK_SOURCE_DIR}
     BINARY_DIR ${GFX_RASPBERRY_OPENCL_BUILD_DIR}
@@ -178,6 +206,7 @@ ExternalProject_Add(gfx_raspberry_opencl_toolchain
         ${CMAKE_COMMAND}
             -DCLVK_BUILD_DIR=<BINARY_DIR>
             -DOUTPUT_DIR=${GFX_RASPBERRY_OPENCL_BUNDLE_DIR}
+            -DRUNTIME_DEP_SEARCH_DIRS=${_gfx_raspberry_opencl_runtime_dep_search_dirs_arg}
             -P ${CMAKE_CURRENT_LIST_DIR}/InstallRaspberryOpenCLBundle.cmake
     BUILD_BYPRODUCTS
         "${GFX_RASPBERRY_OPENCL_BUNDLE_DIR}/libOpenCL.so.0.1"
@@ -194,7 +223,12 @@ unset(_gfx_raspberry_opencl_cross_bin_dir)
 unset(_gfx_raspberry_opencl_default_bundle_dir)
 unset(_gfx_raspberry_opencl_default)
 unset(_gfx_raspberry_opencl_toolchain_dir)
+unset(_gfx_raspberry_opencl_runtime_dep_search_dirs)
+unset(_gfx_raspberry_opencl_runtime_dep_search_dirs_arg)
 unset(_gfx_raspberry_opencl_runtimes_args)
 unset(_gfx_raspberry_opencl_runtimes_args_arg)
 unset(_gfx_raspberry_opencl_target_triple)
 unset(_gfx_raspberry_host_clang)
+unset(_gfx_runtime_dep_dir)
+unset(_gfx_tbb_cmake_parent_dir)
+unset(_gfx_tbb_lib_dir)

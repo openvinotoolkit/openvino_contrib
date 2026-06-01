@@ -47,7 +47,8 @@ Supported values:
 If `GFX_BACKEND` is omitted, the configured default from
 `GFX_DEFAULT_BACKEND=auto|metal|opencl` is used. On macOS the available route is
 Metal. On non-Apple builds, OpenCL is the source-kernel route when it is enabled
-in the build.
+in the build. Explicit default-backend requests are strict configure-time
+requirements; CMake fails when the requested backend is unavailable.
 
 The selected backend affects support probing, transforms, MLIR/source planning,
 runtime binding, profiling counters, and which backend-specific infer request is
@@ -103,11 +104,11 @@ service that builds a lowering plan, manifest, executable bundle, and runtime
 descriptor. That descriptor is not a public cache format and is not exported by
 `export_model()`.
 
-The compiler registry contains the production backend compiler modules, while
-runtime availability is checked separately from the configured backend support
-and runtime-provider registration. Requesting a backend that is not supported by
-the current build fails during query or compilation instead of falling through
-to a compiler-only module.
+The compiler registry contains the production backend compiler modules available
+in the configured build, while runtime state creation is checked through the
+configured backend support and runtime-provider registration. Requesting a
+backend that is not supported by the current build fails during query or
+compilation instead of falling through to another backend.
 
 Compilation requires explicit backend routes. Removed generic routes such as
 `backend_lowering` or `metal_lowering` are not public fallback paths; unsupported

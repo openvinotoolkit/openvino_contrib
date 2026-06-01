@@ -53,6 +53,9 @@ validation in `modules/gfx_plugin/`.
 - `tests/tools/gfx_gtest_matrix.py`: compares captured `--gtest_list_tests`
   output across production test targets and rejects duplicates, `DISABLED_`
   registrations, and matrix drift
+- `tests/tools/gfx_gtest_source_contract.py`: compares native backend test
+  source registrations with backend-unavailable adapter registrations for
+  covered source groups
 
 ## Test Selection Rules
 
@@ -198,6 +201,11 @@ ctest --test-dir build-gfx-plugin --output-on-failure -L GFX
 For docs-only or documentation/security publication changes, `git diff --check`
 plus stale-reference/security grep and staged diff review are the expected gate
 unless the user explicitly requests build or test targets.
+
+When changing test target composition, use the source-contract tool for
+native/unavailable-adapter parity and the gtest matrix tool for registration
+capture or comparison. The CMake `gfx_gtest_matrix_capture` target runs the
+matrix tool in `--check-only` mode when host execution is possible.
 
 ## Compare And Profiling Tools
 

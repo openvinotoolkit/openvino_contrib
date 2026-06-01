@@ -36,7 +36,7 @@
 #include "openvino/op/sigmoid.hpp"
 #include "transforms/pipeline.hpp"
 #include "transforms/fusion_pass.hpp"
-#include "plugin/gfx_backend_config.hpp"
+#include "compiler/backend_config.hpp"
 #include "common_test_utils/ov_plugin_cache.hpp"
 
 

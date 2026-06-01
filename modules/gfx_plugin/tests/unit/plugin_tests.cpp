@@ -13,7 +13,7 @@
 #include "../gfx_plugin_runtime_path.hpp"
 #include "openvino/core/type/float16.hpp"
 #include "openvino/openvino.hpp"
-#include "plugin/gfx_backend_config.hpp"
+#include "compiler/backend_config.hpp"
 
 #include "openvino/op/add.hpp"
 #include "openvino/op/parameter.hpp"

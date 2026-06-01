@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "compiler/backend_registry.hpp"
 #include "kernel_ir/gfx_kernel_manifest.hpp"
 #include "mlir/codegen_common.hpp"
 #include "mlir/gfx_apple_stage_pipeline.hpp"
@@ -72,6 +73,16 @@ bool should_prefer_clean_io_only_mps_vendor_source(
          !module_has_mpsrt_ops_program(module) &&
          (has_apple_msl_custom_kernel_manifest(module) ||
           has_legacy_output_arg_abi(module));
+}
+
+GfxStageCompilerPolicy metal_stage_compiler_policy() {
+  const auto backend_module =
+      compiler::BackendRegistry::default_registry().resolve(GpuBackend::Metal);
+  if (!backend_module) {
+    return {};
+  }
+  return gfx_stage_compiler_policy_from_capabilities(
+      backend_module->capabilities());
 }
 
 bool conv_bias_is_channel_vector(const BiasParams *bias_params,
@@ -357,6 +368,7 @@ try_configure_apple_mps_vendor_kernel_source_plan_for_node(
   if (has_apple_msl_custom_kernel_manifest(source.module)) {
     return {};
   }
+  const auto stage_compiler_policy = metal_stage_compiler_policy();
 
   const bool conv_base_candidate =
       (ov::is_type<const ov::op::v1::Convolution>(node) ||
@@ -381,7 +393,8 @@ try_configure_apple_mps_vendor_kernel_source_plan_for_node(
     }
     const auto plan = select_stage_optimization_plan(
         buffer_manager, GpuBackend::Metal, "MatMul", node, desc->output_type,
-        has_bias, has_activation, has_batchnorm, traits);
+        has_bias, has_activation, has_batchnorm, traits,
+        &stage_compiler_policy);
     auto source_plan = lower_matmul_module_to_mpsrt_plan(
         source.module, plan, *desc, matmul->get_input_shape(0),
         matmul->get_input_shape(1));
@@ -406,7 +419,7 @@ try_configure_apple_mps_vendor_kernel_source_plan_for_node(
         buffer_manager, GpuBackend::Metal, canonical_stage_type, node,
         node->get_output_element_type(0), has_bias,
         /*has_activation=*/false,
-        /*has_batchnorm=*/false, traits);
+        /*has_batchnorm=*/false, traits, &stage_compiler_policy);
     if (plan.placement.domain == GfxStageBackendDomain::AppleMps &&
         plan.placement.storage == GfxStageStorageKind::Image &&
         plan.placement.uses_vendor_primitive) {
@@ -433,7 +446,7 @@ try_configure_apple_mps_vendor_kernel_source_plan_for_node(
     const auto plan = select_stage_optimization_plan(
         buffer_manager, GpuBackend::Metal, canonical_stage_type, node,
         node->get_output_element_type(0), has_bias, has_activation,
-        /*has_batchnorm=*/false, traits);
+        /*has_batchnorm=*/false, traits, &stage_compiler_policy);
     const auto lowering = annotate_module_with_conv_mpsrt_plan(
         source.module, plan, node, fallback_stage_type, has_bias, bias_params,
         has_activation, activation);
@@ -461,7 +474,7 @@ try_configure_apple_mps_vendor_kernel_source_plan_for_node(
           node->get_output_element_type(0),
           /*has_bias=*/false,
           /*has_activation=*/false,
-          /*has_batchnorm=*/false, traits);
+          /*has_batchnorm=*/false, traits, &stage_compiler_policy);
       if (plan.placement.domain == GfxStageBackendDomain::AppleMps &&
           plan.placement.storage == GfxStageStorageKind::Image) {
         GfxAppleMpsVendorPrimitiveContract contract{};
@@ -490,7 +503,7 @@ try_configure_apple_mps_vendor_kernel_source_plan_for_node(
           node->get_output_element_type(0),
           /*has_bias=*/false,
           /*has_activation=*/false,
-          /*has_batchnorm=*/false, traits);
+          /*has_batchnorm=*/false, traits, &stage_compiler_policy);
       if (plan.placement.domain == GfxStageBackendDomain::AppleMps &&
           plan.placement.storage == GfxStageStorageKind::Image) {
         GfxAppleMpsVendorPrimitiveContract contract{};
@@ -520,7 +533,7 @@ try_configure_apple_mps_vendor_kernel_source_plan_for_node(
           node->get_output_element_type(0),
           /*has_bias=*/false,
           /*has_activation=*/false,
-          /*has_batchnorm=*/false, traits);
+          /*has_batchnorm=*/false, traits, &stage_compiler_policy);
       if (plan.placement.domain == GfxStageBackendDomain::AppleMps &&
           plan.placement.storage == GfxStageStorageKind::Matrix) {
         GfxAppleMpsVendorPrimitiveContract contract{};
@@ -550,7 +563,7 @@ try_configure_apple_mps_vendor_kernel_source_plan_for_node(
           node->get_output_element_type(0),
           /*has_bias=*/false,
           /*has_activation=*/false,
-          /*has_batchnorm=*/false, traits);
+          /*has_batchnorm=*/false, traits, &stage_compiler_policy);
       if (plan.placement.domain == GfxStageBackendDomain::AppleMps &&
           plan.placement.storage == GfxStageStorageKind::Matrix) {
         GfxAppleMpsVendorPrimitiveContract contract{};
@@ -579,7 +592,7 @@ try_configure_apple_mps_vendor_kernel_source_plan_for_node(
           node->get_output_element_type(0),
           /*has_bias=*/false,
           /*has_activation=*/false,
-          /*has_batchnorm=*/false, traits);
+          /*has_batchnorm=*/false, traits, &stage_compiler_policy);
       if (plan.placement.domain == GfxStageBackendDomain::AppleMps &&
           plan.placement.storage == GfxStageStorageKind::NDArray) {
         GfxAppleMpsVendorPrimitiveContract contract{};

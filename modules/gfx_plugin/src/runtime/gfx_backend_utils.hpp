@@ -7,7 +7,7 @@
 
 #include "openvino/core/except.hpp"
 #include "openvino/util/common_util.hpp"
-#include "plugin/gfx_backend_config.hpp"
+#include "compiler/backend_config.hpp"
 #include "runtime/gpu_buffer.hpp"
 
 namespace ov {

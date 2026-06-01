@@ -4,6 +4,10 @@
 
 #include <gtest/gtest.h>
 
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+#include <stdexcept>
 #include <string_view>
 #include <type_traits>
 
@@ -20,6 +24,7 @@
 #include "openvino/op/result.hpp"
 #include "openvino/op/transpose.hpp"
 #include "plugin/backend_state.hpp"
+#include "compiler/backend_config.hpp"
 #include "runtime/executable_descriptor.hpp"
 #include "runtime/execution_dispatcher.hpp"
 #include "runtime/gpu_buffer.hpp"
@@ -76,6 +81,55 @@ bool has_diagnostic_containing(const std::vector<std::string> &diagnostics,
     }
   }
   return false;
+}
+
+std::string read_text_file(const std::filesystem::path &path) {
+  std::ifstream stream(path);
+  if (!stream.good()) {
+    throw std::runtime_error("GFX test: failed to read " + path.string());
+  }
+  std::ostringstream contents;
+  contents << stream.rdbuf();
+  return contents.str();
+}
+
+std::filesystem::path find_gfx_module_root_for_source_contract() {
+  auto source_path = std::filesystem::path(__FILE__);
+  if (source_path.is_relative()) {
+    source_path = std::filesystem::absolute(source_path);
+  }
+  for (auto dir = source_path.parent_path(); !dir.empty();) {
+    if (std::filesystem::exists(dir / "src/runtime/gfx_stage_policy.cpp")) {
+      return dir;
+    }
+    const auto parent = dir.parent_path();
+    if (parent == dir) {
+      break;
+    }
+    dir = parent;
+  }
+
+  const auto cwd = std::filesystem::current_path();
+  for (const auto &candidate : {cwd, cwd / "modules/gfx_plugin"}) {
+    if (std::filesystem::exists(candidate /
+                                "src/runtime/gfx_stage_policy.cpp")) {
+      return candidate;
+    }
+  }
+  throw std::runtime_error("GFX test: failed to locate gfx_plugin module root");
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       RuntimeStagePolicyDoesNotResolveCompilerBackendRegistry) {
+  const auto module_root = find_gfx_module_root_for_source_contract();
+  const auto stage_policy_source =
+      read_text_file(module_root / "src/runtime/gfx_stage_policy.cpp");
+
+  EXPECT_EQ(stage_policy_source.find("compiler/backend_registry.hpp"),
+            std::string::npos);
+  EXPECT_EQ(stage_policy_source.find("BackendRegistry::"), std::string::npos);
+  EXPECT_EQ(stage_policy_source.find("make_post_op_fusion_capabilities("),
+            std::string::npos);
 }
 
 compiler::TensorContract
@@ -181,13 +235,23 @@ TEST_F(GfxBackendArchitectureContractTest,
   const auto &registry = compiler::BackendRegistry::default_registry();
   const auto metal = registry.resolve(GpuBackend::Metal);
   const auto opencl = registry.resolve(GpuBackend::OpenCL);
+  const auto targets = registry.available_targets();
+  const auto expected_target_count =
+      static_cast<size_t>(kGfxBackendMetalAvailable) +
+      static_cast<size_t>(kGfxBackendOpenCLAvailable);
 
-  ASSERT_TRUE(metal);
-  ASSERT_TRUE(opencl);
-  EXPECT_TRUE(metal->capabilities().stage_placement());
-  EXPECT_TRUE(opencl->capabilities().stage_placement());
-  EXPECT_EQ(metal->target().backend(), GpuBackend::Metal);
-  EXPECT_EQ(opencl->target().backend(), GpuBackend::OpenCL);
+  EXPECT_EQ(static_cast<bool>(metal), kGfxBackendMetalAvailable);
+  EXPECT_EQ(static_cast<bool>(opencl), kGfxBackendOpenCLAvailable);
+  EXPECT_EQ(targets.size(), expected_target_count);
+
+  if (metal) {
+    EXPECT_TRUE(metal->capabilities().stage_placement());
+    EXPECT_EQ(metal->target().backend(), GpuBackend::Metal);
+  }
+  if (opencl) {
+    EXPECT_TRUE(opencl->capabilities().stage_placement());
+    EXPECT_EQ(opencl->target().backend(), GpuBackend::OpenCL);
+  }
 }
 
 TEST_F(GfxBackendArchitectureContractTest,

@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+#include "backends/metal/compiler/metal_stage_placement.hpp"
+#include "backends/opencl/compiler/opencl_stage_placement.hpp"
 #include "compiler/operation_support.hpp"
 #include "kernel_ir/gfx_custom_kernel_families.hpp"
 #include "mlir/codegen_common.hpp"
@@ -54,6 +56,57 @@ using namespace ov::gfx_plugin;
 namespace runtime_mpsrt = ov::gfx_plugin::mpsrt;
 
 namespace {
+
+const compiler::StagePlacementPolicy *
+test_stage_placement_policy(GpuBackend backend) {
+  static const auto opencl_policy =
+      compiler::make_opencl_stage_placement_policy();
+  static const auto metal_policy = compiler::make_metal_stage_placement_policy();
+  switch (backend) {
+  case GpuBackend::OpenCL:
+    return opencl_policy.get();
+  case GpuBackend::Metal:
+    return metal_policy.get();
+  case GpuBackend::Unknown:
+  default:
+    return nullptr;
+  }
+}
+
+const compiler::PostOpFusionCapabilities *
+test_post_op_fusion_capabilities(GpuBackend backend) {
+  static const auto opencl_capabilities =
+      compiler::make_post_op_fusion_capabilities(GpuBackend::OpenCL);
+  static const auto metal_capabilities =
+      compiler::make_post_op_fusion_capabilities(GpuBackend::Metal);
+  switch (backend) {
+  case GpuBackend::OpenCL:
+    return &opencl_capabilities;
+  case GpuBackend::Metal:
+    return &metal_capabilities;
+  case GpuBackend::Unknown:
+  default:
+    return nullptr;
+  }
+}
+
+GfxStageCompilerPolicy test_stage_compiler_policy(GpuBackend backend) {
+  GfxStageCompilerPolicy policy{};
+  policy.placement = test_stage_placement_policy(backend);
+  policy.post_ops = test_post_op_fusion_capabilities(backend);
+  return policy;
+}
+
+GfxStageOptimizationPlan select_test_stage_optimization_plan(
+    const GpuBufferManager *buffer_manager, GpuBackend backend,
+    const std::string &stage_type, const std::shared_ptr<const ov::Node> &node,
+    const ov::element::Type &element_type, bool has_bias, bool has_activation,
+    bool has_batchnorm, const GfxStageRuntimeTraits &traits) {
+  const auto policy = test_stage_compiler_policy(backend);
+  return ov::gfx_plugin::select_stage_optimization_plan(
+      buffer_manager, backend, stage_type, node, element_type, has_bias,
+      has_activation, has_batchnorm, traits, &policy);
+}
 
 class FakeDeviceInfoBufferManager final : public GpuBufferManager {
 public:
@@ -151,6 +204,20 @@ std::shared_ptr<const ov::Node> make_large_add_node() {
   auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f16,
                                                      ov::Shape{1, 64, 80, 80});
   return std::make_shared<ov::op::v1::Add>(lhs, rhs);
+}
+
+GfxStagePlacementPlan select_opencl_contract_placement(
+    const std::string &stage_type, const std::shared_ptr<const ov::Node> &node,
+    const ov::element::Type &element_type,
+    const GfxStageRuntimeTraits &traits) {
+  compiler::StagePlacementQuery query{};
+  query.backend = GpuBackend::OpenCL;
+  query.stage_type = stage_type;
+  query.node = node;
+  query.element_type = element_type;
+  query.traits = traits;
+  return compiler::make_opencl_stage_placement_policy()->select_placement(
+      query);
 }
 
 std::shared_ptr<const ov::Node> make_very_large_sigmoid_node() {
@@ -417,7 +484,7 @@ TEST(
     GfxStagePolicyTest,
     OpenClPointwiseConvolutionStaysOnSharedMlirRouteAndAllowsBiasAndReluFusion) {
   const auto conv = make_pointwise_conv_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::OpenCL, "Convolution", conv, ov::element::f16,
       /*has_bias=*/true,
       /*has_activation=*/true,
@@ -442,7 +509,7 @@ TEST(
   FakeDeviceInfoBufferManager buffer_manager(info);
   const auto conv = make_heavy_spatial_conv_node();
   const auto plan =
-      select_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
+      select_test_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
                                      "Convolution", conv, ov::element::f16,
                                      /*has_bias=*/false,
                                      /*has_activation=*/false,
@@ -548,7 +615,7 @@ TEST(GfxStagePolicyTest,
   FakeDeviceInfoBufferManager buffer_manager(info);
   const auto conv = make_heavy_spatial_conv_node();
   const auto plan =
-      select_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
+      select_test_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
                                      "Convolution", conv, ov::element::f16,
                                      /*has_bias=*/false,
                                      /*has_activation=*/false,
@@ -575,7 +642,7 @@ TEST(GfxStagePolicyTest,
   FakeDeviceInfoBufferManager buffer_manager(info);
   const auto conv = make_width_reuse_stride2_conv_node();
   const auto plan =
-      select_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
+      select_test_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
                                      "Convolution", conv, ov::element::f16,
                                      /*has_bias=*/false,
                                      /*has_activation=*/false,
@@ -597,7 +664,7 @@ TEST(GfxStagePolicyTest,
 
 TEST(GfxStagePolicyTest, MetalConvolutionPlansAppleMpsImageStorage) {
   const auto conv = make_pointwise_conv_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -614,7 +681,7 @@ TEST(GfxStagePolicyTest, MetalConvolutionPlansAppleMpsImageStorage) {
 
 TEST(GfxStagePolicyTest, MetalF32ConvolutionPlansAppleMpsImageStorage) {
   const auto conv = make_pointwise_conv_node(ov::element::f32);
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -632,7 +699,7 @@ TEST(GfxStagePolicyTest,
   const auto conv = make_pointwise_conv_node(ov::element::f32);
   GfxStageRuntimeTraits traits{};
   traits.diagnostic_f32_vendor_image = true;
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -650,7 +717,7 @@ TEST(GfxStagePolicyTest,
   auto conv = std::const_pointer_cast<ov::Node>(
       make_pointwise_conv_node(ov::element::f32));
   ov::disable_fp16_compression(conv);
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -675,7 +742,7 @@ TEST(GfxStagePolicyTest,
       ov::CoordinateDiff{1, 1}, ov::Strides{1, 1});
   ov::disable_fp16_compression(conv);
 
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -699,7 +766,7 @@ TEST(GfxStagePolicyTest,
       input, weights, ov::Strides{2, 2}, ov::CoordinateDiff{1, 1},
       ov::CoordinateDiff{1, 1}, ov::Strides{1, 1});
 
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -732,7 +799,7 @@ TEST(GfxStagePolicyTest,
       reshape, k, 1, ov::op::TopKMode::MAX, ov::op::TopKSortType::SORT_VALUES,
       ov::element::i64);
 
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -770,12 +837,12 @@ TEST(GfxStagePolicyTest,
       reshape, k, 1, ov::op::TopKMode::MAX, ov::op::TopKSortType::SORT_VALUES,
       ov::element::i64);
 
-  const auto early_plan = select_stage_optimization_plan(
+  const auto early_plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv0, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
-  const auto score_plan = select_stage_optimization_plan(
+  const auto score_plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv1, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -794,7 +861,7 @@ TEST(GfxStagePolicyTest,
 
 TEST(GfxStagePolicyTest, MetalConvolutionWithPostOpsKeepsAppleMpsPlacement) {
   const auto conv = make_pointwise_conv_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv, ov::element::f16,
       /*has_bias=*/true,
       /*has_activation=*/true,
@@ -810,7 +877,7 @@ TEST(GfxStagePolicyTest, MetalConvolutionWithPostOpsKeepsAppleMpsPlacement) {
 TEST(GfxStagePolicyTest,
      MetalConvolutionWithNonAlignedChannelsStillPlansAppleMpsImageStorage) {
   const auto conv = make_non_aligned_channel_conv_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -831,7 +898,7 @@ TEST(GfxStagePolicyTest,
 
 TEST(GfxStagePolicyTest, MetalDilatedConvolutionPlansAppleMpsImageStorage) {
   const auto conv = make_dilated_non_aligned_channel_conv_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -847,7 +914,7 @@ TEST(GfxStagePolicyTest, MetalDilatedConvolutionPlansAppleMpsImageStorage) {
 TEST(GfxStagePolicyTest,
      MetalDepthwiseGroupConvolutionPlansAppleMpsImageStorage) {
   const auto gconv = make_depthwise_group_conv_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "GroupConvolution", gconv, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -872,7 +939,7 @@ TEST(GfxStagePolicyTest,
 TEST(GfxStagePolicyTest,
      MetalBilinearInterpolatePlansAppleMpsResizeImageStorage) {
   const auto resize = make_bilinear_interpolate_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Interpolate", resize, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -895,7 +962,7 @@ TEST(GfxStagePolicyTest,
 
 TEST(GfxStagePolicyTest, MetalF32InterpolateKeepsAppleMpsResizeImageStorage) {
   const auto resize = make_bilinear_interpolate_node(ov::element::f32);
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Interpolate", resize, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -909,7 +976,7 @@ TEST(GfxStagePolicyTest, MetalF32InterpolateKeepsAppleMpsResizeImageStorage) {
 
 TEST(GfxStagePolicyTest, MetalNearestInterpolatePlansAppleMslBufferStorage) {
   const auto resize = make_nearest_interpolate_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Interpolate", resize, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -940,7 +1007,7 @@ TEST(GfxStagePolicyTest,
 
 TEST(GfxStagePolicyTest, MetalF32MaxPoolPlansAppleMpsImageStorage) {
   const auto pool = make_aligned_maxpool_node(ov::element::f32);
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "MaxPool", pool, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -963,7 +1030,7 @@ TEST(GfxStagePolicyTest, MetalIndexedMaxPoolRequiresExplicitMpsFamilyRoute) {
 
   GfxStageRuntimeTraits traits{};
   traits.diagnostic_f32_vendor_image = true;
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "MaxPool", pool, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -994,7 +1061,7 @@ TEST(GfxStagePolicyTest, MetalIndexedMaxPoolRequiresExplicitMpsFamilyRoute) {
 TEST(GfxStagePolicyTest,
      MetalStandaloneBatchNormDoesNotAdvertiseMissingMpsPrimitive) {
   const auto batchnorm = make_batchnorm_node();
-  const auto plan = select_stage_optimization_plan(nullptr, GpuBackend::Metal,
+  const auto plan = select_test_stage_optimization_plan(nullptr, GpuBackend::Metal,
                                                    "BatchNormInference",
                                                    batchnorm, ov::element::f16,
                                                    /*has_bias=*/false,
@@ -1065,7 +1132,7 @@ TEST(GfxStagePolicyTest, AppleMpsTopKDescriptorAcceptsF32I64SmallK) {
 
 TEST(GfxStagePolicyTest, MetalMatMulPlansAppleMpsMatrixStorage) {
   const auto matmul = make_matmul_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "MatMul", matmul, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -1079,7 +1146,7 @@ TEST(GfxStagePolicyTest, MetalMatMulPlansAppleMpsMatrixStorage) {
 
 TEST(GfxStagePolicyTest, MetalF32MatMulPlansAppleMpsMatrixStorage) {
   const auto matmul = make_matmul_node(ov::element::f32);
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "MatMul", matmul, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -1118,17 +1185,17 @@ TEST(GfxStagePolicyTest, MetalF32TopKSensitiveAttentionMatrixStagesStayOnMps) {
       reshape, k, 1, ov::op::TopKMode::MAX, ov::op::TopKSortType::SORT_VALUES,
       ov::element::i64);
 
-  const auto score_plan = select_stage_optimization_plan(
+  const auto score_plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "MatMul", score_matmul, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
-  const auto softmax_plan = select_stage_optimization_plan(
+  const auto softmax_plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Softmax", softmax, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
-  const auto value_plan = select_stage_optimization_plan(
+  const auto value_plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "MatMul", value_matmul, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -1154,7 +1221,7 @@ TEST(GfxStagePolicyTest, MetalF32SoftmaxWithoutRankingKeepsMps) {
                                                         ov::Shape{1, 100, 100});
   auto softmax = std::make_shared<ov::op::v1::Softmax>(scores, 2);
 
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Softmax", softmax, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -1169,7 +1236,7 @@ TEST(GfxStagePolicyTest, MetalF32SoftmaxWithoutRankingKeepsMps) {
 TEST(GfxStagePolicyTest,
      MetalLogSoftmaxDoesNotAdvertiseMissingMpsSoftmaxPrimitive) {
   const auto log_softmax = make_last_dim_log_softmax_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "LogSoftmax", log_softmax, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -1190,7 +1257,7 @@ TEST(GfxStagePolicyTest, MetalF32AttentionValueMatMulWithoutRankingKeepsMps) {
   auto value_matmul =
       std::make_shared<ov::op::v0::MatMul>(softmax, value, false, false);
 
-  const auto value_plan = select_stage_optimization_plan(
+  const auto value_plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "MatMul", value_matmul, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -1206,7 +1273,7 @@ TEST(GfxStagePolicyTest, Fp32SensitiveNodePropagatesPrecisionToStageManifest) {
   auto matmul =
       std::const_pointer_cast<ov::Node>(make_matmul_node(ov::element::f32));
   ov::disable_fp16_compression(matmul);
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "MatMul", matmul, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -1264,7 +1331,7 @@ TEST(GfxStagePolicyTest, MetalBinaryElementwiseStaysInMslBufferDomain) {
   const auto add = make_large_add_node();
   GfxStageRuntimeTraits traits{};
   traits.binary_chunked = true;
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -1281,32 +1348,26 @@ TEST(GfxStagePolicyTest, OpenClPlacementRemainsSharedOpenClBufferDomain) {
   const auto add = make_large_add_node();
   GfxStageRuntimeTraits traits{};
   traits.binary_chunked = true;
-  const auto plan = select_stage_optimization_plan(
-      nullptr, GpuBackend::OpenCL, "Add", add, ov::element::f16,
-      /*has_bias=*/false,
-      /*has_activation=*/false,
-      /*has_batchnorm=*/false, traits);
+  const auto placement =
+      select_opencl_contract_placement("Add", add, ov::element::f16, traits);
 
-  EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::OpenCl);
-  EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Buffer);
-  EXPECT_TRUE(plan.placement.uses_custom_kernel);
+  EXPECT_EQ(placement.domain, GfxStageBackendDomain::OpenCl);
+  EXPECT_EQ(placement.storage, GfxStageStorageKind::Buffer);
+  EXPECT_TRUE(placement.uses_custom_kernel);
 }
 
 TEST(GfxStagePolicyTest, OpenClPlacementUsesSourceKernelBufferDomain) {
   const auto add = make_large_add_node();
   GfxStageRuntimeTraits traits{};
   traits.binary_chunked = true;
-  const auto plan = select_stage_optimization_plan(
-      nullptr, GpuBackend::OpenCL, "Add", add, ov::element::f16,
-      /*has_bias=*/false,
-      /*has_activation=*/false,
-      /*has_batchnorm=*/false, traits);
+  const auto placement =
+      select_opencl_contract_placement("Add", add, ov::element::f16, traits);
 
-  EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::OpenCl);
-  EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Buffer);
-  EXPECT_EQ(plan.placement.specialization_key, "opencl:buffer:Add");
-  EXPECT_FALSE(plan.placement.uses_vendor_primitive);
-  EXPECT_TRUE(plan.placement.uses_custom_kernel);
+  EXPECT_EQ(placement.domain, GfxStageBackendDomain::OpenCl);
+  EXPECT_EQ(placement.storage, GfxStageStorageKind::Buffer);
+  EXPECT_EQ(placement.specialization_key, "opencl:buffer:Add");
+  EXPECT_FALSE(placement.uses_vendor_primitive);
+  EXPECT_TRUE(placement.uses_custom_kernel);
 }
 
 TEST(GfxStagePolicyTest, OpenClCustomKernelManifestUsesOpenClDomain) {
@@ -1537,7 +1598,7 @@ TEST(GfxStagePolicyTest,
 
 TEST(GfxStagePolicyTest, MpsrtStageRecordKeyIsStableForMetalMatMul) {
   const auto matmul = make_matmul_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "MatMul", matmul, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -1562,7 +1623,7 @@ TEST(GfxStagePolicyTest, MpsrtStageRecordKeyIsStableForMetalMatMul) {
 
 TEST(GfxStagePolicyTest, MpsrtStageRecordKeyUsesNhwc4ForMetalConvolutionStage) {
   const auto conv = make_pointwise_conv_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -1592,7 +1653,7 @@ TEST(GfxStagePolicyTest, MpsrtStageRecordKeyUsesNhwc4ForMetalConvolutionStage) {
 
 TEST(GfxStagePolicyTest, MpsrtConv2DStageRecordKeyCarriesFusedActivation) {
   const auto conv = make_pointwise_conv_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -1609,7 +1670,7 @@ TEST(GfxStagePolicyTest, MpsrtConv2DStageRecordKeyCarriesFusedActivation) {
 TEST(GfxStagePolicyTest,
      MpsrtConv2DBuilderPlanCarriesVendorPrimitiveDescriptor) {
   const auto conv = make_light_spatial3x3_conv_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -1707,7 +1768,7 @@ TEST(GfxStagePolicyTest,
 TEST(GfxStagePolicyTest,
      MpsrtPool2DBuilderPlanCarriesVendorPrimitiveDescriptor) {
   const auto pool = make_aligned_maxpool_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "MaxPool", pool, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -2099,7 +2160,7 @@ TEST(GfxStagePolicyTest, MetalYoloLargeKTopKSourcePlanUsesMpsGraphTopK) {
 
 TEST(GfxStagePolicyTest, MetalYoloTopKLargeKUsesMpsGraphVendorPath) {
   const auto topk = make_yolo_last_dim_topk_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "TopK", topk, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -2112,7 +2173,7 @@ TEST(GfxStagePolicyTest, MetalYoloTopKLargeKUsesMpsGraphVendorPath) {
 
 TEST(GfxStagePolicyTest, MetalF32I64SmallTopKUsesMpsTopK) {
   const auto topk = make_f32_i64_mps_topk_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "TopK", topk, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -2265,7 +2326,7 @@ TEST(GfxStagePolicyTest,
 TEST(GfxStagePolicyTest,
      MpsrtSoftmaxBuilderPlanCarriesVendorPrimitiveDescriptor) {
   const auto softmax = make_last_dim_softmax_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Softmax", softmax, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -2305,7 +2366,7 @@ TEST(GfxStagePolicyTest,
 
 TEST(GfxStagePolicyTest, MpsrtTopKBuilderPlanCarriesVendorPrimitiveDescriptor) {
   const auto topk = make_last_dim_topk_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "TopK", topk, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -2355,7 +2416,7 @@ TEST(GfxStagePolicyTest, MpsrtTopKBuilderPlanCarriesVendorPrimitiveDescriptor) {
 
 TEST(GfxStagePolicyTest, MpsrtStageRecordKeyKeepsElementwiseInMslDispatch) {
   const auto add = make_large_add_node();
-  const auto plan = select_stage_optimization_plan(nullptr, GpuBackend::Metal,
+  const auto plan = select_test_stage_optimization_plan(nullptr, GpuBackend::Metal,
                                                    "Add", add, ov::element::f16,
                                                    /*has_bias=*/false,
                                                    /*has_activation=*/false,
@@ -2405,7 +2466,7 @@ TEST(GfxStagePolicyTest, MpsrtStageRecordKeyKeepsElementwiseInMslDispatch) {
 TEST(GfxStagePolicyTest,
      MpsrtStageDescUsesExplicitMslEntryPointForManifestClassification) {
   const auto conv = make_pointwise_conv_node();
-  auto plan = select_stage_optimization_plan(
+  auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -3187,7 +3248,7 @@ TEST(GfxStagePolicyTest,
 
 TEST(GfxStagePolicyTest, MpsrtBuilderPlanSerializesMslDispatchStage) {
   const auto add = make_large_add_node();
-  const auto plan = select_stage_optimization_plan(nullptr, GpuBackend::Metal,
+  const auto plan = select_test_stage_optimization_plan(nullptr, GpuBackend::Metal,
                                                    "Add", add, ov::element::f16,
                                                    /*has_bias=*/false,
                                                    /*has_activation=*/false,
@@ -3254,7 +3315,7 @@ TEST(GfxStagePolicyTest, MpsrtBuilderPlanSerializesMslDispatchStage) {
 TEST(GfxStagePolicyTest,
      MpsrtBuilderPlanUsesManifestRolesForMslKernelBufferOrder) {
   const auto add = make_large_add_node();
-  const auto plan = select_stage_optimization_plan(nullptr, GpuBackend::Metal,
+  const auto plan = select_test_stage_optimization_plan(nullptr, GpuBackend::Metal,
                                                    "Add", add, ov::element::f16,
                                                    /*has_bias=*/false,
                                                    /*has_activation=*/false,
@@ -3541,7 +3602,7 @@ TEST(GfxStagePolicyTest,
 TEST(GfxStagePolicyTest,
      ExplicitSingleMslDispatchConstBuffersStayExternalRuntimeAbiResources) {
   const auto conv = make_pointwise_conv_node(ov::element::f32);
-  auto plan = select_stage_optimization_plan(
+  auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -3611,7 +3672,7 @@ TEST(GfxStagePolicyTest,
 
 TEST(GfxStagePolicyTest, MpsrtRuntimeModelBuildsMslDispatchStage) {
   const auto add = make_large_add_node();
-  const auto plan = select_stage_optimization_plan(nullptr, GpuBackend::Metal,
+  const auto plan = select_test_stage_optimization_plan(nullptr, GpuBackend::Metal,
                                                    "Add", add, ov::element::f16,
                                                    /*has_bias=*/false,
                                                    /*has_activation=*/false,
@@ -3672,7 +3733,7 @@ TEST(GfxStagePolicyTest, MpsrtRuntimeModelBuildsMslDispatchStage) {
 
 TEST(GfxStagePolicyTest, MpsrtRuntimeStageFromDescUsesCustomKernelManifestAbi) {
   const auto add = make_large_add_node();
-  const auto plan = select_stage_optimization_plan(nullptr, GpuBackend::Metal,
+  const auto plan = select_test_stage_optimization_plan(nullptr, GpuBackend::Metal,
                                                    "Add", add, ov::element::f16,
                                                    /*has_bias=*/false,
                                                    /*has_activation=*/false,
@@ -3712,7 +3773,7 @@ TEST(GfxStagePolicyTest, MpsrtRuntimeStageFromDescUsesCustomKernelManifestAbi) {
 
 TEST(GfxStagePolicyTest, MpsrtRuntimeModelRejectsMalformedMslDispatch) {
   const auto add = make_large_add_node();
-  const auto plan = select_stage_optimization_plan(nullptr, GpuBackend::Metal,
+  const auto plan = select_test_stage_optimization_plan(nullptr, GpuBackend::Metal,
                                                    "Add", add, ov::element::f16,
                                                    /*has_bias=*/false,
                                                    /*has_activation=*/false,
@@ -3743,7 +3804,7 @@ TEST(GfxStagePolicyTest, MpsrtRuntimeModelRejectsMalformedMslDispatch) {
 TEST(GfxStagePolicyTest,
      MpsrtRuntimeModelRejectsMalformedStorageBridgeContract) {
   const auto pool = make_aligned_maxpool_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "MaxPool", pool, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -3770,7 +3831,7 @@ TEST(GfxStagePolicyTest,
 
 TEST(GfxStagePolicyTest, MpsrtRuntimeModelAdaptsExpandedExternalBufferAbi) {
   const auto add = make_large_add_node();
-  const auto plan = select_stage_optimization_plan(nullptr, GpuBackend::Metal,
+  const auto plan = select_test_stage_optimization_plan(nullptr, GpuBackend::Metal,
                                                    "Add", add, ov::element::f16,
                                                    /*has_bias=*/false,
                                                    /*has_activation=*/false,
@@ -3798,7 +3859,7 @@ TEST(GfxStagePolicyTest, MpsrtRuntimeModelAdaptsExpandedExternalBufferAbi) {
 TEST(GfxStagePolicyTest,
      MpsrtRuntimeModelAdaptsExternalBufferRolesFromExplicitManifestOrder) {
   const auto add = make_large_add_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Softmax", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -3847,7 +3908,7 @@ TEST(GfxStagePolicyTest,
 TEST(GfxStagePolicyTest,
      MpsrtRuntimeModelRejectsNarrowArgCountInsteadOfTrimmingExplicitRoles) {
   const auto add = make_large_add_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Softmax", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4048,7 +4109,7 @@ TEST(GfxStagePolicyTest, MetalConvolutionAllowsOnlyMpsBackedActivationFusion) {
 TEST(GfxStagePolicyTest,
      OpenClGroupConvolutionKeepsSharedMlirRouteWithBiasOrActivation) {
   const auto gconv = make_depthwise_group_conv_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::OpenCL, "GroupConvolution", gconv, ov::element::f16,
       /*has_bias=*/true,
       /*has_activation=*/true,
@@ -4061,7 +4122,7 @@ TEST(GfxStagePolicyTest,
 }
 
 TEST(GfxStagePolicyTest, OpenClMatMulUsesAdaptiveSubmitWindow) {
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::OpenCL, "MatMul", nullptr, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4077,7 +4138,7 @@ TEST(GfxStagePolicyTest,
   const auto add = make_large_add_node();
   GfxStageRuntimeTraits traits{};
   traits.binary_chunked = true;
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::OpenCL, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4093,7 +4154,7 @@ TEST(GfxStagePolicyTest,
   const auto add = make_conv_adjacent_large_add_node();
   GfxStageRuntimeTraits traits{};
   traits.binary_chunked = true;
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::OpenCL, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4108,7 +4169,7 @@ TEST(GfxStagePolicyTest, OpenClLargeConcatUsesIsolatedSubmitWindow) {
   const auto concat = make_large_concat_node();
   GfxStageRuntimeTraits traits{};
   traits.split_concat_chunked = true;
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::OpenCL, "Concat", concat, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4132,7 +4193,7 @@ TEST(GfxStagePolicyTest,
   const auto add = make_large_add_node();
   GfxStageRuntimeTraits traits{};
   traits.binary_chunked = true;
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       &buffer_manager, GpuBackend::OpenCL, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4156,7 +4217,7 @@ TEST(GfxStagePolicyTest,
   const auto sigmoid = make_very_large_sigmoid_node();
   GfxStageRuntimeTraits traits{};
   traits.unary_chunked = true;
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       &buffer_manager, GpuBackend::OpenCL, "Sigmoid", sigmoid, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4172,7 +4233,7 @@ TEST(GfxStagePolicyTest,
   const auto sigmoid = make_conv_adjacent_large_sigmoid_node();
   GfxStageRuntimeTraits traits{};
   traits.unary_chunked = true;
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::OpenCL, "Sigmoid", sigmoid, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4195,7 +4256,7 @@ TEST(GfxStagePolicyTest, OpenClConstrainedLargeConcatCanShareSubmitWindow) {
   const auto concat = make_large_concat_node();
   GfxStageRuntimeTraits traits{};
   traits.split_concat_chunked = true;
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       &buffer_manager, GpuBackend::OpenCL, "Concat", concat, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4210,7 +4271,7 @@ TEST(GfxStagePolicyTest, OpenClLargeTransposeUsesChunkedSubmitTraits) {
   const auto transpose = make_large_transpose_node();
   GfxStageRuntimeTraits traits{};
   traits.transpose_chunked = true;
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::OpenCL, "Transpose", transpose, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4224,7 +4285,7 @@ TEST(GfxStagePolicyTest, OpenClLargeTransposeUsesChunkedSubmitTraits) {
 TEST(GfxStagePolicyTest,
      OpenClLargePlainConvolutionUsesSharedMlirRouteWithIsolatedSubmitWindow) {
   const auto conv = make_large_chunked_conv_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::OpenCL, "Convolution", conv, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4239,7 +4300,7 @@ TEST(GfxStagePolicyTest,
 TEST(GfxStagePolicyTest,
      OpenClMediumPlainConvolutionUsesSharedMlirRouteWithIsolatedSubmitWindow) {
   const auto conv = make_medium_chunked_conv_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::OpenCL, "Convolution", conv, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4256,7 +4317,7 @@ TEST(GfxStagePolicyTest,
   FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
   const auto conv = make_large_chunked_conv_node();
   const auto plan =
-      select_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
+      select_test_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
                                      "Convolution", conv, ov::element::f16,
                                      /*has_bias=*/false,
                                      /*has_activation=*/false,
@@ -4285,7 +4346,7 @@ TEST(GfxStagePolicyTest,
   FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
   const auto conv = make_large_chunked_conv_node();
   const auto plan =
-      select_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
+      select_test_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
                                      "Convolution", conv, ov::element::f16,
                                      /*has_bias=*/true,
                                      /*has_activation=*/false,
@@ -4307,7 +4368,7 @@ TEST(GfxStagePolicyTest,
   FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
   const auto conv = make_large_chunked_conv_node();
   const auto plan =
-      select_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
+      select_test_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
                                      "Convolution", conv, ov::element::f16,
                                      /*has_bias=*/true,
                                      /*has_activation=*/true,
@@ -4323,7 +4384,7 @@ TEST(GfxStagePolicyTest,
   FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
   const auto conv = make_large_chunked_conv_node();
   const auto plan =
-      select_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
+      select_test_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
                                      "Convolution", conv, ov::element::f16,
                                      /*has_bias=*/false,
                                      /*has_activation=*/false,
@@ -4339,7 +4400,7 @@ TEST(GfxStagePolicyTest,
   FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
   const auto conv = make_pointwise_conv_node();
   const auto plan =
-      select_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
+      select_test_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
                                      "Convolution", conv, ov::element::f16,
                                      /*has_bias=*/false,
                                      /*has_activation=*/false,
@@ -4356,7 +4417,7 @@ TEST(
     GfxStagePolicyTest,
     OpenClLightDepthwiseGroupConvolutionUsesSharedMlirRouteWithIsolatedSubmitWindow) {
   const auto gconv = make_light_depthwise_group_conv_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::OpenCL, "GroupConvolution", gconv, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4372,7 +4433,7 @@ TEST(
 TEST(GfxStagePolicyTest,
      OpenClLightSpatial3x3ConvolutionFallsBackToSharedMlirRoute) {
   const auto conv = make_light_spatial3x3_conv_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::OpenCL, "Convolution", conv, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4388,12 +4449,12 @@ TEST(GfxStagePolicyTest,
      OpenClSerialConvolutionChainCanShareAdaptiveSubmitWindow) {
   const auto [conv0, conv1] = make_light_spatial3x3_conv_chain();
 
-  const auto first_plan = select_stage_optimization_plan(
+  const auto first_plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::OpenCL, "Convolution", conv0, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
-  const auto second_plan = select_stage_optimization_plan(
+  const auto second_plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::OpenCL, "Convolution", conv1, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4409,7 +4470,7 @@ TEST(GfxStagePolicyTest,
 
 TEST(GfxStagePolicyTest, OpenClConcatAdjacentConvolutionRemainsIsolated) {
   const auto conv = make_concat_fed_spatial3x3_conv_node();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::OpenCL, "Convolution", conv, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4422,7 +4483,7 @@ TEST(GfxStagePolicyTest, OpenClConcatAdjacentConvolutionRemainsIsolated) {
 TEST(GfxStagePolicyTest,
      OpenClLayoutAdjacentPlainConvolutionRemainsSharedMlirAndIsolated) {
   const auto conv = make_chunked_conv_with_reshape_consumer();
-  const auto plan = select_stage_optimization_plan(
+  const auto plan = select_test_stage_optimization_plan(
       nullptr, GpuBackend::OpenCL, "Convolution", conv, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,

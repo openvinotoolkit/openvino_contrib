@@ -177,8 +177,8 @@ else()
 endif()
 
 configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/plugin/gfx_backend_config.hpp.in
-    ${CMAKE_CURRENT_BINARY_DIR}/plugin/gfx_backend_config.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/compiler/backend_config.hpp.in
+    ${CMAKE_CURRENT_BINARY_DIR}/compiler/backend_config.hpp
     @ONLY
 )
 

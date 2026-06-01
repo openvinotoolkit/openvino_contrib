@@ -35,6 +35,8 @@ Read these files first:
 - OpenCL is disabled by CMake on macOS; the Apple route is Metal/MPS/MPSRT/MSL.
 - On non-Apple builds, `auto` resolves to OpenCL when the source backend is
   enabled in the build.
+- Explicit default backend requests are strict: CMake fails when the requested
+  backend is unavailable instead of selecting another backend.
 - `query_model()` uses the same backend-aware support path as compilation.
 - `export_model()` serializes the OpenVINO model, not a backend binary cache.
 - `GfxRemoteContext` and `GfxRemoteTensor` exist; practical capabilities depend
@@ -70,8 +72,8 @@ Read these files first:
   materialization, program cache, memory ops, runtime kernel loading, and
   generic source-artifact execution
 - `src/transforms/`: OpenVINO graph rewrites, fusion passes, and layout cleanup
-- `tests/`: unit, functional, backend, integration, compare, and microbench
-  coverage
+- `tests/`: unit, functional, backend, integration, compare, source-contract,
+  gtest-registration, and microbench coverage
 - `bench/`: optional local/remote evaluation helpers
 - `tools/`: profiling and microbench post-processing helpers
 - `third_party/llvm-project/`: vendored LLVM/MLIR used by the build
@@ -84,11 +86,12 @@ Read these files first:
 The high-level path is:
 
 1. `Plugin::compile_model()` parses properties and resolves `GFX_BACKEND`.
-2. `src/compiler/BackendRegistry` resolves the compiler backend module,
-   immutable `BackendTarget`, backend-owned transform `PipelineOptions`,
-   fusion capabilities, post-op fusion capabilities, stage-placement policy,
-   and artifact payload resolver. Runtime availability is checked separately
-   through configured backend support and `src/plugin/backend_factory.*`.
+2. `src/compiler/BackendRegistry` resolves one of the backend compiler modules
+   available in the current configured build. The module owns the immutable
+   `BackendTarget`, backend-owned transform `PipelineOptions`, fusion
+   capabilities, post-op fusion capabilities, stage-placement policy, and
+   artifact payload resolver. Runtime state creation is still checked through
+   configured backend support and `src/plugin/backend_factory.*`.
 3. `GfxCompilerService` runs backend-aware transforms, operation support
    checks, lowering-plan creation, manifest building, executable-bundle
    assembly, and artifact payload materialization.
@@ -96,9 +99,10 @@ The high-level path is:
    `RuntimeExecutableDescriptor` that is passed into backend stage creation.
 5. `CompiledModel::build_op_pipeline()` creates a sequence of stage descriptors.
 6. `src/runtime/gfx_stage_policy.*` selects fusion, precision, submit policy,
-   and other shared stage traits. Placement and storage are delegated through
-   the selected backend module's `StagePlacementPolicy` in `src/compiler/` and
-   `src/backends/*/compiler/*_stage_placement.*`.
+   and other shared stage traits. `CompiledModel` passes the selected backend
+   `StagePlacementPolicy` and `PostOpFusionCapabilities` through
+   `GpuStageRuntimeOptions` / `GfxStageCompilerPolicy`; stages must not resolve
+   the global backend registry at request time.
 7. `src/mlir/` lowers supported nodes and materializes backend source plans.
 8. The active backend creates descriptor-backed view-only stages or concrete
    backend `GpuStage` objects through `ExecutionDispatcher`.
@@ -294,6 +298,10 @@ Useful options:
 - `-DGFX_DEFAULT_BACKEND=auto|metal|opencl`
 - `-DENABLE_TESTS=ON|OFF`
 
+`GFX_DEFAULT_BACKEND=auto` must resolve to an available backend. Explicit
+`metal` or `opencl` requests are configure-time requirements and fail when that
+backend is unavailable in the current build.
+
 ## Test
 
 Run the module test label:
@@ -313,6 +321,9 @@ DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
 Use `ov_gfx_compare_runner` for accuracy triage and `ov_gfx_microbench` for
 profiling/microbench triage. Do not use microbench output as correctness
 evidence, and do not use compare-runner timing as performance evidence.
+The test CMake flow also uses `tests/tools/gfx_gtest_source_contract.py` and
+`tests/tools/gfx_gtest_matrix.py` to guard native/unavailable-adapter source
+parity, duplicate registrations, and forbidden `DISABLED_` registrations.
 
 ## Adding A New Operation
 

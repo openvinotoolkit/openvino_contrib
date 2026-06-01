@@ -7,6 +7,7 @@ This guide is for contributors working inside `modules/gfx_plugin`.
 - CMake 3.13 or newer
 - Ninja recommended
 - OpenVINO Developer Package
+- Python 3 when `ENABLE_TESTS=ON`
 - Metal SDK/frameworks on macOS for the Metal backend
 - OpenCL runtime on non-Apple targets for the OpenCL source-kernel backend
 - Optional `third_party/clvk` and `third_party/clspv` submodules when building
@@ -73,8 +74,10 @@ Build-system notes:
   used by Metal runtime and focused contract tests.
 - `gfx_plugin_metal` / `gfx_runtime_metal` and
   `gfx_plugin_opencl` / `gfx_runtime_opencl` contain backend-specific code.
-- `src/plugin/gfx_backend_config.hpp.in` is configured into the build tree with
-  backend availability booleans and the resolved default backend.
+- `src/compiler/backend_config.hpp.in` is configured into the build tree with
+  backend availability booleans and the resolved default backend; explicit
+  `GFX_DEFAULT_BACKEND=metal|opencl` requests fail CMake if the requested backend
+  is unavailable.
 - The OpenCL backend dynamically loads the target OpenCL runtime; it does not
   require a compile-time OpenCL SDK link.
 - `src/backends/opencl/runtime/opencl_runtime_bundle.*` owns plugin-local
@@ -85,10 +88,16 @@ Build-system notes:
   and CLVK dependency submodules, plus host LLVM tools from the target
   toolchain layout.
 - `cmake/InstallRaspberryOpenCLBundle.cmake` stages `libOpenCL.so.0.1`,
-  `clspv`, optional `llvm-spirv`, and local `libOpenCL.so*` symlinks into
-  `GFX_RASPBERRY_OPENCL_BUNDLE_DIR`.
+  `clspv`, optional `llvm-spirv`, local `libOpenCL.so*` symlinks, and optional
+  TBB runtime library families found through runtime output directories,
+  `TBBROOT`, or `TBB_DIR` into `GFX_RASPBERRY_OPENCL_BUNDLE_DIR`.
 - `cmake/WriteGfxTestPluginsXml.cmake` writes the controlled test
   `plugins.xml` used by GFX test binaries.
+- `tests/tools/gfx_gtest_source_contract.py` is executed at configure time to
+  keep native backend tests and backend-unavailable adapter tests in source
+  parity for the covered groups.
+- `tests/tools/gfx_gtest_matrix.py` can capture `--gtest_list_tests` from the
+  production test binaries and reject duplicate or disabled registrations.
 - Android and generic cross builds forward toolchain settings into the vendored
   LLVM/MLIR configure step.
 - The build treats warnings as errors through `-Werror` on Clang/GCC and `/WX`
@@ -191,6 +200,8 @@ For OpenCL source execution, start with:
    - compiler manifest/executable descriptor for stage ABI and artifact payloads
    - compiler tensor-layout plan for view-only/materialized layout contracts
    - backend stage-placement policy for domain/storage selection
+   - selected backend compiler policy passed through `GpuStageRuntimeOptions`
+     and `GfxStageCompilerPolicy`
    - shared stage policy for fusion, precision, and submission
    - kernel manifest for custom-kernel ABI
    - runtime-value payloads for dynamic metadata
@@ -442,7 +453,9 @@ For OpenCL runtime loader or plugin-local bundle changes, include
 `tests/unit/gfx_opencl_runtime_bundle_contract_test.cpp` when OpenCL is enabled
 or the matching `*_unavailable_test.cpp` adapter when it is not.
 
-Use `tests/tools/gfx_gtest_matrix.py` to compare captured
+Use `tests/tools/gfx_gtest_source_contract.py` when native backend test sources
+must stay mirrored by unavailable-adapter sources. Use
+`tests/tools/gfx_gtest_matrix.py` to capture or compare
 `--gtest_list_tests` output across production test targets. It detects
 duplicates, forbidden `DISABLED_` registrations, and matrix drift; it does not
 skip or filter tests.
