@@ -194,7 +194,7 @@ bool is_view_op(const InferStage& stage) {
     if (!stage.stage) {
         return false;
     }
-    return select_tensor_layout_plan(stage.stage->type(), stage.node).view_only;
+    return stage.stage->is_view_only();
 }
 
 ov::Shape ensure_stage_output_shape(InferStage& stage, size_t out_idx) {

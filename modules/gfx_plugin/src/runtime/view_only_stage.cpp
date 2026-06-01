@@ -23,7 +23,8 @@ bool is_compiler_owned_view_descriptor(
     return descriptor &&
            descriptor->origin == compiler::KernelArtifactOrigin::Metadata &&
            descriptor->payload_kind == compiler::KernelArtifactPayloadKind::None &&
-           descriptor->kernel_id == "metadata";
+           descriptor->kernel_id == "metadata" &&
+           descriptor->tensor_view_only;
 }
 
 class ViewOnlyStage final : public GpuStage {
@@ -37,9 +38,6 @@ public:
         OPENVINO_ASSERT(m_node, "GFX view-only stage requires a node");
         OPENVINO_ASSERT(is_compiler_owned_view_descriptor(&m_descriptor),
                         "GFX view-only stage requires a compiler-owned metadata descriptor");
-        OPENVINO_ASSERT(select_tensor_layout_plan(m_type, m_node).view_only,
-                        "GFX view-only stage received non-view op ",
-                        m_type);
     }
 
     void init(GpuBufferManager*) override {}
@@ -103,6 +101,10 @@ public:
         return m_type;
     }
 
+    bool is_view_only() const override {
+        return true;
+    }
+
     std::unique_ptr<GpuStage> clone() const override {
         return std::make_unique<ViewOnlyStage>(m_node, m_descriptor);
     }
@@ -139,8 +141,7 @@ private:
 std::unique_ptr<GpuStage> create_view_only_stage(
     const std::shared_ptr<const ov::Node>& node,
     const RuntimeStageExecutableDescriptor* descriptor) {
-    if (!node || !is_compiler_owned_view_descriptor(descriptor) ||
-        !select_tensor_layout_plan(node->get_type_name(), node).view_only) {
+    if (!node || !is_compiler_owned_view_descriptor(descriptor)) {
         return {};
     }
     return std::make_unique<ViewOnlyStage>(node, *descriptor);

@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "compiler/backend_registry.hpp"
 #include "openvino/op/avg_pool.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/convolution.hpp"
@@ -20,7 +21,7 @@
 #include "openvino/op/scaled_dot_product_attention.hpp"
 #include "openvino/op/softmax.hpp"
 #include "openvino/op/topk.hpp"
-#include "openvino/op/transpose.hpp"
+#include "runtime/gfx_activation.hpp"
 #include "runtime/gfx_compile_profiling.hpp"
 #include "runtime/gfx_parallelism.hpp"
 #include "runtime/gfx_shape_utils.hpp"
@@ -620,67 +621,6 @@ classify_stage_archetype(const std::string &stage_type,
   return GfxStageArchetype::Unknown;
 }
 
-bool is_safe_shared_activation(ActivationKind kind) {
-  switch (kind) {
-  case ActivationKind::Relu:
-  case ActivationKind::Sigmoid:
-  case ActivationKind::Tanh:
-  case ActivationKind::Elu:
-  case ActivationKind::Prelu:
-  case ActivationKind::Gelu:
-  case ActivationKind::Swish:
-  case ActivationKind::HSwish:
-  case ActivationKind::HSigmoid:
-  case ActivationKind::Abs:
-  case ActivationKind::Sign:
-    return true;
-  default:
-    return false;
-  }
-}
-
-bool is_apple_mpsrt_conv_activation_fusion_supported(ActivationKind kind) {
-  switch (kind) {
-  case ActivationKind::Relu:
-  case ActivationKind::Sigmoid:
-  case ActivationKind::Tanh:
-  case ActivationKind::Abs:
-  case ActivationKind::Swish:
-    return true;
-  default:
-    return false;
-  }
-}
-
-bool is_identity_permutation(const std::shared_ptr<const ov::Node> &node) {
-  auto transpose = ov::as_type_ptr<const ov::op::v1::Transpose>(node);
-  if (!transpose || transpose->get_input_size() != 2) {
-    return false;
-  }
-  auto perm_const = ov::as_type_ptr<const ov::op::v0::Constant>(
-      transpose->input_value(1).get_node_shared_ptr());
-  if (!perm_const) {
-    return false;
-  }
-  const auto perm = perm_const->cast_vector<int64_t>();
-  const auto &in_pshape = transpose->get_input_partial_shape(0);
-  const auto &out_pshape = transpose->get_output_partial_shape(0);
-  if (!in_pshape.rank().is_static() || !out_pshape.rank().is_static()) {
-    return false;
-  }
-  const auto in_rank = static_cast<size_t>(in_pshape.rank().get_length());
-  const auto out_rank = static_cast<size_t>(out_pshape.rank().get_length());
-  if (perm.size() != in_rank || perm.size() != out_rank) {
-    return false;
-  }
-  for (size_t i = 0; i < perm.size(); ++i) {
-    if (perm[i] != static_cast<int64_t>(i)) {
-      return false;
-    }
-  }
-  return true;
-}
-
 uint64_t shape_elements(const ov::Shape &shape) {
   uint64_t total = 1;
   for (const auto dim : shape) {
@@ -960,51 +900,23 @@ GfxParallelismCaps query_stage_caps(const GpuBufferManager *buffer_manager,
     caps.subgroup_size = 32;
     caps.max_total_threads_per_group = 128;
     caps.max_threads_per_group = {128, 128, 64};
-  } else {
+  } else if (backend == GpuBackend::Metal) {
     caps.preferred_simd_width = 32;
     caps.subgroup_size = 32;
     caps.max_total_threads_per_group = 256;
     caps.max_threads_per_group = {256, 256, 64};
     caps.supports_conv_output_channel_blocking = true;
     caps.supports_conv_channel_block_spatial_tiling = true;
+  } else {
+    caps.preferred_simd_width = 1;
+    caps.subgroup_size = 1;
+    caps.max_total_threads_per_group = 1;
+    caps.max_threads_per_group = {1, 1, 1};
   }
   return caps;
 }
 
 } // namespace
-
-bool allow_stage_bias_fusion(GpuBackend backend,
-                             const std::string &stage_type) {
-  if (backend == GpuBackend::OpenCL) {
-    return stage_type == "Convolution";
-  }
-  return is_conv_like(stage_type);
-}
-
-bool allow_stage_batchnorm_fusion(GpuBackend backend,
-                                  const std::string &stage_type) {
-  if (backend == GpuBackend::OpenCL) {
-    return stage_type == "Convolution";
-  }
-  return is_conv_like(stage_type);
-}
-
-bool allow_stage_activation_fusion(GpuBackend backend,
-                                   const std::string &stage_type,
-                                   ActivationKind kind) {
-  if (!is_safe_shared_activation(kind)) {
-    return false;
-  }
-  if (backend == GpuBackend::OpenCL) {
-    return stage_type == "Convolution" &&
-           (kind == ActivationKind::Relu || kind == ActivationKind::Swish);
-  }
-  if (backend == GpuBackend::Metal) {
-    return is_conv_like(stage_type) &&
-           is_apple_mpsrt_conv_activation_fusion_supported(kind);
-  }
-  return is_conv_like(stage_type);
-}
 
 const char *gfx_stage_backend_domain_name(GfxStageBackendDomain domain) {
   switch (domain) {
@@ -1057,40 +969,25 @@ GfxStagePostOpSupport
 select_stage_post_op_support(GpuBackend backend, GfxStageArchetype archetype,
                              const std::string &stage_type) {
   GfxStagePostOpSupport support{};
+  const auto backend_module =
+      compiler::BackendRegistry::default_registry().resolve(backend);
+  const auto fallback_post_ops =
+      compiler::make_post_op_fusion_capabilities(backend);
+  const auto &post_ops =
+      backend_module ? backend_module->capabilities().post_ops()
+                     : fallback_post_ops;
   switch (archetype) {
   case GfxStageArchetype::Convolution:
   case GfxStageArchetype::GroupConvolution:
-    support.batchnorm = allow_stage_batchnorm_fusion(backend, stage_type);
-    support.bias = allow_stage_bias_fusion(backend, stage_type);
-    support.activation = allow_stage_activation_fusion(backend, stage_type,
-                                                       ActivationKind::Relu);
+    support.batchnorm = post_ops.allow_stage_batchnorm_fusion(stage_type);
+    support.bias = post_ops.allow_stage_bias_fusion(stage_type);
+    support.activation =
+        post_ops.allow_stage_activation_fusion(stage_type, ActivationKind::Relu);
     break;
   default:
     break;
   }
   return support;
-}
-
-GfxTensorLayoutPlan
-select_tensor_layout_plan(const std::string &stage_type,
-                          const std::shared_ptr<const ov::Node> &node) {
-  GfxTensorLayoutPlan plan{};
-  if (stage_type == "ReadValue" || stage_type == "Reshape" ||
-      stage_type == "Squeeze" || stage_type == "Unsqueeze") {
-    plan.kind = GfxTensorLayoutKind::ViewOnly;
-    plan.view_only = true;
-    return plan;
-  }
-  if (stage_type == "Transpose" && is_identity_permutation(node)) {
-    plan.kind = GfxTensorLayoutKind::ViewOnly;
-    plan.view_only = true;
-    return plan;
-  }
-  if (stage_type == "Transpose" || stage_type == "Reshape" ||
-      stage_type == "Squeeze" || stage_type == "Unsqueeze") {
-    plan.kind = GfxTensorLayoutKind::Materialized;
-  }
-  return plan;
 }
 
 GfxStageOptimizationPlan select_stage_optimization_plan(
@@ -1103,7 +1000,6 @@ GfxStageOptimizationPlan select_stage_optimization_plan(
   plan.placement =
       select_stage_placement(backend, stage_type, node, element_type, traits);
   plan.precision = select_stage_precision_plan(node);
-  plan.layout = select_tensor_layout_plan(stage_type, node);
   plan.post_ops =
       select_stage_post_op_support(backend, plan.archetype, stage_type);
   plan.execution.fusion.allow_bias = plan.post_ops.bias;

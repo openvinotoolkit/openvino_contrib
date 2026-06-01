@@ -28,6 +28,7 @@ Then inspect the relevant code path:
 
 - plugin contract: `src/plugin/`
 - compiler contracts: `src/compiler/`
+- tensor-layout contracts: `src/compiler/tensor_layout.*`
 - backend-neutral runtime: `src/runtime/`
 - kernel manifests and source artifacts: `src/kernel_ir/`
 - MLIR builders and source planning: `src/mlir/`
@@ -42,12 +43,16 @@ Then inspect the relevant code path:
 - Keep shared behavior in `src/plugin/`, `src/runtime/`, `src/kernel_ir/`, or
   `src/mlir/` unless the code is truly backend-specific.
 - Keep backend target, operation support, lowering plans, manifests,
-  executable bundles, and artifact descriptors in `src/compiler/`.
+  executable bundles, tensor-layout plans, and artifact descriptors in
+  `src/compiler/`.
 - Keep Metal-specific code under `src/backends/metal/` and OpenCL-specific code
   under `src/backends/opencl/`.
 - Do not add CPU fallback for unsupported GPU stages.
 - Do not reintroduce removed backend routes or runtime defines to keep alternate
   paths alive.
+- Do not reintroduce `BackendLowering`, `metal_lowering`, or source-signature
+  scanning as ABI fallback. Generated/prebuilt executable routes must carry
+  compiler-owned manifest ABI metadata.
 - Keep support probing, lowering, runtime binding, and tests aligned for each
   operation.
 - Do not add plugin-side support tables that bypass `GfxCompilerService` or
@@ -90,7 +95,8 @@ For Metal placement, MPSRT, or MSL source changes, keep these aligned:
 - `src/backends/metal/runtime/mpsrt/`
 
 Manifest external-buffer roles are the semantic ABI. Do not let MSL buffer
-scans or stale signature hints widen or shrink a typed MPSRT runtime contract.
+scans or stale signature hints widen, shrink, or replace a typed MPSRT runtime
+contract.
 MPS/MPSGraph vendor primitive routes must flow through the compiler
 `VendorDescriptor` payload and the MPSRT vendor primitive stage; do not recreate
 vendor descriptors from request-time node checks.
@@ -116,8 +122,9 @@ vendor route; do not reintroduce the removed generic MSL Pool2D fallback.
 For OpenCL source-artifact work:
 
 1. Inspect `src/kernel_ir/gfx_opencl_source_artifacts.*` first.
-2. Check `src/backends/opencl/compiler/` for route selection and kernel-unit
-   registration.
+2. Check `src/backends/opencl/compiler/` for route selection, kernel-unit
+   registration, and source payload materialization through
+   `opencl_kernel_artifacts.*`.
 3. Keep `src/backends/opencl/runtime/opencl_source_stage.*` generic.
 4. Add source id, entry point, role ABI, scalar ABI, source-static u32/f32
    scalars, dynamic-shape metadata, constant materialization, chunk helpers,
@@ -167,6 +174,9 @@ artifacts, runtime binding, and tests.
    stages must consume their `RuntimeStageExecutableDescriptor`; do not
    reconstruct kernel source, artifact payload, or vendor descriptors from the
    OpenVINO node in request-time code.
+   For OpenCL, payload resolution belongs in
+   `src/backends/opencl/compiler/opencl_kernel_artifacts.*`, not in the common
+   executable-bundle builder.
 6. Add focused unit tests, then backend/functional tests if externally visible.
 7. Update docs if supported shapes, route selection, properties, profiling, or
    test workflows changed.

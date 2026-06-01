@@ -14,7 +14,7 @@ namespace ov {
 namespace gfx_plugin {
 
 struct GfxParallelismCaps {
-  GpuBackend backend = GpuBackend::Metal;
+  GpuBackend backend = GpuBackend::Unknown;
   GpuDeviceFamily device_family = GpuDeviceFamily::Generic;
   std::string device_key;
   uint32_t preferred_simd_width = 1;

@@ -6,7 +6,9 @@
 
 #include "openvino/core/except.hpp"
 
-#include <array>
+#include <algorithm>
+#include <mutex>
+#include <vector>
 
 namespace ov {
 namespace gfx_plugin {
@@ -14,33 +16,51 @@ namespace gfx_plugin {
 namespace {
 using StageFactoryFn = GpuStageFactory::StageFactoryFn;
 
-constexpr size_t kBackendCount = 2;
+struct StageFactoryRegistration {
+    GpuBackend backend = GpuBackend::Unknown;
+    StageFactoryFn factory = nullptr;
+};
 
-size_t backend_index(GpuBackend backend) {
-    switch (backend) {
-    case GpuBackend::Metal:
-        return 0;
-    case GpuBackend::OpenCL:
-        return 1;
-    default:
-        break;
+void validate_backend(GpuBackend backend) {
+    if (backend == GpuBackend::Unknown) {
+        OPENVINO_THROW("GFX: stage factory requires a known backend");
     }
-    return 0;
 }
 
-std::array<StageFactoryFn, kBackendCount>& stage_registry() {
-    static std::array<StageFactoryFn, kBackendCount> registry{};
+std::vector<StageFactoryRegistration>& stage_registry() {
+    static std::vector<StageFactoryRegistration> registry;
     return registry;
+}
+
+std::mutex& stage_registry_mutex() {
+    static std::mutex mutex;
+    return mutex;
 }
 }  // namespace
 
 bool GpuStageFactory::register_factory(GpuBackend backend, StageFactoryFn fn) {
-    stage_registry()[backend_index(backend)] = fn;
+    validate_backend(backend);
+    std::lock_guard<std::mutex> lock(stage_registry_mutex());
+    auto& registry = stage_registry();
+    auto it = std::find_if(registry.begin(), registry.end(), [backend](const StageFactoryRegistration& entry) {
+        return entry.backend == backend;
+    });
+    if (it != registry.end()) {
+        it->factory = fn;
+    } else {
+        registry.push_back({backend, fn});
+    }
     return true;
 }
 
 GpuStageFactory::StageFactoryFn GpuStageFactory::factory_for_backend(GpuBackend backend) {
-    return stage_registry()[backend_index(backend)];
+    validate_backend(backend);
+    std::lock_guard<std::mutex> lock(stage_registry_mutex());
+    const auto& registry = stage_registry();
+    auto it = std::find_if(registry.begin(), registry.end(), [backend](const StageFactoryRegistration& entry) {
+        return entry.backend == backend;
+    });
+    return it != registry.end() ? it->factory : nullptr;
 }
 
 std::unique_ptr<GpuStage> GpuStageFactory::create(const std::shared_ptr<const ov::Node>& node,

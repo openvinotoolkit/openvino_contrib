@@ -45,10 +45,6 @@ struct MetalBackendState final : BackendState {
         const RuntimeStageExecutableDescriptor* descriptor) const override {
         return create_metal_stage(node, descriptor, device, command_queue);
     }
-    bool enable_generic_attention_fusion() const override { return false; }
-    bool supports_vendor_attention_stage() const override { return true; }
-    bool enable_conv_activation_fusion() const override { return true; }
-    bool enable_precision_sensitive_arithmetic_fusion() const override { return false; }
     std::unique_ptr<GpuStage> create_vendor_attention_stage(
         const VendorAttentionStageSpec& spec) const override {
         return create_metal_vendor_attention_stage(spec, device, command_queue);

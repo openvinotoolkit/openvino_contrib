@@ -222,7 +222,7 @@ GfxPartitioningDeviceInfo query_partitioning_device_info(const GpuBufferManager*
             return make_info_from_device_info(*info);
         }
     }
-    return make_default_partitioning_device_info(GpuBackend::Metal);
+    return make_default_partitioning_device_info(GpuBackend::Unknown);
 }
 
 GfxPartitioningDeviceInfo make_default_partitioning_device_info(GpuBackend backend) {
@@ -234,10 +234,14 @@ GfxPartitioningDeviceInfo make_default_partitioning_device_info(GpuBackend backe
         info.max_total_threads_per_group = 128;
         info.max_threads_per_group = {128, 128, 64};
         info.device_key = "opencl:default";
-    } else {
+    } else if (backend == GpuBackend::Metal) {
         info.max_total_threads_per_group = 256;
         info.max_threads_per_group = {256, 256, 64};
         info.device_key = "metal:default";
+    } else {
+        info.max_total_threads_per_group = 1;
+        info.max_threads_per_group = {1, 1, 1};
+        info.device_key = "unknown:default";
     }
     return info;
 }

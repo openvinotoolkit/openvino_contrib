@@ -12,6 +12,8 @@
 #include <optional>
 #include <sstream>
 
+#include "compiler/backend_registry.hpp"
+#include "compiler/tensor_layout.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
 #include "kernel_ir/gfx_kernel_plan.hpp"
 #include "mlir/codegen_common.hpp"
@@ -42,6 +44,7 @@
 #include "runtime/gfx_profiler.hpp"
 #include "runtime/gfx_shape_utils.hpp"
 #include "runtime/gfx_stage_policy.hpp"
+#include "runtime/executable_descriptor.hpp"
 #include "runtime/memory_manager.hpp"
 #include "transforms/gfx_llm_ops.hpp"
 #include "transforms/mlir_fused_ops.hpp"
@@ -830,13 +833,21 @@ bool concat_has_runtime_shape(const std::shared_ptr<const ov::Node> &node) {
 } // namespace
 
 MlirStage::MlirStage(const std::shared_ptr<const ov::Node> &node)
-    : m_node(node),
+    : MlirStage(node, nullptr) {}
+
+MlirStage::MlirStage(const std::shared_ptr<const ov::Node> &node,
+                     const RuntimeStageExecutableDescriptor *descriptor)
+    : m_runtime_descriptor(descriptor ? std::make_shared<RuntimeStageExecutableDescriptor>(*descriptor)
+                                      : nullptr),
+      m_node(node),
       m_name(node ? node->get_friendly_name() : std::string("mlir_stage")),
       m_type(node ? node->get_type_name() : std::string("Unknown")) {
   if (node && node->get_output_partial_shape(0).is_static()) {
     m_output_shape = node->get_output_shape(0);
   }
-  m_is_view_op = select_tensor_layout_plan(m_type, m_node).view_only;
+  m_is_view_op = m_runtime_descriptor
+                     ? m_runtime_descriptor->tensor_view_only
+                     : compiler::select_tensor_layout_plan(m_type, m_node).view_only;
 }
 
 void MlirStage::apply_kernel_metadata(const KernelRuntimeMetadata &meta,
@@ -1865,8 +1876,9 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
         const size_t fallback = fallback_arg_count_from_func_signature(
             info, m_node ? m_node->get_output_size() : 0);
         return use_msl_stage_manifest_arg_count
-                   ? resolve_backend_manifest_arg_count_or_fallback(
-                         module, /*is_opencl_backend=*/false, fallback)
+                   ? require_backend_manifest_arg_count(
+                         module, /*is_opencl_backend=*/false,
+                         std::string_view{}, m_name)
                    : fallback;
       });
   if (m_type == "MaxPool" || m_type == "AvgPool") {
@@ -1878,8 +1890,9 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
           const size_t fallback = fallback_arg_count_from_kernel_mapping(
               info, info.output_args, m_kernel_extra_inputs.size());
           return use_msl_stage_manifest_arg_count
-                     ? resolve_backend_manifest_arg_count_or_fallback(
-                           module, /*is_opencl_backend=*/false, fallback)
+                     ? require_backend_manifest_arg_count(
+                           module, /*is_opencl_backend=*/false,
+                           std::string_view{}, m_name)
                      : fallback;
         });
   }
@@ -2109,10 +2122,10 @@ void MlirStage::prepare_prewarm_kernel_runtime_state(
           module, {}, m_node, outputs.size(), m_kernel_extra_inputs.size(),
           m_name.c_str(), "interpolate_main",
           [&](const KernelArgMappingInfo &info) -> size_t {
-            const size_t fallback = fallback_arg_count_from_kernel_mapping(
-                info, outputs.size(), m_kernel_extra_inputs.size());
-            return resolve_backend_manifest_arg_count_or_fallback(module, false,
-                                                                  fallback);
+            (void)info;
+            return require_backend_manifest_arg_count(
+                module, /*is_opencl_backend=*/false, std::string_view{},
+                m_name);
           });
       compile_from_plan(plan_ctx, module, "interpolate");
       m_last_input_shape = interpolate_plan.input_shape;
@@ -2802,10 +2815,10 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
             module, {}, m_node, outputs.size(), m_kernel_extra_inputs.size(),
             m_name.c_str(), "slice_main",
             [&](const KernelArgMappingInfo &info) -> size_t {
-              const size_t fallback = fallback_arg_count_from_kernel_mapping(
-                  info, outputs.size(), m_kernel_extra_inputs.size());
-              return resolve_backend_manifest_arg_count_or_fallback(
-                  module, false, fallback);
+              (void)info;
+              return require_backend_manifest_arg_count(
+                  module, /*is_opencl_backend=*/false, std::string_view{},
+                  m_name);
             });
         compile_from_plan(plan_ctx, module, "slice");
       }
@@ -2852,10 +2865,10 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
           module, {}, m_node, outputs.size(), m_kernel_extra_inputs.size(),
           m_name.c_str(), "interpolate_main",
           [&](const KernelArgMappingInfo &info) -> size_t {
-            const size_t fallback = fallback_arg_count_from_kernel_mapping(
-                info, outputs.size(), m_kernel_extra_inputs.size());
-            return resolve_backend_manifest_arg_count_or_fallback(module, false,
-                                                                  fallback);
+            (void)info;
+            return require_backend_manifest_arg_count(
+                module, /*is_opencl_backend=*/false, std::string_view{},
+                m_name);
           });
       compile_from_plan(plan_ctx, module, "interpolate");
       if (false) {
@@ -2909,10 +2922,10 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
           module, {}, m_node, outputs.size(), m_kernel_extra_inputs.size(),
           m_name.c_str(), "softmax_main",
           [&](const KernelArgMappingInfo &info) -> size_t {
-            const size_t fallback = fallback_arg_count_from_kernel_mapping(
-                info, outputs.size(), m_kernel_extra_inputs.size());
-            return resolve_backend_manifest_arg_count_or_fallback(module, false,
-                                                                  fallback);
+            (void)info;
+            return require_backend_manifest_arg_count(
+                module, /*is_opencl_backend=*/false, std::string_view{},
+                m_name);
           });
       compile_from_plan(plan_ctx, module, "softmax");
       if (false) {
@@ -3862,7 +3875,14 @@ void MlirStage::on_command_buffer_complete() {
 }
 
 bool MlirStage::fuse_activation(ActivationKind kind, float alpha) {
-  if (!allow_stage_activation_fusion(backend_kind(), m_type, kind) ||
+  const auto backend_module =
+      compiler::BackendRegistry::default_registry().resolve(backend_kind());
+  const auto fallback_post_ops =
+      compiler::make_post_op_fusion_capabilities(backend_kind());
+  const auto &post_ops =
+      backend_module ? backend_module->capabilities().post_ops()
+                     : fallback_post_ops;
+  if (!post_ops.allow_stage_activation_fusion(m_type, kind) ||
       !stage_optimization_plan().execution.fusion.allow_activation) {
     return false;
   }
@@ -4010,13 +4030,23 @@ KernelExecutionHooks *MlirStage::prepare_profiling(ProfileState &,
 void MlirStage::finalize_profiling(const ProfileState &) {}
 
 GfxStageOptimizationPlan MlirStage::stage_optimization_plan() const {
-  return select_stage_optimization_plan(
+  auto plan = select_stage_optimization_plan(
       m_buffer_manager, backend_kind(), m_type, m_node,
       m_node ? m_node->get_output_element_type(0) : ov::element::dynamic,
       m_has_bias, m_has_activation, m_has_bn, m_runtime_traits);
+  if (m_runtime_descriptor) {
+    plan.layout = compiler::tensor_layout_plan_from_contract(
+        m_runtime_descriptor->layout_contract,
+        m_runtime_descriptor->tensor_view_only);
+  } else {
+    plan.layout = compiler::select_tensor_layout_plan(m_type, m_node);
+  }
+  return plan;
 }
 
 void MlirStage::clone_into(MlirStage &dst) const {
+  dst.m_is_view_op = m_is_view_op;
+  dst.m_runtime_descriptor = m_runtime_descriptor;
   dst.m_kernel = m_kernel;
   dst.m_is_compressed_matmul = m_is_compressed_matmul;
   dst.m_output_shape = m_output_shape;

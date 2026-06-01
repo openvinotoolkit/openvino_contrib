@@ -65,6 +65,11 @@ test disabled-pattern hook intentionally empty. Backend-unavailable cases are
 covered by explicit `*_unavailable_test.cpp` files instead of hiding coverage
 through skip patterns.
 
+`tests/tools/gfx_gtest_matrix.py` compares captured `--gtest_list_tests` output
+from multiple GFX production targets. Use it when changing test registration or
+target composition; it fails on duplicate registrations, `DISABLED_` tests, and
+matrix drift.
+
 ## What To Test
 
 Add or update tests when changing:
@@ -73,10 +78,13 @@ Add or update tests when changing:
 - `query_model()` or support probing
 - compiler backend registry, operation policies, lowering plans, manifests,
   executable bundles, runtime executable descriptors, or artifact payloads
+- compiler-owned tensor-layout classification
 - MLIR builders, passes, source plans, or runtime-value planning
 - stage policy, placement, fusion, precision, or submit policy
 - OpenCL source-artifact metadata, source coverage, chunking, constant
   materialization, boolean buffer handling, or dynamic shape scalars
+- backend-owned OpenCL source payload materialization in
+  `src/backends/opencl/compiler/opencl_kernel_artifacts.*`
 - Metal MPS/MPSGraph placement, MPSRT records, storage bridges, MSL binding
   plans, or request-time resource binding
 - stateful `ReadValue` / `Assign`
@@ -112,6 +120,7 @@ For compiler-service, manifest, or executable-descriptor changes:
   runtime loaders
 - Metal vendor-descriptor coverage when MPS/MPSGraph payloads reach
   `MpsrtVendorPrimitiveStage`
+- tensor-layout tests when `src/compiler/tensor_layout.*` changes
 
 For scheduling, cache, or infer-path changes:
 
@@ -165,6 +174,9 @@ For OpenCL source-artifact changes:
   elementwise OpenCL artifact metadata or source identity changes
 - use `tests/unit/gpu_backend_base_test.cpp` when a source artifact is expected
   to appear in the compiler executable bundle
+- use `tests/unit/gfx_backend_architecture_contract_test.cpp` when OpenCL
+  source payload materialization moves between common compiler code and
+  backend module code
 - add runtime coverage when dynamic OpenCL loading, buffer binding, runtime
   output shape, static f32 scalar binding, constant materialization, boolean
   storage, or command execution changes
@@ -223,6 +235,8 @@ Use:
 - `tools/gfx_microbench_smoke.py` for artifact round-trip checks
 - `tools/gfx_calibration_diff.py` for calibration comparison
 - `tools/gfx_external_trace_summary.py` for trace post-processing
+- `tests/tools/gfx_gtest_matrix.py` for comparing captured gtest registration
+  lists across production test targets
 
 ## Cross-Device Strategy
 

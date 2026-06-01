@@ -396,16 +396,6 @@ bool configure_backend_custom_kernel_source_signature(
                            source, plan.stage_manifest);
 }
 
-size_t resolve_backend_manifest_arg_count_or_fallback(mlir::ModuleOp module,
-                                                      bool is_opencl_backend,
-                                                      size_t fallback) {
-  return infer_backend_custom_kernel_arg_count(
-      module,
-      is_opencl_backend ? GfxKernelBackendDomain::OpenCl
-                        : GfxKernelBackendDomain::AppleMsl,
-      fallback);
-}
-
 size_t infer_backend_custom_kernel_arg_count(
     mlir::ModuleOp module, GfxKernelBackendDomain backend_domain,
     size_t fallback, std::string_view entry_point) {
@@ -416,6 +406,38 @@ size_t infer_backend_custom_kernel_arg_count(
   }
   return infer_kernel_arg_count_from_module(module, fallback, entry_point,
                                             backend_domain);
+}
+
+size_t require_backend_manifest_arg_count(
+    mlir::ModuleOp module, GfxKernelBackendDomain backend_domain,
+    std::string_view entry_point, std::string_view stage_name) {
+  OPENVINO_ASSERT(module, "GFX MLIR: ", stage_name,
+                  " custom-kernel ABI requires an MLIR module");
+
+  size_t arg_count = 0;
+  if (infer_kernel_arg_count_from_mpsrt_typed_program_manifest(
+          module, arg_count, entry_point, backend_domain) ||
+      infer_kernel_arg_count_from_stage_manifest(module, arg_count, entry_point,
+                                                 backend_domain)) {
+    return arg_count;
+  }
+
+  OPENVINO_THROW("GFX MLIR: ", stage_name,
+                 " is missing compiler-owned custom-kernel manifest ABI for ",
+                 backend_domain == GfxKernelBackendDomain::OpenCl ? "OpenCL"
+                                                                  : "Apple MSL",
+                 " entry ", entry_point);
+}
+
+size_t require_backend_manifest_arg_count(mlir::ModuleOp module,
+                                          bool is_opencl_backend,
+                                          std::string_view entry_point,
+                                          std::string_view stage_name) {
+  return require_backend_manifest_arg_count(
+      module,
+      is_opencl_backend ? GfxKernelBackendDomain::OpenCl
+                        : GfxKernelBackendDomain::AppleMsl,
+      entry_point, stage_name);
 }
 
 } // namespace gfx_plugin

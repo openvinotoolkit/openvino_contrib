@@ -3,7 +3,6 @@
 //
 #pragma once
 
-#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -49,28 +48,6 @@ inline std::string resolve_msl_source(const KernelSource& source, std::string* l
         }
     }
     return msl;
-}
-
-inline uint32_t infer_msl_buffer_arg_count_from_source(std::string_view source) {
-    uint32_t max_buffer_index = 0;
-    bool found_buffer = false;
-    size_t pos = 0;
-    constexpr std::string_view marker = "[[buffer(";
-    while ((pos = source.find(marker, pos)) != std::string_view::npos) {
-        pos += marker.size();
-        uint32_t index = 0;
-        bool parsed_digit = false;
-        while (pos < source.size() && source[pos] >= '0' && source[pos] <= '9') {
-            parsed_digit = true;
-            index = index * 10u + static_cast<uint32_t>(source[pos] - '0');
-            ++pos;
-        }
-        if (parsed_digit) {
-            found_buffer = true;
-            max_buffer_index = std::max(max_buffer_index, index);
-        }
-    }
-    return found_buffer ? max_buffer_index + 1u : 0u;
 }
 
 inline KernelSource make_kernel_source(mlir::ModuleOp module,

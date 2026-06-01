@@ -4,6 +4,7 @@
 
 #include "openvino/gfx_plugin/compiled_model.hpp"
 
+#include "compiler/backend_registry.hpp"
 #include "openvino/gfx_plugin/infer_request.hpp"
 #include "openvino/gfx_plugin/plugin.hpp"
 #include "openvino/gfx_plugin/profiling.hpp"
@@ -672,6 +673,13 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
   const auto resources = get_backend_resources(backend_state());
   auto *backend_state = m_backend_state.get();
   OPENVINO_ASSERT(backend_state, "GFX: backend state is not initialized");
+  const auto backend_module =
+      compiler::BackendRegistry::default_registry().resolve(m_backend);
+  OPENVINO_ASSERT(backend_module,
+                  "GFX: backend registry has no module for ",
+                  backend_to_string(m_backend));
+  const auto &backend_capabilities = backend_module->capabilities();
+  const auto &fusion_capabilities = backend_capabilities.fusion();
   GpuStageRuntimeOptions stage_runtime_options{};
   stage_runtime_options.diagnostic_f32_vendor_image = m_diagnostic_f32_vendor_image;
   auto configure_stage_runtime_options =
@@ -836,8 +844,8 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
                    group.kind == "ConvBiasActivation") {
           if (!group.activation.has_value() ||
               (group.kind == "ConvBiasActivation" && !group.bias.has_value()) ||
-              !allow_stage_activation_fusion(GpuBackend::Metal, stage_type,
-                                             *group.activation)) {
+              !backend_capabilities.allow_stage_activation_fusion(
+                  stage_type, *group.activation)) {
             return false;
           }
         } else {
@@ -859,11 +867,11 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
     fusion_cfg.enable_fusion = true;
     fusion_cfg.debug_dump_ir = gfx_log_debug_enabled();
     fusion_cfg.enable_attention_fusion =
-        backend_state->enable_generic_attention_fusion();
+        fusion_capabilities.enable_generic_attention_fusion;
     fusion_cfg.enable_vendor_attention_fusion =
-        backend_state->supports_vendor_attention_stage();
+        fusion_capabilities.supports_vendor_attention_stage;
     fusion_cfg.enable_conv_activation_fusion =
-        backend_state->enable_conv_activation_fusion();
+        fusion_capabilities.enable_conv_activation_fusion;
     fusion_cfg.enable_conv_swish_fusion = true;
     fusion_plan = build_fusion_plan(m_runtime_model, fusion_cfg);
     if (compile_trace) {
@@ -873,7 +881,7 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
     }
     fusion_primary.reserve(fusion_plan.groups.size());
     for (const auto &group : fusion_plan.groups) {
-      if (!backend_state->enable_precision_sensitive_arithmetic_fusion() &&
+      if (!fusion_capabilities.enable_precision_sensitive_arithmetic_fusion &&
           is_precision_sensitive_arithmetic_fusion_group(group) &&
           fusion_group_has_fp32_precision(&group)) {
         if (is_apple_mpsrt_precision_sensitive_arithmetic_fusion_group(

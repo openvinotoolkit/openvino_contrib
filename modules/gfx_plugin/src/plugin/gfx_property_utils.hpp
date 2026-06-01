@@ -17,13 +17,13 @@ namespace ov {
 namespace gfx_plugin {
 
 struct BackendRequest {
-    GpuBackend kind = GpuBackend::Metal;
+    GpuBackend kind = GpuBackend::Unknown;
     bool explicit_request = false;
     std::string requested;
 };
 
 struct ResolvedBackendInfo {
-    GpuBackend backend = GpuBackend::Metal;
+    GpuBackend backend = GpuBackend::Unknown;
     std::string backend_name;
     bool explicit_request = false;
     std::string requested;
@@ -31,7 +31,7 @@ struct ResolvedBackendInfo {
 
 struct RemoteContextParams {
     ov::AnyMap merged;
-    GpuBackend backend = GpuBackend::Metal;
+    GpuBackend backend = GpuBackend::Unknown;
     std::string backend_name;
     int device_id = 0;
 };

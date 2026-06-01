@@ -4,29 +4,35 @@
 
 #include "runtime/gpu_memory_ops.hpp"
 
-#include <array>
+#include "openvino/core/except.hpp"
+
+#include <algorithm>
+#include <mutex>
+#include <vector>
 
 namespace ov {
 namespace gfx_plugin {
 
 namespace {
-constexpr size_t kBackendCount = 2;
+struct MemoryOpsRegistration {
+    GpuBackend backend = GpuBackend::Unknown;
+    GpuMemoryOpsFn factory = nullptr;
+};
 
-size_t backend_index(GpuBackend backend) {
-    switch (backend) {
-    case GpuBackend::Metal:
-        return 0;
-    case GpuBackend::OpenCL:
-        return 1;
-    default:
-        break;
+void validate_backend(GpuBackend backend) {
+    if (backend == GpuBackend::Unknown) {
+        OPENVINO_THROW("GFX: memory ops require a known backend");
     }
-    return 0;
 }
 
-std::array<GpuMemoryOpsFn, kBackendCount>& memory_registry() {
-    static std::array<GpuMemoryOpsFn, kBackendCount> registry{};
+std::vector<MemoryOpsRegistration>& memory_registry() {
+    static std::vector<MemoryOpsRegistration> registry;
     return registry;
+}
+
+std::mutex& memory_registry_mutex() {
+    static std::mutex mutex;
+    return mutex;
 }
 
 const GpuMemoryOps& null_ops() {
@@ -36,12 +42,31 @@ const GpuMemoryOps& null_ops() {
 }  // namespace
 
 bool register_memory_ops(GpuBackend backend, GpuMemoryOpsFn fn) {
-    memory_registry()[backend_index(backend)] = fn;
+    validate_backend(backend);
+    std::lock_guard<std::mutex> lock(memory_registry_mutex());
+    auto& registry = memory_registry();
+    auto it = std::find_if(registry.begin(), registry.end(), [backend](const MemoryOpsRegistration& entry) {
+        return entry.backend == backend;
+    });
+    if (it != registry.end()) {
+        it->factory = fn;
+    } else {
+        registry.push_back({backend, fn});
+    }
     return true;
 }
 
 const GpuMemoryOps& memory_ops_for_backend(GpuBackend backend) {
-    auto fn = memory_registry()[backend_index(backend)];
+    validate_backend(backend);
+    GpuMemoryOpsFn fn = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(memory_registry_mutex());
+        const auto& registry = memory_registry();
+        auto it = std::find_if(registry.begin(), registry.end(), [backend](const MemoryOpsRegistration& entry) {
+            return entry.backend == backend;
+        });
+        fn = it != registry.end() ? it->factory : nullptr;
+    }
     if (fn) {
         return fn();
     }

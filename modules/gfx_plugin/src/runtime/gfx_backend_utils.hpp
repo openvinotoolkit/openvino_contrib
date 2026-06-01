@@ -20,6 +20,7 @@ const char* backend_to_string(GpuBackend backend);
 GpuBackend parse_backend_kind(const std::string& value);
 GpuBackend default_backend_kind();
 bool backend_supported(GpuBackend backend);
+bool backend_known(GpuBackend backend);
 
 }  // namespace gfx_plugin
 }  // namespace ov

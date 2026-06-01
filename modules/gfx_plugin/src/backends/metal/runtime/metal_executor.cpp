@@ -22,7 +22,7 @@ namespace gfx_plugin {
 MetalStage::MetalStage(const std::shared_ptr<const ov::Node> &node,
                        MetalDeviceHandle device, MetalCommandQueueHandle queue,
                        const RuntimeStageExecutableDescriptor *descriptor)
-    : MlirStage(node), m_device(device), m_queue(queue) {
+    : MlirStage(node, descriptor), m_device(device), m_queue(queue) {
   if (descriptor) {
     m_executable_descriptor =
         std::make_shared<RuntimeStageExecutableDescriptor>(*descriptor);

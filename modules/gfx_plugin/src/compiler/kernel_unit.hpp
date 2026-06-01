@@ -18,7 +18,6 @@ enum class KernelUnitKind {
   VendorPrimitive,
   GeneratedKernel,
   HandwrittenException,
-  BackendLowering,
 };
 
 struct HandwrittenKernelExceptionContract {
@@ -73,7 +72,7 @@ private:
              std::string op_family,
              HandwrittenKernelExceptionContract exception = {});
 
-  KernelUnitKind m_kind = KernelUnitKind::BackendLowering;
+  KernelUnitKind m_kind = KernelUnitKind::Common;
   LoweringRouteKind m_route_kind = LoweringRouteKind::Unsupported;
   std::string m_id;
   std::string m_backend_domain;

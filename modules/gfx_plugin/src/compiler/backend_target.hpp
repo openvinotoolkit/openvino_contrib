@@ -64,7 +64,7 @@ public:
     bool is_compatible_with_fingerprint(std::string_view fingerprint) const;
 
 private:
-    GpuBackend m_backend = GpuBackend::Metal;
+    GpuBackend m_backend = GpuBackend::Unknown;
     std::string m_backend_id;
     std::string m_runtime_api;
     std::string m_device_family;

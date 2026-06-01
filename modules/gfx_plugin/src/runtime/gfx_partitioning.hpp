@@ -16,7 +16,7 @@ namespace ov {
 namespace gfx_plugin {
 
 struct GfxPartitioningDeviceInfo {
-    GpuBackend backend = GpuBackend::Metal;
+    GpuBackend backend = GpuBackend::Unknown;
     std::string device_key;
     uint32_t preferred_simd_width = 1;
     uint32_t subgroup_size = 1;

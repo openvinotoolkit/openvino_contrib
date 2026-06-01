@@ -13,7 +13,7 @@ namespace ov {
 namespace gfx_plugin {
 
 struct GfxDeviceInfo {
-    GpuBackend backend = GpuBackend::Metal;
+    GpuBackend backend = GpuBackend::Unknown;
     std::string backend_name;
     std::string device_name;
     std::string full_name;

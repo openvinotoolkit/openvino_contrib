@@ -56,10 +56,6 @@ struct BackendState {
     virtual std::unique_ptr<GpuStage> create_stage(
         const std::shared_ptr<const ov::Node>& node,
         const RuntimeStageExecutableDescriptor* descriptor) const = 0;
-    virtual bool enable_generic_attention_fusion() const { return true; }
-    virtual bool supports_vendor_attention_stage() const { return false; }
-    virtual bool enable_conv_activation_fusion() const { return true; }
-    virtual bool enable_precision_sensitive_arithmetic_fusion() const { return true; }
     virtual std::unique_ptr<GpuStage> create_vendor_attention_stage(
         const VendorAttentionStageSpec& /*spec*/) const {
         return {};

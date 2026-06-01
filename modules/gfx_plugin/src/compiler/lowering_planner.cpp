@@ -144,6 +144,8 @@ LoweringPlan LoweringPlanner::plan(const std::shared_ptr<const ov::Model>& model
                                    record.node->get_friendly_name(),
                                    record.node->get_type_name(),
                                    kernel_unit,
+                                   select_tensor_layout_plan(
+                                       record.node->get_type_name(), record.node),
                                    record.support.profitability_score,
                                    input_element_types(record.node),
                                    input_shapes(record.node),

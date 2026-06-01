@@ -47,7 +47,7 @@ protected:
 private:
     std::string m_device;
     int m_device_id = 0;
-    GpuBackend m_backend = GpuBackend::Metal;
+    GpuBackend m_backend = GpuBackend::Unknown;
     std::string m_backend_name;
     GpuDeviceHandle m_handle = nullptr;
     ov::AnyMap m_params;

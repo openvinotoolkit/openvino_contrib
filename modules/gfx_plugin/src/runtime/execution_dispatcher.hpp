@@ -26,7 +26,7 @@ public:
 
     static std::unique_ptr<GpuStage> create(const std::shared_ptr<const ov::Node>& node,
                                             const RuntimeStageExecutableDescriptor* descriptor,
-                                            GpuBackend backend = GpuBackend::Metal,
+                                            GpuBackend backend,
                                             void* device = nullptr,
                                             void* queue = nullptr);
 };
@@ -36,7 +36,7 @@ class ExecutionDispatcher {
 public:
     static std::unique_ptr<GpuStage> create(const std::shared_ptr<const ov::Node>& node,
                                             const RuntimeStageExecutableDescriptor* descriptor,
-                                            GpuBackend backend = GpuBackend::Metal,
+                                            GpuBackend backend,
                                             void* device = nullptr,
                                             void* queue = nullptr) {
         return GpuStageFactory::create(node, descriptor, backend, device, queue);

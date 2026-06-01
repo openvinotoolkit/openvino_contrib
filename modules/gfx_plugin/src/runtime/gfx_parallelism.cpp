@@ -32,7 +32,7 @@ const char *conv_channel_block_accumulation_name(
 namespace {
 
 struct MatMulCacheKey {
-  GpuBackend backend = GpuBackend::Metal;
+  GpuBackend backend = GpuBackend::Unknown;
   std::string device_key;
   ov::Shape output_shape;
 
@@ -82,7 +82,7 @@ private:
 };
 
 struct ConvParallelCacheKey {
-  GpuBackend backend = GpuBackend::Metal;
+  GpuBackend backend = GpuBackend::Unknown;
   std::string device_key;
   bool supports_conv_output_channel_blocking = false;
   bool supports_conv_channel_block_spatial_tiling = false;
@@ -161,7 +161,7 @@ private:
 };
 
 struct ChunkCacheKey {
-  GpuBackend backend = GpuBackend::Metal;
+  GpuBackend backend = GpuBackend::Unknown;
   std::string device_key;
   std::string op_kind;
   uint64_t total_bucket = 0;
@@ -925,12 +925,16 @@ GfxParallelismCaps make_default_caps(GpuBackend backend) {
     caps.device_key = "opencl:default";
     caps.max_total_threads_per_group = 128;
     caps.max_threads_per_group = {128, 128, 64};
-  } else {
+  } else if (backend == GpuBackend::Metal) {
     caps.device_key = "metal:default";
     caps.max_total_threads_per_group = 64;
     caps.max_threads_per_group = {64, 64, 64};
     caps.supports_conv_output_channel_blocking = true;
     caps.supports_conv_channel_block_spatial_tiling = true;
+  } else {
+    caps.device_key = "unknown:default";
+    caps.max_total_threads_per_group = 1;
+    caps.max_threads_per_group = {1, 1, 1};
   }
   return caps;
 }
@@ -1285,7 +1289,7 @@ query_parallelism_caps(const GpuBufferManager *buffer_manager) {
       return make_caps_from_device_info(*info);
     }
   }
-  return make_default_caps(GpuBackend::Metal);
+  return make_default_caps(GpuBackend::Unknown);
 }
 
 std::vector<MatMulParallelismPlan>

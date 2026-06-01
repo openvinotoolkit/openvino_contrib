@@ -13,7 +13,7 @@ namespace ov {
 namespace gfx_plugin {
 
 struct GfxBackendCaps {
-    GpuBackend backend = GpuBackend::Metal;
+    GpuBackend backend = GpuBackend::Unknown;
     bool supports_fp32 = true;
     bool supports_fp16 = true;
     bool supports_int8 = false;

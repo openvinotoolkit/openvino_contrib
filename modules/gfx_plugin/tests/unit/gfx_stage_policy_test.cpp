@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "compiler/operation_support.hpp"
 #include "kernel_ir/gfx_custom_kernel_families.hpp"
 #include "mlir/codegen_common.hpp"
 #include "mlir/gfx_apple_vendor_descriptors.hpp"
@@ -4009,31 +4010,35 @@ TEST(GfxStagePolicyTest,
 }
 
 TEST(GfxStagePolicyTest, OpenClConvolutionAllowsReluAndSwishActivationFusion) {
-  EXPECT_TRUE(allow_stage_activation_fusion(GpuBackend::OpenCL, "Convolution",
-                                            ActivationKind::Relu));
-  EXPECT_TRUE(allow_stage_activation_fusion(GpuBackend::OpenCL, "Convolution",
-                                            ActivationKind::Swish));
-  EXPECT_FALSE(allow_stage_activation_fusion(GpuBackend::OpenCL, "Convolution",
-                                             ActivationKind::Sigmoid));
-  EXPECT_FALSE(allow_stage_activation_fusion(
-      GpuBackend::OpenCL, "GroupConvolution", ActivationKind::Relu));
+  const auto post_ops =
+      compiler::make_post_op_fusion_capabilities(GpuBackend::OpenCL);
+  EXPECT_TRUE(post_ops.allow_stage_activation_fusion("Convolution",
+                                                     ActivationKind::Relu));
+  EXPECT_TRUE(post_ops.allow_stage_activation_fusion("Convolution",
+                                                     ActivationKind::Swish));
+  EXPECT_FALSE(post_ops.allow_stage_activation_fusion("Convolution",
+                                                      ActivationKind::Sigmoid));
+  EXPECT_FALSE(post_ops.allow_stage_activation_fusion("GroupConvolution",
+                                                      ActivationKind::Relu));
 }
 
 TEST(GfxStagePolicyTest, MetalConvolutionAllowsOnlyMpsBackedActivationFusion) {
-  EXPECT_TRUE(allow_stage_activation_fusion(GpuBackend::Metal, "Convolution",
-                                            ActivationKind::Relu));
-  EXPECT_TRUE(allow_stage_activation_fusion(GpuBackend::Metal, "Convolution",
-                                            ActivationKind::Sigmoid));
-  EXPECT_TRUE(allow_stage_activation_fusion(
-      GpuBackend::Metal, "GroupConvolution", ActivationKind::Swish));
-  EXPECT_TRUE(allow_stage_activation_fusion(GpuBackend::Metal, "Convolution",
-                                            ActivationKind::Abs));
-  EXPECT_FALSE(allow_stage_activation_fusion(GpuBackend::Metal, "Convolution",
-                                             ActivationKind::Gelu));
-  EXPECT_FALSE(allow_stage_activation_fusion(GpuBackend::Metal, "Convolution",
-                                             ActivationKind::HSwish));
-  EXPECT_FALSE(allow_stage_activation_fusion(GpuBackend::Metal, "MatMul",
-                                             ActivationKind::Relu));
+  const auto post_ops =
+      compiler::make_post_op_fusion_capabilities(GpuBackend::Metal);
+  EXPECT_TRUE(post_ops.allow_stage_activation_fusion("Convolution",
+                                                     ActivationKind::Relu));
+  EXPECT_TRUE(post_ops.allow_stage_activation_fusion("Convolution",
+                                                     ActivationKind::Sigmoid));
+  EXPECT_TRUE(post_ops.allow_stage_activation_fusion("GroupConvolution",
+                                                     ActivationKind::Swish));
+  EXPECT_TRUE(post_ops.allow_stage_activation_fusion("Convolution",
+                                                     ActivationKind::Abs));
+  EXPECT_FALSE(post_ops.allow_stage_activation_fusion("Convolution",
+                                                      ActivationKind::Gelu));
+  EXPECT_FALSE(post_ops.allow_stage_activation_fusion("Convolution",
+                                                      ActivationKind::HSwish));
+  EXPECT_FALSE(post_ops.allow_stage_activation_fusion("MatMul",
+                                                      ActivationKind::Relu));
 }
 
 TEST(GfxStagePolicyTest,

@@ -63,6 +63,10 @@ Build-system notes:
   must not be committed.
 - `gfx_plugin_core`, `gfx_runtime_common`, and `gfx_runtime_mlir` contain shared
   code.
+- `gfx_opencl_kernel_artifacts` contains OpenCL source-artifact payload
+  materialization and embedded OpenCL helper wrappers.
+- `gfx_metal_mpsrt_contract` contains shared Metal MPSRT model/ABI contracts
+  used by Metal runtime and focused contract tests.
 - `gfx_plugin_metal` / `gfx_runtime_metal` and
   `gfx_plugin_opencl` / `gfx_runtime_opencl` contain backend-specific code.
 - `src/plugin/gfx_backend_config.hpp.in` is configured into the build tree with
@@ -94,16 +98,18 @@ Read in this order:
 4. `src/compiler/gfx_compiler_service.*`
 5. `src/compiler/backend_registry.*`
 6. `src/compiler/manifest.*` and `src/compiler/executable_bundle.*`
-7. `src/plugin/compiled_model.cpp`
-8. `src/plugin/infer_pipeline.*`
-9. `src/plugin/infer_submission.*`
-10. the backend directory you are changing
+7. `src/compiler/tensor_layout.*`
+8. `src/plugin/compiled_model.cpp`
+9. `src/plugin/infer_pipeline.*`
+10. `src/plugin/infer_submission.*`
+11. the backend directory you are changing
 
 For runtime planning, also inspect:
 
 - `src/compiler/lowering_planner.*`
 - `src/compiler/operation_support.*`
 - `src/compiler/kernel_registry.*`
+- `src/compiler/tensor_layout.*`
 - `src/runtime/gfx_stage_policy.*`
 - `src/runtime/gfx_parallelism.*`
 - `src/runtime/gfx_partitioning.*`
@@ -143,6 +149,7 @@ For Metal placement, MPSRT, or MSL source planning, also inspect:
 For OpenCL source execution, start with:
 
 - `src/backends/opencl/compiler/`
+- `src/backends/opencl/compiler/opencl_kernel_artifacts.*`
 - `src/backends/opencl/plugin/`
 - `src/backends/opencl/runtime/opencl_api.*`
 - `src/backends/opencl/runtime/opencl_buffer_manager.*`
@@ -170,6 +177,7 @@ For OpenCL source execution, start with:
    source-plan helper, or transform.
 4. Decide the shared runtime contract before adding backend code:
    - compiler manifest/executable descriptor for stage ABI and artifact payloads
+   - compiler tensor-layout plan for view-only/materialized layout contracts
    - stage policy for placement/fusion/submission
    - kernel manifest for custom-kernel ABI
    - runtime-value payloads for dynamic metadata
@@ -188,12 +196,16 @@ Common operation families that need extra care:
 
 - dynamic-shape data movement: `ShapeOf`, `Concat`, `Broadcast`, `Select`,
   `Slice`, `Range`, and `Tile`
+- compiler-owned tensor-layout classification for view-only versus materialized
+  `Reshape`, `Squeeze`, `Unsqueeze`, `ReadValue`, and `Transpose`
 - stateful `ReadValue` / `Assign`
 - view-style `Split` / `VariadicSplit` aliases
 - Metal MPS/MPSGraph vendor stages and MPSRT storage bridges
 - Metal custom MSL source plans with explicit kernel-buffer order
 - OpenCL source artifacts with scalar ABI, static u32/f32 scalars, constants,
   chunking, and boolean output padding
+- backend-owned OpenCL source payload materialization in
+  `src/backends/opencl/compiler/opencl_kernel_artifacts.*`
 - OpenCL generated kernel units such as activation, elementwise, f32 MatMul,
   bounded f32/f16 Interpolate, f32 reduction, boolean reduction, f32/f16
   Softmax, dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D, ShapeOf, Tile,
@@ -216,7 +228,7 @@ Common operation families that need extra care:
 Prefer these shared locations:
 
 - backend target, operation legality, route selection, manifest, executable
-  bundles, and artifact descriptors: `src/compiler/`
+  bundles, tensor-layout plans, and artifact descriptors: `src/compiler/`
 - graph rewrites: `src/transforms/`
 - support probing and lowering: `src/mlir/`
 - stage policy and parallelism: `src/runtime/gfx_stage_policy.*`,
@@ -234,6 +246,8 @@ Use backend directories only for real backend boundaries:
   and command encoding belong under `src/backends/metal/`.
 - OpenCL operation support policy and OpenCL kernel registry belong under
   `src/backends/opencl/compiler/`.
+- OpenCL source-artifact payload resolution belongs in
+  `src/backends/opencl/compiler/opencl_kernel_artifacts.*`.
 - OpenCL platform/device discovery, program compilation, buffer management, and
   kernel enqueue code belong under `src/backends/opencl/`.
 
@@ -265,6 +279,9 @@ cannot express the route and the exception is documented, tested, and reviewed.
 Generated or embedded source payloads should flow through compiler artifact
 descriptors and runtime kernel loaders. Do not pass ad-hoc source strings
 through plugin or infer-request properties.
+`ExecutableBundleBuilder` does not synthesize OpenCL source payloads by itself;
+the selected OpenCL backend module must provide them through its artifact
+payload resolver.
 
 When adding an embedded OpenCL source unit:
 
@@ -324,8 +341,10 @@ Metal placement must stay coordinated across:
 - `src/backends/metal/runtime/mpsrt/`
 
 When a manifest supplies explicit external-buffer roles, those roles define the
-runtime ABI. MSL buffer scans and signature hints are diagnostics/fallback
-inputs only; they must not widen or shrink a typed MPSRT binding contract.
+runtime ABI. MSL buffer scans and signature hints are diagnostics only; they
+must not widen, shrink, or replace a typed MPSRT binding contract.
+Generated or prebuilt MSL kernels must carry compiler-owned manifest ABI counts;
+source-signature scanning is not a current ABI fallback.
 
 Embedded MPSRT helper kernels live under `src/kernel_ir/metal_kernels/` and are
 exposed through runtime loaders. Keep helper source ownership there instead of
@@ -395,6 +414,11 @@ contract suites in `tests/unit/gfx_backend_architecture_contract_test.cpp`,
 `tests/unit/gfx_activation_kernel_contract_test.cpp`,
 `tests/unit/gfx_eltwise_kernel_contract_test.cpp`, and
 `tests/unit/gfx_matmul_kernel_contract_test.cpp` as applicable.
+
+Use `tests/tools/gfx_gtest_matrix.py` to compare captured
+`--gtest_list_tests` output across production test targets. It detects
+duplicates, forbidden `DISABLED_` registrations, and matrix drift; it does not
+skip or filter tests.
 
 ## Public Repository Hygiene
 

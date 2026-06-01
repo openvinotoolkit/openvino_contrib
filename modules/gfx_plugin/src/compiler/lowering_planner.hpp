@@ -11,6 +11,7 @@
 #include "compiler/kernel_registry.hpp"
 #include "compiler/kernel_unit.hpp"
 #include "compiler/operation_legalizer.hpp"
+#include "compiler/tensor_layout.hpp"
 #include "openvino/core/model.hpp"
 
 namespace ov {
@@ -22,6 +23,7 @@ struct PlannedOperation {
     std::string node_name;
     std::string type_name;
     KernelUnit kernel_unit;
+    TensorLayoutPlan layout;
     double profitability_score = 0.0;
     std::vector<std::string> input_element_types;
     std::vector<std::string> input_shapes;
@@ -30,7 +32,7 @@ struct PlannedOperation {
 };
 
 struct LoweringPlan {
-    BackendTarget target = BackendTarget::from_backend(GpuBackend::Metal);
+    BackendTarget target;
     std::vector<PlannedOperation> operations;
     UnsupportedSummary unsupported;
 

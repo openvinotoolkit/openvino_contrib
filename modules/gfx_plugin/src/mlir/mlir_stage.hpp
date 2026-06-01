@@ -28,10 +28,13 @@ namespace gfx_plugin {
 struct MlirKernelPlanContext;
 struct MatMulCodegenDesc;
 struct GfxMslGeneratedKernelSourcePlan;
+struct RuntimeStageExecutableDescriptor;
 
 class MlirStage : public GpuStage {
 public:
   explicit MlirStage(const std::shared_ptr<const ov::Node> &node);
+  MlirStage(const std::shared_ptr<const ov::Node> &node,
+            const RuntimeStageExecutableDescriptor *descriptor);
   ~MlirStage() override = default;
 
   void init(GpuBufferManager *buffer_manager) override;
@@ -55,6 +58,7 @@ public:
 
   const std::string &name() const override { return m_name; }
   const std::string &type() const override { return m_type; }
+  bool is_view_only() const override { return m_is_view_op; }
 
   bool fuse_activation(ActivationKind kind, float alpha) override;
   bool fuse_input_activation(size_t input_idx, ActivationKind kind,
@@ -83,9 +87,7 @@ protected:
       const GfxStageOptimizationPlan & /*plan*/) const {
     return false;
   }
-  GpuBackend backend_kind() const {
-    return GpuBackend::Metal;
-  }
+  virtual GpuBackend backend_kind() const = 0;
   virtual KernelExecutionHooks *prepare_profiling(ProfileState &state,
                                                   KernelExecutionHooks &hooks);
   virtual void finalize_profiling(const ProfileState &state);
@@ -104,6 +106,7 @@ protected:
 
 protected:
   bool m_is_view_op = false;
+  std::shared_ptr<const RuntimeStageExecutableDescriptor> m_runtime_descriptor;
   std::shared_ptr<const ov::Node> m_node;
   std::shared_ptr<ICompiledKernel> m_kernel;
   bool m_is_compressed_matmul = false;

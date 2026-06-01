@@ -103,6 +103,10 @@ service that builds a lowering plan, manifest, executable bundle, and runtime
 descriptor. That descriptor is not a public cache format and is not exported by
 `export_model()`.
 
+Compilation requires explicit backend routes. Removed generic routes such as
+`backend_lowering` or `metal_lowering` are not public fallback paths; unsupported
+operations fail during support probing or compilation.
+
 ## Inference Precision
 
 Use standard OpenVINO `ov::hint::inference_precision` when precision selection
@@ -165,6 +169,8 @@ before binding.
 
 The OpenCL backend dynamically loads the target OpenCL runtime and executes
 source artifacts described by `src/kernel_ir/gfx_opencl_source_artifacts.*`.
+Those source artifacts are materialized by the OpenCL backend module, not by a
+generic compiler fallback.
 
 Current public coverage includes selected data movement, shape/list movement,
 Range/Tile, MatMul/Softmax, Pool2D, bounded static NCHW spatial Interpolate,

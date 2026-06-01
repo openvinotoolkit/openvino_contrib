@@ -20,7 +20,7 @@ using GpuCommandQueueHandle = void*;
 using GpuCommandBufferHandle = void*;
 using GpuCommandEncoderHandle = void*;
 
-enum class GpuBackend { Metal, OpenCL };
+enum class GpuBackend { Unknown = 255, Metal = 0, OpenCL = 1 };
 
 enum class BufferUsage { IO, Const, Intermediate, Temp, Staging };
 
@@ -42,7 +42,7 @@ struct GpuBuffer {
 
     uint32_t storage_mode = 0;  // backend-specific storage mode as integer
     uint32_t options_mask = 0;  // backend-specific resource options mask
-    GpuBackend backend = GpuBackend::Metal;
+    GpuBackend backend = GpuBackend::Unknown;
     bool host_visible = false;
     uint64_t allocation_uid = 0;
 

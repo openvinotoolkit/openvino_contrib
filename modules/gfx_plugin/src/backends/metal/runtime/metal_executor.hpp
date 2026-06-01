@@ -43,6 +43,7 @@ public:
                       const std::string& node_type) override;
 
     std::unique_ptr<GpuStage> clone() const override;
+    GpuBackend backend_kind() const override { return GpuBackend::Metal; }
 
 private:
     std::shared_ptr<ICompiledKernel> compile_kernel(const KernelSource& source,

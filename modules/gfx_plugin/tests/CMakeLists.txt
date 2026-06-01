@@ -45,6 +45,7 @@ set(GFX_UNIT_TEST_LINK_LIBS
     common_test_utils
     gfx_runtime_common
     gfx_runtime_mlir
+    gfx_metal_mpsrt_contract
     gfx_mlir
     gfx_plugin_core
     MLIRInferIntRangeCommon

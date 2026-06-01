@@ -13,6 +13,7 @@ validation in `modules/gfx_plugin/`.
 - The task asks what tests to add or run.
 - The task changes MLIR lowering, backend routes, properties, scheduling,
   caches, infer submission, output planning, or profiling.
+- The task changes compiler-owned tensor-layout classification.
 - The task changes Metal placement, MPSRT metadata, MSL kernel-family routing,
   MPS/MPSGraph vendor descriptors, resource tables, storage bridges, or request
   binding.
@@ -39,13 +40,17 @@ validation in `modules/gfx_plugin/`.
   property, profiling, and backend regressions
 - `ov_gfx_runtime_micro_tests`: smaller runtime-subgraph checks
 - `tests/unit/gfx_backend_architecture_contract_test.cpp`: backend-target,
-  kernel-registry, and manifest-routing contracts
+  kernel-registry, tensor-layout, payload-materialization, and manifest-routing
+  contracts
 - `ov_gfx_compare_runner`: accuracy-only diff tool
 - `ov_gfx_microbench`: MB0-MB3 microbench and calibration workflow
 - `ov_gfx_conv_shape_bench`: representative Conv2D compile-plus-infer probe
 - standalone OpenCL Conv2D microbenches: kernel-family experiments only
 - `gfx_test_plugins_xml`: CMake helper target that writes a controlled
   `plugins.xml` with AUTO fallback disabled for test runs
+- `tests/tools/gfx_gtest_matrix.py`: compares captured `--gtest_list_tests`
+  output across production test targets and rejects duplicates, `DISABLED_`
+  registrations, and matrix drift
 
 ## Test Selection Rules
 
@@ -78,6 +83,8 @@ Prefer:
 - `tests/unit/plugin_tests.cpp` when `query_model()` or compile behavior moved
 - backend artifact tests when payload materialization reaches Metal or OpenCL
   runtime loaders
+- `tests/unit/gfx_backend_architecture_contract_test.cpp` when OpenCL payload
+  materialization ownership or compiler tensor-layout contracts change
 - Metal `VendorDescriptor` tests when MPS/MPSGraph payloads are routed through
   the compiler bundle or consumed by `MpsrtVendorPrimitiveStage`
 
@@ -158,6 +165,8 @@ For OpenCL source-artifact changes:
   generated Concat/Split routes move
 - add `tests/unit/gpu_backend_base_test.cpp` coverage when the artifact should
   be present in the compiler executable bundle
+- add architecture-contract coverage when the common compiler should require
+  backend-provided payloads instead of synthesizing OpenCL sources itself
 - add runtime coverage when dynamic runtime loading, buffer binding,
   runtime-shape allocation, static f32 scalar binding, constant materialization,
   boolean storage, chunking, or command execution changes

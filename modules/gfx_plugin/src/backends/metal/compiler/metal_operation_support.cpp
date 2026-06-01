@@ -284,10 +284,8 @@ query_metal_operation(const std::shared_ptr<const ov::Node> &node) {
           kind ? std::string(reduction_msl_kernel_unit_id(*kind))
                : "metal/generated/reduction_f32");
     }
-    const bool supported = metal_supports_node(node);
-    if (supported) {
-      return make_supported_operation("backend_lowering",
-                                      LoweringRouteKind::BackendLowering, 0.5);
+    if (node && metal_supports_node(node)) {
+      return make_unsupported_operation("missing_metal_explicit_kernel_unit");
     }
     return make_unsupported_operation("unsupported_by_metal_capabilities");
   } catch (const std::exception &e) {

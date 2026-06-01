@@ -7,12 +7,12 @@
 #include <utility>
 
 #include "compiler/backend_registry.hpp"
+#include "compiler/tensor_layout.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/result.hpp"
 #include "openvino/op/util/assign_base.hpp"
 #include "runtime/gfx_logger.hpp"
-#include "runtime/gfx_stage_policy.hpp"
 #include "transformations/rt_info/decompression.hpp"
 
 namespace ov {
@@ -20,6 +20,24 @@ namespace gfx_plugin {
 
 namespace compiler {
 namespace {
+
+bool is_convolution_stage(std::string_view stage_type) {
+    return stage_type == "Convolution";
+}
+
+bool is_group_convolution_stage(std::string_view stage_type) {
+    return stage_type == "GroupConvolution";
+}
+
+bool allows_stage_kind(std::string_view stage_type, bool convolution_enabled, bool group_convolution_enabled) {
+    if (is_convolution_stage(stage_type)) {
+        return convolution_enabled;
+    }
+    if (is_group_convolution_stage(stage_type)) {
+        return group_convolution_enabled;
+    }
+    return false;
+}
 
 bool is_view_node(const std::shared_ptr<const ov::Node>& node) {
     if (!node) {
@@ -75,8 +93,6 @@ std::string_view lowering_route_kind_to_string(LoweringRouteKind kind) noexcept 
             return "generated_kernel";
         case LoweringRouteKind::HandwrittenKernelException:
             return "handwritten_kernel_exception";
-        case LoweringRouteKind::BackendLowering:
-            return "backend_lowering";
     }
     return "unsupported";
 }
@@ -100,10 +116,92 @@ OperationSupportResult make_unsupported_operation(std::string semantic_reason) {
     return result;
 }
 
+bool PostOpFusionCapabilities::allow_stage_bias_fusion(std::string_view stage_type) const {
+    return allows_stage_kind(stage_type,
+                             enable_bias_fusion_for_convolution,
+                             enable_bias_fusion_for_group_convolution);
+}
+
+bool PostOpFusionCapabilities::allow_stage_batchnorm_fusion(std::string_view stage_type) const {
+    return allows_stage_kind(stage_type,
+                             enable_batchnorm_fusion_for_convolution,
+                             enable_batchnorm_fusion_for_group_convolution);
+}
+
+bool PostOpFusionCapabilities::allow_stage_activation_fusion(std::string_view stage_type,
+                                                             ActivationKind kind) const {
+    if (!allows_stage_kind(stage_type,
+                           enable_activation_fusion_for_convolution,
+                           enable_activation_fusion_for_group_convolution)) {
+        return false;
+    }
+    switch (kind) {
+        case ActivationKind::Relu:
+            return enable_relu_activation_fusion;
+        case ActivationKind::Sigmoid:
+            return enable_sigmoid_activation_fusion;
+        case ActivationKind::Tanh:
+            return enable_tanh_activation_fusion;
+        case ActivationKind::Elu:
+            return enable_elu_activation_fusion;
+        case ActivationKind::Prelu:
+            return enable_prelu_activation_fusion;
+        case ActivationKind::Gelu:
+            return enable_gelu_activation_fusion;
+        case ActivationKind::Swish:
+            return enable_swish_activation_fusion;
+        case ActivationKind::HSwish:
+            return enable_hswish_activation_fusion;
+        case ActivationKind::HSigmoid:
+            return enable_hsigmoid_activation_fusion;
+        case ActivationKind::Abs:
+            return enable_abs_activation_fusion;
+        case ActivationKind::Sign:
+            return enable_sign_activation_fusion;
+        default:
+            return false;
+    }
+}
+
+PostOpFusionCapabilities make_post_op_fusion_capabilities(GpuBackend backend) {
+    PostOpFusionCapabilities capabilities;
+    switch (backend) {
+        case GpuBackend::OpenCL:
+            capabilities.enable_bias_fusion_for_group_convolution = false;
+            capabilities.enable_batchnorm_fusion_for_group_convolution = false;
+            capabilities.enable_activation_fusion_for_group_convolution = false;
+            capabilities.enable_sigmoid_activation_fusion = false;
+            capabilities.enable_tanh_activation_fusion = false;
+            capabilities.enable_elu_activation_fusion = false;
+            capabilities.enable_prelu_activation_fusion = false;
+            capabilities.enable_gelu_activation_fusion = false;
+            capabilities.enable_hswish_activation_fusion = false;
+            capabilities.enable_hsigmoid_activation_fusion = false;
+            capabilities.enable_abs_activation_fusion = false;
+            capabilities.enable_sign_activation_fusion = false;
+            break;
+        case GpuBackend::Metal:
+            capabilities.enable_elu_activation_fusion = false;
+            capabilities.enable_prelu_activation_fusion = false;
+            capabilities.enable_gelu_activation_fusion = false;
+            capabilities.enable_hswish_activation_fusion = false;
+            capabilities.enable_hsigmoid_activation_fusion = false;
+            capabilities.enable_sign_activation_fusion = false;
+            break;
+        default:
+            break;
+    }
+    return capabilities;
+}
+
 BackendCapabilities::BackendCapabilities(BackendTarget target,
-                                         std::shared_ptr<const OperationSupportPolicy> operation_policy)
+                                         std::shared_ptr<const OperationSupportPolicy> operation_policy,
+                                         FusionCapabilities fusion_capabilities,
+                                         PostOpFusionCapabilities post_op_fusion_capabilities)
     : m_target(std::move(target)),
-      m_operation_policy(std::move(operation_policy)) {}
+      m_operation_policy(std::move(operation_policy)),
+      m_fusion_capabilities(fusion_capabilities),
+      m_post_op_fusion_capabilities(post_op_fusion_capabilities) {}
 
 OperationSupportResult BackendCapabilities::query_operation(const OperationSupportQuery& query) const {
     if (!query.node) {
@@ -124,6 +222,19 @@ OperationSupportResult BackendCapabilities::query_operation(const OperationSuppo
 
 bool BackendCapabilities::supports_node(const std::shared_ptr<const ov::Node>& node) const {
     return query_operation({node}).semantic_legal;
+}
+
+bool BackendCapabilities::allow_stage_bias_fusion(std::string_view stage_type) const {
+    return m_post_op_fusion_capabilities.allow_stage_bias_fusion(stage_type);
+}
+
+bool BackendCapabilities::allow_stage_batchnorm_fusion(std::string_view stage_type) const {
+    return m_post_op_fusion_capabilities.allow_stage_batchnorm_fusion(stage_type);
+}
+
+bool BackendCapabilities::allow_stage_activation_fusion(std::string_view stage_type,
+                                                        ActivationKind kind) const {
+    return m_post_op_fusion_capabilities.allow_stage_activation_fusion(stage_type, kind);
 }
 
 bool is_supported_node(const std::shared_ptr<const ov::Node>& node, GpuBackend backend) {

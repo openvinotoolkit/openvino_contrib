@@ -229,18 +229,6 @@ bool source_has_custom_kernel_stage_manifest(const KernelSource &source) {
          manifest.custom_kernel.valid;
 }
 
-bool source_allows_no_manifest_msl_signature_fallback(
-    const KernelSource &source) {
-  if (!source.module) {
-    return true;
-  }
-  if (source_has_typed_mpsrt_program(source) ||
-      source_has_custom_kernel_stage_manifest(source)) {
-    return false;
-  }
-  return !source_has_exact_mpsrt_external_buffer_abi(source);
-}
-
 std::optional<MetalRuntimeSignature>
 exact_metal_runtime_signature_from_source(const KernelSource &source) {
   if (auto typed_signature =
@@ -333,39 +321,15 @@ uint32_t resolve_kernel_arg_count(const KernelSource &source) {
   return source.signature.arg_count;
 }
 
-uint32_t resolve_no_manifest_msl_source_arg_count(
-    const KernelSource &source, const std::string &msl,
-    uint32_t fallback_arg_count) {
-  if (!source_allows_no_manifest_msl_signature_fallback(source)) {
-    return 0;
-  }
-  uint32_t resolved_arg_count = fallback_arg_count;
-  if (!msl.empty()) {
-    const auto source_msl_arg_count =
-        infer_msl_buffer_arg_count_from_source(msl);
-    if (source_msl_arg_count != 0) {
-      resolved_arg_count = resolved_arg_count == 0
-                               ? source_msl_arg_count
-                               : std::max(resolved_arg_count,
-                                          source_msl_arg_count);
-    }
-  }
-  return resolved_arg_count;
-}
-
 uint32_t resolve_initial_compile_source_arg_count(const KernelSource &source) {
-  const uint32_t source_arg_count = resolve_kernel_arg_count(source);
-  if (!source_allows_no_manifest_msl_signature_fallback(source)) {
-    return source_arg_count;
-  }
-  return resolve_no_manifest_msl_source_arg_count(source, source.msl_source,
-                                                 source_arg_count);
+  return resolve_kernel_arg_count(source);
 }
 
 uint32_t resolve_metal_runtime_arg_count(
     const KernelSource &source, const std::string &msl,
     uint32_t source_arg_count,
     const std::shared_ptr<const runtime_mpsrt::MpsrtModel> &mpsrt_model) {
+  (void)msl;
   if (mpsrt_model) {
     const auto external_abi_count = static_cast<uint32_t>(
         runtime_mpsrt::mpsrt_model_external_buffer_abi_count(*mpsrt_model));
@@ -388,10 +352,8 @@ uint32_t resolve_metal_runtime_arg_count(
         source.entry_point);
   }
 
-  const uint32_t source_buffer_arg_count =
-      resolve_no_manifest_msl_source_arg_count(source, msl, source_arg_count);
-  if (source_buffer_arg_count != 0) {
-    return source_buffer_arg_count;
+  if (source_arg_count != 0) {
+    return source_arg_count;
   }
   if (source.module) {
     const auto abi = read_module_mpsrt_external_buffer_abi(source.module);
@@ -399,7 +361,11 @@ uint32_t resolve_metal_runtime_arg_count(
       return abi.buffer_count;
     }
   }
-  return 0;
+  OPENVINO_THROW(
+      "GFX Metal: source-only MSL kernel is missing compiler-owned ABI for "
+      "entry ",
+      source.entry_point,
+      ". Generated/prebuilt MSL must carry manifest-derived signature counts");
 }
 
 uint32_t resolve_expected_mpsrt_external_arg_count(

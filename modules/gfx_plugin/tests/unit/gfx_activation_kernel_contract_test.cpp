@@ -12,6 +12,7 @@
 
 #include "backends/metal/compiler/metal_kernel_artifacts.hpp"
 #include "backends/metal/compiler/metal_operation_support.hpp"
+#include "backends/opencl/compiler/opencl_kernel_artifacts.hpp"
 #include "backends/opencl/compiler/opencl_operation_support.hpp"
 #include "compiler/executable_bundle.hpp"
 #include "compiler/kernel_registry.hpp"
@@ -308,7 +309,7 @@ ActivationRouteCase opencl_activation_case() {
                              target,
                              compiler::make_opencl_operation_support_policy(),
                              compiler::make_opencl_kernel_registry(target),
-                             {},
+                             compiler::make_opencl_kernel_artifact_payload_resolver(),
                              KernelArtifactPayloadKind::OpenClSource,
                              "opencl/generated/activation_f32",
                              "gfx_opencl_generated_activation_f32",

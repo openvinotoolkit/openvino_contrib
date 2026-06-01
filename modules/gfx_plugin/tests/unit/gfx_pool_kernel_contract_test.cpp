@@ -13,6 +13,7 @@
 
 #include "backends/metal/compiler/metal_kernel_artifacts.hpp"
 #include "backends/metal/compiler/metal_operation_support.hpp"
+#include "backends/opencl/compiler/opencl_kernel_artifacts.hpp"
 #include "backends/opencl/compiler/opencl_operation_support.hpp"
 #include "compiler/executable_bundle.hpp"
 #include "compiler/kernel_registry.hpp"
@@ -384,7 +385,7 @@ PoolRouteCase opencl_maxpool_case() {
           target,
           compiler::make_opencl_operation_support_policy(),
           compiler::make_opencl_kernel_registry(target),
-          {},
+          compiler::make_opencl_kernel_artifact_payload_resolver(),
           LoweringRouteKind::GeneratedKernel,
           KernelArtifactOrigin::Generated,
           KernelArtifactPayloadKind::OpenClSource,
@@ -401,7 +402,7 @@ PoolRouteCase opencl_avgpool_case() {
           target,
           compiler::make_opencl_operation_support_policy(),
           compiler::make_opencl_kernel_registry(target),
-          {},
+          compiler::make_opencl_kernel_artifact_payload_resolver(),
           LoweringRouteKind::GeneratedKernel,
           KernelArtifactOrigin::Generated,
           KernelArtifactPayloadKind::OpenClSource,

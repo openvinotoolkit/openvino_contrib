@@ -20,8 +20,9 @@ notes or deleted backend code as current behavior.
   compiled-model state, infer-request helpers, output resolution, model
   serialization, and stateful graph handling
 - `src/compiler/`: backend target description, backend module registry,
-  operation support policies, operation legalization, lowering plans, manifest
-  bundles, executable bundles, and artifact payload routing
+  backend capability records, operation support policies, operation
+  legalization, tensor-layout classification, lowering plans, manifest bundles,
+  executable bundles, and artifact payload routing
 - `src/runtime/`: backend-neutral stage interfaces, execution dispatcher,
   descriptor-backed view-only stages, submission windows, target profiles,
   profiling reports, remote tensor/context helpers, common buffer abstractions,
@@ -172,11 +173,13 @@ runtime execution. The main objects are:
   compatibility fingerprint for one selected backend.
 - `BackendRegistry`: compiled-backend registry. It creates Metal and OpenCL
   modules only when their build-time backend is available and stores
-  backend-owned transform `PipelineOptions`.
+  backend-owned transform `PipelineOptions`, fusion capabilities, post-op
+  fusion capabilities, and artifact payload resolvers.
 - `OperationSupportPolicy` and `OperationLegalizer`: backend-aware operation
   legality and route selection.
 - `LoweringPlanner`: converts a transformed model into ordered
-  `PlannedOperation` records with a `KernelUnit` route.
+  `PlannedOperation` records with a `KernelUnit` route and compiler-owned
+  tensor-layout plan.
 - `ManifestBuilder`: emits a `ManifestBundle` with stage records, tensor
   contracts, runtime parameter contracts, dispatch contract, and memory
   contract.
@@ -196,6 +199,18 @@ matching `RuntimeStageExecutableDescriptor`. The old pattern where a backend
 stage inferred its executable payload from the OpenVINO node is not a current
 route.
 
+`BackendTarget`, lowering plans, backend capability objects, buffers, and
+runtime capability records default to `GpuBackend::Unknown` until a backend is
+explicitly selected. Unknown backends cannot materialize a target, stage
+factory, or memory ops. This prevents accidental Metal-default behavior in
+shared code.
+
+`BackendLowering` and `metal_lowering` are removed legacy routes. A supported
+operation must lower through common metadata, an explicit generated kernel unit,
+a vendor primitive, or a documented handwritten exception. Metal codegen also
+requires compiler-owned manifest ABI counts for generated/prebuilt MSL kernels;
+source-signature scanning is not a supported ABI fallback.
+
 ## MLIR Pipeline
 
 MLIR lives under `src/mlir/` and is shared infrastructure:
@@ -208,6 +223,10 @@ MLIR lives under `src/mlir/` and is shared infrastructure:
   slice, split, range, tile, gather/scatter, and source-artifact metadata.
 - `gfx_backend_custom_kernel_adapter.*` converts kernel manifests into backend
   source-binding plans.
+
+Backend custom-kernel adapters now require manifest-derived ABI metadata when a
+generated/prebuilt backend kernel is used. Missing custom-kernel manifest ABI is
+a compile-time error, not a request-time fallback to source scanning.
 
 Unary activation lowering is shared across backend source plans. The current
 contract supports static activation scalars such as `Elu` alpha and `Clamp`
@@ -339,10 +358,12 @@ The OpenCL backend is split into:
 - embedded OpenCL helper sources in `src/kernel_ir/opencl_kernels/`
 
 Source kernels are described by `src/kernel_ir/gfx_opencl_source_artifacts.*`.
-The source-stage executor is intentionally generic. Op-specific behavior should
-reach it through artifact metadata, generated chunk artifacts, shared
-runtime-value planners, static u32/f32 scalar payloads, constant
-materialization, and boolean-buffer contracts.
+Payload materialization is owned by
+`src/backends/opencl/compiler/opencl_kernel_artifacts.*` and registered through
+the OpenCL backend module. The source-stage executor is intentionally generic.
+Op-specific behavior should reach it through artifact metadata, generated chunk
+artifacts, shared runtime-value planners, static u32/f32 scalar payloads,
+constant materialization, and boolean-buffer contracts.
 
 OpenCL support may be reported as a generated-kernel route or as a narrow
 handwritten source-artifact exception. Current source execution still requires a
@@ -422,6 +443,21 @@ Profiling is assembled in shared code and enriched by backend runtimes:
 Use the target profile to confirm which route actually ran before comparing
 Metal and OpenCL measurements.
 
+## Build-Time Component Split
+
+The CMake layout separates shared contracts from backend payload ownership:
+
+- `gfx_plugin_core`: plugin-facing compiler and OpenVINO integration
+- `gfx_runtime_common`: backend-neutral runtime and scheduling helpers
+- `gfx_runtime_mlir`: MLIR lowering/source-planning support
+- `gfx_opencl_kernel_artifacts`: OpenCL source artifacts and embedded OpenCL
+  helper source wrappers used by the OpenCL backend resolver
+- `gfx_metal_mpsrt_contract`: shared Metal MPSRT model/ABI contracts used by
+  Metal runtime and tests
+
+Do not move OpenCL source payload materialization back into
+`ExecutableBundleBuilder`; backend modules own executable payload resolution.
+
 ## Extension Rules
 
 - Prefer shared contracts in `src/compiler/`, `src/runtime/`, `src/kernel_ir/`,
@@ -433,6 +469,8 @@ Metal and OpenCL measurements.
   separate plugin-side tables.
 - Keep OpenCL source ids, scalar ABI, constant materialization, chunk helpers,
   and boolean padding in `gfx_opencl_source_artifacts.*`.
+- Keep OpenCL payload materialization in
+  `src/backends/opencl/compiler/opencl_kernel_artifacts.*`.
 - Keep Metal placement, MPSRT records, MSL source plans, and runtime binding on
   the compiler manifest/MPSRT contract.
 - Do not reintroduce removed backend routes, CPU fallback, runtime defines, or

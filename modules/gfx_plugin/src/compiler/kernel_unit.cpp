@@ -24,12 +24,10 @@ KernelUnitKind kind_for_route(LoweringRouteKind route_kind) {
     return KernelUnitKind::GeneratedKernel;
   case LoweringRouteKind::HandwrittenKernelException:
     return KernelUnitKind::HandwrittenException;
-  case LoweringRouteKind::BackendLowering:
-    return KernelUnitKind::BackendLowering;
   case LoweringRouteKind::Unsupported:
-    return KernelUnitKind::BackendLowering;
+    return KernelUnitKind::Common;
   }
-  return KernelUnitKind::BackendLowering;
+  return KernelUnitKind::Common;
 }
 
 std::string default_unit_id(LoweringRouteKind route_kind) {
@@ -91,10 +89,8 @@ std::string_view kernel_unit_kind_to_string(KernelUnitKind kind) noexcept {
     return "generated_kernel";
   case KernelUnitKind::HandwrittenException:
     return "handwritten_exception";
-  case KernelUnitKind::BackendLowering:
-    return "backend_lowering";
   }
-  return "backend_lowering";
+  return "common";
 }
 
 std::string_view kernel_unit_route_to_string(const KernelUnit &unit) noexcept {

@@ -10,6 +10,7 @@ set(GFX_PLUGIN_SOURCES
     ${_gfx_src_dir}/backends/metal/compiler/metal_kernel_artifacts.cpp
     ${_gfx_src_dir}/backends/metal/compiler/metal_kernel_registry.cpp
     ${_gfx_src_dir}/backends/metal/compiler/metal_operation_support.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_artifacts.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_registry.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_operation_support.cpp
     ${_gfx_src_dir}/compiler/backend_registry.cpp
@@ -22,6 +23,7 @@ set(GFX_PLUGIN_SOURCES
     ${_gfx_src_dir}/compiler/manifest.cpp
     ${_gfx_src_dir}/compiler/operation_legalizer.cpp
     ${_gfx_src_dir}/compiler/operation_support.cpp
+    ${_gfx_src_dir}/compiler/tensor_layout.cpp
     ${_gfx_src_dir}/plugin/backend_factory.cpp
     ${_gfx_src_dir}/plugin/compiled_model.cpp
     ${_gfx_src_dir}/plugin/compiled_model_backend_resources.cpp
@@ -45,6 +47,7 @@ set(GFX_PLUGIN_SOURCES
 set(GFX_PLUGIN_HEADERS
     ${_gfx_src_dir}/backends/metal/compiler/metal_kernel_artifacts.hpp
     ${_gfx_src_dir}/backends/metal/compiler/metal_operation_support.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_artifacts.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_operation_support.hpp
     ${_gfx_src_dir}/compiler/backend_registry.hpp
     ${_gfx_src_dir}/compiler/backend_target.hpp
@@ -56,6 +59,7 @@ set(GFX_PLUGIN_HEADERS
     ${_gfx_src_dir}/compiler/manifest.hpp
     ${_gfx_src_dir}/compiler/operation_legalizer.hpp
     ${_gfx_src_dir}/compiler/operation_support.hpp
+    ${_gfx_src_dir}/compiler/tensor_layout.hpp
     ${_gfx_src_dir}/plugin/backend_factory.hpp
     ${_gfx_src_dir}/plugin/backend_state.hpp
     ${_gfx_src_dir}/plugin/gfx_device_info.hpp
@@ -95,8 +99,60 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_source.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_inputs.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.hpp
-    ${_gfx_src_dir}/kernel_ir/gfx_opencl_source_artifacts.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_signature.hpp
+    ${_gfx_src_dir}/runtime/gfx_profiler.hpp
+    ${_gfx_src_dir}/runtime/gfx_profiling_report.hpp
+    ${_gfx_src_dir}/runtime/gfx_profiling_trace_sink.hpp
+    ${_gfx_src_dir}/runtime/gfx_target_profile.hpp
+    ${_gfx_src_dir}/runtime/gpu_backend_base.hpp
+    ${_gfx_src_dir}/runtime/gpu_buffer.hpp
+    ${_gfx_src_dir}/runtime/gpu_buffer_pool.hpp
+    ${_gfx_src_dir}/runtime/gpu_stage.hpp
+    ${_gfx_src_dir}/runtime/execution_dispatcher.hpp
+    ${_gfx_src_dir}/runtime/immutable_gpu_buffer_cache.hpp
+    ${_gfx_src_dir}/runtime/gpu_tensor.hpp
+    ${_gfx_src_dir}/runtime/gpu_types.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_codegen_backend.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_dispatch.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_manifest.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_plan.hpp
+    ${_gfx_src_dir}/runtime/gfx_logger.hpp
+    ${_gfx_src_dir}/runtime/gfx_op_utils.hpp
+    ${_gfx_src_dir}/runtime/gfx_parallelism.hpp
+    ${_gfx_src_dir}/runtime/gfx_remote_context.hpp
+    ${_gfx_src_dir}/runtime/gfx_remote_tensor.hpp
+    ${_gfx_src_dir}/runtime/gfx_stage_policy.hpp
+    ${_gfx_src_dir}/runtime/gfx_tensor_utils.hpp
+)
+
+set(GFX_RUNTIME_COMMON_SOURCES
+    ${_gfx_src_dir}/runtime/executable_descriptor.cpp
+    ${_gfx_src_dir}/runtime/gfx_backend_caps.cpp
+    ${_gfx_src_dir}/runtime/gfx_backend_utils.cpp
+    ${_gfx_src_dir}/runtime/fused_sequence_stage.cpp
+    ${_gfx_src_dir}/runtime/view_only_stage.cpp
+    ${_gfx_src_dir}/runtime/gpu_memory_ops.cpp
+    ${_gfx_src_dir}/kernel_ir/gfx_custom_kernel_families.cpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_source.cpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_inputs.cpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.cpp
+    ${_gfx_src_dir}/runtime/execution_dispatcher.cpp
+    ${_gfx_src_dir}/runtime/immutable_gpu_buffer_cache.cpp
+    ${_gfx_src_dir}/runtime/memory_manager.cpp
+    ${_gfx_src_dir}/runtime/gfx_logger.cpp
+    ${_gfx_src_dir}/runtime/gfx_op_utils.cpp
+    ${_gfx_src_dir}/runtime/gfx_parallelism.cpp
+    ${_gfx_src_dir}/runtime/gfx_profiling_report.cpp
+    ${_gfx_src_dir}/runtime/gfx_profiling_trace_sink.cpp
+    ${_gfx_src_dir}/runtime/gfx_target_profile.cpp
+    ${_gfx_src_dir}/runtime/gfx_remote_context.cpp
+    ${_gfx_src_dir}/runtime/gfx_remote_tensor.cpp
+    ${_gfx_src_dir}/runtime/gfx_stage_policy.cpp
+    ${_gfx_src_dir}/runtime/gfx_tensor_utils.cpp
+)
+
+set(GFX_OPENCL_KERNEL_ARTIFACT_HEADERS
+    ${_gfx_src_dir}/kernel_ir/gfx_opencl_source_artifacts.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/activation_kernel.cl
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/activation_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_kernel.cl
@@ -131,48 +187,9 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/shapeof_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/tile_kernel.cl
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/tile_kernel.hpp
-    ${_gfx_src_dir}/runtime/gfx_profiler.hpp
-    ${_gfx_src_dir}/runtime/gfx_profiling_report.hpp
-    ${_gfx_src_dir}/runtime/gfx_profiling_trace_sink.hpp
-    ${_gfx_src_dir}/runtime/gfx_target_profile.hpp
-    ${_gfx_src_dir}/runtime/gpu_backend_base.hpp
-    ${_gfx_src_dir}/runtime/gpu_buffer.hpp
-    ${_gfx_src_dir}/runtime/gpu_buffer_pool.hpp
-    ${_gfx_src_dir}/runtime/gpu_stage.hpp
-    ${_gfx_src_dir}/runtime/execution_dispatcher.hpp
-    ${_gfx_src_dir}/runtime/immutable_gpu_buffer_cache.hpp
-    ${_gfx_src_dir}/runtime/gpu_tensor.hpp
-    ${_gfx_src_dir}/runtime/gpu_types.hpp
-    ${_gfx_src_dir}/kernel_ir/gfx_codegen_backend.hpp
-    ${_gfx_src_dir}/kernel_ir/gfx_kernel_dispatch.hpp
-    ${_gfx_src_dir}/kernel_ir/gfx_kernel_manifest.hpp
-    ${_gfx_src_dir}/kernel_ir/gfx_kernel_plan.hpp
-    ${_gfx_src_dir}/runtime/gfx_logger.hpp
-    ${_gfx_src_dir}/runtime/gfx_mpsrt_abi.hpp
-    ${_gfx_src_dir}/runtime/gfx_mpsrt_builder_plan.hpp
-    ${_gfx_src_dir}/runtime/gfx_mpsrt_model.hpp
-    ${_gfx_src_dir}/runtime/gfx_mpsrt_kernel_manifest_adapter.hpp
-    ${_gfx_src_dir}/runtime/gfx_mpsrt_plan.hpp
-    ${_gfx_src_dir}/runtime/gfx_mpsrt_program.hpp
-    ${_gfx_src_dir}/runtime/gfx_op_utils.hpp
-    ${_gfx_src_dir}/runtime/gfx_parallelism.hpp
-    ${_gfx_src_dir}/runtime/gfx_remote_context.hpp
-    ${_gfx_src_dir}/runtime/gfx_remote_tensor.hpp
-    ${_gfx_src_dir}/runtime/gfx_stage_policy.hpp
-    ${_gfx_src_dir}/runtime/gfx_tensor_utils.hpp
 )
 
-set(GFX_RUNTIME_COMMON_SOURCES
-    ${_gfx_src_dir}/runtime/executable_descriptor.cpp
-    ${_gfx_src_dir}/runtime/gfx_backend_caps.cpp
-    ${_gfx_src_dir}/runtime/gfx_backend_utils.cpp
-    ${_gfx_src_dir}/runtime/fused_sequence_stage.cpp
-    ${_gfx_src_dir}/runtime/view_only_stage.cpp
-    ${_gfx_src_dir}/runtime/gpu_memory_ops.cpp
-    ${_gfx_src_dir}/kernel_ir/gfx_custom_kernel_families.cpp
-    ${_gfx_src_dir}/kernel_ir/gfx_kernel_source.cpp
-    ${_gfx_src_dir}/kernel_ir/gfx_kernel_inputs.cpp
-    ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.cpp
+set(GFX_OPENCL_KERNEL_ARTIFACT_SOURCES
     ${_gfx_src_dir}/kernel_ir/gfx_opencl_source_artifacts.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/activation_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_kernel.cpp
@@ -191,19 +208,19 @@ set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/matmul_f32_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/shapeof_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/tile_kernel.cpp
-    ${_gfx_src_dir}/runtime/execution_dispatcher.cpp
-    ${_gfx_src_dir}/runtime/immutable_gpu_buffer_cache.cpp
-    ${_gfx_src_dir}/runtime/memory_manager.cpp
-    ${_gfx_src_dir}/runtime/gfx_logger.cpp
-    ${_gfx_src_dir}/runtime/gfx_op_utils.cpp
-    ${_gfx_src_dir}/runtime/gfx_parallelism.cpp
-    ${_gfx_src_dir}/runtime/gfx_profiling_report.cpp
-    ${_gfx_src_dir}/runtime/gfx_profiling_trace_sink.cpp
-    ${_gfx_src_dir}/runtime/gfx_target_profile.cpp
-    ${_gfx_src_dir}/runtime/gfx_remote_context.cpp
-    ${_gfx_src_dir}/runtime/gfx_remote_tensor.cpp
-    ${_gfx_src_dir}/runtime/gfx_stage_policy.cpp
-    ${_gfx_src_dir}/runtime/gfx_tensor_utils.cpp
+)
+
+set(GFX_METAL_MPSRT_CONTRACT_HEADERS
+    ${_gfx_src_dir}/runtime/gfx_mpsrt_abi.hpp
+    ${_gfx_src_dir}/runtime/gfx_mpsrt_builder_plan.hpp
+    ${_gfx_src_dir}/runtime/gfx_mpsrt_model.hpp
+    ${_gfx_src_dir}/runtime/gfx_mpsrt_kernel_manifest_adapter.hpp
+    ${_gfx_src_dir}/runtime/gfx_mpsrt_plan.hpp
+    ${_gfx_src_dir}/runtime/gfx_mpsrt_program.hpp
+    ${_gfx_src_dir}/runtime/gfx_mpsrt_storage_bridge.hpp
+)
+
+set(GFX_METAL_MPSRT_CONTRACT_SOURCES
     ${_gfx_src_dir}/runtime/gfx_mpsrt_model.cpp
 )
 

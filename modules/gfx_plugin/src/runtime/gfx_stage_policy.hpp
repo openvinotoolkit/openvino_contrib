@@ -8,9 +8,9 @@
 #include <string>
 #include <vector>
 
+#include "compiler/tensor_layout.hpp"
 #include "openvino/core/node.hpp"
 #include "openvino/core/type/element_type.hpp"
-#include "runtime/gfx_activation.hpp"
 #include "runtime/gfx_backend_utils.hpp"
 #include "runtime/gpu_stage.hpp"
 
@@ -37,17 +37,6 @@ struct GfxStagePostOpSupport {
   bool bias = false;
   bool activation = false;
   bool batchnorm = false;
-};
-
-enum class GfxTensorLayoutKind {
-  Unknown,
-  Materialized,
-  ViewOnly,
-};
-
-struct GfxTensorLayoutPlan {
-  GfxTensorLayoutKind kind = GfxTensorLayoutKind::Unknown;
-  bool view_only = false;
 };
 
 struct GfxStageExecutionPolicy {
@@ -197,10 +186,6 @@ struct GfxStageOptimizationPlan {
   GfxConvRoutePlan conv{};
 };
 
-GfxTensorLayoutPlan
-select_tensor_layout_plan(const std::string &stage_type,
-                          const std::shared_ptr<const ov::Node> &node);
-
 GfxStageOptimizationPlan select_stage_optimization_plan(
     const GpuBufferManager *buffer_manager, GpuBackend backend,
     const std::string &stage_type, const std::shared_ptr<const ov::Node> &node,
@@ -218,12 +203,6 @@ select_conv_route_plan(const GpuBufferManager *buffer_manager,
                        const ov::element::Type &element_type, bool has_bias,
                        bool has_activation, bool has_batchnorm);
 
-bool allow_stage_bias_fusion(GpuBackend backend, const std::string &stage_type);
-bool allow_stage_batchnorm_fusion(GpuBackend backend,
-                                  const std::string &stage_type);
-bool allow_stage_activation_fusion(GpuBackend backend,
-                                   const std::string &stage_type,
-                                   ActivationKind kind);
 const char *
 gfx_conv_multi_kernel_stage_kind_name(GfxConvMultiKernelStageKind kind);
 const char *gfx_stage_backend_domain_name(GfxStageBackendDomain domain);

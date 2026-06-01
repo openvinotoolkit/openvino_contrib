@@ -83,7 +83,7 @@ TEST(GfxBackendTest, CompileAndExecuteKernel) {
     expect_metal_native_contract_unavailable();
 }
 
-TEST(GfxBackendTest, CompileNoManifestMslInfersArgCountFromSource) {
+TEST(GfxBackendTest, CompileNoManifestMslRejectsSourceOnlyAbiInference) {
     expect_metal_native_contract_unavailable();
 }
 

@@ -9,6 +9,8 @@ namespace gfx_plugin {
 
 const char* backend_to_string(GpuBackend backend) {
     switch (backend) {
+    case GpuBackend::Unknown:
+        return "unknown";
     case GpuBackend::Metal:
         return kBackendMetal;
     case GpuBackend::OpenCL:
@@ -35,6 +37,8 @@ GpuBackend default_backend_kind() {
 
 bool backend_supported(GpuBackend backend) {
     switch (backend) {
+    case GpuBackend::Unknown:
+        return false;
     case GpuBackend::Metal:
         return kGfxBackendMetalAvailable;
     case GpuBackend::OpenCL:
@@ -42,6 +46,10 @@ bool backend_supported(GpuBackend backend) {
     default:
         return false;
     }
+}
+
+bool backend_known(GpuBackend backend) {
+    return backend == GpuBackend::Metal || backend == GpuBackend::OpenCL;
 }
 
 }  // namespace gfx_plugin

@@ -10,8 +10,6 @@
 #include <sstream>
 #include <utility>
 
-#include "kernel_ir/gfx_opencl_source_artifacts.hpp"
-
 namespace ov {
 namespace gfx_plugin {
 namespace compiler {
@@ -55,8 +53,6 @@ KernelArtifactOrigin origin_from_route(LoweringRouteKind kind) noexcept {
     return KernelArtifactOrigin::Generated;
   case LoweringRouteKind::HandwrittenKernelException:
     return KernelArtifactOrigin::HandwrittenException;
-  case LoweringRouteKind::BackendLowering:
-    return KernelArtifactOrigin::BackendLowering;
   case LoweringRouteKind::Unsupported:
   default:
     return KernelArtifactOrigin::Unknown;
@@ -79,9 +75,7 @@ KernelArtifactPayloadKind payload_kind_for_stage(const StageRecord &stage) {
         stage.backend_domain == "apple_msl") {
       return KernelArtifactPayloadKind::MslSource;
     }
-    return KernelArtifactPayloadKind::BackendDescriptor;
-  case LoweringRouteKind::BackendLowering:
-    return KernelArtifactPayloadKind::BackendDescriptor;
+    return KernelArtifactPayloadKind::None;
   case LoweringRouteKind::Unsupported:
   default:
     return KernelArtifactPayloadKind::None;
@@ -193,27 +187,7 @@ std::shared_ptr<const KernelArtifactPayload>
 materialize_payload_for_stage(KernelArtifactDescriptor &descriptor,
                               const PlannedOperation &op,
                               const KernelArtifactPayloadResolver &resolver) {
-  if (resolver) {
-    auto payload = resolver(descriptor, op);
-    if (payload) {
-      return payload;
-    }
-  }
-  if (descriptor.payload_kind == KernelArtifactPayloadKind::OpenClSource &&
-      descriptor.kernel.backend_domain == "opencl" && op.source_node) {
-    auto source_artifact = resolve_gfx_opencl_source_artifact(op.source_node);
-    if (!source_artifact || !source_artifact->valid) {
-      return {};
-    }
-    descriptor.entry_point = source_artifact->artifact_ref.entry_point;
-    descriptor.compile_options_key =
-        gfx_opencl_source_artifact_build_options(*source_artifact);
-    descriptor.abi_arg_count = source_artifact->arg_count;
-    descriptor.abi_output_arg_count = source_artifact->direct_output_count;
-    return std::make_shared<GfxOpenClSourceArtifactPayload>(
-        std::move(*source_artifact));
-  }
-  return {};
+  return resolver ? resolver(descriptor, op) : nullptr;
 }
 
 } // namespace
@@ -231,8 +205,6 @@ kernel_artifact_origin_to_string(KernelArtifactOrigin origin) noexcept {
     return "generated";
   case KernelArtifactOrigin::HandwrittenException:
     return "handwritten_exception";
-  case KernelArtifactOrigin::BackendLowering:
-    return "backend_lowering";
   case KernelArtifactOrigin::Unknown:
   default:
     return "unknown";
@@ -250,8 +222,6 @@ std::string_view kernel_artifact_payload_kind_to_string(
     return "msl_source";
   case KernelArtifactPayloadKind::OpenClSource:
     return "opencl_source";
-  case KernelArtifactPayloadKind::BackendDescriptor:
-    return "backend_descriptor";
   }
   return "none";
 }

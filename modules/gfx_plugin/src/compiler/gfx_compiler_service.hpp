@@ -19,11 +19,11 @@ namespace compiler {
 
 struct GfxCompileRequest {
     std::shared_ptr<const ov::Model> model;
-    BackendTarget target = BackendTarget::from_backend(GpuBackend::Metal);
+    BackendTarget target;
 };
 
 struct GfxCompileResult {
-    BackendTarget target = BackendTarget::from_backend(GpuBackend::Metal);
+    BackendTarget target;
     std::shared_ptr<const ov::Model> transformed_model;
     LoweringPlan lowering_plan;
     ManifestBundle manifest;

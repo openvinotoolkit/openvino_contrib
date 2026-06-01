@@ -565,7 +565,7 @@ kernel void add1(device float* data [[buffer(0)]],
   }
 }
 
-TEST(GfxBackendTest, CompileNoManifestMslInfersArgCountFromSource) {
+TEST(GfxBackendTest, CompileNoManifestMslRejectsSourceOnlyAbiInference) {
   id<MTLDevice> device = MTLCreateSystemDefaultDevice();
   ASSERT_NE(device, nil);
 
@@ -589,9 +589,7 @@ kernel void sparse_buffers(device const float* input [[buffer(0)]],
 
   MetalCodegenBackend backend((MetalDeviceHandle)device);
   std::string log;
-  auto kernel = backend.compile(ks, &log);
-  ASSERT_TRUE(kernel) << log;
-  EXPECT_EQ(kernel->args_count(), 3u);
+  EXPECT_THROW((void)backend.compile(ks, &log), ov::Exception);
 }
 
 TEST(GfxBackendTest, BindingSchemaIsSharedAcrossDistinctProgramsWithSameAbi) {

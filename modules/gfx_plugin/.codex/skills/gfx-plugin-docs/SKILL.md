@@ -48,6 +48,7 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
    - backend availability or default backend resolution
    - compiler service, backend registry, lowering-plan, manifest, executable
      bundle, or runtime descriptor behavior
+   - compiler-owned tensor-layout classification
    - public properties
    - `query_model()` or compile behavior
    - MLIR support/lowering/source planning
@@ -65,6 +66,10 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
      behavior
    - CLVK/CLSPV Raspberry OpenCL bundle wiring, OpenCL dynamic-loader search
      order, or third-party submodule publication
+   - backend-owned OpenCL payload materialization in
+     `src/backends/opencl/compiler/opencl_kernel_artifacts.*`
+   - removal or reintroduction risk around `BackendLowering`,
+     `metal_lowering`, or source-signature ABI fallback behavior
    - stage policy, parallelism, partitioning, submission, caches, or workspace
      allocation
    - stateful `ReadValue` / `Assign`
@@ -72,8 +77,8 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
    - descriptor-backed view-only stages
    - compare-runner, profiling, trace sinks, microbench, or target-profile
      output
-   - test layout, controlled test `plugins.xml`, disabled-pattern hooks, or
-     validation workflow
+   - test layout, controlled test `plugins.xml`, gtest matrix checks,
+     disabled-pattern hooks, or validation workflow
 3. Patch only docs/skills whose contract changed.
 4. Keep wording concrete and tied to actual files that exist.
 

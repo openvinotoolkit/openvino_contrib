@@ -6,6 +6,8 @@
 
 #include <sstream>
 
+#include "openvino/core/except.hpp"
+
 namespace ov {
 namespace gfx_plugin {
 namespace compiler {
@@ -27,6 +29,8 @@ std::string join_feature_bits(const std::vector<std::string>& feature_bits) {
 BackendTarget::BackendTarget() = default;
 
 BackendTarget BackendTarget::from_backend(GpuBackend backend) {
+    OPENVINO_ASSERT(backend_known(backend),
+                    "GFX: BackendTarget requires an explicit backend");
     BackendTarget target;
     target.m_backend = backend;
     target.m_backend_id = backend_to_string(backend);
@@ -49,6 +53,9 @@ BackendTarget BackendTarget::from_backend(GpuBackend backend) {
             target.m_driver_id = "opencl-runtime";
             target.m_feature_bits = {"opencl-source-exceptions", "shared-mlir-route"};
             break;
+        case GpuBackend::Unknown:
+        default:
+            OPENVINO_THROW("GFX: unsupported backend target kind");
     }
     return target;
 }

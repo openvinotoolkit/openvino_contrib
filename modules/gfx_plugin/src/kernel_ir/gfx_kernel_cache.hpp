@@ -40,7 +40,7 @@ inline uint64_t gfx_hash_combine(uint64_t seed, uint64_t value) {
 }
 
 struct KernelCacheKey {
-    GpuBackend backend = GpuBackend::Metal;
+    GpuBackend backend = GpuBackend::Unknown;
     uintptr_t device = 0;
     uint64_t code_hash = 0;
     uint64_t entry_hash = 0;

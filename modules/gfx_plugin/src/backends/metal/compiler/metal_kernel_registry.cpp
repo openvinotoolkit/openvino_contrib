@@ -12,13 +12,6 @@ namespace compiler {
 
 namespace {
 
-KernelUnit make_metal_lowering_unit(const BackendTarget &target) {
-  return KernelUnit::describe(LoweringRouteKind::BackendLowering,
-                              KernelUnitKind::BackendLowering, "metal_lowering",
-                              target.backend_id(),
-                              "apple_mps_mpsgraph_msl_transition");
-}
-
 KernelUnit make_metal_generated_unit(const BackendTarget &target,
                                      const char *unit_id,
                                      const char *op_family) {
@@ -38,7 +31,6 @@ KernelUnit make_metal_vendor_unit(const BackendTarget &target,
 
 KernelRegistry make_metal_kernel_registry(const BackendTarget &target) {
   auto units = make_common_kernel_units(target);
-  units.push_back(make_metal_lowering_unit(target));
   units.push_back(
       make_metal_generated_unit(target, "metal/generated/shapeof", "ShapeOf"));
   units.push_back(

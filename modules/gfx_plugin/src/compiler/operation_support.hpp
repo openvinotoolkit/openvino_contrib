@@ -11,6 +11,7 @@
 
 #include "compiler/backend_target.hpp"
 #include "openvino/core/model.hpp"
+#include "runtime/gfx_activation.hpp"
 #include "runtime/gpu_backend_base.hpp"
 
 namespace ov {
@@ -33,7 +34,6 @@ enum class LoweringRouteKind {
     VendorPrimitive,
     GeneratedKernel,
     HandwrittenKernelException,
-    BackendLowering,
 };
 
 struct OperationSupportResult {
@@ -44,6 +44,40 @@ struct OperationSupportResult {
     std::vector<LoweringRouteKind> alternative_route_kinds;
     double profitability_score = 0.0;
 };
+
+struct FusionCapabilities {
+    bool enable_generic_attention_fusion = true;
+    bool supports_vendor_attention_stage = false;
+    bool enable_conv_activation_fusion = true;
+    bool enable_precision_sensitive_arithmetic_fusion = true;
+};
+
+struct PostOpFusionCapabilities {
+    bool enable_bias_fusion_for_convolution = true;
+    bool enable_bias_fusion_for_group_convolution = true;
+    bool enable_batchnorm_fusion_for_convolution = true;
+    bool enable_batchnorm_fusion_for_group_convolution = true;
+    bool enable_activation_fusion_for_convolution = true;
+    bool enable_activation_fusion_for_group_convolution = true;
+    bool enable_relu_activation_fusion = true;
+    bool enable_sigmoid_activation_fusion = true;
+    bool enable_tanh_activation_fusion = true;
+    bool enable_elu_activation_fusion = true;
+    bool enable_prelu_activation_fusion = true;
+    bool enable_gelu_activation_fusion = true;
+    bool enable_swish_activation_fusion = true;
+    bool enable_hswish_activation_fusion = true;
+    bool enable_hsigmoid_activation_fusion = true;
+    bool enable_abs_activation_fusion = true;
+    bool enable_sign_activation_fusion = true;
+
+    bool allow_stage_bias_fusion(std::string_view stage_type) const;
+    bool allow_stage_batchnorm_fusion(std::string_view stage_type) const;
+    bool allow_stage_activation_fusion(std::string_view stage_type,
+                                       ActivationKind kind) const;
+};
+
+PostOpFusionCapabilities make_post_op_fusion_capabilities(GpuBackend backend);
 
 std::string_view lowering_route_kind_to_string(LoweringRouteKind kind) noexcept;
 OperationSupportResult make_supported_operation(std::string semantic_reason,
@@ -61,7 +95,10 @@ public:
 
 class BackendCapabilities final {
 public:
-    BackendCapabilities(BackendTarget target, std::shared_ptr<const OperationSupportPolicy> operation_policy);
+    BackendCapabilities(BackendTarget target,
+                        std::shared_ptr<const OperationSupportPolicy> operation_policy,
+                        FusionCapabilities fusion_capabilities = {},
+                        PostOpFusionCapabilities post_op_fusion_capabilities = {});
 
     const BackendTarget& target() const noexcept {
         return m_target;
@@ -71,12 +108,26 @@ public:
         return m_target.backend();
     }
 
+    const FusionCapabilities& fusion() const noexcept {
+        return m_fusion_capabilities;
+    }
+
+    const PostOpFusionCapabilities& post_ops() const noexcept {
+        return m_post_op_fusion_capabilities;
+    }
+
     OperationSupportResult query_operation(const OperationSupportQuery& query) const;
     bool supports_node(const std::shared_ptr<const ov::Node>& node) const;
+    bool allow_stage_bias_fusion(std::string_view stage_type) const;
+    bool allow_stage_batchnorm_fusion(std::string_view stage_type) const;
+    bool allow_stage_activation_fusion(std::string_view stage_type,
+                                       ActivationKind kind) const;
 
 private:
     BackendTarget m_target;
     std::shared_ptr<const OperationSupportPolicy> m_operation_policy;
+    FusionCapabilities m_fusion_capabilities;
+    PostOpFusionCapabilities m_post_op_fusion_capabilities;
 };
 
 bool is_supported_node(const std::shared_ptr<const ov::Node>& node, GpuBackend backend);

@@ -201,7 +201,7 @@ struct KernelBindingTableHash {
 };
 
 struct PreparedBindingCacheKey {
-    GpuBackend backend = GpuBackend::Metal;
+    GpuBackend backend = GpuBackend::Unknown;
     uintptr_t device = 0;
     uint32_t arg_count = 0;
 

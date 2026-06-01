@@ -32,6 +32,8 @@ struct RuntimeStageExecutableDescriptor {
   uint32_t abi_arg_count = 0;
   uint32_t abi_output_arg_count = 0;
   std::string dispatch_contract;
+  std::string layout_contract = "logical";
+  bool tensor_view_only = false;
   std::vector<std::string> tensor_roles;
   std::vector<std::string> scalar_roles;
   std::string exception_ticket;

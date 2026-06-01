@@ -31,7 +31,6 @@ enum class KernelArtifactOrigin {
   VendorPrimitive,
   Generated,
   HandwrittenException,
-  BackendLowering,
 };
 
 enum class KernelArtifactPayloadKind {
@@ -39,7 +38,6 @@ enum class KernelArtifactPayloadKind {
   VendorDescriptor,
   MslSource,
   OpenClSource,
-  BackendDescriptor,
 };
 
 class KernelArtifactPayload {

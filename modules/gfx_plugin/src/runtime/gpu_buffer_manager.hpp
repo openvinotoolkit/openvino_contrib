@@ -39,7 +39,7 @@ inline const char *gpu_device_family_name(GpuDeviceFamily family) {
 }
 
 struct GpuExecutionDeviceInfo {
-  GpuBackend backend = GpuBackend::Metal;
+  GpuBackend backend = GpuBackend::Unknown;
   GpuDeviceFamily device_family = GpuDeviceFamily::Generic;
   std::string device_key;
   std::string device_name;

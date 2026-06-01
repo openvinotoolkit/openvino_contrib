@@ -124,8 +124,14 @@ bool configure_backend_custom_kernel_source_signature_from_module(
 bool configure_backend_custom_kernel_source_signature(
     KernelSource &source, const GfxKernelRuntimeBindingPlan &plan);
 
-size_t resolve_backend_manifest_arg_count_or_fallback(
-    mlir::ModuleOp module, bool is_opencl_backend, size_t fallback);
+size_t require_backend_manifest_arg_count(mlir::ModuleOp module,
+                                          bool is_opencl_backend,
+                                          std::string_view entry_point,
+                                          std::string_view stage_name);
+
+size_t require_backend_manifest_arg_count(
+    mlir::ModuleOp module, GfxKernelBackendDomain backend_domain,
+    std::string_view entry_point, std::string_view stage_name);
 
 size_t infer_backend_custom_kernel_arg_count(
     mlir::ModuleOp module, GfxKernelBackendDomain backend_domain,

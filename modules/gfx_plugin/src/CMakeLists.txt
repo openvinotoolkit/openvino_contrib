@@ -222,6 +222,30 @@ target_include_directories(gfx_plugin_private_headers INTERFACE
     "${CMAKE_CURRENT_BINARY_DIR}"
     ${MLIR_INCLUDE_DIRS})
 
+add_library(gfx_opencl_kernel_artifacts STATIC)
+target_sources(gfx_opencl_kernel_artifacts PRIVATE
+    ${GFX_OPENCL_KERNEL_ARTIFACT_HEADERS}
+    ${GFX_OPENCL_KERNEL_ARTIFACT_SOURCES})
+target_link_libraries(gfx_opencl_kernel_artifacts PRIVATE
+    gfx_plugin_build_settings
+    gfx_plugin_public_headers
+    gfx_plugin_private_headers
+    openvino::runtime
+    openvino::runtime::dev)
+set_target_properties(gfx_opencl_kernel_artifacts PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+add_library(gfx_metal_mpsrt_contract STATIC)
+target_sources(gfx_metal_mpsrt_contract PRIVATE
+    ${GFX_METAL_MPSRT_CONTRACT_HEADERS}
+    ${GFX_METAL_MPSRT_CONTRACT_SOURCES})
+target_link_libraries(gfx_metal_mpsrt_contract PRIVATE
+    gfx_plugin_build_settings
+    gfx_plugin_public_headers
+    gfx_plugin_private_headers
+    openvino::runtime
+    openvino::runtime::dev)
+set_target_properties(gfx_metal_mpsrt_contract PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 # Build common runtime as a separate static library (core target).
 add_library(gfx_runtime_common STATIC)
 target_sources(gfx_runtime_common PRIVATE
@@ -261,6 +285,7 @@ target_link_libraries(gfx_plugin_core PRIVATE
     gfx_plugin_build_settings
     gfx_plugin_public_headers
     gfx_plugin_private_headers
+    gfx_opencl_kernel_artifacts
     openvino::runtime
     openvino::runtime::dev)
 target_compile_definitions(gfx_plugin_core PRIVATE IMPLEMENT_OPENVINO_RUNTIME_PLUGIN)
@@ -332,6 +357,7 @@ if(GFX_BACKEND_METAL_AVAILABLE)
         gfx_plugin_build_settings
         gfx_plugin_public_headers
         gfx_plugin_private_headers
+        gfx_metal_mpsrt_contract
         openvino::runtime
         openvino::runtime::dev)
     target_link_libraries(gfx_runtime_metal PRIVATE gfx_runtime_mlir)
@@ -356,6 +382,7 @@ if(GFX_BACKEND_OPENCL_AVAILABLE)
         gfx_plugin_build_settings
         gfx_plugin_public_headers
         gfx_plugin_private_headers
+        gfx_opencl_kernel_artifacts
         openvino::runtime
         openvino::runtime::dev)
     if(CMAKE_DL_LIBS)

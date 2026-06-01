@@ -89,6 +89,7 @@ public:
 
   virtual const std::string &name() const = 0;
   virtual const std::string &type() const = 0;
+  virtual bool is_view_only() const { return false; }
   virtual GpuStageSubmitPolicy submit_policy() const { return {}; }
   virtual bool has_internal_input_bindings() const { return false; }
   virtual bool describe_output_lifetimes(

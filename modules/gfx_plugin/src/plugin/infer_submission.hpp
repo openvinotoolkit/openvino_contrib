@@ -30,7 +30,7 @@ struct InferSubmissionConfig {
 };
 
 struct InferSubmissionTuningCaps {
-    GpuBackend backend = GpuBackend::Metal;
+    GpuBackend backend = GpuBackend::Unknown;
     GpuDeviceFamily device_family = GpuDeviceFamily::Generic;
     uint32_t preferred_simd_width = 1;
     uint32_t subgroup_size = 1;

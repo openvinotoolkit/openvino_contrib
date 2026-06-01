@@ -53,6 +53,7 @@ TensorContract make_tensor_contract(const PlannedOperation &op,
   contract.role = role;
   contract.element_type = std::move(element_type);
   contract.partial_shape = std::move(partial_shape);
+  contract.layout = std::string(tensor_layout_kind_to_string(op.layout.kind));
   contract.lifetime_class = role == TensorContractRole::TensorInput
                                 ? "producer_or_external"
                                 : "stage_output";

@@ -4997,7 +4997,22 @@ TEST(GfxMlir, AppleMslStructuralArgCountsComeFromStageManifest) {
                   /*fallback=*/2),
               c.expected_arg_count)
         << c.stage_type;
+    EXPECT_EQ(ov::gfx_plugin::require_backend_manifest_arg_count(
+                  module, ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl,
+                  std::string_view{}, c.stage_type),
+              c.expected_arg_count)
+        << c.stage_type;
   }
+}
+
+TEST(GfxMlir, BackendManifestArgCountRejectsMissingManifestAbi) {
+  mlir::MLIRContext ctx;
+  auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+  EXPECT_THROW(
+      (void)ov::gfx_plugin::require_backend_manifest_arg_count(
+          module, ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl,
+          "missing_kernel", "MissingManifest"),
+      ov::Exception);
 }
 
 TEST(GfxMlir, MslKernelSourceSignatureCanBeConfiguredFromModuleManifest) {
