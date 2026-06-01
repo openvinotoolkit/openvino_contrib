@@ -40,28 +40,6 @@ using ov::test::behavior::OVPropertiesTests;
 using ov::test::OVRemoteTest;
 using ov::test::behavior::VersionTests;
 
-using GfxCompileModelCacheTestBase = ov::test::utils::GfxBackendRequiredTests<CompileModelCacheTestBase>;
-using GfxCompileModelLoadFromCacheTest = ov::test::utils::GfxBackendRequiredTests<CompileModelLoadFromCacheTest>;
-using GfxCompileModelLoadFromMemoryTestBase =
-    ov::test::utils::GfxBackendRequiredTests<CompileModelLoadFromMemoryTestBase>;
-using GfxCompileModelWithCacheEncryptionTest =
-    ov::test::utils::GfxBackendRequiredTests<CompileModelWithCacheEncryptionTest>;
-using GfxOVBasicPropertiesTestsP = ov::test::utils::GfxBackendRequiredTests<OVBasicPropertiesTestsP>;
-using GfxOVCheckGetSupportedROMetricsPropsTests =
-    ov::test::utils::GfxBackendRequiredTests<OVCheckGetSupportedROMetricsPropsTests>;
-using GfxOVClassModelOptionalTestP = ov::test::utils::GfxBackendRequiredTests<OVClassModelOptionalTestP>;
-using GfxOVClassModelTestP = ov::test::utils::GfxBackendRequiredTests<OVClassModelTestP>;
-using GfxOVClassQueryModelTest = ov::test::utils::GfxBackendRequiredTests<OVClassQueryModelTest>;
-using GfxOVGetMetricPropsTest = ov::test::utils::GfxBackendRequiredTests<OVGetMetricPropsTest>;
-using GfxOVHeteroSyntheticTest = ov::test::utils::GfxBackendRequiredTests<OVHeteroSyntheticTest>;
-using GfxOVPropertiesDefaultSupportedTests =
-    ov::test::utils::GfxBackendRequiredTests<OVPropertiesDefaultSupportedTests>;
-using GfxOVPropertiesDefaultTests = ov::test::utils::GfxBackendRequiredTests<OVPropertiesDefaultTests>;
-using GfxOVPropertiesIncorrectTests = ov::test::utils::GfxBackendRequiredTests<OVPropertiesIncorrectTests>;
-using GfxOVPropertiesTests = ov::test::utils::GfxBackendRequiredTests<OVPropertiesTests>;
-using GfxOVRemoteTest = ov::test::utils::GfxBackendRequiredTests<OVRemoteTest>;
-using GfxOVVersionTest = ov::test::utils::GfxBackendRequiredTests<VersionTests>;
-
 namespace {
 
 const std::vector<ov::AnyMap> inproperties = {
@@ -83,53 +61,60 @@ const std::vector<ov::AnyMap> cache_configs = {
 };
 
 const std::vector<std::string> test_targets = {ov::test::utils::DEVICE_GFX};
+const std::vector<ov::AnyMap> meta_plugin_empty_configs = {{}};
+const std::vector<ov::AnyMap> meta_plugin_nested_configs = {
+    {ov::device::priorities("AUTO")},
+    {ov::device::priorities("MULTI")},
+    {ov::device::priorities("AUTO", ov::test::utils::DEVICE_GFX)},
+    {ov::device::priorities("MULTI", ov::test::utils::DEVICE_GFX)},
+};
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxOVPropertiesIncorrectTests,
+                         OVPropertiesIncorrectTests,
                          ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_GFX),
                                             ::testing::ValuesIn(inproperties)),
                          OVPropertiesIncorrectTests::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxOVPropertiesDefaultTests,
+                         OVPropertiesDefaultTests,
                          ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_GFX),
                                             ::testing::ValuesIn(default_properties)),
                          OVPropertiesDefaultTests::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxOVPropertiesDefaultSupportedTests,
+                         OVPropertiesDefaultSupportedTests,
                          ::testing::Values(ov::test::utils::DEVICE_GFX));
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxOVPropertiesTests,
+                         OVPropertiesTests,
                          ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_GFX),
                                             ::testing::ValuesIn(properties)),
                          OVPropertiesTests::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_OVGetMetricPropsTest,
-                         GfxOVGetMetricPropsTest,
+                         OVGetMetricPropsTest,
                          ::testing::Values(ov::test::utils::DEVICE_GFX));
 
 INSTANTIATE_TEST_SUITE_P(
     smoke_OVCheckGetSupportedROMetricsPropsTests,
-    GfxOVCheckGetSupportedROMetricsPropsTests,
+    OVCheckGetSupportedROMetricsPropsTests,
     ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_GFX),
                        ::testing::ValuesIn(OVCheckGetSupportedROMetricsPropsTests::configureProperties(
                            {ov::device::full_name.name()}))),
     OVCheckGetSupportedROMetricsPropsTests::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_OVBasicPropertiesTestsP,
-                         GfxOVBasicPropertiesTestsP,
+                         OVBasicPropertiesTestsP,
                          ::testing::Values(std::make_pair("openvino_gfx_plugin",
                                                           ov::test::utils::DEVICE_GFX)));
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxOVVersionTest,
+                         VersionTests,
                          ::testing::Values(ov::test::utils::DEVICE_GFX),
                          VersionTests::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxCompileModelCacheTestBase,
+                         CompileModelCacheTestBase,
                          ::testing::Combine(::testing::ValuesIn(CompileModelCacheTestBase::getStandardFunctions()),
                                             ::testing::Values(ov::element::f32),
                                             ::testing::Values(std::size_t{1}),
@@ -138,32 +123,52 @@ INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
                          CompileModelCacheTestBase::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_CachingSupportCase_Template,
-                         GfxCompileModelLoadFromMemoryTestBase,
+                         CompileModelLoadFromMemoryTestBase,
                          ::testing::Combine(::testing::ValuesIn(test_targets), ::testing::ValuesIn(cache_configs)),
                          CompileModelLoadFromMemoryTestBase::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_CachingSupportCase_Template,
-                         GfxCompileModelLoadFromCacheTest,
+                         CompileModelLoadFromCacheTest,
                          ::testing::Combine(::testing::ValuesIn(test_targets), ::testing::ValuesIn(cache_configs)),
                          CompileModelLoadFromCacheTest::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_CachingSupportCase_Template,
-                         GfxCompileModelWithCacheEncryptionTest,
+                         CompileModelWithCacheEncryptionTest,
                          testing::ValuesIn(test_targets),
                          CompileModelWithCacheEncryptionTest::getTestCaseName);
 
 // Core integration / query model
 INSTANTIATE_TEST_SUITE_P(smoke_OVClassModelTestP,
-                         GfxOVClassModelTestP,
+                         OVClassModelTestP,
                          ::testing::Values(ov::test::utils::DEVICE_GFX));
 
 INSTANTIATE_TEST_SUITE_P(smoke_OVClassModelOptionalTestP,
-                         GfxOVClassModelOptionalTestP,
+                         OVClassModelOptionalTestP,
                          ::testing::Values(ov::test::utils::DEVICE_GFX));
 
 INSTANTIATE_TEST_SUITE_P(smoke_OVClassQueryModelTest,
-                         GfxOVClassQueryModelTest,
+                         OVClassQueryModelTest,
                          ::testing::Values(ov::test::utils::DEVICE_GFX));
+
+INSTANTIATE_TEST_SUITE_P(smoke_OVClassSeveralDevicesTest,
+                         OVClassSeveralDevicesTestCompileModel,
+                         ::testing::Values(std::vector<std::string>({"GFX.0"})));
+
+INSTANTIATE_TEST_SUITE_P(smoke_OVClassSeveralDevicesTest,
+                         OVClassSeveralDevicesTestQueryModel,
+                         ::testing::Values(std::vector<std::string>({"GFX.0"})));
+
+INSTANTIATE_TEST_SUITE_P(smoke_MetaPluginRejectedInDeviceList,
+                         OVClassCompileModelWithCondidateDeviceListContainedMetaPluginTest,
+                         ::testing::Combine(::testing::Values("MULTI:AUTO,GFX", "AUTO:MULTI,GFX"),
+                                            ::testing::ValuesIn(meta_plugin_empty_configs)),
+                         ::testing::PrintToStringParamName());
+
+INSTANTIATE_TEST_SUITE_P(smoke_MetaPluginRejectedInPriorities,
+                         OVClassCompileModelWithCondidateDeviceListContainedMetaPluginTest,
+                         ::testing::Combine(::testing::Values("MULTI", "AUTO"),
+                                            ::testing::ValuesIn(meta_plugin_nested_configs)),
+                         ::testing::PrintToStringParamName());
 
 // Remote tensors
 auto metal_remote_configs = []() {
@@ -175,7 +180,7 @@ std::vector<std::pair<ov::AnyMap, ov::AnyMap>> generate_remote_params() {
 }
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxOVRemoteTest,
+                         OVRemoteTest,
                          ::testing::Combine(::testing::Values(ov::element::f32),
                                             ::testing::Values(ov::test::utils::DEVICE_GFX),
                                             ::testing::ValuesIn(metal_remote_configs()),
@@ -183,7 +188,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
                          OVRemoteTest::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxOVHeteroSyntheticTest,
+                         OVHeteroSyntheticTest,
                          ::testing::Combine(::testing::Values(std::vector<ov::test::behavior::PluginParameter>{
                                                 {"GFX", "openvino_gfx_plugin"},
                                                 {"TEMPLATE", "openvino_template_plugin"}}),

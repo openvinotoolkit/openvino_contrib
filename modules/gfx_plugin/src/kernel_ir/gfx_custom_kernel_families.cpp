@@ -336,6 +336,15 @@ gfx_kernel_external_buffer_abi_spec_for_stage(std::string_view stage_type,
         entry_point == "transpose_kernel" ||
         entry_point == "depth_to_space_kernel" ||
         entry_point == "space_to_depth_kernel"))) {
+    if (stage_type == "Transpose" || entry_point == "transpose_kernel") {
+      return make_gfx_kernel_roles_abi(
+          {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
+           GfxKernelBufferRole::RuntimeParams,
+           GfxKernelBufferRole::RuntimeParams,
+           GfxKernelBufferRole::RuntimeParams,
+           GfxKernelBufferRole::RuntimeParams,
+           GfxKernelBufferRole::RuntimeParams});
+    }
     if (stage_type == "Slice" || stage_type == "StridedSlice" ||
         entry_point == "slice_kernel") {
       return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,

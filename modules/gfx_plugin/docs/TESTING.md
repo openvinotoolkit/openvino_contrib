@@ -20,6 +20,12 @@ startup and runtime fallback disabled so tests do not hide unsupported GFX
 routes behind another plugin. Test binaries receive `GFX_PLUGIN_PATH` through
 their CTest environment.
 
+`tests/CMakeLists.txt` also has a configure-time architecture guard for the
+public test/source tree. It rejects hidden `GTEST_SKIP`, uninstantiated-test
+allow shims, `DISABLED_` registrations, Objective-C `NO`/`YES` macro cleanup
+branches, and fixed backend-count/index matrices. Backend-unavailable coverage
+should be explicit, not hidden behind a skip helper.
+
 Build:
 
 ```bash
@@ -56,14 +62,18 @@ DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
 - `bench/`: optional evaluation orchestration helpers
 - `tools/`: profiling and microbench post-processing helpers
 
-Only Metal has backend-specific runtime tests in the current source tree; OpenCL
-runtime behavior is covered through source-artifact unit tests, integration
-paths, and target execution.
+Only Metal has backend-specific runtime execution tests in the current source
+tree. OpenCL runtime behavior is covered through source-artifact unit tests,
+runtime-bundle contract tests, integration paths, and target execution.
 
 `tests/integration/gfx_no_disabled_test_patterns.cpp` keeps the OpenVINO shared
 test disabled-pattern hook intentionally empty. Backend-unavailable cases are
 covered by explicit `*_unavailable_test.cpp` files instead of hiding coverage
 through skip patterns.
+
+`tests/integration/gfx_basic_ops_func_test.cpp` carries the plugin-facing basic
+operation checks. Do not restore the removed Metal-only
+`tests/backends/metal/basic_ops_test.cpp` split.
 
 `tests/tools/gfx_gtest_matrix.py` compares captured `--gtest_list_tests` output
 from multiple GFX production targets. Use it when changing test registration or
@@ -80,7 +90,7 @@ Add or update tests when changing:
   executable bundles, runtime executable descriptors, or artifact payloads
 - compiler-owned tensor-layout classification
 - MLIR builders, passes, source plans, or runtime-value planning
-- stage policy, placement, fusion, precision, or submit policy
+- backend stage-placement policy, stage fusion, precision, or submit policy
 - OpenCL source-artifact metadata, source coverage, chunking, constant
   materialization, boolean buffer handling, or dynamic shape scalars
 - backend-owned OpenCL source payload materialization in
@@ -118,9 +128,12 @@ For compiler-service, manifest, or executable-descriptor changes:
 - `tests/unit/plugin_tests.cpp` when `query_model()` or compile behavior moves
 - backend artifact tests when payload materialization reaches Metal or OpenCL
   runtime loaders
+- stage-placement contract coverage when backend domain/storage selection moves
 - Metal vendor-descriptor coverage when MPS/MPSGraph payloads reach
   `MpsrtVendorPrimitiveStage`
 - tensor-layout tests when `src/compiler/tensor_layout.*` changes
+- OpenCL runtime-bundle contract tests when dynamic loader candidate ordering
+  or CLVK tool-path setup changes
 
 For scheduling, cache, or infer-path changes:
 
@@ -160,8 +173,8 @@ For OpenCL source-artifact changes:
   registration changes
 - include `tests/unit/gfx_opencl_source_artifacts_test.cpp` and
   `tests/unit/gfx_backend_architecture_contract_test.cpp` when generated
-  ShapeOf, Tile, compare/select, logical-bool elementwise, boolean reduction,
-  or generated Concat/Split kernel units move
+  ShapeOf, Tile, Transpose, compare/select, logical-bool elementwise, boolean
+  reduction, or generated Concat/Split kernel units move
 - use `tests/unit/gfx_opencl_source_artifact_verifier.hpp` for reusable
   OpenCL source-artifact assertions instead of duplicating role/scalar checks
 - keep reusable generated activation and elementwise case data in
@@ -180,6 +193,9 @@ For OpenCL source-artifact changes:
 - add runtime coverage when dynamic OpenCL loading, buffer binding, runtime
   output shape, static f32 scalar binding, constant materialization, boolean
   storage, or command execution changes
+- include `tests/unit/gfx_opencl_runtime_bundle_contract_test.cpp` or the
+  unavailable adapter when runtime library candidate ordering or bundled CLVK
+  tool-path setup changes
 - use `tests/tools/ov_gfx_opencl_conv_microbench.py` and
   `tests/tools/ov_gfx_opencl_conv_microbench_android.cpp` only as kernel-family
   experiments before promotion into the plugin contract

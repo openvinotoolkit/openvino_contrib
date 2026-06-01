@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "compiler/stage_placement.hpp"
 #include "compiler/tensor_layout.hpp"
 #include "openvino/core/node.hpp"
 #include "openvino/core/type/element_type.hpp"
@@ -16,16 +17,6 @@
 
 namespace ov {
 namespace gfx_plugin {
-
-struct GfxStageRuntimeTraits {
-  bool binary_chunked = false;
-  bool unary_chunked = false;
-  bool softmax_chunked = false;
-  bool transpose_chunked = false;
-  bool split_concat_chunked = false;
-  bool convert_chunked = false;
-  bool diagnostic_f32_vendor_image = false;
-};
 
 struct GfxStageFusionPolicy {
   bool allow_bias = false;
@@ -46,30 +37,6 @@ struct GfxStageExecutionPolicy {
 
 struct GfxStagePrecisionPlan {
   bool keep_fp32 = false;
-};
-
-enum class GfxStageBackendDomain {
-  Unknown,
-  AppleMps,
-  AppleMsl,
-  OpenCl,
-};
-
-enum class GfxStageStorageKind {
-  Unknown,
-  Buffer,
-  Image,
-  Matrix,
-  NDArray,
-  Alias,
-};
-
-struct GfxStagePlacementPlan {
-  GfxStageBackendDomain domain = GfxStageBackendDomain::Unknown;
-  GfxStageStorageKind storage = GfxStageStorageKind::Unknown;
-  bool uses_vendor_primitive = false;
-  bool uses_custom_kernel = false;
-  std::string specialization_key;
 };
 
 enum class GfxStageArchetype {

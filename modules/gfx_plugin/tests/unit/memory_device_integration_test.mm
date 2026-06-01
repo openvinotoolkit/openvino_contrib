@@ -2,13 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#import <Metal/Metal.h>
-#ifdef NO
-#undef NO
-#endif
-#ifdef YES
-#undef YES
-#endif
 #include <gtest/gtest.h>
 
 #include "../gfx_plugin_runtime_path.hpp"
@@ -20,6 +13,8 @@
 #include "openvino/op/matmul.hpp"
 
 #include "backends/metal/runtime/metal_memory.hpp"
+
+#import <Metal/Metal.h>
 
 namespace ov {
 namespace gfx_plugin {

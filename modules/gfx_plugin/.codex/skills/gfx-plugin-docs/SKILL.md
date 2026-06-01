@@ -47,7 +47,7 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
 2. Identify whether the change affects:
    - backend availability or default backend resolution
    - compiler service, backend registry, lowering-plan, manifest, executable
-     bundle, or runtime descriptor behavior
+     bundle, stage-placement policy, or runtime descriptor behavior
    - compiler-owned tensor-layout classification
    - public properties
    - `query_model()` or compile behavior
@@ -60,18 +60,19 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
      scalars, constants, generated activation/elementwise/MatMul units,
      generated f32 and boolean reduction units, generated f32/f16 Softmax
      units, dynamic-static-rank Softmax units, generated f32/f16 Pool2D units,
-     generated ShapeOf/Tile units, generated compare/select and logical-bool
-     elementwise units, generated Concat/Split helpers, `Swish`
+     generated ShapeOf/Tile/Transpose units, generated compare/select and
+     logical-bool elementwise units, generated Concat/Split helpers, `Swish`
      default/static/runtime beta artifacts, chunking, or boolean-buffer
      behavior
    - CLVK/CLSPV Raspberry OpenCL bundle wiring, OpenCL dynamic-loader search
      order, or third-party submodule publication
+   - OpenCL runtime-bundle candidate ordering or bundled tool-path setup
    - backend-owned OpenCL payload materialization in
      `src/backends/opencl/compiler/opencl_kernel_artifacts.*`
    - removal or reintroduction risk around `BackendLowering`,
      `metal_lowering`, or source-signature ABI fallback behavior
-   - stage policy, parallelism, partitioning, submission, caches, or workspace
-     allocation
+   - backend stage placement, stage policy, parallelism, partitioning,
+     submission, caches, or workspace allocation
    - stateful `ReadValue` / `Assign`
    - output aliasing or source-node-aware output resolution
    - descriptor-backed view-only stages

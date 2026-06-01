@@ -45,7 +45,6 @@
 #include "openvino/op/transpose.hpp"
 #include "openvino/op/variadic_split.hpp"
 #include "openvino/openvino.hpp"
-#define HAS_OV_LAYER_NORM 0
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/codegen_common.hpp"

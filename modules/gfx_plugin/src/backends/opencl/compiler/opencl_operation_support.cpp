@@ -22,6 +22,7 @@
 #include "openvino/op/reduce_sum.hpp"
 #include "openvino/op/softmax.hpp"
 #include "openvino/op/swish.hpp"
+#include "openvino/op/transpose.hpp"
 #include "openvino/op/util/binary_elementwise_arithmetic.hpp"
 #include "openvino/op/util/binary_elementwise_comparison.hpp"
 #include "openvino/op/util/binary_elementwise_logical.hpp"
@@ -85,6 +86,10 @@ bool is_softmax_node(const std::shared_ptr<const ov::Node> &node) {
          ov::as_type_ptr<const ov::op::v8::Softmax>(node);
 }
 
+bool is_transpose_node(const std::shared_ptr<const ov::Node> &node) {
+  return static_cast<bool>(ov::as_type_ptr<const ov::op::v1::Transpose>(node));
+}
+
 OperationSupportResult
 query_opencl_operation(const std::shared_ptr<const ov::Node> &node) {
   if (auto artifact = resolve_gfx_opencl_source_artifact(node)) {
@@ -116,6 +121,9 @@ query_opencl_operation(const std::shared_ptr<const ov::Node> &node) {
   }
   if (is_softmax_node(node)) {
     return make_unsupported_operation("missing_opencl_softmax_kernel_unit");
+  }
+  if (is_transpose_node(node)) {
+    return make_unsupported_operation("missing_opencl_transpose_kernel_unit");
   }
   return make_unsupported_operation("missing_opencl_kernel_unit");
 }

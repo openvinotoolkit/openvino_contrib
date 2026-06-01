@@ -30,28 +30,6 @@ using ov::test::behavior::OVClassCompiledModelPropertiesDefaultTests;
 using ov::test::behavior::OVClassCompiledModelPropertiesIncorrectTests;
 using ov::test::behavior::OVClassCompiledModelEmptyPropertiesTests;
 
-using GfxOVCompiledModelBaseTest = ov::test::utils::GfxBackendRequiredTests<OVCompiledModelBaseTest>;
-using GfxOVCompiledModelBaseTestOptional = ov::test::utils::GfxBackendRequiredTests<OVCompiledModelBaseTestOptional>;
-using GfxOVCompiledModelIncorrectDevice = ov::test::utils::GfxBackendRequiredTests<OVCompiledModelIncorrectDevice>;
-using GfxOVCompiledModelPropertiesDefaultSupportedTests =
-    ov::test::utils::GfxBackendRequiredTests<OVCompiledModelPropertiesDefaultSupportedTests>;
-using GfxOVCompiledModelPropertiesTests = ov::test::utils::GfxBackendRequiredTests<OVClassCompiledModelPropertiesTests>;
-using GfxOVClassCompiledModelPropertiesDefaultTests =
-    ov::test::utils::GfxBackendRequiredTests<OVClassCompiledModelPropertiesDefaultTests>;
-using GfxOVClassCompiledModelPropertiesIncorrectTests =
-    ov::test::utils::GfxBackendRequiredTests<OVClassCompiledModelPropertiesIncorrectTests>;
-using GfxOVClassCompiledModelEmptyPropertiesTests =
-    ov::test::utils::GfxBackendRequiredTests<OVClassCompiledModelEmptyPropertiesTests>;
-using GfxOVClassCompiledModelGetPropertyTest = ov::test::utils::GfxBackendRequiredTests<OVClassCompiledModelGetPropertyTest>;
-using GfxOVClassCompiledModelGetIncorrectPropertyTest =
-    ov::test::utils::GfxBackendRequiredTests<OVClassCompiledModelGetIncorrectPropertyTest>;
-using GfxOVClassCompiledModelGetConfigTest = ov::test::utils::GfxBackendRequiredTests<OVClassCompiledModelGetConfigTest>;
-using GfxOVClassCompiledModelSetIncorrectConfigTest =
-    ov::test::utils::GfxBackendRequiredTests<OVClassCompiledModelSetIncorrectConfigTest>;
-using GfxOVCompiledGraphImportExportTest = ov::test::utils::GfxBackendRequiredTests<OVCompiledGraphImportExportTest>;
-using GfxOVClassCompiledModelGetPropertyTest_EXEC_DEVICES =
-    ov::test::utils::GfxBackendRequiredTests<OVClassCompiledModelGetPropertyTest_EXEC_DEVICES>;
-
 namespace {
 
 const std::vector<ov::AnyMap> configs = {
@@ -59,13 +37,13 @@ const std::vector<ov::AnyMap> configs = {
 };
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxOVCompiledModelBaseTest,
+                         OVCompiledModelBaseTest,
                          ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_GFX),
                                             ::testing::ValuesIn(configs)),
                          OVCompiledModelBaseTest::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxOVCompiledModelBaseTestOptional,
+                         OVCompiledModelBaseTestOptional,
                          ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_GFX),
                                             ::testing::ValuesIn(configs)),
                          OVCompiledModelBaseTestOptional::getTestCaseName);
@@ -86,52 +64,52 @@ const std::vector<ov::AnyMap> properties = {
 };
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxOVClassCompiledModelPropertiesIncorrectTests,
+                         OVClassCompiledModelPropertiesIncorrectTests,
                          ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_GFX),
                                             ::testing::ValuesIn(inproperties)),
                          OVClassCompiledModelPropertiesIncorrectTests::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxOVClassCompiledModelPropertiesDefaultTests,
+                         OVClassCompiledModelPropertiesDefaultTests,
                          ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_GFX),
                                             ::testing::ValuesIn(default_properties)),
                          OVClassCompiledModelPropertiesDefaultTests::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxOVCompiledModelPropertiesDefaultSupportedTests,
+                         OVCompiledModelPropertiesDefaultSupportedTests,
                          ::testing::Values(ov::test::utils::DEVICE_GFX),
                          OVCompiledModelPropertiesDefaultSupportedTests::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxOVCompiledModelPropertiesTests,
+                         OVClassCompiledModelPropertiesTests,
                          ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_GFX),
                                             ::testing::ValuesIn(properties)),
                          OVClassCompiledModelPropertiesTests::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_OVClassCompiledModelEmptyPropertiesTests,
-                         GfxOVClassCompiledModelEmptyPropertiesTests,
+                         OVClassCompiledModelEmptyPropertiesTests,
                          ::testing::Values(ov::test::utils::DEVICE_GFX));
 
 INSTANTIATE_TEST_SUITE_P(smoke_OVCompiledModelIncorrectDevice,
-                         GfxOVCompiledModelIncorrectDevice,
+                         OVCompiledModelIncorrectDevice,
                          ::testing::Values(ov::test::utils::DEVICE_GFX));
 
 std::vector<std::string> devices = {ov::test::utils::DEVICE_GFX};
 
 INSTANTIATE_TEST_SUITE_P(smoke_OVClassCompiledModelGetPropertyTest,
-                         GfxOVClassCompiledModelGetPropertyTest,
+                         OVClassCompiledModelGetPropertyTest,
                          ::testing::ValuesIn(devices));
 
 INSTANTIATE_TEST_SUITE_P(smoke_OVClassCompiledModelGetIncorrectPropertyTest,
-                         GfxOVClassCompiledModelGetIncorrectPropertyTest,
+                         OVClassCompiledModelGetIncorrectPropertyTest,
                          ::testing::ValuesIn(devices));
 
 INSTANTIATE_TEST_SUITE_P(smoke_OVClassCompiledModelGetConfigTest,
-                         GfxOVClassCompiledModelGetConfigTest,
+                         OVClassCompiledModelGetConfigTest,
                          ::testing::Values(ov::test::utils::DEVICE_GFX));
 
 INSTANTIATE_TEST_SUITE_P(smoke_OVClassCompiledModelSetIncorrectConfigTest,
-                         GfxOVClassCompiledModelSetIncorrectConfigTest,
+                         OVClassCompiledModelSetIncorrectConfigTest,
                          ::testing::Values(ov::test::utils::DEVICE_GFX));
 
 const std::vector<ov::element::Type_t> netPrecisions = {
@@ -140,17 +118,24 @@ const std::vector<ov::element::Type_t> netPrecisions = {
 };
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxOVCompiledGraphImportExportTest,
+                         OVCompiledGraphImportExportTest,
                          ::testing::Combine(::testing::ValuesIn(netPrecisions),
                                             ::testing::Values(ov::test::utils::DEVICE_GFX),
                                             ::testing::ValuesIn(configs)),
                          OVCompiledGraphImportExportTest::getTestCaseName);
 
+INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
+                         CompiledModelSetType,
+                         ::testing::Combine(::testing::Values(ov::element::f32, ov::element::f16),
+                                            ::testing::Values(ov::test::utils::DEVICE_GFX),
+                                            ::testing::ValuesIn(configs)),
+                         CompiledModelSetType::getTestCaseName);
+
 const std::vector<std::tuple<std::string, std::pair<ov::AnyMap, std::string>>>
     GetMetricTest_ExecutionDevice_GFX = {{ov::test::utils::DEVICE_GFX, std::make_pair(ov::AnyMap{}, "GFX")}};
 
 INSTANTIATE_TEST_SUITE_P(smoke_OVClassCompiledModelGetPropertyTest,
-                         GfxOVClassCompiledModelGetPropertyTest_EXEC_DEVICES,
+                         OVClassCompiledModelGetPropertyTest_EXEC_DEVICES,
                          ::testing::ValuesIn(GetMetricTest_ExecutionDevice_GFX));
 
 }  // namespace

@@ -103,6 +103,12 @@ service that builds a lowering plan, manifest, executable bundle, and runtime
 descriptor. That descriptor is not a public cache format and is not exported by
 `export_model()`.
 
+The compiler registry contains the production backend compiler modules, while
+runtime availability is checked separately from the configured backend support
+and runtime-provider registration. Requesting a backend that is not supported by
+the current build fails during query or compilation instead of falling through
+to a compiler-only module.
+
 Compilation requires explicit backend routes. Removed generic routes such as
 `backend_lowering` or `metal_lowering` are not public fallback paths; unsupported
 operations fail during support probing or compilation.
@@ -180,16 +186,17 @@ the artifact contracts.
 
 Generated activation, elementwise, f32 MatMul, f32/f16 Interpolate, f32
 reduction, boolean reduction, f32/f16 Softmax, dynamic-static-rank f32/f16
-Softmax, f32/f16 Pool2D, ShapeOf, Tile, logical-bool elementwise,
+Softmax, f32/f16 Pool2D, ShapeOf, Tile, Transpose, logical-bool elementwise,
 compare/select, and Concat/Split helper sources are embedded under
-`src/kernel_ir/opencl_kernels/`. The remaining handwritten OpenCL source
-exception is the f32 Transpose route. Interpolate is limited to f32/f16 static
-NCHW spatial resize cases with supported modes, axes, padding, coordinate
-transforms, and nearest-rounding metadata. Pool2D is limited to f32/f16 static
-4D NCHW MaxPool/AvgPool contracts with 2D kernel, stride, dilation, and padding
-metadata. OpenCL operation support requires a matching source artifact and
-registered kernel unit; unsupported variants fail during support probing or
-compilation.
+`src/kernel_ir/opencl_kernels/`. The current Transpose route is
+`opencl/generated/transpose_f32`; there is no active handwritten OpenCL
+kernel-unit exception in the current registry. Interpolate is limited to f32/f16
+static NCHW spatial resize cases with supported modes, axes, padding,
+coordinate transforms, and nearest-rounding metadata. Pool2D is limited to
+f32/f16 static 4D NCHW MaxPool/AvgPool contracts with 2D kernel, stride,
+dilation, and padding metadata. OpenCL operation support requires a matching
+source artifact and registered kernel unit; unsupported variants fail during
+support probing or compilation.
 
 Reduction source artifacts require static shape metadata and constant axes.
 Numeric `ReduceSum`, `ReduceMean`, `ReduceMax`, `ReduceMin`, `ReduceProd`,
@@ -208,9 +215,10 @@ artifact ABI. OpenCL `LogSoftmax` is currently not implemented.
 
 On Linux/Raspberry-style deployments, `GFX_ENABLE_RASPBERRY_OPENCL_TOOLCHAIN`
 can build a plugin-local CLVK/CLSPV OpenCL bundle. The OpenCL loader checks the
-plugin-local `opencl/` and `clvk/` directories before system/vendor OpenCL
-libraries and configures bundled CLVK tool paths when the caller has not set
-them explicitly.
+plugin-local `opencl/`, `clvk/`, and plugin directories before system/vendor
+OpenCL libraries. `src/backends/opencl/runtime/opencl_runtime_bundle.*`
+describes plugin-adjacent bundles and configures bundled CLVK tool paths only
+when the caller has not set them explicitly.
 
 Unsupported OpenCL cases fail during support probing, compilation, stage
 creation, or runtime validation. They do not fall back to CPU or switch backend.
@@ -235,8 +243,10 @@ Generated Metal reduction sources use the `metal/generated/reduction_f32` and
 f32 numeric and boolean logical forms. Generated Metal Softmax sources use
 `metal/generated/softmax_f32`, `metal/generated/softmax_f16`,
 `metal/generated/logsoftmax_f32`, and `metal/generated/logsoftmax_f16` for
-static-shape f32/f16 Softmax and LogSoftmax. Metal Pool2D requires a valid MPS
-vendor descriptor; the generic MSL Pool2D fallback is not a current route.
+static-shape f32/f16 Softmax and LogSoftmax. Static f32 Transpose can route
+through `metal/generated/transpose_f32` when its shape and permutation contract
+is satisfied. Metal Pool2D requires a valid MPS vendor descriptor; the generic
+MSL Pool2D fallback is not a current route.
 
 `GFX_DIAGNOSTIC_F32_MPS_IMAGE` is a diagnostic compile property for selected
 f32 MPS image placement checks. It should be used for localization, not as a

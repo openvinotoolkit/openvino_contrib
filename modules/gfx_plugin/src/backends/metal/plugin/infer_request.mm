@@ -9,14 +9,6 @@
 #include <algorithm>
 #include <sstream>
 
-#import <Metal/Metal.h>
-#ifdef NO
-#undef NO
-#endif
-#ifdef YES
-#undef YES
-#endif
-
 #include "openvino/gfx_plugin/compiled_model.hpp"
 #include "openvino/core/any.hpp"
 #include "openvino/core/except.hpp"
@@ -41,6 +33,8 @@
 #include "plugin/infer_submission.hpp"
 #include "plugin/stateful_execution.hpp"
 #include "backends/metal/runtime/metal_command_encoder.hpp"
+
+#import <Metal/Metal.h>
 
 namespace ov {
 namespace gfx_plugin {

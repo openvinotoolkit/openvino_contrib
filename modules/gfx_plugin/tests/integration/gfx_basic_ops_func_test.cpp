@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-#include "../../gfx_test_utils.hpp"
+#include "../gfx_test_utils.hpp"
 #include "openvino/openvino.hpp"
 #include "openvino/core/graph_util.hpp"
 #include "openvino/op/constant.hpp"
@@ -30,8 +30,6 @@
 #include "openvino/op/gelu.hpp"
 #include "openvino/op/hsigmoid.hpp"
 #include "openvino/op/hswish.hpp"
-#include "../../gfx_test_utils.hpp"
-#define HAS_OV_LAYER_NORM 0
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/relu.hpp"
 #include "openvino/op/result.hpp"

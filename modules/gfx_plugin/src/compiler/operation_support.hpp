@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "compiler/backend_target.hpp"
+#include "compiler/stage_placement.hpp"
 #include "openvino/core/model.hpp"
 #include "runtime/gfx_activation.hpp"
 #include "runtime/gpu_backend_base.hpp"
@@ -98,7 +99,8 @@ public:
     BackendCapabilities(BackendTarget target,
                         std::shared_ptr<const OperationSupportPolicy> operation_policy,
                         FusionCapabilities fusion_capabilities = {},
-                        PostOpFusionCapabilities post_op_fusion_capabilities = {});
+                        PostOpFusionCapabilities post_op_fusion_capabilities = {},
+                        std::shared_ptr<const StagePlacementPolicy> stage_placement_policy = {});
 
     const BackendTarget& target() const noexcept {
         return m_target;
@@ -116,6 +118,10 @@ public:
         return m_post_op_fusion_capabilities;
     }
 
+    const StagePlacementPolicy* stage_placement() const noexcept {
+        return m_stage_placement_policy.get();
+    }
+
     OperationSupportResult query_operation(const OperationSupportQuery& query) const;
     bool supports_node(const std::shared_ptr<const ov::Node>& node) const;
     bool allow_stage_bias_fusion(std::string_view stage_type) const;
@@ -128,6 +134,7 @@ private:
     std::shared_ptr<const OperationSupportPolicy> m_operation_policy;
     FusionCapabilities m_fusion_capabilities;
     PostOpFusionCapabilities m_post_op_fusion_capabilities;
+    std::shared_ptr<const StagePlacementPolicy> m_stage_placement_policy;
 };
 
 bool is_supported_node(const std::shared_ptr<const ov::Node>& node, GpuBackend backend);

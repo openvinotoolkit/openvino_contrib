@@ -2,6 +2,57 @@ set(TARGET_NAME ov_gfx_func_tests)
 set(UNIT_TARGET_NAME ov_gfx_unit_tests)
 set(RUNTIME_MICRO_TARGET_NAME ov_gfx_runtime_micro_tests)
 
+function(gfx_assert_forbidden_test_source_patterns)
+    file(GLOB_RECURSE _gfx_guard_sources CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/*.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/*.mm"
+        "${CMAKE_CURRENT_SOURCE_DIR}/*.m"
+        "${CMAKE_CURRENT_SOURCE_DIR}/*.metal"
+        "${CMAKE_CURRENT_SOURCE_DIR}/*.cl"
+        "${CMAKE_CURRENT_SOURCE_DIR}/*.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../src/*.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../src/*.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../src/*.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../src/*.mm"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../src/*.m"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../src/*.metal"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../src/*.cl")
+    foreach(_gfx_guard_source IN LISTS _gfx_guard_sources)
+        if(_gfx_guard_source MATCHES "/third_party/")
+            continue()
+        endif()
+        file(READ "${_gfx_guard_source}" _gfx_guard_content)
+        string(CONCAT _gfx_gtest_skip_token "GTEST" "_" "SKIP")
+        string(CONCAT _gfx_gtest_allow_uninstantiated_token
+            "GTEST" "_" "ALLOW" "_" "UNINSTANTIATED" "_" "PARAMETERIZED" "_" "TEST")
+        string(CONCAT _gfx_disabled_prefix "DISABLED" "_")
+        string(CONCAT _gfx_backend_count_token "kBackend" "Count")
+        string(CONCAT _gfx_backend_idx_token "backend" "_index")
+        set(_gfx_forbidden_hit "")
+        if(_gfx_guard_content MATCHES "${_gfx_gtest_skip_token}[ \t]*\\(")
+            set(_gfx_forbidden_hit "${_gfx_gtest_skip_token}")
+        elseif(_gfx_guard_content MATCHES "${_gfx_gtest_allow_uninstantiated_token}[ \t]*\\(")
+            set(_gfx_forbidden_hit "${_gfx_gtest_allow_uninstantiated_token}")
+        elseif(_gfx_guard_content MATCHES "(^|[^A-Za-z0-9_])${_gfx_disabled_prefix}")
+            set(_gfx_forbidden_hit "disabled GoogleTest name")
+        elseif(_gfx_guard_content MATCHES "#[ \t]*ifdef[ \t]+(NO|YES)")
+            set(_gfx_forbidden_hit "Objective-C NO/YES macro cleanup branch")
+        elseif(_gfx_guard_content MATCHES "#[ \t]*undef[ \t]+(NO|YES)")
+            set(_gfx_forbidden_hit "Objective-C NO/YES macro undef")
+        elseif(_gfx_guard_content MATCHES "${_gfx_backend_count_token}|${_gfx_backend_idx_token}")
+            set(_gfx_forbidden_hit "fixed backend-count/index test matrix")
+        endif()
+        if(_gfx_forbidden_hit)
+            message(FATAL_ERROR
+                "GFX architecture guard: forbidden ${_gfx_forbidden_hit} in ${_gfx_guard_source}")
+        endif()
+    endforeach()
+endfunction()
+
+gfx_assert_forbidden_test_source_patterns()
+
 set(GFX_TEST_PLUGINS_XML "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/plugins.xml")
 add_custom_target(gfx_test_plugins_xml
     COMMAND "${CMAKE_COMMAND}"
@@ -115,7 +166,6 @@ ov_add_test_target(
 )
 
 target_sources(${TARGET_NAME} PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/gfx_shared_gtest_allow.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/plugin_tests.cpp
 )
 if(APPLE)
@@ -190,10 +240,12 @@ target_sources(${UNIT_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/mlir_conv_parallel_test.cpp)
 if(GFX_BACKEND_OPENCL_AVAILABLE)
     target_sources(${UNIT_TARGET_NAME} PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_device_profile_contract_test.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_device_profile_contract_test.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_runtime_bundle_contract_test.cpp)
 else()
     target_sources(${UNIT_TARGET_NAME} PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_device_profile_contract_unavailable_test.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_device_profile_contract_unavailable_test.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_runtime_bundle_contract_unavailable_test.cpp)
 endif()
 if(APPLE)
     target_sources(${UNIT_TARGET_NAME} PRIVATE

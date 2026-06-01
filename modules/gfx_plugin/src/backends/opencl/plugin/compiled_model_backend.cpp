@@ -7,10 +7,20 @@
 #include "backends/opencl/plugin/compiled_model_state.hpp"
 #include "backends/opencl/runtime/memory_api.hpp"
 #include "openvino/core/except.hpp"
+#include "plugin/backend_factory.hpp"
 #include "runtime/gfx_remote_context.hpp"
 
 namespace ov {
 namespace gfx_plugin {
+namespace {
+
+const BackendRuntimeProviderRegistration kOpenClRuntimeProviderRegistration({
+    GpuBackend::OpenCL,
+    create_opencl_backend_state,
+    nullptr,
+});
+
+}  // namespace
 
 std::unique_ptr<BackendState> create_opencl_backend_state(
     const ov::AnyMap&,

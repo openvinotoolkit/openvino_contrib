@@ -18,6 +18,9 @@ namespace gfx_plugin {
 
 // Utility helpers to extract types from MLIR modules for lightweight codegen.
 inline mlir::func::FuncOp get_entry_func(mlir::ModuleOp module) {
+    if (!module) {
+        return {};
+    }
     for (auto func : module.getOps<mlir::func::FuncOp>()) {
         return func;
     }

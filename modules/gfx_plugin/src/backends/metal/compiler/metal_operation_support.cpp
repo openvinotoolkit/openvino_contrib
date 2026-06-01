@@ -6,12 +6,14 @@
 
 #include <algorithm>
 #include <exception>
+#include <vector>
 
 #include "mlir/gfx_apple_vendor_descriptors.hpp"
 #include "mlir/msl_codegen_apple_msl_activation.hpp"
 #include "mlir/msl_codegen_apple_msl_eltwise.hpp"
 #include "mlir/msl_codegen_apple_msl_reduction.hpp"
 #include "mlir/msl_codegen_apple_msl_softmax.hpp"
+#include "openvino/core/shape_util.hpp"
 #include "openvino/op/avg_pool.hpp"
 #include "openvino/op/concat.hpp"
 #include "openvino/op/constant.hpp"
@@ -24,6 +26,7 @@
 #include "openvino/op/split.hpp"
 #include "openvino/op/strided_slice.hpp"
 #include "openvino/op/tile.hpp"
+#include "openvino/op/transpose.hpp"
 #include "openvino/op/variadic_split.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "transforms/gfx_llm_ops.hpp"
@@ -118,6 +121,40 @@ bool supports_static_slice(const std::shared_ptr<const ov::Node> &node) {
          constant_input(strided_slice, 1) && constant_input(strided_slice, 2) &&
          (strided_slice->get_input_size() <= 3 ||
           constant_input(strided_slice, 3));
+}
+
+bool supports_static_f32_transpose_generated_msl(
+    const std::shared_ptr<const ov::Node> &node) {
+  auto transpose = ov::as_type_ptr<const ov::op::v1::Transpose>(node);
+  if (!transpose || transpose->get_input_size() != 2 ||
+      transpose->get_input_element_type(0) != ov::element::f32 ||
+      transpose->get_output_element_type(0) != ov::element::f32 ||
+      !transpose->get_input_partial_shape(0).is_static() ||
+      !transpose->get_output_partial_shape(0).is_static() ||
+      !constant_input(transpose, 1)) {
+    return false;
+  }
+  const auto &input_shape = transpose->get_input_shape(0);
+  const auto &output_shape = transpose->get_output_shape(0);
+  if (input_shape.empty() || input_shape.size() != output_shape.size() ||
+      ov::shape_size(input_shape) != ov::shape_size(output_shape)) {
+    return false;
+  }
+  const auto perm_const = ov::as_type_ptr<const ov::op::v0::Constant>(
+      transpose->input_value(1).get_node_shared_ptr());
+  const auto perm = perm_const->cast_vector<int64_t>();
+  if (perm.size() != input_shape.size()) {
+    return false;
+  }
+  std::vector<bool> seen(perm.size(), false);
+  for (const auto axis : perm) {
+    if (axis < 0 || static_cast<size_t>(axis) >= perm.size() ||
+        seen[static_cast<size_t>(axis)]) {
+      return false;
+    }
+    seen[static_cast<size_t>(axis)] = true;
+  }
+  return true;
 }
 
 bool supports_causal_sdpa_generated_msl(
@@ -261,6 +298,14 @@ query_metal_operation(const std::shared_ptr<const ov::Node> &node) {
       return make_supported_operation("generated_msl_source",
                                       LoweringRouteKind::GeneratedKernel, 0.55,
                                       "metal/generated/slice");
+    }
+    if (node && supports_static_f32_transpose_generated_msl(node)) {
+      return make_supported_operation("generated_msl_source",
+                                      LoweringRouteKind::GeneratedKernel, 0.55,
+                                      "metal/generated/transpose_f32");
+    }
+    if (node && ov::as_type_ptr<const ov::op::v1::Transpose>(node)) {
+      return make_unsupported_operation("missing_metal_transpose_kernel_unit");
     }
     if (node && supports_causal_sdpa_generated_msl(node)) {
       return make_supported_operation("generated_msl_source",

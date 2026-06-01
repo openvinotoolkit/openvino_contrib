@@ -24,18 +24,6 @@ KernelUnit make_opencl_generated_kernel_unit(const BackendTarget &target,
                               target.backend_id(), op_family);
 }
 
-KernelUnit make_opencl_handwritten_exception_kernel_unit(
-    const BackendTarget &target, std::string unit_id, const char *op_family,
-    const char *reason) {
-  return KernelUnit::describe_handwritten_exception(
-      std::move(unit_id), target.backend_id(), op_family,
-      HandwrittenKernelExceptionContract{
-          "GFX-OPENCL-GENERATED-DATA-MOVEMENT",
-          reason,
-          "Replace with common MLIR-owned generated OpenCL data-movement "
-          "kernel source and keep the same KernelUnit manifest identity."});
-}
-
 void append_opencl_split_kernel_units(const BackendTarget &target,
                                       std::vector<KernelUnit> &units) {
   constexpr uint32_t kMaxStaticSplitOutputs = 30;
@@ -158,10 +146,8 @@ KernelRegistry make_opencl_kernel_registry(const BackendTarget &target) {
       target, "opencl/generated/softmax_f32_dynamic_static_rank", "Softmax"));
   units.push_back(make_opencl_generated_kernel_unit(
       target, "opencl/generated/softmax_f16_dynamic_static_rank", "Softmax"));
-  units.push_back(make_opencl_handwritten_exception_kernel_unit(
-      target, "opencl/baseline/transpose_f32", "Transpose",
-      "OpenCL Transpose still uses the existing correctness-first source "
-      "artifact while the generated data-movement lowering is being unified."));
+  units.push_back(make_opencl_generated_kernel_unit(
+      target, "opencl/generated/transpose_f32", "Transpose"));
   append_opencl_concat_kernel_units(target, units);
   append_opencl_split_kernel_units(target, units);
   return KernelRegistry(target, std::move(units));

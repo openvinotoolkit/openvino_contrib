@@ -2,14 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#import <Metal/Metal.h>
-#ifdef NO
-#undef NO
-#endif
-#ifdef YES
-#undef YES
-#endif
-
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -38,6 +30,8 @@
 #include "runtime/gfx_compile_profiling.hpp"
 #include "runtime/gfx_mpsrt_builder_plan.hpp"
 #include "runtime/gfx_stage_policy.hpp"
+
+#import <Metal/Metal.h>
 
 namespace ov {
 namespace gfx_plugin {

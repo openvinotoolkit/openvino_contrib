@@ -14,14 +14,16 @@ validation in `modules/gfx_plugin/`.
 - The task changes MLIR lowering, backend routes, properties, scheduling,
   caches, infer submission, output planning, or profiling.
 - The task changes compiler-owned tensor-layout classification.
+- The task changes backend stage-placement policy.
 - The task changes Metal placement, MPSRT metadata, MSL kernel-family routing,
   MPS/MPSGraph vendor descriptors, resource tables, storage bridges, or request
   binding.
 - The task changes OpenCL source artifacts, dynamic OpenCL runtime selection,
-  source-stage execution, generated activation/elementwise/MatMul units,
-  generated ShapeOf/Tile, generated compare/select or logical-bool elementwise
-  units, runtime-shape allocation, chunked Concat/Split, boolean-buffer
-  behavior, constant materialization, or OpenCL op coverage.
+  source-stage execution, OpenCL runtime-bundle discovery, generated
+  activation/elementwise/MatMul units, generated ShapeOf/Tile/Transpose,
+  generated compare/select or logical-bool elementwise units, runtime-shape
+  allocation, chunked Concat/Split, boolean-buffer behavior, constant
+  materialization, or OpenCL op coverage.
 - The user wants compare-runner, microbench, profiling-runbook, Android, Linux,
   or Raspberry Pi validation guidance.
 
@@ -40,8 +42,8 @@ validation in `modules/gfx_plugin/`.
   property, profiling, and backend regressions
 - `ov_gfx_runtime_micro_tests`: smaller runtime-subgraph checks
 - `tests/unit/gfx_backend_architecture_contract_test.cpp`: backend-target,
-  kernel-registry, tensor-layout, payload-materialization, and manifest-routing
-  contracts
+  kernel-registry, stage-placement, tensor-layout, payload-materialization, and
+  manifest-routing contracts
 - `ov_gfx_compare_runner`: accuracy-only diff tool
 - `ov_gfx_microbench`: MB0-MB3 microbench and calibration workflow
 - `ov_gfx_conv_shape_bench`: representative Conv2D compile-plus-infer probe
@@ -83,6 +85,7 @@ Prefer:
 - `tests/unit/plugin_tests.cpp` when `query_model()` or compile behavior moved
 - backend artifact tests when payload materialization reaches Metal or OpenCL
   runtime loaders
+- backend stage-placement contract tests when domain/storage selection moves
 - `tests/unit/gfx_backend_architecture_contract_test.cpp` when OpenCL payload
   materialization ownership or compiler tensor-layout contracts change
 - Metal `VendorDescriptor` tests when MPS/MPSGraph payloads are routed through
@@ -161,8 +164,8 @@ For OpenCL source-artifact changes:
   change
 - include `tests/unit/gfx_backend_architecture_contract_test.cpp` and
   `tests/unit/gfx_opencl_source_artifacts_test.cpp` when generated ShapeOf,
-  Tile, compare/select, logical-bool elementwise, boolean reduction, or
-  generated Concat/Split routes move
+  Tile, Transpose, compare/select, logical-bool elementwise, boolean reduction,
+  or generated Concat/Split routes move
 - add `tests/unit/gpu_backend_base_test.cpp` coverage when the artifact should
   be present in the compiler executable bundle
 - add architecture-contract coverage when the common compiler should require
@@ -170,12 +173,15 @@ For OpenCL source-artifact changes:
 - add runtime coverage when dynamic runtime loading, buffer binding,
   runtime-shape allocation, static f32 scalar binding, constant materialization,
   boolean storage, chunking, or command execution changes
+- include `tests/unit/gfx_opencl_runtime_bundle_contract_test.cpp` or the
+  matching unavailable adapter when runtime library candidate ordering or
+  bundled CLVK tool-path setup changes
 - validate with an OpenCL-capable target when the change depends on the real
   runtime rather than manifest-only logic
 
-The current handwritten OpenCL source exception is
-`opencl/baseline/transpose_f32`. Boolean reductions are generated
-`opencl/generated/reduction_bool` routes, not baseline exceptions.
+OpenCL Transpose is a generated `opencl/generated/transpose_f32` route. Boolean
+reductions are generated `opencl/generated/reduction_bool` routes, not baseline
+exceptions.
 
 ## Command Pattern
 

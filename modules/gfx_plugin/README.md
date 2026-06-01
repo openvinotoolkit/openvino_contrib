@@ -44,12 +44,13 @@ Read these files first:
 
 - `include/openvino/gfx_plugin/`: public plugin headers and property names
 - `src/compiler/`: backend target registry, backend capability records,
-  operation support policies, tensor-layout classification, lowering-plan
-  construction, manifest building, executable-bundle assembly, and artifact
-  payload routing used by query and compilation
+  operation support policies, backend stage-placement contracts, tensor-layout
+  classification, lowering-plan construction, manifest building,
+  executable-bundle assembly, and artifact payload routing used by query and
+  compilation
 - `src/plugin/`: OpenVINO-facing `Plugin`, `CompiledModel`, infer-request
-  plumbing, properties, model serialization, backend selection, and stateful
-  `ReadValue` / `Assign` handling
+  plumbing, properties, model serialization, backend selection, runtime-provider
+  registration, and stateful `ReadValue` / `Assign` handling
 - `src/runtime/`: backend-neutral stage interfaces, submission planning,
   profiling report assembly, liveness-aware output workspaces, remote
   context/tensor helpers, descriptor-backed view-only stages, target profiles,
@@ -83,18 +84,21 @@ Read these files first:
 The high-level path is:
 
 1. `Plugin::compile_model()` parses properties and resolves `GFX_BACKEND`.
-2. `src/compiler/BackendRegistry` resolves the compiled backend module,
+2. `src/compiler/BackendRegistry` resolves the compiler backend module,
    immutable `BackendTarget`, backend-owned transform `PipelineOptions`,
-   fusion capabilities, post-op fusion capabilities, and artifact payload
-   resolver.
+   fusion capabilities, post-op fusion capabilities, stage-placement policy,
+   and artifact payload resolver. Runtime availability is checked separately
+   through configured backend support and `src/plugin/backend_factory.*`.
 3. `GfxCompilerService` runs backend-aware transforms, operation support
    checks, lowering-plan creation, manifest building, executable-bundle
    assembly, and artifact payload materialization.
 4. `CompiledModel` validates the executable bundle and builds a
    `RuntimeExecutableDescriptor` that is passed into backend stage creation.
 5. `CompiledModel::build_op_pipeline()` creates a sequence of stage descriptors.
-6. `src/runtime/gfx_stage_policy.*` selects placement, storage, fusion, and
-   submit policy from node type, shape, element type, backend, and device caps.
+6. `src/runtime/gfx_stage_policy.*` selects fusion, precision, submit policy,
+   and other shared stage traits. Placement and storage are delegated through
+   the selected backend module's `StagePlacementPolicy` in `src/compiler/` and
+   `src/backends/*/compiler/*_stage_placement.*`.
 7. `src/mlir/` lowers supported nodes and materializes backend source plans.
 8. The active backend creates descriptor-backed view-only stages or concrete
    backend `GpuStage` objects through `ExecutionDispatcher`.
@@ -119,7 +123,7 @@ payloads from the OpenVINO node.
 
 There is no generic backend-lowering escape route. Metal and OpenCL operation
 support must resolve to common metadata, an explicit generated kernel unit, a
-vendor primitive, or a documented handwritten exception.
+vendor primitive, or a consciously documented backend route.
 
 ## Backend Split
 
@@ -138,13 +142,14 @@ The Metal backend is the Apple production path. It combines:
 - embedded MPSRT helper kernels under `src/kernel_ir/metal_kernels/`
 - Objective-C++ request-time execution under `src/backends/metal/runtime/`
 
-Metal placement is selected by shared stage policy. Do not bypass it with
-ad-hoc backend switches when adding new Metal routes.
+Metal placement is selected by the Metal compiler stage-placement policy and
+consumed by shared stage policy. Do not bypass those contracts with ad-hoc
+backend switches when adding new Metal routes.
 
 Compiler-owned Metal payloads currently cover generated MSL units such as
 `ShapeOf`, `Range`, `Tile`, `Concat`, `Split`, `Slice`, activation, elementwise,
-numeric and logical reduction, Softmax/LogSoftmax, and causal SDPA helper
-forms. MPS/MPSGraph vendor descriptor payloads are consumed by the
+`Transpose`, numeric and logical reduction, Softmax/LogSoftmax, and causal SDPA
+helper forms. MPS/MPSGraph vendor descriptor payloads are consumed by the
 `MpsrtVendorPrimitive` runtime stage for supported MatMul/GEMM, last-axis
 `Softmax`, Pool2D, Resize2D, and SDPA forms. Vendor selection remains
 contract-limited: if the descriptor, storage, or external-buffer ABI cannot be
@@ -176,9 +181,10 @@ Backend operation support and kernel-unit registration live under
 Embedded OpenCL source units live under `src/kernel_ir/opencl_kernels/`.
 Current generated units include activation, elementwise, f32 MatMul, f32/f16
 Interpolate, f32 reduction, boolean reduction, f32/f16 Softmax,
-dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D, ShapeOf, Tile,
+dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D, ShapeOf, Tile, Transpose,
 logical-bool elementwise, compare/select, and generated Concat/Split helpers.
-The remaining handwritten OpenCL source exception is the f32 Transpose route.
+There is no active handwritten OpenCL kernel-unit exception in the current
+registry.
 The OpenCL compiler registry requires an explicit kernel unit for generated
 routes; there is no generic MLIR fallback for OpenCL operation support.
 Unsupported modes, axes, padding, shapes, or element types fail during support
@@ -335,7 +341,8 @@ evidence, and do not use compare-runner timing as performance evidence.
 - Do not add CPU fallback for unsupported GPU stages.
 - Do not add runtime switches to preserve obsolete execution routes.
 - Do not duplicate OpenCL artifact ABI rules in request code.
-- Do not bypass Metal placement through one-off MPS/MSL selection logic.
+- Do not bypass backend stage-placement policies through one-off MPS/MSL/OpenCL
+  selection logic.
 - Do not bypass `GfxCompilerService`, `ManifestBundle`, or
   `ExecutableBundle` with ad-hoc backend support checks.
 - Do not reintroduce `BackendLowering`, `metal_lowering`, or source-signature

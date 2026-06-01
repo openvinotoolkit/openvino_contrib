@@ -189,7 +189,7 @@ Plugin::query_model(const std::shared_ptr<const ov::Model> &model,
   }
   const auto request = get_backend_request(merged);
   const auto& registry = compiler::BackendRegistry::default_registry();
-  if (request.explicit_request && !registry.resolve(request.kind)) {
+  if (request.explicit_request && !backend_supported(request.kind)) {
     gfx_log_warn("Plugin") << "query_model: requested backend '"
                            << request.requested << "' is not supported";
     return {};

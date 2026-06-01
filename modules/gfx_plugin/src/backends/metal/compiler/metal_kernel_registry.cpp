@@ -44,6 +44,8 @@ KernelRegistry make_metal_kernel_registry(const BackendTarget &target) {
   units.push_back(
       make_metal_generated_unit(target, "metal/generated/slice", "Slice"));
   units.push_back(make_metal_generated_unit(
+      target, "metal/generated/transpose_f32", "Transpose"));
+  units.push_back(make_metal_generated_unit(
       target, "metal/generated/sdpa_causal_mask", "GfxSDPAWithCausalMask"));
   units.push_back(make_metal_generated_unit(
       target, "metal/generated/activation", "Activation"));

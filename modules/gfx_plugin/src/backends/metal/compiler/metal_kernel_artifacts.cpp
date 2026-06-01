@@ -13,6 +13,7 @@
 #include "kernel_ir/metal_kernels/softmax_kernels.hpp"
 #include "mlir/msl_codegen_apple_msl_activation.hpp"
 #include "mlir/msl_codegen_apple_msl_eltwise.hpp"
+#include "mlir/msl_codegen_apple_msl_ops.hpp"
 #include "mlir/msl_codegen_apple_msl_reduction.hpp"
 #include "mlir/msl_codegen_apple_msl_shape.hpp"
 #include "mlir/msl_codegen_apple_msl_slice_static.hpp"
@@ -31,6 +32,8 @@ constexpr const char *kMetalTileMslKernelUnit = "metal/generated/tile";
 constexpr const char *kMetalConcatMslKernelUnit = "metal/generated/concat";
 constexpr const char *kMetalSplitMslKernelUnit = "metal/generated/split";
 constexpr const char *kMetalSliceMslKernelUnit = "metal/generated/slice";
+constexpr const char *kMetalTransposeF32MslKernelUnit =
+    "metal/generated/transpose_f32";
 constexpr const char *kMetalCausalSdpaMslKernelUnit =
     "metal/generated/sdpa_causal_mask";
 constexpr const char *kMetalActivationMslKernelUnit =
@@ -232,6 +235,10 @@ resolve_metal_payload(KernelArtifactDescriptor &descriptor,
         descriptor,
         make_direct_static_slice_msl_kernel_source_plan(
             op.source_node, op.source_node->get_output_element_type(0)));
+  }
+  if (descriptor.kernel.kernel_id == kMetalTransposeF32MslKernelUnit) {
+    return materialize_generated_msl_payload(
+        descriptor, make_transpose_msl_kernel_source_plan(op.source_node));
   }
   if (descriptor.kernel.kernel_id == kMetalCausalSdpaMslKernelUnit) {
     return materialize_generated_msl_payload(

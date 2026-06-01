@@ -6,7 +6,6 @@
 
 #include <cstdint>
 
-#include "compiler/backend_registry.hpp"
 #include "openvino/core/except.hpp"
 #include "plugin/gfx_profiling_utils.hpp"
 
@@ -15,7 +14,7 @@ namespace gfx_plugin {
 namespace {
 
 bool backend_registered(GpuBackend backend) {
-    return static_cast<bool>(compiler::BackendRegistry::default_registry().resolve(backend));
+    return backend_supported(backend);
 }
 
 }  // namespace

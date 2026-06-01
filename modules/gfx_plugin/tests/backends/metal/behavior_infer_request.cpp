@@ -6,11 +6,14 @@
 #include "shared_tests_instances/test_utils.hpp"
 #include "integration/test_constants.hpp"
 
+#include <atomic>
+#include <chrono>
+#include <future>
+#include <memory>
 #include <utility>
 #include <vector>
 
 #include "behavior/ov_infer_request/batched_tensors.hpp"
-#include "behavior/ov_infer_request/callback.hpp"
 #include "behavior/ov_infer_request/cancellation.hpp"
 #include "behavior/ov_infer_request/inference.hpp"
 #include "behavior/ov_infer_request/inference_chaining.hpp"
@@ -24,7 +27,6 @@
 
 using ov::test::behavior::InferRequestPropertiesTest;
 using ov::test::behavior::OVInferRequestBatchedTests;
-using ov::test::behavior::OVInferRequestCallbackTests;
 using ov::test::behavior::OVInferRequestCancellationTests;
 using ov::test::behavior::OVInferRequestIOTensorTest;
 using ov::test::behavior::OVInferRequestInferenceTests;
@@ -36,46 +38,139 @@ using ov::test::behavior::OVInferRequestVariableStateTest;
 using ov::test::behavior::OVInferRequestMultithreadingTests;
 using ov::test::behavior::OVInferRequestCheckTensorPrecision;
 
-using GfxInferRequestPropertiesTest = ov::test::utils::GfxBackendRequiredTests<InferRequestPropertiesTest>;
-using GfxOVInferRequestBatchedTests = ov::test::utils::GfxBackendRequiredTests<OVInferRequestBatchedTests>;
-using GfxOVInferRequestCallbackTests = ov::test::utils::GfxBackendRequiredTests<OVInferRequestCallbackTests>;
-using GfxOVInferRequestCancellationTests = ov::test::utils::GfxBackendRequiredTests<OVInferRequestCancellationTests>;
-using GfxOVInferRequestIOTensorTest = ov::test::utils::GfxBackendRequiredTests<OVInferRequestIOTensorTest>;
-using GfxOVInferRequestInferenceTests = ov::test::utils::GfxBackendRequiredTests<OVInferRequestInferenceTests>;
-using GfxOVInferenceChaining = ov::test::utils::GfxBackendRequiredTests<OVInferenceChaining>;
-using GfxOVInferenceChainingStatic = ov::test::utils::GfxBackendRequiredTests<OVInferenceChainingStatic>;
-using GfxOVInferRequestDynamicTests = ov::test::utils::GfxBackendRequiredTests<OVInferRequestDynamicTests>;
-using GfxOVInferRequestWaitTests = ov::test::utils::GfxBackendRequiredTests<OVInferRequestWaitTests>;
-using GfxOVInferRequestVariableStateTest = ov::test::utils::GfxBackendRequiredTests<OVInferRequestVariableStateTest>;
-using GfxOVInferRequestMultithreadingTests = ov::test::utils::GfxBackendRequiredTests<OVInferRequestMultithreadingTests>;
-using GfxOVInferRequestCheckTensorPrecision =
-    ov::test::utils::GfxBackendRequiredTests<OVInferRequestCheckTensorPrecision>;
+namespace ov::test::behavior {
+
+using OVInferRequestCallbackTests = OVInferRequestTests;
+
+TEST_P(OVInferRequestCallbackTests, canCallAsyncWithCompletionCallback) {
+    ov::InferRequest req;
+    OV_ASSERT_NO_THROW(req = execNet.create_infer_request());
+    bool is_called = false;
+    OV_ASSERT_NO_THROW(req.set_callback([&](std::exception_ptr exception_ptr) {
+        ASSERT_EQ(exception_ptr, nullptr);
+        is_called = true;
+    }));
+    OV_ASSERT_NO_THROW(req.start_async());
+    OV_ASSERT_NO_THROW(req.wait());
+    ASSERT_TRUE(is_called);
+}
+
+TEST_P(OVInferRequestCallbackTests, syncInferDoesNotCallCompletionCallback) {
+    ov::InferRequest req;
+    OV_ASSERT_NO_THROW(req = execNet.create_infer_request());
+    bool is_called = false;
+    req.set_callback([&](std::exception_ptr exception_ptr) {
+        ASSERT_EQ(nullptr, exception_ptr);
+        is_called = true;
+    });
+    req.infer();
+    ASSERT_FALSE(is_called);
+}
+
+TEST_P(OVInferRequestCallbackTests, canStartSeveralAsyncInsideCompletionCallbackWithSafeDtor) {
+    constexpr int num_iter = 10;
+    struct TestUserData {
+        std::atomic<int> num_iter_seen = {0};
+        std::promise<bool> promise;
+    };
+    TestUserData data;
+
+    ov::InferRequest req;
+    OV_ASSERT_NO_THROW(req = execNet.create_infer_request());
+    OV_ASSERT_NO_THROW(req.set_callback([&](std::exception_ptr exception_ptr) {
+        if (exception_ptr) {
+            data.promise.set_exception(exception_ptr);
+            return;
+        }
+        if (data.num_iter_seen.fetch_add(1) != num_iter) {
+            req.start_async();
+        } else {
+            data.promise.set_value(true);
+        }
+    }));
+    auto future = data.promise.get_future();
+    OV_ASSERT_NO_THROW(req.start_async());
+    OV_ASSERT_NO_THROW(req.wait());
+    future.wait();
+    ASSERT_TRUE(future.get());
+    ASSERT_EQ(num_iter, data.num_iter_seen - 1);
+}
+
+TEST_P(OVInferRequestCallbackTests, returnGeneralErrorIfCallbackThrowException) {
+    ov::InferRequest req;
+    OV_ASSERT_NO_THROW(req = execNet.create_infer_request());
+    OV_ASSERT_NO_THROW(req.set_callback([](std::exception_ptr) {
+        OPENVINO_THROW("Throw");
+    }));
+    OV_ASSERT_NO_THROW(req.start_async());
+    ASSERT_THROW(req.wait(), ov::Exception);
+}
+
+TEST_P(OVInferRequestCallbackTests, ReturnResultNotReadyFromWaitInAsyncModeForTooSmallTimeout) {
+    ov::InferRequest req;
+    OV_ASSERT_NO_THROW(req = execNet.create_infer_request());
+    std::promise<std::chrono::system_clock::time_point> callback_time_stamp;
+    auto callback_time_stamp_future = callback_time_stamp.get_future();
+    OV_ASSERT_NO_THROW(req.set_callback([&](std::exception_ptr exception_ptr) {
+        if (exception_ptr) {
+            callback_time_stamp.set_exception(exception_ptr);
+        } else {
+            callback_time_stamp.set_value(std::chrono::system_clock::now());
+        }
+    }));
+    OV_ASSERT_NO_THROW(req.start_async());
+    bool ready = false;
+    OV_ASSERT_NO_THROW(ready = req.wait_for({}));
+    const auto after_wait_time_stamp = std::chrono::system_clock::now();
+    if (after_wait_time_stamp < callback_time_stamp_future.get()) {
+        ASSERT_FALSE(ready);
+    }
+    OV_ASSERT_NO_THROW(req.wait());
+}
+
+TEST_P(OVInferRequestCallbackTests, ImplDoesNotCopyCallback) {
+    ov::InferRequest req;
+    OV_ASSERT_NO_THROW(req = execNet.create_infer_request());
+    {
+        auto some_ptr = std::make_shared<int>(42);
+        OV_ASSERT_NO_THROW(req.set_callback([some_ptr](std::exception_ptr exception_ptr) {
+            ASSERT_EQ(nullptr, exception_ptr);
+            ASSERT_EQ(1, some_ptr.use_count());
+        }));
+    }
+    OV_ASSERT_NO_THROW(req.start_async());
+    OV_ASSERT_NO_THROW(req.wait());
+}
+
+}  // namespace ov::test::behavior
+
+using ov::test::behavior::OVInferRequestCallbackTests;
 
 namespace {
 
 const std::vector<ov::AnyMap> empty_configs = {{}};
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxInferRequestPropertiesTest,
+                         InferRequestPropertiesTest,
                          ::testing::Combine(::testing::Values(1u),
                                             ::testing::Values(ov::test::utils::DEVICE_GFX),
                                             ::testing::ValuesIn(empty_configs)),
                          InferRequestPropertiesTest::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxOVInferRequestCallbackTests,
+                         OVInferRequestCallbackTests,
                          ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_GFX),
                                             ::testing::ValuesIn(empty_configs)),
                          OVInferRequestCallbackTests::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxOVInferRequestWaitTests,
+                         OVInferRequestWaitTests,
                          ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_GFX),
                                             ::testing::ValuesIn(empty_configs)),
                          OVInferRequestWaitTests::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxOVInferRequestCancellationTests,
+                         OVInferRequestCancellationTests,
                          ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_GFX),
                                             ::testing::ValuesIn(empty_configs)),
                          OVInferRequestCancellationTests::getTestCaseName);
@@ -87,45 +182,45 @@ std::vector<ov::element::Type> prcs = {
 };
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxOVInferRequestIOTensorTest,
+                         OVInferRequestIOTensorTest,
                          ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_GFX),
                                             ::testing::ValuesIn(empty_configs)),
                          OVInferRequestIOTensorTest::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxOVInferRequestCheckTensorPrecision,
+                         OVInferRequestCheckTensorPrecision,
                          ::testing::Combine(::testing::ValuesIn(prcs),
                                             ::testing::Values(ov::test::utils::DEVICE_GFX),
                                             ::testing::ValuesIn(empty_configs)),
                          OVInferRequestCheckTensorPrecision::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxOVInferRequestBatchedTests,
+                         OVInferRequestBatchedTests,
                          ::testing::Values(ov::test::utils::DEVICE_GFX),
                          OVInferRequestBatchedTests::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxOVInferRequestInferenceTests,
+                         OVInferRequestInferenceTests,
                          ::testing::Combine(::testing::Values(ov::test::behavior::tensor_roi::roi_nchw(),
                                                               ov::test::behavior::tensor_roi::roi_1d()),
                                             ::testing::Values(ov::test::utils::DEVICE_GFX)),
                          OVInferRequestInferenceTests::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxOVInferenceChaining,
+                         OVInferenceChaining,
                          ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_GFX),
                                             ::testing::ValuesIn(empty_configs)),
                          OVInferenceChaining::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxOVInferenceChainingStatic,
+                         OVInferenceChainingStatic,
                          ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_GFX),
                                             ::testing::ValuesIn(empty_configs)),
                          OVInferenceChainingStatic::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(
     smoke_BehaviorTests,
-    GfxOVInferRequestDynamicTests,
+    OVInferRequestDynamicTests,
     ::testing::Combine(::testing::Values(ov::test::utils::make_split_conv_concat()),
                        ::testing::Values(std::vector<std::pair<std::vector<size_t>, std::vector<size_t>>>{
                            {{1, 4, 20, 20}, {1, 10, 18, 18}},
@@ -141,12 +236,12 @@ std::vector<ov::test::behavior::memoryStateParams> memoryStateTestCases = {
                                           {})};
 
 INSTANTIATE_TEST_SUITE_P(smoke_Template_BehaviorTests,
-                         GfxOVInferRequestVariableStateTest,
+                         OVInferRequestVariableStateTest,
                          ::testing::ValuesIn(memoryStateTestCases),
                          OVInferRequestVariableStateTest::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         GfxOVInferRequestMultithreadingTests,
+                         OVInferRequestMultithreadingTests,
                          ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_GFX),
                                             ::testing::ValuesIn(empty_configs)),
                          OVInferRequestMultithreadingTests::getTestCaseName);

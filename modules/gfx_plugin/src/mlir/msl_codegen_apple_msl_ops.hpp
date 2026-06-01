@@ -7,6 +7,7 @@
 #include <optional>
 
 #include "kernel_ir/gfx_codegen_backend.hpp"
+#include "mlir/msl_codegen_apple_msl_dispatch.hpp"
 #include "openvino/core/node.hpp"
 #include "openvino/core/shape.hpp"
 #include "openvino/core/type/element_type.hpp"
@@ -33,6 +34,9 @@ std::optional<KernelSource> make_apple_metal_elementwise_kernel_source(
     KernelSource source, const std::shared_ptr<const ov::Node> &node);
 std::optional<KernelSource> make_apple_metal_layout_kernel_source(
     KernelSource source, const std::shared_ptr<const ov::Node> &node);
+GfxMslGeneratedKernelSourcePlan make_transpose_msl_kernel_source_plan(
+    const std::shared_ptr<const ov::Node> &node,
+    mlir::ModuleOp module = {});
 std::optional<KernelSource> make_apple_metal_concat_split_kernel_source(
     KernelSource source, const std::shared_ptr<const ov::Node> &node);
 std::optional<KernelSource> make_apple_metal_convert_kernel_source(

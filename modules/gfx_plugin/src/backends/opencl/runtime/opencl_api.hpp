@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "backends/opencl/runtime/opencl_runtime_bundle.hpp"
 #include "runtime/gpu_buffer_manager.hpp"
 
 namespace ov {
@@ -124,6 +125,7 @@ public:
 
     const OpenClFunctionTable& fn() const { return m_fn; }
     const std::string& library_path() const { return m_library_path; }
+    const OpenClRuntimeBundleInfo& bundle_info() const { return m_bundle_info; }
 
 private:
     OpenClApi();
@@ -131,6 +133,7 @@ private:
 
     void* m_library = nullptr;
     std::string m_library_path;
+    OpenClRuntimeBundleInfo m_bundle_info;
     OpenClFunctionTable m_fn;
 };
 

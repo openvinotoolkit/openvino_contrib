@@ -214,12 +214,12 @@ TEST(GfxOpenClSourceArtifactsTest, BackendTargetIsStableAndCapabilityDriven) {
   const auto kernel_registry = make_opencl_kernel_registry(target);
   const auto audit = kernel_registry.audit();
   ASSERT_TRUE(audit.valid());
-  EXPECT_EQ(audit.handwritten_exception_count, 1u);
+  EXPECT_EQ(audit.handwritten_exception_count, 0u);
   EXPECT_EQ(kernel_registry.route_count(LoweringRouteKind::GeneratedKernel),
-            162u);
+            163u);
   EXPECT_EQ(kernel_registry.route_count(
                 LoweringRouteKind::HandwrittenKernelException),
-            1u);
+            0u);
   OperationLegalizer legalizer(capabilities);
   LoweringPlanner planner(target, kernel_registry);
   auto lhs = param(ov::element::f32, ov::Shape{2, 3});
@@ -516,7 +516,7 @@ TEST(GfxOpenClSourceArtifactsTest,
 
   expect_opencl_artifact(
       transpose, GfxKernelStageFamily::Transpose,
-      "opencl/baseline/transpose_f32", "gfx_opencl_baseline_transpose_f32",
+      "opencl/generated/transpose_f32", "gfx_opencl_generated_transpose_f32",
       /*arg_count=*/16,
       /*direct_input_count=*/1, scalar_args, {0}, static_u32_scalars);
   expect_opencl_source_excludes(

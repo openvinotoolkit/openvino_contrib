@@ -8,7 +8,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cstdlib>
 #include <cstring>
 #include <mutex>
 #include <sstream>
@@ -18,7 +17,6 @@
 
 #if !defined(_WIN32)
 #    include <dlfcn.h>
-#    include <sys/stat.h>
 #endif
 
 namespace ov {
@@ -105,15 +103,6 @@ bool contains_token(std::string_view haystack, std::string_view needle) {
 }
 
 #if !defined(_WIN32)
-bool has_path_separator(const std::string& path) {
-    return path.find('/') != std::string::npos;
-}
-
-bool path_exists(const std::string& path) {
-    struct stat info {};
-    return !path.empty() && stat(path.c_str(), &info) == 0;
-}
-
 std::string parent_path(std::string path) {
     const auto slash = path.find_last_of('/');
     if (slash == std::string::npos) {
@@ -125,61 +114,12 @@ std::string parent_path(std::string path) {
     return path.substr(0, slash);
 }
 
-std::string join_path(const std::string& dir, const std::string& leaf) {
-    if (dir.empty()) {
-        return leaf;
-    }
-    if (dir.back() == '/') {
-        return dir + leaf;
-    }
-    return dir + "/" + leaf;
-}
-
 std::string current_library_dir() {
     Dl_info info {};
     if (dladdr(reinterpret_cast<const void*>(&current_library_dir), &info) == 0 || info.dli_fname == nullptr) {
         return {};
     }
     return parent_path(info.dli_fname);
-}
-
-void set_env_to_existing_path(const char* name, const std::string& path) {
-    if (std::getenv(name) != nullptr || !path_exists(path)) {
-        return;
-    }
-    setenv(name, path.c_str(), 0);
-}
-
-void configure_bundled_clvk_tools(const std::string& opencl_library_path) {
-    if (!has_path_separator(opencl_library_path)) {
-        return;
-    }
-    const auto bundle_dir = parent_path(opencl_library_path);
-    set_env_to_existing_path("CLVK_CLSPV_PATH", join_path(bundle_dir, "clspv"));
-    set_env_to_existing_path("CLVK_LLVMSPIRV_BIN", join_path(bundle_dir, "llvm-spirv"));
-}
-
-std::vector<std::string> opencl_library_candidates() {
-    std::vector<std::string> candidates;
-    const auto module_dir = current_library_dir();
-    if (!module_dir.empty()) {
-        const char* bundle_dirs[] = {"opencl", "clvk", ""};
-        const char* library_names[] = {"libOpenCL.so", "libOpenCL.so.1", "libOpenCL.so.0.1"};
-        for (const char* bundle_dir : bundle_dirs) {
-            const auto base_dir = bundle_dir[0] == '\0' ? module_dir : join_path(module_dir, bundle_dir);
-            for (const char* library_name : library_names) {
-                candidates.push_back(join_path(base_dir, library_name));
-            }
-        }
-    }
-
-    candidates.push_back("libOpenCL.so");
-    candidates.push_back("libOpenCL.so.1");
-    candidates.push_back("/vendor/lib64/libOpenCL.so");
-    candidates.push_back("/vendor/lib/libOpenCL.so");
-    candidates.push_back("/system/vendor/lib64/libOpenCL.so");
-    candidates.push_back("/system/vendor/lib/libOpenCL.so");
-    return candidates;
 }
 #endif
 
@@ -222,14 +162,13 @@ OpenClApi::OpenClApi() {
 #if defined(_WIN32)
     OPENVINO_THROW("GFX OpenCL: Windows is not a supported OpenCL target for this plugin");
 #else
-    for (const auto& path : opencl_library_candidates()) {
-        if (has_path_separator(path) && !path_exists(path)) {
-            continue;
-        }
+    const auto module_dir = current_library_dir();
+    for (const auto& path : opencl_runtime_library_candidates(module_dir)) {
         m_library = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
         if (m_library) {
             m_library_path = path;
-            configure_bundled_clvk_tools(path);
+            m_bundle_info = describe_opencl_runtime_bundle(path, module_dir);
+            configure_opencl_runtime_bundle_tools(m_bundle_info);
             break;
         }
     }

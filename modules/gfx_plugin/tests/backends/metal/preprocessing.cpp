@@ -8,9 +8,11 @@
 
 #include "preprocessing/yuv_to_grey_tests.hpp"
 
-using GfxPreprocessingYUV2GreyTest = ov::test::utils::GfxBackendRequiredTests<ov::preprocess::PreprocessingYUV2GreyTest>;
+namespace ov::preprocess {
 
 INSTANTIATE_TEST_SUITE_P(smoke_Preprocessing,
-                         GfxPreprocessingYUV2GreyTest,
+                         PreprocessingYUV2GreyTest,
                          testing::Values(ov::test::utils::DEVICE_GFX),
-                         ov::preprocess::PreprocessingYUV2GreyTest::getTestCaseName);
+                         PreprocessingYUV2GreyTest::getTestCaseName);
+
+}  // namespace ov::preprocess

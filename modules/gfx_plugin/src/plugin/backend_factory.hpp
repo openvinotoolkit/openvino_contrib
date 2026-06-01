@@ -13,6 +13,20 @@
 namespace ov {
 namespace gfx_plugin {
 
+struct BackendRuntimeProvider {
+    GpuBackend backend = GpuBackend::Unknown;
+    std::unique_ptr<BackendState> (*create_state)(const ov::AnyMap& properties,
+                                                  const ov::SoPtr<ov::IRemoteContext>& context) = nullptr;
+    void (*register_profiling_trace_sinks)() = nullptr;
+};
+
+class BackendRuntimeProviderRegistration final {
+public:
+    explicit BackendRuntimeProviderRegistration(BackendRuntimeProvider provider);
+};
+
+void register_backend_runtime_provider(BackendRuntimeProvider provider);
+
 std::unique_ptr<BackendState> create_backend_state(GpuBackend backend,
                                                    const ov::AnyMap& properties,
                                                    const ov::SoPtr<ov::IRemoteContext>& context);

@@ -28,6 +28,7 @@ Then inspect the relevant code path:
 
 - plugin contract: `src/plugin/`
 - compiler contracts: `src/compiler/`
+- stage-placement contracts: `src/compiler/stage_placement.*`
 - tensor-layout contracts: `src/compiler/tensor_layout.*`
 - backend-neutral runtime: `src/runtime/`
 - kernel manifests and source artifacts: `src/kernel_ir/`
@@ -43,8 +44,8 @@ Then inspect the relevant code path:
 - Keep shared behavior in `src/plugin/`, `src/runtime/`, `src/kernel_ir/`, or
   `src/mlir/` unless the code is truly backend-specific.
 - Keep backend target, operation support, lowering plans, manifests,
-  executable bundles, tensor-layout plans, and artifact descriptors in
-  `src/compiler/`.
+  executable bundles, tensor-layout plans, stage-placement value objects, and
+  artifact descriptors in `src/compiler/`.
 - Keep Metal-specific code under `src/backends/metal/` and OpenCL-specific code
   under `src/backends/opencl/`.
 - Do not add CPU fallback for unsupported GPU stages.
@@ -71,6 +72,7 @@ For Metal placement, MPSRT, or MSL source changes, keep these aligned:
 
 - `src/compiler/*`
 - `src/backends/metal/compiler/`
+- `src/backends/metal/compiler/metal_stage_placement.*`
 - `src/runtime/gfx_stage_policy.*`
 - `src/runtime/view_only_stage.*`
 - `src/kernel_ir/gfx_kernel_manifest.hpp`
@@ -126,14 +128,16 @@ For OpenCL source-artifact work:
    registration, and source payload materialization through
    `opencl_kernel_artifacts.*`.
 3. Keep `src/backends/opencl/runtime/opencl_source_stage.*` generic.
-4. Add source id, entry point, role ABI, scalar ABI, source-static u32/f32
+4. Use `src/backends/opencl/runtime/opencl_runtime_bundle.*` for plugin-local
+   OpenCL/CLVK bundle discovery and bundled tool-path setup.
+5. Add source id, entry point, role ABI, scalar ABI, source-static u32/f32
    scalars, dynamic-shape metadata, constant materialization, chunk helpers,
    local size, and boolean-buffer rules to the artifact contract.
-5. For embedded `.cl` units, add the wrapper under
+6. For embedded `.cl` units, add the wrapper under
    `src/kernel_ir/opencl_kernels/`, the `gfx_embed_kernel_source()` entry in
    `src/CMakeLists.txt`, and the source/header entries in
    `cmake/GfxSources.cmake`.
-6. Update `tests/unit/gfx_opencl_source_artifacts_test.cpp` and
+7. Update `tests/unit/gfx_opencl_source_artifacts_test.cpp` and
    `tests/unit/gpu_backend_base_test.cpp` when compiler payload routing changes.
    Use the focused activation, elementwise, MatMul, and backend-architecture
    contract tests when generated kernel-unit registration changes. Keep
@@ -145,14 +149,15 @@ For OpenCL source-artifact work:
    and Pool2D source units, update
    `tests/unit/gfx_softmax_kernel_contract_test.cpp`,
    `tests/unit/gfx_pool_kernel_contract_test.cpp`, and the shared verifier.
-7. Add runtime coverage only when dynamic OpenCL loading, memory, command
+8. Add runtime coverage only when dynamic OpenCL loading, memory, command
    enqueue, or runtime-shape behavior changed.
 
 Current generated OpenCL routes include activation, elementwise, f32 MatMul,
 f32/f16 Interpolate, f32 reduction, boolean reduction, f32/f16 Softmax,
 dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D, ShapeOf, Tile,
-compare/select, logical-bool elementwise, and generated Concat/Split helpers.
-The current handwritten source exception is `opencl/baseline/transpose_f32`.
+Transpose, compare/select, logical-bool elementwise, and generated Concat/Split
+helpers. The current OpenCL kernel registry has no active handwritten
+kernel-unit exception.
 
 Standalone OpenCL Conv2D microbench tools are experiments. A result there is
 not plugin support until it is promoted through support probing, source
@@ -168,8 +173,8 @@ artifacts, runtime binding, and tests.
 3. Add lowering/source planning in `src/mlir/` or a transform in
    `src/transforms/`.
 4. Express the shared contract through compiler manifest/executable records,
-   stage policy, kernel manifests, runtime-value payloads, OpenCL artifacts, or
-   MPSRT/Apple MSL plans.
+   backend stage placement, shared stage policy, kernel manifests,
+   runtime-value payloads, OpenCL artifacts, or MPSRT/Apple MSL plans.
 5. Add backend code only at a real Metal/OpenCL boundary. Executable backend
    stages must consume their `RuntimeStageExecutableDescriptor`; do not
    reconstruct kernel source, artifact payload, or vendor descriptors from the
@@ -183,7 +188,9 @@ artifacts, runtime binding, and tests.
 
 ### Runtime Or Scheduling Change
 
-1. Inspect `gfx_stage_policy.*`, `gfx_parallelism.*`, and `gfx_partitioning.*`.
+1. Inspect `src/compiler/stage_placement.*`, backend
+   `*_stage_placement.*`, `gfx_stage_policy.*`, `gfx_parallelism.*`, and
+   `gfx_partitioning.*`.
 2. Check infer submission, immutable const caches, prepared binding reuse, and
    workspace allocation.
 3. Add or update `tests/unit/gfx_stage_policy_test.cpp`,

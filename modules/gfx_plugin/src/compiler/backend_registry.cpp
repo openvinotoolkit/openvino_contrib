@@ -8,9 +8,10 @@
 
 #include "backends/metal/compiler/metal_kernel_artifacts.hpp"
 #include "backends/metal/compiler/metal_operation_support.hpp"
+#include "backends/metal/compiler/metal_stage_placement.hpp"
 #include "backends/opencl/compiler/opencl_kernel_artifacts.hpp"
 #include "backends/opencl/compiler/opencl_operation_support.hpp"
-#include "runtime/gfx_backend_utils.hpp"
+#include "backends/opencl/compiler/opencl_stage_placement.hpp"
 #include "transforms/pipeline.hpp"
 
 namespace ov {
@@ -27,10 +28,12 @@ public:
       transforms::PipelineOptions pipeline_options = {},
       FusionCapabilities fusion_capabilities = {},
       PostOpFusionCapabilities post_op_fusion_capabilities = {},
+      std::shared_ptr<const StagePlacementPolicy> stage_placement_policy = {},
       KernelArtifactPayloadResolver artifact_payload_resolver = {})
       : m_id(target.backend_id()), m_target(std::move(target)),
         m_capabilities(m_target, std::move(operation_policy),
-                       fusion_capabilities, post_op_fusion_capabilities),
+                       fusion_capabilities, post_op_fusion_capabilities,
+                       std::move(stage_placement_policy)),
         m_legalizer(m_capabilities),
         m_kernel_registry(std::move(kernel_registry)),
         m_lowering_planner(m_target, m_kernel_registry),
@@ -101,24 +104,23 @@ FusionCapabilities make_metal_fusion_capabilities() {
 
 std::vector<std::shared_ptr<const BackendModule>> make_default_modules() {
   std::vector<std::shared_ptr<const BackendModule>> modules;
-  if (backend_supported(GpuBackend::Metal)) {
-    const auto target = BackendTarget::from_backend(GpuBackend::Metal);
-    modules.push_back(std::make_shared<StaticBackendModule>(
-        target, make_metal_operation_support_policy(),
-        make_metal_kernel_registry(target), make_attention_pipeline_options(),
-        make_metal_fusion_capabilities(),
-        make_post_op_fusion_capabilities(GpuBackend::Metal),
-        make_metal_kernel_artifact_payload_resolver()));
-  }
-  if (backend_supported(GpuBackend::OpenCL)) {
-    const auto target = BackendTarget::from_backend(GpuBackend::OpenCL);
-    modules.push_back(std::make_shared<StaticBackendModule>(
-        target, make_opencl_operation_support_policy(),
-        make_opencl_kernel_registry(target), transforms::PipelineOptions{},
-        FusionCapabilities{},
-        make_post_op_fusion_capabilities(GpuBackend::OpenCL),
-        make_opencl_kernel_artifact_payload_resolver()));
-  }
+  const auto metal_target = BackendTarget::from_backend(GpuBackend::Metal);
+  modules.push_back(std::make_shared<StaticBackendModule>(
+      metal_target, make_metal_operation_support_policy(),
+      make_metal_kernel_registry(metal_target), make_attention_pipeline_options(),
+      make_metal_fusion_capabilities(),
+      make_post_op_fusion_capabilities(GpuBackend::Metal),
+      make_metal_stage_placement_policy(),
+      make_metal_kernel_artifact_payload_resolver()));
+
+  const auto opencl_target = BackendTarget::from_backend(GpuBackend::OpenCL);
+  modules.push_back(std::make_shared<StaticBackendModule>(
+      opencl_target, make_opencl_operation_support_policy(),
+      make_opencl_kernel_registry(opencl_target), transforms::PipelineOptions{},
+      FusionCapabilities{},
+      make_post_op_fusion_capabilities(GpuBackend::OpenCL),
+      make_opencl_stage_placement_policy(),
+      make_opencl_kernel_artifact_payload_resolver()));
   return modules;
 }
 

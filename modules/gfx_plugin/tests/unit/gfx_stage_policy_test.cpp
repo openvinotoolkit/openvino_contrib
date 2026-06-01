@@ -2998,6 +2998,10 @@ TEST(GfxStagePolicyTest,
       transpose_plan.stage_manifest.custom_kernel.external_buffer_abi.roles,
       std::vector<GfxKernelBufferRole>({GfxKernelBufferRole::TensorInput,
                                         GfxKernelBufferRole::TensorOutput,
+                                        GfxKernelBufferRole::RuntimeParams,
+                                        GfxKernelBufferRole::RuntimeParams,
+                                        GfxKernelBufferRole::RuntimeParams,
+                                        GfxKernelBufferRole::RuntimeParams,
                                         GfxKernelBufferRole::RuntimeParams}));
 
   const auto tile_plan =

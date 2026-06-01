@@ -177,6 +177,20 @@ TEST_F(GfxBackendArchitectureContractTest,
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
+       CompilerRegistryContainsAllProductionBackendModules) {
+  const auto &registry = compiler::BackendRegistry::default_registry();
+  const auto metal = registry.resolve(GpuBackend::Metal);
+  const auto opencl = registry.resolve(GpuBackend::OpenCL);
+
+  ASSERT_TRUE(metal);
+  ASSERT_TRUE(opencl);
+  EXPECT_TRUE(metal->capabilities().stage_placement());
+  EXPECT_TRUE(opencl->capabilities().stage_placement());
+  EXPECT_EQ(metal->target().backend(), GpuBackend::Metal);
+  EXPECT_EQ(opencl->target().backend(), GpuBackend::OpenCL);
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
        SharedBackendValueObjectsDoNotDefaultToMetal) {
   EXPECT_EQ(static_cast<int>(GpuBackend::Metal), 0);
   EXPECT_EQ(static_cast<int>(GpuBackend::OpenCL), 1);
@@ -328,13 +342,12 @@ TEST_F(GfxBackendArchitectureContractTest,
   EXPECT_EQ(logical_reduce_unit.op_family(), "Reduction");
   EXPECT_FALSE(logical_reduce_unit.exception_contract().valid());
   const auto transpose_unit = opencl_registry.resolve_unit(
-      LoweringRouteKind::HandwrittenKernelException,
-      "opencl/baseline/transpose_f32");
+      LoweringRouteKind::GeneratedKernel, "opencl/generated/transpose_f32");
   ASSERT_TRUE(transpose_unit.valid());
-  EXPECT_EQ(transpose_unit.kind(), KernelUnitKind::HandwrittenException);
+  EXPECT_EQ(transpose_unit.kind(), KernelUnitKind::GeneratedKernel);
   EXPECT_EQ(transpose_unit.backend_domain(), "opencl");
   EXPECT_EQ(transpose_unit.op_family(), "Transpose");
-  EXPECT_TRUE(transpose_unit.exception_contract().valid());
+  EXPECT_FALSE(transpose_unit.exception_contract().valid());
   const auto split_unit = opencl_registry.resolve_unit(
       LoweringRouteKind::GeneratedKernel, "opencl/generated/split3_f32");
   ASSERT_TRUE(split_unit.valid());
@@ -372,6 +385,12 @@ TEST_F(GfxBackendArchitectureContractTest,
       LoweringRouteKind::GeneratedKernel, "metal/generated/activation");
   ASSERT_TRUE(metal_activation_unit.valid());
   EXPECT_EQ(metal_activation_unit.op_family(), "Activation");
+  const auto metal_transpose_unit = metal_registry.resolve_unit(
+      LoweringRouteKind::GeneratedKernel, "metal/generated/transpose_f32");
+  ASSERT_TRUE(metal_transpose_unit.valid());
+  EXPECT_EQ(metal_transpose_unit.kind(), KernelUnitKind::GeneratedKernel);
+  EXPECT_EQ(metal_transpose_unit.backend_domain(), "metal");
+  EXPECT_EQ(metal_transpose_unit.op_family(), "Transpose");
   const auto metal_pool_unit = metal_registry.resolve_unit(
       LoweringRouteKind::VendorPrimitive, "metal/vendor/mps_pool2d");
   ASSERT_TRUE(metal_pool_unit.valid());

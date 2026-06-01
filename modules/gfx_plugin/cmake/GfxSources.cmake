@@ -10,9 +10,11 @@ set(GFX_PLUGIN_SOURCES
     ${_gfx_src_dir}/backends/metal/compiler/metal_kernel_artifacts.cpp
     ${_gfx_src_dir}/backends/metal/compiler/metal_kernel_registry.cpp
     ${_gfx_src_dir}/backends/metal/compiler/metal_operation_support.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/metal_stage_placement.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_artifacts.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_registry.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_operation_support.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_stage_placement.cpp
     ${_gfx_src_dir}/compiler/backend_registry.cpp
     ${_gfx_src_dir}/compiler/backend_target.cpp
     ${_gfx_src_dir}/compiler/executable_bundle.cpp
@@ -23,6 +25,7 @@ set(GFX_PLUGIN_SOURCES
     ${_gfx_src_dir}/compiler/manifest.cpp
     ${_gfx_src_dir}/compiler/operation_legalizer.cpp
     ${_gfx_src_dir}/compiler/operation_support.cpp
+    ${_gfx_src_dir}/compiler/stage_placement.cpp
     ${_gfx_src_dir}/compiler/tensor_layout.cpp
     ${_gfx_src_dir}/plugin/backend_factory.cpp
     ${_gfx_src_dir}/plugin/compiled_model.cpp
@@ -47,8 +50,10 @@ set(GFX_PLUGIN_SOURCES
 set(GFX_PLUGIN_HEADERS
     ${_gfx_src_dir}/backends/metal/compiler/metal_kernel_artifacts.hpp
     ${_gfx_src_dir}/backends/metal/compiler/metal_operation_support.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/metal_stage_placement.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_artifacts.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_operation_support.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_stage_placement.hpp
     ${_gfx_src_dir}/compiler/backend_registry.hpp
     ${_gfx_src_dir}/compiler/backend_target.hpp
     ${_gfx_src_dir}/compiler/executable_bundle.hpp
@@ -59,6 +64,7 @@ set(GFX_PLUGIN_HEADERS
     ${_gfx_src_dir}/compiler/manifest.hpp
     ${_gfx_src_dir}/compiler/operation_legalizer.hpp
     ${_gfx_src_dir}/compiler/operation_support.hpp
+    ${_gfx_src_dir}/compiler/stage_placement.hpp
     ${_gfx_src_dir}/compiler/tensor_layout.hpp
     ${_gfx_src_dir}/plugin/backend_factory.hpp
     ${_gfx_src_dir}/plugin/backend_state.hpp
@@ -428,6 +434,7 @@ set(GFX_RUNTIME_OPENCL_SOURCES
     ${_gfx_src_dir}/backends/opencl/runtime/opencl_api.cpp
     ${_gfx_src_dir}/backends/opencl/runtime/opencl_buffer_manager.cpp
     ${_gfx_src_dir}/backends/opencl/runtime/opencl_program_cache.cpp
+    ${_gfx_src_dir}/backends/opencl/runtime/opencl_runtime_bundle.cpp
     ${_gfx_src_dir}/backends/opencl/runtime/opencl_runtime_kernel_loader.cpp
     ${_gfx_src_dir}/backends/opencl/runtime/opencl_source_stage.cpp
     ${_gfx_src_dir}/backends/opencl/runtime/memory_api.cpp
@@ -438,6 +445,7 @@ set(GFX_RUNTIME_OPENCL_HEADERS
     ${_gfx_src_dir}/backends/opencl/runtime/opencl_api.hpp
     ${_gfx_src_dir}/backends/opencl/runtime/opencl_buffer_manager.hpp
     ${_gfx_src_dir}/backends/opencl/runtime/opencl_program_cache.hpp
+    ${_gfx_src_dir}/backends/opencl/runtime/opencl_runtime_bundle.hpp
     ${_gfx_src_dir}/backends/opencl/runtime/opencl_runtime_kernel_loader.hpp
     ${_gfx_src_dir}/backends/opencl/runtime/opencl_source_stage.hpp
     ${_gfx_src_dir}/backends/opencl/runtime/memory_api.hpp

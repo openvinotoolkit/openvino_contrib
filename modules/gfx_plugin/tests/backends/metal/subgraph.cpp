@@ -8,9 +8,17 @@
 
 #include "shared_test_classes/subgraph/stateful_model.hpp"
 
-using GfxStatefulModelStateInLoopBody =
-    ov::test::utils::GfxBackendRequiredTests<ov::test::StatefulModelStateInLoopBody>;
+namespace ov::test {
 
+INSTANTIATE_TEST_SUITE_P(smoke, StaticShapeStatefulModel, ::testing::Values(ov::test::utils::DEVICE_GFX));
+INSTANTIATE_TEST_SUITE_P(smoke, StaticShapeTwoStatesModel, ::testing::Values(ov::test::utils::DEVICE_GFX));
+INSTANTIATE_TEST_SUITE_P(smoke, DynamicShapeStatefulModelDefault, ::testing::Values(ov::test::utils::DEVICE_GFX));
+INSTANTIATE_TEST_SUITE_P(smoke, DynamicShapeStatefulModelParam, ::testing::Values(ov::test::utils::DEVICE_GFX));
 INSTANTIATE_TEST_SUITE_P(smoke,
-                         GfxStatefulModelStateInLoopBody,
+                         DynamicShapeStatefulModelStateAsInp,
                          ::testing::Values(ov::test::utils::DEVICE_GFX));
+INSTANTIATE_TEST_SUITE_P(smoke,
+                         StatefulModelStateInLoopBody,
+                         ::testing::Values(ov::test::utils::DEVICE_GFX));
+
+}  // namespace ov::test

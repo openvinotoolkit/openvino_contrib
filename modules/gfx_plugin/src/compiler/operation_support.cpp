@@ -197,11 +197,13 @@ PostOpFusionCapabilities make_post_op_fusion_capabilities(GpuBackend backend) {
 BackendCapabilities::BackendCapabilities(BackendTarget target,
                                          std::shared_ptr<const OperationSupportPolicy> operation_policy,
                                          FusionCapabilities fusion_capabilities,
-                                         PostOpFusionCapabilities post_op_fusion_capabilities)
+                                         PostOpFusionCapabilities post_op_fusion_capabilities,
+                                         std::shared_ptr<const StagePlacementPolicy> stage_placement_policy)
     : m_target(std::move(target)),
       m_operation_policy(std::move(operation_policy)),
       m_fusion_capabilities(fusion_capabilities),
-      m_post_op_fusion_capabilities(post_op_fusion_capabilities) {}
+      m_post_op_fusion_capabilities(post_op_fusion_capabilities),
+      m_stage_placement_policy(std::move(stage_placement_policy)) {}
 
 OperationSupportResult BackendCapabilities::query_operation(const OperationSupportQuery& query) const {
     if (!query.node) {

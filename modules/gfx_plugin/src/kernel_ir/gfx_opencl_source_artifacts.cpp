@@ -357,22 +357,22 @@ __kernel void gfx_opencl_baseline_binary_const_f32(__global const float* tensor,
     dst[gid] = gfx_binary_f32(l, r, op);
 }
 
-__kernel void gfx_opencl_baseline_transpose_f32(__global const float* src,
-                                                __global float* dst,
-                                                uint count,
-                                                uint rank,
-                                                uint out_dim0,
-                                                uint out_dim1,
-                                                uint out_dim2,
-                                                uint out_dim3,
-                                                uint in_stride0,
-                                                uint in_stride1,
-                                                uint in_stride2,
-                                                uint in_stride3,
-                                                uint perm0,
-                                                uint perm1,
-                                                uint perm2,
-                                                uint perm3) {
+__kernel void gfx_opencl_generated_transpose_f32(__global const float* src,
+                                                 __global float* dst,
+                                                 uint count,
+                                                 uint rank,
+                                                 uint out_dim0,
+                                                 uint out_dim1,
+                                                 uint out_dim2,
+                                                 uint out_dim3,
+                                                 uint in_stride0,
+                                                 uint in_stride1,
+                                                 uint in_stride2,
+                                                 uint in_stride3,
+                                                 uint perm0,
+                                                 uint perm1,
+                                                 uint perm2,
+                                                 uint perm3) {
     const uint gid = get_global_id(0);
     if (gid >= count) {
         return;
@@ -1266,22 +1266,22 @@ __kernel void gfx_opencl_generated_concat4_f32(__global const float* src0,
 )CLC";
 
 constexpr const char *kOpenClTransposeF32Source = R"CLC(
-__kernel void gfx_opencl_baseline_transpose_f32(__global const float* src,
-                                                __global float* dst,
-                                                uint count,
-                                                uint rank,
-                                                uint out_dim0,
-                                                uint out_dim1,
-                                                uint out_dim2,
-                                                uint out_dim3,
-                                                uint in_stride0,
-                                                uint in_stride1,
-                                                uint in_stride2,
-                                                uint in_stride3,
-                                                uint perm0,
-                                                uint perm1,
-                                                uint perm2,
-                                                uint perm3) {
+__kernel void gfx_opencl_generated_transpose_f32(__global const float* src,
+                                                 __global float* dst,
+                                                 uint count,
+                                                 uint rank,
+                                                 uint out_dim0,
+                                                 uint out_dim1,
+                                                 uint out_dim2,
+                                                 uint out_dim3,
+                                                 uint in_stride0,
+                                                 uint in_stride1,
+                                                 uint in_stride2,
+                                                 uint in_stride3,
+                                                 uint perm0,
+                                                 uint perm1,
+                                                 uint perm2,
+                                                 uint perm3) {
     const uint gid = (uint)get_global_id(0);
     if (gid >= count) {
         return;
@@ -6129,7 +6129,8 @@ GfxKernelStageManifest make_opencl_source_manifest(
   } else if (family == GfxKernelStageFamily::Gemm) {
     kernel_family = GfxKernelFamily::MatMulBuffer;
   } else if (family == GfxKernelStageFamily::Resize ||
-             family == GfxKernelStageFamily::Layout) {
+             family == GfxKernelStageFamily::Layout ||
+             family == GfxKernelStageFamily::Transpose) {
     kernel_family = GfxKernelFamily::TransposePackND;
   } else if (family == GfxKernelStageFamily::ConcatSplit) {
     kernel_family = GfxKernelFamily::ConcatSplitGeneric;
@@ -6654,7 +6655,7 @@ GfxOpenClSourceArtifact make_opencl_source_artifact(
                  "gfx_opencl_baseline_binary_broadcast_f16") {
     artifact.source = kOpenClBinaryF16Source;
   } else if (artifact.artifact_ref.entry_point ==
-             "gfx_opencl_baseline_transpose_f32") {
+             "gfx_opencl_generated_transpose_f32") {
     artifact.source = kOpenClTransposeF32Source;
   } else if (artifact.artifact_ref.entry_point ==
              "gfx_opencl_baseline_slice_f32") {
@@ -7246,12 +7247,12 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
                        GfxOpenClSourceScalarArg::StaticU32);
     auto manifest = make_opencl_source_manifest(
         GfxKernelStageFamily::Transpose,
-        "opencl:baseline:Transpose:f32:rank" +
+        "opencl:generated:Transpose:f32:rank" +
             std::to_string(static_u32_scalars->front()),
-        "gfx_opencl_baseline_transpose_f32",
+        "gfx_opencl_generated_transpose_f32",
         /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
     return make_opencl_source_artifact(
-        std::move(manifest), "opencl/baseline/transpose_f32",
+        std::move(manifest), "opencl/generated/transpose_f32",
         std::move(scalar_args), {0}, GfxOpenClArtifactOp::Identity,
         GfxOpenClArtifactInputMode::Direct, 0.0f,
         std::move(*static_u32_scalars));
