@@ -74,6 +74,11 @@ Build-system notes:
   `src/backends/opencl/compiler/opencl_stage_placement.*`.
 - `src/compiler/stage_compiler_policy.*` adapts backend capabilities into the
   explicit policy passed into shared stage-policy and MLIR source-planning code.
+- `src/compiler/pipeline_stage_builder.*` owns compiled-pipeline descriptor
+  construction, node-to-stage mapping, and backend-policy handoff from
+  `CompiledModel`.
+- `src/compiler/pipeline_stage_fusion.*` owns compiler-side fusion selection,
+  fusion contracts, residual-add detection, and vendor attention planning.
 - `src/compiler/pipeline_stage_plan.*` owns compiled-pipeline input links,
   model-output flags, output-source metadata, and fused output aliases.
 - `src/compiler/memory_plan.*` owns compiler memory regions, lifetimes, alias
@@ -83,6 +88,13 @@ Build-system notes:
   fingerprints. It is not a persisted native backend cache in the current code.
 - `src/runtime/runtime_session.*` owns request-local descriptor binding tables
   and prepared executable objects.
+- `src/runtime/backend_stage_factory.hpp` is the backend-facing runtime stage
+  creation interface implemented by backend state.
+- `src/runtime/pipeline_stage_desc.hpp` owns the pipeline descriptor record
+  shared by compiled model, infer planning, and stateful helpers.
+- `src/runtime/pipeline_stage_materializer.*` owns runtime descriptor lookup,
+  descriptor-backed backend stage creation, vendor attention artifact
+  materialization, and fused attention sequence materialization.
 - `src/runtime/output_lifetime.hpp` and
   `src/runtime/fused_output_lifetime_plan.*` own fused-stage output lifetime and
   alias-storage planning from runtime memory descriptors.
@@ -129,16 +141,21 @@ Read in this order:
 4. `src/compiler/gfx_compiler_service.*`
 5. `src/compiler/backend_registry.*`
 6. `src/compiler/manifest.*` and `src/compiler/executable_bundle.*`
-7. `src/compiler/pipeline_stage_plan.*`
-8. `src/compiler/memory_plan.*` and `src/compiler/cache_envelope.*`
-9. `src/compiler/tensor_layout.*`
-10. `src/compiler/stage_placement.*` and
+7. `src/compiler/pipeline_stage_builder.*`
+8. `src/compiler/pipeline_stage_fusion.*`
+9. `src/compiler/pipeline_stage_plan.*`
+10. `src/compiler/memory_plan.*` and `src/compiler/cache_envelope.*`
+11. `src/compiler/tensor_layout.*`
+12. `src/compiler/stage_placement.*` and
    `src/compiler/stage_compiler_policy.*`
-11. `src/plugin/backend_factory.*`
-12. `src/plugin/compiled_model.cpp`
-13. `src/plugin/infer_pipeline.*`
-14. `src/plugin/infer_submission.*`
-15. the backend directory you are changing
+13. `src/runtime/backend_stage_factory.hpp`
+14. `src/runtime/pipeline_stage_desc.hpp`
+15. `src/runtime/pipeline_stage_materializer.*`
+16. `src/plugin/backend_factory.*`
+17. `src/plugin/compiled_model.cpp`
+18. `src/plugin/infer_pipeline.*`
+19. `src/plugin/infer_submission.*`
+20. the backend directory you are changing
 
 For runtime planning, also inspect:
 
@@ -148,9 +165,14 @@ For runtime planning, also inspect:
 - `src/compiler/tensor_layout.*`
 - `src/compiler/stage_placement.*`
 - `src/compiler/stage_compiler_policy.*`
+- `src/compiler/pipeline_stage_builder.*`
+- `src/compiler/pipeline_stage_fusion.*`
 - `src/compiler/pipeline_stage_plan.*`
 - `src/compiler/memory_plan.*`
 - `src/compiler/cache_envelope.*`
+- `src/runtime/backend_stage_factory.hpp`
+- `src/runtime/pipeline_stage_desc.hpp`
+- `src/runtime/pipeline_stage_materializer.*`
 - `src/runtime/gfx_stage_policy.*`
 - `src/runtime/runtime_session.*`
 - `src/runtime/fused_output_lifetime_plan.*`
@@ -224,8 +246,14 @@ For OpenCL source execution, start with:
    source-plan helper, or transform.
 4. Decide the shared runtime contract before adding backend code:
    - compiler manifest/executable descriptor for stage ABI and artifact payloads
+   - compiler pipeline-stage builder for stage descriptor construction and
+     node-to-stage mapping
+   - compiler pipeline-stage fusion plan for post-op, residual-add, attention,
+     and vendor attention fusion selection
    - compiler pipeline-stage I/O plan for input links, model-output flags, and
      output aliases
+   - runtime pipeline-stage materializer for descriptor-backed stage creation
+     and vendor attention artifact materialization
    - compiler memory plan for region ids, alias groups, lifetimes, and arenas
    - compiler tensor-layout plan for view-only/materialized layout contracts
    - fused-output lifetime plan for aliasing outputs inside a fused stage
@@ -260,7 +288,8 @@ Common operation families that need extra care:
 - view-style `Split` / `VariadicSplit` aliases
 - runtime-shape argument requirements carried by `KernelUnit`,
   `StageRecord`, artifact descriptors, and runtime descriptors
-- Metal MPS/MPSGraph vendor stages and MPSRT storage bridges
+- Metal MPS/MPSGraph vendor descriptors, vendor attention artifacts, and MPSRT
+  storage bridges
 - Metal custom MSL source plans with explicit kernel-buffer order
 - OpenCL source artifacts with scalar ABI, static u32/f32 scalars, constants,
   chunking, and boolean output padding
@@ -289,13 +318,17 @@ Common operation families that need extra care:
 Prefer these shared locations:
 
 - backend target, operation legality, route selection, manifest, executable
-  bundles, tensor-layout plans, stage-placement value objects, and artifact
-  descriptors: `src/compiler/`
+  bundles, pipeline-stage builders/fusion planners, tensor-layout plans,
+  stage-placement value objects, and artifact descriptors: `src/compiler/`
 - graph rewrites: `src/transforms/`
 - support probing and lowering: `src/mlir/`
 - stage fusion/precision/submission policy and parallelism:
   `src/runtime/gfx_stage_policy.*`, `gfx_parallelism.*`, and
   `gfx_partitioning.*`
+- descriptor-backed stage creation and pipeline descriptors:
+  `src/runtime/backend_stage_factory.hpp`,
+  `src/runtime/pipeline_stage_desc.hpp`, and
+  `src/runtime/pipeline_stage_materializer.*`
 - binding and manifest contracts: `src/kernel_ir/` and
   `src/mlir/gfx_backend_custom_kernel_adapter.*`
 - infer planning and submission: `src/plugin/infer_pipeline.*` and
@@ -423,6 +456,13 @@ descriptor helpers in `src/mlir/gfx_apple_vendor_descriptors.*`, and
 `mpsrt_vendor_primitive_stage.*` only if the existing runtime contract cannot
 express the new primitive. Do not rebuild vendor descriptors from request-time
 node checks.
+
+Fused vendor attention routes are compiler/runtime descriptor routes. Add or
+change the fusion contract in `src/compiler/pipeline_stage_fusion.*`, the
+backend artifact resolver in `src/backends/metal/compiler/metal_kernel_artifacts.*`,
+and the materialization path in `src/runtime/pipeline_stage_materializer.*`.
+Do not reintroduce the deleted standalone
+`src/backends/metal/runtime/mps_graph_attention_stage.*`.
 
 Generated Metal activation, elementwise, reduction, Softmax, and Transpose paths are
 planned through `src/mlir/msl_codegen_apple_msl_activation.*`,

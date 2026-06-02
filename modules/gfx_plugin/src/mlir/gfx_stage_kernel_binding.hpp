@@ -42,11 +42,11 @@ make_stage_compact_buffer_kernel_runtime_binding(size_t input_arg_count) {
 
 inline KernelRuntimeBindingState
 require_stage_backend_custom_kernel_runtime_binding(
-    bool is_opencl_backend, std::string_view stage_type,
+    GfxKernelBackendDomain backend_domain, std::string_view stage_type,
     std::string_view entry_point, const std::vector<int32_t> &scalar_args,
     std::string_view stage_name) {
   return require_backend_custom_kernel_runtime_binding(
-      is_opencl_backend, stage_type, entry_point, scalar_args, stage_name);
+      backend_domain, stage_type, entry_point, scalar_args, stage_name);
 }
 
 } // namespace gfx_plugin

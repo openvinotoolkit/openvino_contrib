@@ -1414,7 +1414,8 @@ plan_transpose_runtime_values(const RuntimeInputResolver &inputs,
 
 RuntimeInterpolatePlan plan_interpolate_runtime_values(
     const RuntimeInputResolver &inputs, const std::vector<GpuTensor *> &outputs,
-    const ov::Node &node, bool is_opencl_backend, std::string_view stage_name) {
+    const ov::Node &node, GfxKernelBackendDomain backend_domain,
+    std::string_view stage_name) {
   RuntimeInterpolatePlan plan;
   plan.input_shape = inputs.shape(0);
   if (plan.input_shape.empty()) {
@@ -1479,7 +1480,7 @@ RuntimeInterpolatePlan plan_interpolate_runtime_values(
   plan.values.value_shape = plan.values.output_shape;
   plan.values.output_type = node.get_output_element_type(0);
   plan.values.force_output_type = true;
-  plan.use_runtime_params = !is_opencl_backend;
+  plan.use_runtime_params = backend_domain != GfxKernelBackendDomain::OpenCl;
   plan.available = true;
   return plan;
 }

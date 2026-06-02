@@ -9,6 +9,7 @@
 #include <string_view>
 #include <vector>
 
+#include "kernel_ir/gfx_kernel_manifest.hpp"
 #include "openvino/core/axis_set.hpp"
 #include "openvino/core/node.hpp"
 #include "openvino/core/shape.hpp"
@@ -252,7 +253,8 @@ plan_transpose_runtime_values(const RuntimeInputResolver &inputs,
 
 RuntimeInterpolatePlan plan_interpolate_runtime_values(
     const RuntimeInputResolver &inputs, const std::vector<GpuTensor *> &outputs,
-    const ov::Node &node, bool is_opencl_backend, std::string_view stage_name);
+    const ov::Node &node, GfxKernelBackendDomain backend_domain,
+    std::string_view stage_name);
 
 RuntimeSoftmaxPlan
 plan_softmax_runtime_values(const RuntimeInputResolver &inputs,

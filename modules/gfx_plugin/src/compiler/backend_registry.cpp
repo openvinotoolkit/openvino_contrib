@@ -30,7 +30,9 @@ public:
       FusionCapabilities fusion_capabilities = {},
       PostOpFusionCapabilities post_op_fusion_capabilities = {},
       std::shared_ptr<const StagePlacementPolicy> stage_placement_policy = {},
-      KernelArtifactPayloadResolver artifact_payload_resolver = {})
+      KernelArtifactPayloadResolver artifact_payload_resolver = {},
+      PipelineVendorAttentionArtifactResolver vendor_attention_artifact_resolver =
+          {})
       : m_id(target.backend_id()), m_target(std::move(target)),
         m_capabilities(m_target, std::move(operation_policy),
                        fusion_capabilities, post_op_fusion_capabilities,
@@ -39,7 +41,9 @@ public:
         m_kernel_registry(std::move(kernel_registry)),
         m_lowering_planner(m_target, m_kernel_registry),
         m_pipeline_options(pipeline_options),
-        m_artifact_payload_resolver(std::move(artifact_payload_resolver)) {}
+        m_artifact_payload_resolver(std::move(artifact_payload_resolver)),
+        m_vendor_attention_artifact_resolver(
+            std::move(vendor_attention_artifact_resolver)) {}
 
   const std::string &id() const noexcept override { return m_id; }
 
@@ -75,6 +79,15 @@ public:
     return m_artifact_payload_resolver(descriptor, op);
   }
 
+  PipelineVendorAttentionArtifact materialize_vendor_attention_artifact(
+      uint64_t stage_record_key,
+      const PipelineVendorAttentionPlan &plan) const override {
+    if (!m_vendor_attention_artifact_resolver) {
+      return {};
+    }
+    return m_vendor_attention_artifact_resolver(stage_record_key, plan);
+  }
+
 private:
   std::string m_id;
   BackendTarget m_target;
@@ -84,6 +97,7 @@ private:
   LoweringPlanner m_lowering_planner;
   transforms::PipelineOptions m_pipeline_options;
   KernelArtifactPayloadResolver m_artifact_payload_resolver;
+  PipelineVendorAttentionArtifactResolver m_vendor_attention_artifact_resolver;
 };
 
 transforms::PipelineOptions make_attention_pipeline_options() {
@@ -125,7 +139,8 @@ std::vector<std::shared_ptr<const BackendModule>> make_default_modules() {
         make_attention_pipeline_options(), make_metal_fusion_capabilities(),
         make_post_op_fusion_capabilities(GpuBackend::Metal),
         make_metal_stage_placement_policy(),
-        make_metal_kernel_artifact_payload_resolver()));
+        make_metal_kernel_artifact_payload_resolver(),
+        make_metal_vendor_attention_artifact_resolver()));
   }
 
   if (backend_available_in_config(GpuBackend::OpenCL)) {

@@ -11,12 +11,10 @@
 
 #include "openvino/runtime/icompiled_model.hpp"
 
-#include "compiler/pipeline_stage_plan.hpp"
+#include "common/gpu_backend.hpp"
 #include "openvino/gfx_plugin/profiling.hpp"
-#include "runtime/execution_dispatcher.hpp"
 #include "runtime/gfx_precision.hpp"
-#include "runtime/gpu_stage.hpp"
-#include "runtime/output_lifetime.hpp"
+#include "runtime/pipeline_stage_desc.hpp"
 
 #include "openvino/gfx_plugin/properties.hpp"
 
@@ -32,17 +30,6 @@ class InferRequest;
 class GfxProfilingTrace;
 struct BackendState;
 struct RuntimeExecutableDescriptor;
-using OutputDesc = compiler::PipelineStageOutputDesc;
-
-struct PipelineStageDesc : compiler::PipelineStageIoPlan {
-  static constexpr size_t npos = compiler::PipelineStageIoPlan::npos;
-
-  std::unique_ptr<GpuStage> stage; // runtime prototype; prepared per request
-  using InputLink = compiler::PipelineStageInputLink;
-  using OutputAlias = compiler::PipelineStageOutputAlias;
-  using OutputLifetime = RuntimeOutputLifetime;
-  std::vector<OutputLifetime> output_lifetimes;
-};
 
 class CompiledModel : public ov::ICompiledModel {
 public:

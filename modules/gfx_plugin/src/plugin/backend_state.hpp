@@ -9,12 +9,11 @@
 #include <vector>
 
 #include "openvino/core/node.hpp"
-#include "openvino/core/shape.hpp"
 #include "openvino/core/any.hpp"
-#include "openvino/core/type/element_type.hpp"
 #include "openvino/runtime/itensor.hpp"
 #include "openvino/runtime/so_ptr.hpp"
 
+#include "runtime/backend_stage_factory.hpp"
 #include "runtime/gfx_profiler.hpp"
 #include "runtime/gpu_buffer.hpp"
 #include "runtime/gpu_buffer_manager.hpp"
@@ -22,20 +21,7 @@
 namespace ov {
 namespace gfx_plugin {
 
-class GpuStage;
-
 struct InferRequestState;
-struct RuntimeStageExecutableDescriptor;
-
-struct VendorAttentionStageSpec {
-    std::string name;
-    ov::element::Type element_type = ov::element::dynamic;
-    ov::Shape query_shape;
-    ov::Shape key_shape;
-    ov::Shape value_shape;
-    ov::Shape output_shape;
-    float scale = 1.0f;
-};
 
 struct BackendResources {
     GpuDeviceHandle device = nullptr;
@@ -43,9 +29,8 @@ struct BackendResources {
     GpuBufferManager* const_manager = nullptr;
 };
 
-struct BackendState {
+struct BackendState : BackendStageFactory {
     virtual ~BackendState() = default;
-    virtual GpuBackend backend() const = 0;
     virtual BackendResources resources() const = 0;
     // Return true only for backends that require a const buffer manager to build/compile stages.
     virtual bool requires_const_manager() const { return false; }
@@ -55,11 +40,7 @@ struct BackendState {
     virtual std::unique_ptr<GfxProfiler> create_profiler(const GfxProfilerConfig& /*cfg*/) const { return {}; }
     virtual std::unique_ptr<GpuStage> create_stage(
         const std::shared_ptr<const ov::Node>& node,
-        const RuntimeStageExecutableDescriptor* descriptor) const = 0;
-    virtual std::unique_ptr<GpuStage> create_vendor_attention_stage(
-        const VendorAttentionStageSpec& /*spec*/) const {
-        return {};
-    }
+        const RuntimeStageExecutableDescriptor* descriptor) const override = 0;
     virtual ov::SoPtr<ov::ITensor> get_tensor_override(
         const InferRequestState& /*state*/,
         size_t /*idx*/,

@@ -49,14 +49,17 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
    - configured backend availability generated from
      `src/compiler/backend_config.hpp.in`
    - compiler service, backend registry, lowering-plan, manifest, executable
-     bundle, pipeline-stage I/O plan, memory plan, cache envelope,
-     stage-placement policy, stage compiler policy, fused-output lifetime plan,
-     runtime session, or runtime descriptor behavior
+     bundle, pipeline-stage builder, pipeline-stage fusion selection,
+     pipeline-stage I/O plan, memory plan, cache envelope, stage-placement
+     policy, stage compiler policy, fused-output lifetime plan, runtime
+     pipeline-stage materializer, runtime session, or runtime descriptor
+     behavior
    - compiler-owned tensor-layout classification
    - public properties
    - `query_model()` or compile behavior
    - MLIR support/lowering/source planning
    - Metal placement, MPSRT records, MPS/MPSGraph descriptors,
+     vendor attention artifact materialization,
      `VendorDescriptor` payloads, generated activation/elementwise/reduction/
      Softmax/LogSoftmax MSL routes, `Swish` static/runtime beta contracts,
      Pool2D vendor-route-only behavior, or MSL binding
@@ -74,12 +77,14 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
    - backend-owned OpenCL payload materialization in
      `src/backends/opencl/compiler/opencl_kernel_artifacts.*`
    - removal or reintroduction risk around `BackendLowering`,
-     `metal_lowering`, or source-signature ABI fallback behavior
+     `metal_lowering`, `mps_graph_attention_stage`, or source-signature ABI
+     fallback behavior
    - backend stage placement, stage policy, parallelism, partitioning,
      submission, caches, or workspace allocation
    - stateful `ReadValue` / `Assign`
    - output aliasing, compiler-owned pipeline-stage I/O planning, fused-output
-     lifetimes, or source-node-aware output resolution
+     lifetimes, pipeline-stage materialization, or source-node-aware output
+     resolution
    - descriptor-backed view-only stages
    - compare-runner, profiling, trace sinks, microbench, or target-profile
      output

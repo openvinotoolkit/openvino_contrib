@@ -24,35 +24,41 @@ namespace compiler {
 
 class BackendModule {
 public:
-    virtual ~BackendModule() = default;
+  virtual ~BackendModule() = default;
 
-    virtual const std::string& id() const noexcept = 0;
-    virtual const BackendTarget& target() const noexcept = 0;
-    virtual const BackendCapabilities& capabilities() const noexcept = 0;
-    virtual const OperationLegalizer& legalizer() const noexcept = 0;
-    virtual const KernelRegistry& kernel_registry() const noexcept = 0;
-    virtual const LoweringPlanner& lowering_planner() const noexcept = 0;
-    virtual const transforms::PipelineOptions& pipeline_options() const noexcept = 0;
-    virtual std::shared_ptr<const KernelArtifactPayload> materialize_artifact_payload(
-        KernelArtifactDescriptor& descriptor,
-        const PlannedOperation& op) const = 0;
+  virtual const std::string &id() const noexcept = 0;
+  virtual const BackendTarget &target() const noexcept = 0;
+  virtual const BackendCapabilities &capabilities() const noexcept = 0;
+  virtual const OperationLegalizer &legalizer() const noexcept = 0;
+  virtual const KernelRegistry &kernel_registry() const noexcept = 0;
+  virtual const LoweringPlanner &lowering_planner() const noexcept = 0;
+  virtual const transforms::PipelineOptions &
+  pipeline_options() const noexcept = 0;
+  virtual std::shared_ptr<const KernelArtifactPayload>
+  materialize_artifact_payload(KernelArtifactDescriptor &descriptor,
+                               const PlannedOperation &op) const = 0;
+  virtual PipelineVendorAttentionArtifact materialize_vendor_attention_artifact(
+      uint64_t stage_record_key,
+      const PipelineVendorAttentionPlan &plan) const = 0;
 };
 
 class BackendRegistry final {
 public:
-    BackendRegistry();
-    explicit BackendRegistry(std::vector<std::shared_ptr<const BackendModule>> modules);
+  BackendRegistry();
+  explicit BackendRegistry(
+      std::vector<std::shared_ptr<const BackendModule>> modules);
 
-    static const BackendRegistry& default_registry();
+  static const BackendRegistry &default_registry();
 
-    std::shared_ptr<const BackendModule> resolve(GpuBackend backend) const;
-    std::shared_ptr<const BackendModule> resolve(const BackendTarget& target) const;
-    std::vector<BackendTarget> available_targets() const;
+  std::shared_ptr<const BackendModule> resolve(GpuBackend backend) const;
+  std::shared_ptr<const BackendModule>
+  resolve(const BackendTarget &target) const;
+  std::vector<BackendTarget> available_targets() const;
 
 private:
-    std::vector<std::shared_ptr<const BackendModule>> m_modules;
+  std::vector<std::shared_ptr<const BackendModule>> m_modules;
 };
 
-}  // namespace compiler
-}  // namespace gfx_plugin
-}  // namespace ov
+} // namespace compiler
+} // namespace gfx_plugin
+} // namespace ov

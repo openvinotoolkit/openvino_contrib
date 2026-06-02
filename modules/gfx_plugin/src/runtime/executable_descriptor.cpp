@@ -48,13 +48,14 @@ find_memory_region(const compiler::MemoryPlan &plan,
   return nullptr;
 }
 
-RuntimeTensorBindingContract make_tensor_binding_contract(
-    const compiler::TensorContract &contract,
-    const compiler::MemoryPlan &memory_plan) {
+RuntimeTensorBindingContract
+make_tensor_binding_contract(const compiler::TensorContract &contract,
+                             const compiler::MemoryPlan &memory_plan) {
   RuntimeTensorBindingContract binding;
   binding.logical_name = contract.logical_name;
   binding.memory_region_id = contract.memory_region_id;
-  binding.role = std::string(compiler::tensor_contract_role_to_string(contract.role));
+  binding.role =
+      std::string(compiler::tensor_contract_role_to_string(contract.role));
   binding.element_type = contract.element_type;
   binding.partial_shape = contract.partial_shape;
   binding.layout = contract.layout;
@@ -173,7 +174,8 @@ make_memory_plan_descriptor(const compiler::MemoryPlan &plan) {
   }
   descriptor.alias_groups.reserve(plan.alias_groups.size());
   for (const auto &group : plan.alias_groups) {
-    descriptor.alias_groups.push_back(make_memory_alias_group_descriptor(group));
+    descriptor.alias_groups.push_back(
+        make_memory_alias_group_descriptor(group));
   }
   descriptor.transient_arenas.reserve(plan.transient_arenas.size());
   for (const auto &arena : plan.transient_arenas) {
@@ -229,7 +231,8 @@ bool tensor_binding_matches(const RuntimeTensorBindingContract &binding,
       binding.lifetime_class != contract.lifetime_class) {
     return false;
   }
-  const auto *region = find_memory_region(memory_plan, contract.memory_region_id);
+  const auto *region =
+      find_memory_region(memory_plan, contract.memory_region_id);
   if (!region) {
     return false;
   }
@@ -309,8 +312,7 @@ void append_memory_plan_diagnostics(
   const size_t region_count =
       std::min(descriptor.regions.size(), memory_plan.regions.size());
   for (size_t i = 0; i < region_count; ++i) {
-    if (!memory_region_matches(descriptor.regions[i],
-                               memory_plan.regions[i])) {
+    if (!memory_region_matches(descriptor.regions[i], memory_plan.regions[i])) {
       result.diagnostics.push_back(
           "runtime executable descriptor memory region drift at " +
           std::to_string(i));
@@ -338,7 +340,7 @@ void append_memory_plan_diagnostics(
         "runtime executable descriptor transient arena count drift");
   }
   const size_t arena_count = std::min(descriptor.transient_arenas.size(),
-                                     memory_plan.transient_arenas.size());
+                                      memory_plan.transient_arenas.size());
   for (size_t i = 0; i < arena_count; ++i) {
     if (!transient_arena_matches(descriptor.transient_arenas[i],
                                  memory_plan.transient_arenas[i])) {
@@ -351,8 +353,7 @@ void append_memory_plan_diagnostics(
 
 } // namespace
 
-bool RuntimeMemoryPlanDescriptor::has_region(
-    std::string_view region_id) const {
+bool RuntimeMemoryPlanDescriptor::has_region(std::string_view region_id) const {
   return std::any_of(regions.begin(), regions.end(),
                      [&](const RuntimeMemoryRegionDescriptor &region) {
                        return region.region_id == region_id;

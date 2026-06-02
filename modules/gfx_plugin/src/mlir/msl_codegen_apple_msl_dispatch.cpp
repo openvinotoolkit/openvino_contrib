@@ -234,7 +234,7 @@ bool configure_msl_generated_custom_kernel_source(
     GfxKernelRuntimeBindingPlan &binding,
     GfxCustomKernelStagePlan *custom_kernel_plan) {
   binding = make_backend_custom_kernel_source_binding_plan(
-      source, /*is_opencl_backend=*/false, stage_type);
+      source, GfxKernelBackendDomain::AppleMsl, stage_type);
   if (!binding.valid || !binding.stage_manifest.custom_kernel.valid ||
       binding.stage_manifest.custom_kernel.entry_point.empty()) {
     return false;
@@ -385,12 +385,12 @@ make_apple_msl_configured_source_for_plan(KernelSource source,
   }
   if (!custom_kernel_binding.valid) {
     custom_kernel_binding = make_backend_custom_kernel_source_binding_plan(
-        configured_source, /*is_opencl_backend=*/false, stage_type,
+        configured_source, GfxKernelBackendDomain::AppleMsl, stage_type,
         source_entry);
   }
   if (!custom_kernel_binding.valid) {
     custom_kernel_binding = make_backend_custom_kernel_binding_plan(
-        /*is_opencl_backend=*/false, gfx_mpsrt_stage_type(stage_plan.stage),
+        GfxKernelBackendDomain::AppleMsl, gfx_mpsrt_stage_type(stage_plan.stage),
         source_entry);
   }
   const auto &custom_kernel =
@@ -465,7 +465,7 @@ static GfxMpsrtKernelSourcePlan configure_msl_kernel_source_plan_for_node(
           ? make_backend_custom_kernel_binding_plan_from_stage_manifest(
                 source_manifest)
           : make_backend_custom_kernel_binding_plan(
-                /*is_opencl_backend=*/false, stage_type, source.entry_point);
+                GfxKernelBackendDomain::AppleMsl, stage_type, source.entry_point);
   if (!msl_kernel_binding.valid) {
     return {};
   }

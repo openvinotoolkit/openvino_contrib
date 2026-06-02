@@ -42,15 +42,6 @@ void set_semantic_io_roles_from_external_roles(
   }
 }
 
-GfxKernelBackendDomain backend_domain_from_selector(bool is_opencl_backend) {
-  return is_opencl_backend ? GfxKernelBackendDomain::OpenCl
-                           : GfxKernelBackendDomain::AppleMsl;
-}
-
-std::string_view specialization_prefix_from_selector(bool is_opencl_backend) {
-  return is_opencl_backend ? "opencl:buffer:" : "apple_msl:buffer:";
-}
-
 } // namespace
 
 GfxKernelRuntimeBindingPlan
@@ -66,6 +57,25 @@ bool read_backend_custom_kernel_stage_manifest_from_module(
   return module &&
          detail::gfx_mpsrt_read_stage_manifest_attrs(module, manifest) &&
          is_backend_custom_kernel_manifest_for_domain(manifest, backend_domain);
+}
+
+std::string_view backend_custom_kernel_specialization_prefix(
+    GfxKernelBackendDomain backend_domain, GfxKernelStorageKind storage) {
+  OPENVINO_ASSERT(storage == GfxKernelStorageKind::Buffer,
+                  "GFX MLIR: custom-kernel specialization prefix is only "
+                  "defined for buffer storage");
+  switch (backend_domain) {
+  case GfxKernelBackendDomain::AppleMsl:
+    return "apple_msl:buffer:";
+  case GfxKernelBackendDomain::OpenCl:
+    return "opencl:buffer:";
+  case GfxKernelBackendDomain::AppleMps:
+  case GfxKernelBackendDomain::Unknown:
+  default:
+    OPENVINO_THROW("GFX MLIR: custom-kernel specialization prefix is not "
+                   "defined for backend domain ",
+                   gfx_kernel_backend_domain_name(backend_domain));
+  }
 }
 
 GfxKernelRuntimeBindingPlan make_backend_custom_kernel_binding_plan(
@@ -97,23 +107,22 @@ GfxKernelRuntimeBindingPlan make_backend_custom_kernel_binding_plan(
 }
 
 GfxKernelRuntimeBindingPlan
-make_backend_custom_kernel_binding_plan(bool is_opencl_backend,
+make_backend_custom_kernel_binding_plan(GfxKernelBackendDomain backend_domain,
                                         std::string_view stage_type,
                                         std::string_view entry_point) {
+  constexpr auto storage = GfxKernelStorageKind::Buffer;
   return make_backend_custom_kernel_binding_plan(
-      stage_type, entry_point, backend_domain_from_selector(is_opencl_backend),
-      GfxKernelStorageKind::Buffer,
-      specialization_prefix_from_selector(is_opencl_backend));
+      stage_type, entry_point, backend_domain, storage,
+      backend_custom_kernel_specialization_prefix(backend_domain, storage));
 }
 
 GfxKernelRuntimeBindingPlan make_backend_custom_kernel_binding_plan(
-    bool is_opencl_backend, std::string_view stage_type,
+    GfxKernelBackendDomain backend_domain, std::string_view stage_type,
     std::string_view entry_point, std::vector<int32_t> scalar_args) {
+  constexpr auto storage = GfxKernelStorageKind::Buffer;
   return make_backend_custom_kernel_binding_plan(
-      stage_type, entry_point, std::move(scalar_args),
-      backend_domain_from_selector(is_opencl_backend),
-      GfxKernelStorageKind::Buffer,
-      specialization_prefix_from_selector(is_opencl_backend));
+      stage_type, entry_point, std::move(scalar_args), backend_domain, storage,
+      backend_custom_kernel_specialization_prefix(backend_domain, storage));
 }
 
 GfxCustomKernelStagePlan make_backend_custom_kernel_stage_plan_view(
@@ -223,16 +232,16 @@ make_backend_custom_kernel_binding_plan_from_module_or_request(
 }
 
 GfxKernelRuntimeBindingPlan make_backend_custom_kernel_source_binding_plan(
-    const KernelSource &source, bool is_opencl_backend,
+    const KernelSource &source, GfxKernelBackendDomain backend_domain,
     std::string_view stage_type, std::string_view entry_point,
     std::vector<int32_t> scalar_args) {
   const std::string resolved_entry =
       entry_point.empty() ? source.entry_point : std::string(entry_point);
+  constexpr auto storage = GfxKernelStorageKind::Buffer;
   return make_backend_custom_kernel_binding_plan_from_module_or_request(
       source.module, stage_type, resolved_entry, std::move(scalar_args),
-      backend_domain_from_selector(is_opencl_backend),
-      GfxKernelStorageKind::Buffer,
-      specialization_prefix_from_selector(is_opencl_backend));
+      backend_domain, storage,
+      backend_custom_kernel_specialization_prefix(backend_domain, storage));
 }
 
 bool annotate_backend_custom_kernel_module_with_binding_plan(
@@ -260,19 +269,21 @@ bool configure_backend_custom_kernel_source_from_binding_plan(
 }
 
 bool configure_backend_custom_kernel_source_binding(
-    KernelSource &source, bool is_opencl_backend, std::string_view stage_type,
-    std::string_view entry_point, std::vector<int32_t> scalar_args) {
+    KernelSource &source, GfxKernelBackendDomain backend_domain,
+    std::string_view stage_type, std::string_view entry_point,
+    std::vector<int32_t> scalar_args) {
   auto plan = make_backend_custom_kernel_source_binding_plan(
-      source, is_opencl_backend, stage_type, entry_point,
+      source, backend_domain, stage_type, entry_point,
       std::move(scalar_args));
   return configure_backend_custom_kernel_source_from_binding_plan(source, plan);
 }
 
 void require_backend_custom_kernel_source_binding(
-    KernelSource &source, bool is_opencl_backend, std::string_view stage_type,
-    std::string_view entry_point, std::vector<int32_t> scalar_args) {
+    KernelSource &source, GfxKernelBackendDomain backend_domain,
+    std::string_view stage_type, std::string_view entry_point,
+    std::vector<int32_t> scalar_args) {
   OPENVINO_ASSERT(
-      configure_backend_custom_kernel_source_binding(source, is_opencl_backend,
+      configure_backend_custom_kernel_source_binding(source, backend_domain,
                                                      stage_type, entry_point,
                                                      std::move(scalar_args)),
       "GFX MLIR: failed to configure custom-kernel source binding for ",
@@ -280,11 +291,11 @@ void require_backend_custom_kernel_source_binding(
 }
 
 GfxKernelRuntimeBindingPlan require_backend_custom_kernel_binding_plan(
-    bool is_opencl_backend, std::string_view stage_type,
+    GfxKernelBackendDomain backend_domain, std::string_view stage_type,
     std::string_view entry_point, const std::vector<int32_t> &scalar_args,
     std::string_view stage_name) {
   auto plan = make_backend_custom_kernel_binding_plan(
-      is_opencl_backend, stage_type, entry_point, scalar_args);
+      backend_domain, stage_type, entry_point, scalar_args);
   OPENVINO_ASSERT(plan.valid, "GFX MLIR: ", stage_type, " / ", entry_point,
                   " custom-kernel runtime binding manifest is invalid for "
                   "stage ",
@@ -293,29 +304,30 @@ GfxKernelRuntimeBindingPlan require_backend_custom_kernel_binding_plan(
 }
 
 KernelRuntimeBindingState require_backend_custom_kernel_runtime_binding(
-    bool is_opencl_backend, std::string_view stage_type,
+    GfxKernelBackendDomain backend_domain, std::string_view stage_type,
     std::string_view entry_point, const std::vector<int32_t> &scalar_args,
     std::string_view stage_name) {
-  return require_backend_custom_kernel_binding_plan(is_opencl_backend,
+  return require_backend_custom_kernel_binding_plan(backend_domain,
                                                     stage_type, entry_point,
                                                     scalar_args, stage_name)
       .runtime_binding;
 }
 
 GfxKernelRuntimeBindingPlan annotate_required_backend_custom_kernel_binding(
-    mlir::ModuleOp module, bool is_opencl_backend, std::string_view stage_type,
-    std::string_view entry_point, const std::vector<int32_t> &scalar_args,
-    std::string_view stage_name) {
+    mlir::ModuleOp module, GfxKernelBackendDomain backend_domain,
+    std::string_view stage_type, std::string_view entry_point,
+    const std::vector<int32_t> &scalar_args, std::string_view stage_name) {
   auto plan = require_backend_custom_kernel_binding_plan(
-      is_opencl_backend, stage_type, entry_point, scalar_args, stage_name);
+      backend_domain, stage_type, entry_point, scalar_args, stage_name);
   annotate_backend_custom_kernel_module_with_binding_plan(module, plan);
   return plan;
 }
 
 GfxKernelRuntimeBindingPlan annotate_required_backend_custom_kernel_abi_binding(
-    mlir::ModuleOp module, bool is_opencl_backend, std::string_view stage_type,
-    std::string_view entry_point, std::string_view stage_name) {
-  auto plan = make_backend_custom_kernel_binding_plan(is_opencl_backend,
+    mlir::ModuleOp module, GfxKernelBackendDomain backend_domain,
+    std::string_view stage_type, std::string_view entry_point,
+    std::string_view stage_name) {
+  auto plan = make_backend_custom_kernel_binding_plan(backend_domain,
                                                       stage_type, entry_point);
   OPENVINO_ASSERT(plan.valid, "GFX MLIR: ", stage_type, " / ", entry_point,
                   " custom-kernel ABI binding manifest is invalid for stage ",
@@ -329,14 +341,14 @@ GfxKernelRuntimeBindingPlan annotate_required_backend_custom_kernel_abi_binding(
 
 GfxKernelRuntimeBindingPlan
 annotate_required_backend_custom_kernel_direct_io_binding(
-    mlir::ModuleOp module, bool is_opencl_backend, std::string_view stage_type,
-    std::string_view entry_point, size_t tensor_input_count,
-    size_t output_count, std::string_view stage_name) {
+    mlir::ModuleOp module, GfxKernelBackendDomain backend_domain,
+    std::string_view stage_type, std::string_view entry_point,
+    size_t tensor_input_count, size_t output_count, std::string_view stage_name) {
+  constexpr auto storage = GfxKernelStorageKind::Buffer;
   auto plan = make_backend_custom_kernel_direct_io_binding_plan(
       stage_type, entry_point, tensor_input_count, output_count,
-      backend_domain_from_selector(is_opencl_backend),
-      GfxKernelStorageKind::Buffer,
-      specialization_prefix_from_selector(is_opencl_backend));
+      backend_domain, storage,
+      backend_custom_kernel_specialization_prefix(backend_domain, storage));
   OPENVINO_ASSERT(plan.valid, "GFX MLIR: ", stage_type, " / ", entry_point,
                   " direct-IO custom-kernel runtime binding manifest is "
                   "invalid for stage ",
@@ -427,17 +439,6 @@ size_t require_backend_manifest_arg_count(
                  backend_domain == GfxKernelBackendDomain::OpenCl ? "OpenCL"
                                                                   : "Apple MSL",
                  " entry ", entry_point);
-}
-
-size_t require_backend_manifest_arg_count(mlir::ModuleOp module,
-                                          bool is_opencl_backend,
-                                          std::string_view entry_point,
-                                          std::string_view stage_name) {
-  return require_backend_manifest_arg_count(
-      module,
-      is_opencl_backend ? GfxKernelBackendDomain::OpenCl
-                        : GfxKernelBackendDomain::AppleMsl,
-      entry_point, stage_name);
 }
 
 } // namespace gfx_plugin

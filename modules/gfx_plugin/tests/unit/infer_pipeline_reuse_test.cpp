@@ -314,6 +314,7 @@ TEST(InferPipelineReuseTest,
 TEST(InferPipelineReuseTest, BuildPipelineCarriesCompilerOwnedOutputLifetimes) {
     PipelineStageDesc desc;
     desc.stage = std::make_unique<CountingStage>();
+    desc.runtime_stage_index = 0;
     desc.outputs.push_back(OutputDesc{{4}, ov::element::f32, false});
     PipelineStageDesc::OutputLifetime first_lifetime;
     first_lifetime.produced_at = 0;
@@ -335,6 +336,21 @@ TEST(InferPipelineReuseTest, BuildPipelineCarriesCompilerOwnedOutputLifetimes) {
     EXPECT_EQ(pipeline.front().output_lifetimes[0].produced_at, 0u);
     EXPECT_EQ(pipeline.front().output_lifetimes[0].last_used_at, 2u);
     EXPECT_FALSE(pipeline.front().output_lifetimes[0].requires_buffer);
+}
+
+TEST(InferPipelineReuseTest, BuildPipelineRejectsMissingRuntimeStageIndex) {
+    PipelineStageDesc desc;
+    desc.stage = std::make_unique<CountingStage>();
+    desc.outputs.push_back(OutputDesc{{4}, ov::element::f32, false});
+
+    std::vector<PipelineStageDesc> descs;
+    descs.push_back(std::move(desc));
+
+    EXPECT_ANY_THROW((void)build_infer_pipeline(descs,
+                                                nullptr,
+                                                nullptr,
+                                                false,
+                                                make_test_runtime_descriptor(1)));
 }
 
 TEST(InferPipelineReuseTest, ReusesClonedPipelineAndOutputHandlesAcrossPreparations) {

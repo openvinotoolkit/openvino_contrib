@@ -6,7 +6,6 @@
 #include <memory>
 
 #include "backends/metal/runtime/metal_memory.hpp"
-#include "backends/metal/runtime/mps_graph_attention_stage.hpp"
 #include "backends/metal/runtime/stage_factory.hpp"
 #include "plugin/backend_state.hpp"
 
@@ -44,10 +43,6 @@ struct MetalBackendState final : BackendState {
         const std::shared_ptr<const ov::Node>& node,
         const RuntimeStageExecutableDescriptor* descriptor) const override {
         return create_metal_stage(node, descriptor, device, command_queue);
-    }
-    std::unique_ptr<GpuStage> create_vendor_attention_stage(
-        const VendorAttentionStageSpec& spec) const override {
-        return create_metal_vendor_attention_stage(spec, device, command_queue);
     }
     ov::SoPtr<ov::ITensor> get_tensor_override(
         const InferRequestState& state,

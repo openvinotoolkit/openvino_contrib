@@ -284,7 +284,7 @@ GfxAppleStagePipelineResult run_opencl_manifest_only_stage_pipeline(
     }
 
     auto binding_plan = make_backend_custom_kernel_binding_plan(
-        /*is_opencl_backend=*/true, options.stage_type,
+        GfxKernelBackendDomain::OpenCl, options.stage_type,
         options.kernel_entry_point);
     if (!binding_plan.valid ||
         !annotate_backend_custom_kernel_module_with_binding_plan(module,

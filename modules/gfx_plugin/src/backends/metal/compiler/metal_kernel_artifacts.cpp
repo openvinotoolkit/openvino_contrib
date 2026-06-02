@@ -8,6 +8,7 @@
 #include <string>
 #include <utility>
 
+#include "compiler/pipeline_stage_fusion.hpp"
 #include "kernel_ir/gfx_kernel_source.hpp"
 #include "kernel_ir/metal_kernels/reduction_kernels.hpp"
 #include "kernel_ir/metal_kernels/softmax_kernels.hpp"
@@ -183,6 +184,63 @@ materialize_mpsgraph_sdpa_payload(KernelArtifactDescriptor &descriptor,
 }
 
 std::shared_ptr<const KernelArtifactPayload>
+materialize_fused_mpsgraph_sdpa_payload(
+    KernelArtifactDescriptor &descriptor,
+    const PipelineVendorAttentionPlan &plan) {
+  if (descriptor.kernel.backend_domain != "metal" ||
+      descriptor.payload_kind != KernelArtifactPayloadKind::VendorDescriptor ||
+      descriptor.kernel.kernel_id != kMetalMpsGraphSdpaVendorUnit) {
+    return {};
+  }
+  GfxAppleMpsVendorPrimitiveContract contract{};
+  if (!gfx_apple_make_mps_transposed_sdpa_contract(
+          plan.name, plan.element_type, plan.query_shape, plan.key_shape,
+          plan.value_shape, plan.output_shape, plan.scale, contract)) {
+    return {};
+  }
+  return materialize_vendor_payload(descriptor, "mps_sdpa",
+                                    std::move(contract));
+}
+
+KernelArtifactDescriptor make_mpsgraph_sdpa_vendor_attention_artifact_descriptor(
+    uint64_t stage_record_key, const PipelineVendorAttentionPlan &plan) {
+  KernelArtifactDescriptor descriptor;
+  descriptor.stage_record_key = stage_record_key;
+  descriptor.payload_kind = KernelArtifactPayloadKind::VendorDescriptor;
+  descriptor.kernel.kernel_id = kMetalMpsGraphSdpaVendorUnit;
+  descriptor.kernel.op_family = "VendorAttention";
+  descriptor.kernel.backend_domain = "metal";
+  descriptor.kernel.origin = KernelArtifactOrigin::VendorPrimitive;
+  descriptor.kernel.tensor_roles = {"tensor_input", "tensor_input",
+                                    "tensor_input", "tensor_output"};
+  descriptor.kernel.scalar_roles = {"scalar:f32"};
+  descriptor.kernel.layout_contract = "ndarray";
+  descriptor.kernel.precision_contract = plan.element_type.get_type_name();
+  descriptor.kernel.dispatch_contract = "mps_sdpa";
+  descriptor.kernel.requires_runtime_shape_args = false;
+  descriptor.entry_point = "mps_sdpa";
+  descriptor.compile_options_key = "metal_vendor_descriptor";
+  descriptor.abi_arg_count = 4;
+  descriptor.abi_output_arg_count = 1;
+  finalize_kernel_artifact_descriptor_identity(descriptor);
+  return descriptor;
+}
+
+PipelineVendorAttentionArtifact materialize_fused_mpsgraph_sdpa_artifact(
+    uint64_t stage_record_key, const PipelineVendorAttentionPlan &plan) {
+  PipelineVendorAttentionArtifact artifact;
+  artifact.descriptor =
+      make_mpsgraph_sdpa_vendor_attention_artifact_descriptor(stage_record_key,
+                                                             plan);
+  artifact.payload =
+      materialize_fused_mpsgraph_sdpa_payload(artifact.descriptor, plan);
+  if (!artifact.valid()) {
+    return {};
+  }
+  return artifact;
+}
+
+std::shared_ptr<const KernelArtifactPayload>
 resolve_metal_payload(KernelArtifactDescriptor &descriptor,
                       const PlannedOperation &op) {
   if (descriptor.kernel.backend_domain != "metal" || !op.source_node) {
@@ -308,6 +366,17 @@ bool GfxMetalVendorPrimitiveArtifactPayload::valid() const noexcept {
 KernelArtifactPayloadResolver make_metal_kernel_artifact_payload_resolver() {
   return [](KernelArtifactDescriptor &descriptor, const PlannedOperation &op) {
     return resolve_metal_payload(descriptor, op);
+  };
+}
+
+std::string_view metal_mpsgraph_sdpa_vendor_kernel_unit_id() noexcept {
+  return kMetalMpsGraphSdpaVendorUnit;
+}
+
+PipelineVendorAttentionArtifactResolver
+make_metal_vendor_attention_artifact_resolver() {
+  return [](uint64_t stage_record_key, const PipelineVendorAttentionPlan &plan) {
+    return materialize_fused_mpsgraph_sdpa_artifact(stage_record_key, plan);
   };
 }
 

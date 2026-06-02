@@ -16,6 +16,8 @@ namespace ov {
 namespace gfx_plugin {
 namespace compiler {
 
+struct PipelineVendorAttentionPlan;
+
 struct ExecutableStageRecord {
   uint64_t stage_record_key = 0;
   std::string kernel_unit_id;
@@ -87,6 +89,16 @@ struct KernelArtifactPayloadRecord {
   std::shared_ptr<const KernelArtifactPayload> payload;
 };
 
+struct PipelineVendorAttentionArtifact {
+  KernelArtifactDescriptor descriptor;
+  std::shared_ptr<const KernelArtifactPayload> payload;
+
+  bool valid() const noexcept {
+    return payload && payload->valid() && !descriptor.artifact_key.empty() &&
+           descriptor.payload_kind == KernelArtifactPayloadKind::VendorDescriptor;
+  }
+};
+
 struct ExecutableBundleVerificationResult {
   std::vector<std::string> diagnostics;
 
@@ -111,6 +123,12 @@ struct ExecutableBundle {
 using KernelArtifactPayloadResolver =
     std::function<std::shared_ptr<const KernelArtifactPayload>(
         KernelArtifactDescriptor &descriptor, const PlannedOperation &op)>;
+using PipelineVendorAttentionArtifactResolver =
+    std::function<PipelineVendorAttentionArtifact(
+        uint64_t stage_record_key, const PipelineVendorAttentionPlan &plan)>;
+
+void finalize_kernel_artifact_descriptor_identity(
+    KernelArtifactDescriptor &descriptor);
 
 class ExecutableBundleBuilder final {
 public:

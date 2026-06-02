@@ -318,10 +318,12 @@ std::vector<InferStage> build_infer_pipeline(const std::vector<PipelineStageDesc
     auto runtime_session = std::make_shared<RuntimeSession>(std::move(runtime_descriptor));
     for (size_t stage_id = 0; stage_id < descs.size(); ++stage_id) {
         const auto& desc = descs[stage_id];
-        const size_t runtime_stage_index =
-            desc.runtime_stage_index != PipelineStageDesc::npos
-                ? desc.runtime_stage_index
-                : stage_id;
+        OPENVINO_ASSERT(
+            desc.runtime_stage_index != PipelineStageDesc::npos,
+            "GFX: compiler-owned runtime stage index is required for pipeline "
+            "stage ",
+            stage_id);
+        const size_t runtime_stage_index = desc.runtime_stage_index;
         OPENVINO_ASSERT(runtime_stage_index < runtime_session->stage_count(),
                         "GFX: runtime executable descriptor stage index ",
                         runtime_stage_index,

@@ -4,9 +4,11 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "openvino/core/model.hpp"
@@ -67,10 +69,35 @@ struct PipelineStageIoPlan {
   std::vector<PipelineStageOutputAlias> output_aliases;
 };
 
+struct PipelineInputTransformPlan {
+  ov::Shape source_shape;
+  std::vector<int64_t> transpose_permutation;
+
+  bool has_transpose() const {
+    return !source_shape.empty() && !transpose_permutation.empty();
+  }
+};
+
+using PipelineInputTransformMap =
+    std::unordered_map<const ov::Node *,
+                       std::unordered_map<size_t, PipelineInputTransformPlan>>;
+
+struct PipelineAbsorbedInputTransformPlan {
+  PipelineInputTransformMap input_transforms;
+  std::unordered_set<const ov::Node *> absorbed_nodes;
+};
+
 ModelOutputPorts collect_model_output_ports(const ov::Model &model);
 
 bool is_model_output_port(const ModelOutputPorts &model_outputs,
                           const ov::Node *node, size_t port);
+
+bool is_executable_stage_node(const std::shared_ptr<ov::Node> &node);
+
+PipelineAbsorbedInputTransformPlan plan_absorbed_input_transforms(
+    const std::vector<std::shared_ptr<ov::Node>> &ordered_ops,
+    const ModelOutputPorts &model_outputs,
+    const std::unordered_set<const ov::Node *> &fused_nodes);
 
 class PipelineStagePlanBuilder {
 public:

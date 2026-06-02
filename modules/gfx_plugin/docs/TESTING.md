@@ -96,7 +96,8 @@ Add or update tests when changing:
 - `query_model()` or support probing
 - compiler backend registry, operation policies, lowering plans, manifests,
   executable bundles, runtime executable descriptors, or artifact payloads
-- compiler pipeline-stage I/O plans, memory plans, cache envelopes,
+- compiler pipeline-stage builder/fusion plans, pipeline-stage I/O plans,
+  memory plans, cache envelopes, runtime-stage materialization,
   runtime-session binding tables, fused-output lifetime plans, or prepared
   executable binding behavior
 - compiler-owned tensor-layout classification
@@ -136,10 +137,14 @@ For compiler-service, manifest, or executable-descriptor changes:
 - `tests/unit/gpu_backend_base_test.cpp`
 - `tests/unit/gfx_backend_architecture_contract_test.cpp` when backend target
   identity, kernel-unit registration, manifest contracts, memory plans, cache
-  envelopes, or runtime-session descriptor contracts move
+  envelopes, pipeline-stage builder/fusion ownership, runtime-stage
+  materializer ownership, or runtime-session descriptor contracts move
 - `tests/unit/plugin_tests.cpp` when `query_model()` or compile behavior moves
 - backend artifact tests when payload materialization reaches Metal or OpenCL
   runtime loaders
+- architecture-contract coverage when `BackendStageFactory`,
+  `PipelineStageBuildRequest`, `PipelineStageMaterializer`, or
+  `PipelineStageDesc` ownership changes
 - stage-placement contract coverage when backend domain/storage selection moves
 - Metal vendor-descriptor coverage when MPS/MPSGraph payloads reach
   `MpsrtVendorPrimitiveStage`
@@ -222,6 +227,9 @@ For Metal placement or MPSRT changes:
   `tests/unit/gpu_backend_base_test.cpp`
 - cover compiler-owned generated MSL and MPS/MPSGraph `VendorDescriptor`
   payloads in `tests/unit/gpu_backend_base_test.cpp`
+- cover fused vendor attention artifact materialization and the absence of the
+  deleted standalone `mps_graph_attention_stage.*` route in
+  `tests/unit/gfx_backend_architecture_contract_test.cpp`
 - cover generated reduction MSL source plans and payload routing in
   `tests/unit/gfx_reduction_kernel_contract_test.cpp`
 - cover generated Softmax/LogSoftmax MSL source plans and payload routing in

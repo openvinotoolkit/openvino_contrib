@@ -115,24 +115,39 @@ std::string make_kernel_abi_fingerprint(const KernelDescriptor &kernel) {
   return hex64(stable_hash64(material.str()));
 }
 
-std::string make_manifest_ref(const StageRecord &stage,
+std::string make_manifest_ref(uint64_t stage_record_key,
+                              std::string_view kernel_unit_id,
                               std::string_view abi_fingerprint) {
   std::ostringstream os;
-  os << stage.stable_record_key << ":" << stage.kernel_unit_id << ":"
-     << abi_fingerprint;
+  os << stage_record_key << ":" << kernel_unit_id << ":" << abi_fingerprint;
   return os.str();
+}
+
+std::string make_manifest_ref(const StageRecord &stage,
+                              std::string_view abi_fingerprint) {
+  return make_manifest_ref(stage.stable_record_key, stage.kernel_unit_id,
+                           abi_fingerprint);
+}
+
+std::string make_artifact_key(uint64_t stage_record_key,
+                              std::string_view backend_domain,
+                              std::string_view kernel_unit_id,
+                              KernelArtifactPayloadKind payload_kind,
+                              std::string_view abi_fingerprint) {
+  std::ostringstream material;
+  append_field(material, std::to_string(stage_record_key));
+  append_field(material, backend_domain);
+  append_field(material, kernel_unit_id);
+  append_field(material, kernel_artifact_payload_kind_to_string(payload_kind));
+  append_field(material, abi_fingerprint);
+  return hex64(stable_hash64(material.str()));
 }
 
 std::string make_artifact_key(const StageRecord &stage,
                               KernelArtifactPayloadKind payload_kind,
                               std::string_view abi_fingerprint) {
-  std::ostringstream material;
-  append_field(material, std::to_string(stage.stable_record_key));
-  append_field(material, stage.backend_domain);
-  append_field(material, stage.kernel_unit_id);
-  append_field(material, kernel_artifact_payload_kind_to_string(payload_kind));
-  append_field(material, abi_fingerprint);
-  return hex64(stable_hash64(material.str()));
+  return make_artifact_key(stage.stable_record_key, stage.backend_domain,
+                           stage.kernel_unit_id, payload_kind, abi_fingerprint);
 }
 
 KernelArtifactDescriptor make_artifact_descriptor(const StageRecord &stage) {
@@ -231,6 +246,18 @@ std::string_view kernel_artifact_payload_kind_to_string(
     return "opencl_source";
   }
   return "none";
+}
+
+void finalize_kernel_artifact_descriptor_identity(
+    KernelArtifactDescriptor &descriptor) {
+  descriptor.abi_fingerprint = make_kernel_abi_fingerprint(descriptor.kernel);
+  descriptor.manifest_ref = make_manifest_ref(descriptor.stage_record_key,
+                                              descriptor.kernel.kernel_id,
+                                              descriptor.abi_fingerprint);
+  descriptor.artifact_key = make_artifact_key(
+      descriptor.stage_record_key, descriptor.kernel.backend_domain,
+      descriptor.kernel.kernel_id, descriptor.payload_kind,
+      descriptor.abi_fingerprint);
 }
 
 ExecutableBundleVerificationResult ExecutableBundle::verify() const {

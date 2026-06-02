@@ -3347,7 +3347,7 @@ TEST(GfxMlir, RequiredOpenClCustomKernelBindingAnnotatesStageManifest) {
   const auto plan =
       ov::gfx_plugin::annotate_required_backend_custom_kernel_binding(
           module,
-          /*is_opencl_backend=*/true, "SquaredDifference", "eltwise_kernel",
+          ov::gfx_plugin::GfxKernelBackendDomain::OpenCl, "SquaredDifference", "eltwise_kernel",
           std::vector<int32_t>{7, 11}, "sqdiff_test");
 
   ASSERT_TRUE(plan.valid);
@@ -3769,7 +3769,7 @@ TEST(GfxMlir, TileBuilderAcceptsStaticRankRuntimeRepeatsForMslKernelAbi) {
 
   const auto binding =
       ov::gfx_plugin::annotate_required_backend_custom_kernel_binding(
-          module, /*is_opencl_backend=*/false, "Tile", "tile_kernel", {0, 3},
+          module, ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl, "Tile", "tile_kernel", {0, 3},
           "dynamic_tile_stage");
   ASSERT_TRUE(binding.valid);
   EXPECT_EQ(binding.runtime_binding.operand_kinds,
@@ -4167,7 +4167,7 @@ TEST(GfxMlir, StageKernelBindingHelpersOwnDirectAndCustomRuntimeBinding) {
 
   const auto custom =
       ov::gfx_plugin::require_stage_backend_custom_kernel_runtime_binding(
-          /*is_opencl_backend=*/false, "Tile", "tile_kernel", {16, 4},
+          ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl, "Tile", "tile_kernel", {16, 4},
           "tile_stage");
   EXPECT_EQ(custom.scalar_args, std::vector<int32_t>({16, 4}));
   EXPECT_EQ(custom.operand_kinds,
@@ -4802,7 +4802,7 @@ TEST(GfxMlir, MslSourcePlanKeepsSourceBindingWhenLegacySignatureIsWider) {
   const auto source_binding =
       ov::gfx_plugin::make_backend_custom_kernel_source_binding_plan(
           source,
-          /*is_opencl_backend=*/false, "Add", source.entry_point);
+          ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl, "Add", source.entry_point);
   ASSERT_TRUE(source_binding.valid);
 
   auto source_plan =

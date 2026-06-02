@@ -27,6 +27,8 @@ set(GFX_PLUGIN_SOURCES
     ${_gfx_src_dir}/compiler/memory_plan.cpp
     ${_gfx_src_dir}/compiler/operation_legalizer.cpp
     ${_gfx_src_dir}/compiler/operation_support.cpp
+    ${_gfx_src_dir}/compiler/pipeline_stage_builder.cpp
+    ${_gfx_src_dir}/compiler/pipeline_stage_fusion.cpp
     ${_gfx_src_dir}/compiler/pipeline_stage_plan.cpp
     ${_gfx_src_dir}/compiler/stage_compiler_policy.cpp
     ${_gfx_src_dir}/compiler/stage_placement.cpp
@@ -72,6 +74,8 @@ set(GFX_PLUGIN_HEADERS
     ${_gfx_src_dir}/compiler/memory_plan.hpp
     ${_gfx_src_dir}/compiler/operation_legalizer.hpp
     ${_gfx_src_dir}/compiler/operation_support.hpp
+    ${_gfx_src_dir}/compiler/pipeline_stage_builder.hpp
+    ${_gfx_src_dir}/compiler/pipeline_stage_fusion.hpp
     ${_gfx_src_dir}/compiler/pipeline_stage_plan.hpp
     ${_gfx_src_dir}/compiler/stage_compiler_policy.hpp
     ${_gfx_src_dir}/compiler/stage_placement.hpp
@@ -101,6 +105,7 @@ set(GFX_PLUGIN_HEADERS
 )
 
 set(GFX_RUNTIME_COMMON_HEADERS
+    ${_gfx_src_dir}/runtime/backend_stage_factory.hpp
     ${_gfx_src_dir}/runtime/executable_descriptor.hpp
     ${_gfx_src_dir}/runtime/runtime_session.hpp
     ${_gfx_src_dir}/runtime/fused_output_lifetime_plan.hpp
@@ -131,6 +136,8 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/gpu_tensor.hpp
     ${_gfx_src_dir}/runtime/gpu_types.hpp
     ${_gfx_src_dir}/runtime/output_lifetime.hpp
+    ${_gfx_src_dir}/runtime/pipeline_stage_desc.hpp
+    ${_gfx_src_dir}/runtime/pipeline_stage_materializer.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_codegen_backend.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_dispatch.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_manifest.hpp
@@ -170,6 +177,7 @@ set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/runtime/gfx_remote_tensor.cpp
     ${_gfx_src_dir}/runtime/gfx_stage_policy.cpp
     ${_gfx_src_dir}/runtime/gfx_tensor_utils.cpp
+    ${_gfx_src_dir}/runtime/pipeline_stage_materializer.cpp
 )
 
 set(GFX_OPENCL_KERNEL_ARTIFACT_HEADERS
@@ -371,7 +379,6 @@ set(GFX_RUNTIME_METAL_SOURCES
     ${_gfx_src_dir}/backends/metal/runtime/memory_ops.mm
     ${_gfx_src_dir}/backends/metal/runtime/metal_executor.cpp
     ${_gfx_src_dir}/backends/metal/runtime/metal_runtime_kernel_loader.cpp
-    ${_gfx_src_dir}/backends/metal/runtime/mps_graph_attention_stage.mm
     ${_gfx_src_dir}/backends/metal/runtime/mpsrt_vendor_primitive_stage.mm
     ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_context.mm
     ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_msl_kernel_loader.mm
@@ -440,7 +447,6 @@ set(GFX_RUNTIME_METAL_HEADERS
     ${_gfx_src_dir}/backends/metal/runtime/profiling/signpost_trace_sink.hpp
     ${_gfx_src_dir}/backends/metal/runtime/metal_executor.hpp
     ${_gfx_src_dir}/backends/metal/runtime/metal_runtime_kernel_loader.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/mps_graph_attention_stage.hpp
     ${_gfx_src_dir}/backends/metal/runtime/mpsrt_vendor_primitive_stage.hpp
     ${_gfx_src_dir}/backends/metal/runtime/stage_factory.hpp
 )

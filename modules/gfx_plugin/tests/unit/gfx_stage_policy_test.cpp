@@ -3143,7 +3143,7 @@ TEST(GfxStagePolicyTest,
            GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
            GfxKernelBufferRole::ScalarParam}));
   const auto range_binding = make_backend_custom_kernel_binding_plan(
-      /*is_opencl_backend=*/true, "Range", "range_kernel", {32});
+      GfxKernelBackendDomain::OpenCl, "Range", "range_kernel", {32});
   ASSERT_TRUE(range_binding.valid);
   EXPECT_EQ(range_binding.stage_manifest.backend_domain,
             GfxKernelBackendDomain::OpenCl);

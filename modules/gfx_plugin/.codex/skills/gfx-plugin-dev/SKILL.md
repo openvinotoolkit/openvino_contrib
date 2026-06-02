@@ -31,11 +31,17 @@ Then inspect the relevant code path:
 - common backend/device value types: `src/common/`
 - stage-placement contracts: `src/compiler/stage_placement.*`
 - stage compiler policy: `src/compiler/stage_compiler_policy.*`
+- pipeline-stage descriptor builder: `src/compiler/pipeline_stage_builder.*`
+- pipeline-stage fusion selection: `src/compiler/pipeline_stage_fusion.*`
 - pipeline-stage I/O contracts: `src/compiler/pipeline_stage_plan.*`
 - memory/cache compiler contracts: `src/compiler/memory_plan.*` and
   `src/compiler/cache_envelope.*`
 - tensor-layout contracts: `src/compiler/tensor_layout.*`
 - backend-neutral runtime: `src/runtime/`
+- backend stage factory and pipeline materialization:
+  `src/runtime/backend_stage_factory.hpp`,
+  `src/runtime/pipeline_stage_desc.hpp`, and
+  `src/runtime/pipeline_stage_materializer.*`
 - kernel manifests and source artifacts: `src/kernel_ir/`
 - MLIR builders and source planning: `src/mlir/`
 - graph rewrites: `src/transforms/`
@@ -49,8 +55,14 @@ Then inspect the relevant code path:
 - Keep shared behavior in `src/plugin/`, `src/runtime/`, `src/kernel_ir/`, or
   `src/mlir/` unless the code is truly backend-specific.
 - Keep backend target, operation support, lowering plans, pipeline-stage I/O
-  plans, manifests, executable bundles, tensor-layout plans, stage-placement
-  value objects, and artifact descriptors in `src/compiler/`.
+  plans, pipeline-stage builders, fusion selection, manifests, executable
+  bundles, tensor-layout plans, stage-placement value objects, and artifact
+  descriptors in `src/compiler/`.
+- Keep descriptor-backed stage creation, `PipelineStageDesc`, vendor attention
+  artifact materialization, and fused attention sequence materialization in
+  `src/runtime/backend_stage_factory.hpp`,
+  `src/runtime/pipeline_stage_desc.hpp`, and
+  `src/runtime/pipeline_stage_materializer.*`.
 - Keep compiler memory regions, alias groups, lifetimes, transient arenas, and
   cache-envelope fingerprints in `src/compiler/`; request code consumes runtime
   descriptors and `RuntimeSession`.
@@ -65,6 +77,12 @@ Then inspect the relevant code path:
 - Do not add CPU fallback for unsupported GPU stages.
 - Do not reintroduce removed backend routes or runtime defines to keep alternate
   paths alive.
+- Do not move pipeline construction/fusion logic back into `CompiledModel` or
+  backend request code.
+- Do not reintroduce the deleted standalone
+  `src/backends/metal/runtime/mps_graph_attention_stage.*`; MPSGraph attention
+  must flow through compiler-owned vendor artifacts and MPSRT vendor primitive
+  execution.
 - Do not reintroduce `BackendLowering`, `metal_lowering`, or source-signature
   scanning as ABI fallback. Generated/prebuilt executable routes must carry
   compiler-owned manifest ABI metadata.
@@ -89,9 +107,14 @@ For Metal placement, MPSRT, or MSL source changes, keep these aligned:
 
 - `src/compiler/*`
 - `src/compiler/stage_compiler_policy.*`
+- `src/compiler/pipeline_stage_builder.*`
+- `src/compiler/pipeline_stage_fusion.*`
 - `src/compiler/pipeline_stage_plan.*`
 - `src/compiler/memory_plan.*`
 - `src/runtime/fused_output_lifetime_plan.*`
+- `src/runtime/backend_stage_factory.hpp`
+- `src/runtime/pipeline_stage_desc.hpp`
+- `src/runtime/pipeline_stage_materializer.*`
 - `src/runtime/runtime_session.*`
 - `src/backends/metal/compiler/`
 - `src/backends/metal/compiler/metal_stage_placement.*`

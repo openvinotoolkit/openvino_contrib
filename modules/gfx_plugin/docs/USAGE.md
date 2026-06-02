@@ -226,10 +226,10 @@ creation, or runtime validation. They do not fall back to CPU or switch backend.
 
 ## Metal Backend
 
-The Metal backend may select Apple MPS/MPSGraph vendor stages or Apple MSL
-custom-kernel stages through shared stage policy. The request path uses explicit
-MPSRT resource records, storage bridges, prepared resources, and kernel-buffer
-orders when a typed MPSRT plan is present.
+The Metal backend may select Apple MPS/MPSGraph vendor primitive routes or
+Apple MSL custom-kernel stages through shared stage policy. The request path
+uses explicit MPSRT resource records, storage bridges, prepared resources, and
+kernel-buffer orders when a typed MPSRT plan is present.
 
 Compiler-owned Metal descriptors can also carry `VendorDescriptor` payloads for
 supported MPS/MPSGraph primitives such as MatMul/GEMM, Softmax, Pool2D,
