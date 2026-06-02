@@ -1,13 +1,18 @@
 #!/usr/bin/env python
+#
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """
-ov_infer.py -- Reusable CDPN OpenVINO Inference Class
+ov_infer.py - Reusable CDPN OpenVINO Inference Class
 
 End-to-end 6D pose estimation pipeline using OpenVINO
 
 Supports three model types (auto-detected by input count):
-    NN-only (1 input)  -- preprocessed_tensor only
-    EXTNN   (2 inputs) -- preprocessed_tensor + obj_extents
-    E2E     (5 inputs) -- image + bbox + obj_extents + bbox_wh + cam_K
+    NN-only (1 input)  - preprocessed_tensor only
+    EXTNN   (2 inputs) - preprocessed_tensor + obj_extents
+    E2E     (5 inputs) - image + bbox + obj_extents + bbox_wh + cam_K
 
 Supports both CPU and GPU execution:
   --cpu : Entire OV model runs on CPU
@@ -19,12 +24,12 @@ The EXTNN model (cdpn_stage3_extnn.xml/bin) contains:
   - Confidence min-max normalisation
 
 The E2E model (cdpn_stage3_e2e.xml/bin) additionally contains:
-  - CdpnPreprocess   -- image crop + resize + normalise (fused custom op)
-  - CdpnCoordDenorm  -- coordinate denormalisation (custom op)
-  - CdpnTransDecode  -- translation head decoding (custom op)
-  - CdpnPnpSolve     -- DLT PnP + RANSAC (custom op)
-  - Pose composition  -- [R|T] concat via standard opset
-  Full CPU or full GPU execution -- zero host-side compute in the E2E path.
+  - CdpnPreprocess   - image crop + resize + normalise (fused custom op)
+  - CdpnCoordDenorm  - coordinate denormalisation (custom op)
+  - CdpnTransDecode  - translation head decoding (custom op)
+  - CdpnPnpSolve     - DLT PnP + RANSAC (custom op)
+  - Pose composition - [R|T] concat via standard opset
+  Full CPU or full GPU execution - zero host-side compute in the E2E path.
 
 Usage:
     # As a library:
@@ -92,44 +97,48 @@ class CdpnOVInference:
         self.out_res = 64
         self.pad_ratio = 1.5
         self.mask_threshold = 0.5
+        self.uses_cdpn_custom_ops = self._model_uses_cdpn_custom_ops(model_path)
 
         # Compile model
         self.core = ov.Core()
 
         # Load CPU extension .so (for custom op evaluate())
-        if extension_path and os.path.isfile(extension_path):
-            self.core.add_extension(extension_path)
-            print('[CdpnOVInference] Loaded extension: {}'.format(
-                extension_path))
-        else:
-            # Auto-detect extension in standard location
-            ext_auto = os.path.join(
-                _cur, 'ov_plugins', 'build', 'cdpn_extension.so')
-            if os.path.isfile(ext_auto):
-                self.core.add_extension(ext_auto)
-                print('[CdpnOVInference] Auto-loaded extension: {}'.format(
-                    ext_auto))
+        if self.uses_cdpn_custom_ops:
+            ext_auto = os.path.join(_cur, 'ov_plugins', 'build', 'cdpn_extension.so')
+            ext_to_load = extension_path if extension_path and os.path.isfile(extension_path) else ext_auto
+            if os.path.isfile(ext_to_load):
+                self.core.add_extension(ext_to_load)
+                if extension_path and ext_to_load != extension_path:
+                    print('[CdpnOVInference] Resolved extension: {} -> {}'.format(
+                        extension_path, ext_to_load))
+                else:
+                    print('[CdpnOVInference] Loaded extension: {}'.format(ext_to_load))
+            elif extension_path:
+                print('[CdpnOVInference] WARNING: extension not found: {}'.format(
+                    extension_path))
 
-        print('[CdpnOVInference] OpenVINO {} -- device: {}'.format(
-            ov.__version__, device))
-
-        model = self.core.read_model(model_path)
 
         config = {}
+
+        if device == 'GPU' and self.uses_cdpn_custom_ops:
+            gpu_config = os.path.join(
+                _cur, 'ov_plugins', 'cdpn_gpu',
+                'cdpn_custom_gpu_kernels.xml')
+            if os.path.isfile(gpu_config):
+                self.core.set_property('GPU', {'CONFIG_FILE': gpu_config})
+                print('[CdpnOVInference] Loaded GPU custom kernels: {}'.format(
+                    gpu_config))
+
         if device == 'GPU':
             # Force FP32 inference precision on GPU
             config[ov.properties.hint.inference_precision()] = ov.Type.f32
             print('[CdpnOVInference] GPU: forcing FP32 inference precision')
-            # Register SimpleGPU custom kernels
-            gpu_kernel_xml = os.path.join(
-                _cur, 'ov_plugins', 'cdpn_gpu',
-                'cdpn_custom_gpu_kernels.xml')
-            if os.path.isfile(gpu_kernel_xml):
-                self.core.set_property('GPU', {'CONFIG_FILE': gpu_kernel_xml})
-                print('[CdpnOVInference] GPU: loaded custom kernel config: {}'.format(
-                    gpu_kernel_xml))
 
-        self.compiled = self.core.compile_model(model, device, config)
+        print('[CdpnOVInference] OpenVINO {} - device: {}'.format(
+            ov.__version__, device))
+
+        self.model = self.core.read_model(model_path)
+        self.compiled = self.core.compile_model(self.model, device, config)
 
         # Detect model type by checking output names
         output_names = set()
@@ -159,7 +168,6 @@ class CdpnOVInference:
                 abs(info['min_z']),
             ], dtype=np.float32)
 
-
     # public API
     def __call__(self, rgb_list, box_list, obj_list):
         """
@@ -176,11 +184,11 @@ class CdpnOVInference:
 
         Returns
         -------
-        results : list[dict] -- one dict per input, with keys:
+        results : list[dict] - one dict per input, with keys:
             'pose_rot'       : (3, 4) pose [R_pnp | T_pnp]
             'pose_trans'     : (3, 4) pose [R_pnp | T_trans]
             'R'              : (3, 3) rotation from PnP
-            'T_pnp'         : (3,)   translation from PnP
+            'T_pnp'          : (3,)   translation from PnP
             'T_trans'        : (3,)   translation from trans head (EXTNN)
             'pred_coor'      : (3, 64, 64) denormalised coordinate maps
             'pred_conf'      : (64, 64) confidence map
@@ -198,94 +206,30 @@ class CdpnOVInference:
         if self.model_type == 'extnn':
             return self._run_extnn(rgb_list, box_list, obj_list)
 
-        # NN-only: host preprocessing + OV forward
-        # Step 1: Preprocess batch (cv2 C++ backed)
-        inp_batch, center_batch, scale_batch, box_batch = self._preprocess_batch(
-            rgb_list, box_list)
+        # NN-only: batched forward through OV, host pre/post ---
+        if self.model_type == 'nn_only':
+            return self._run_nn_batched(rgb_list, box_list, obj_list)
 
-        # Step 2+3: Forward + Postprocess per sample
-        # The EXTNN model processes one sample at a time because
-        # obj_extents is per-sample.  Trans decode and PnP run in
-        # host code using zoom_in's crop centre (matches cuda_infer).
-        results = []
-
-        for i in range(num_samples):
-            obj_id = ref.obj2idx(obj_list[i])
-            obj_ext = np.array([
-                abs(self.obj_info[obj_id]['min_x']),
-                abs(self.obj_info[obj_id]['min_y']),
-                abs(self.obj_info[obj_id]['min_z']),
-            ], dtype=np.float32)
-
-            # OV forward pass (NN body or EXTNN graph)
-            inp_single = inp_batch[i:i+1]   # [1, 3, 256, 256]
-
-            # If the compiled model has a single input (NN-only), call it
-            # positionally and perform the coord denorm + confidence
-            # normalisation on the host to match the EXTNN decomposition.
-            if len(self.compiled.inputs) == 1:
-                ov_res = self.compiled(inp_single)  # positional call
-                # ov_res is usually list-like for multiple outputs; try
-                # positional access first, fallback to mapping by output
-                try:
-                    raw_rot = ov_res[0]       # [1, 4, 64, 64]
-                    raw_trans_arr = ov_res[1] # [1, 3]
-                except Exception:
-                    raw_rot = ov_res[self.compiled.output(0)]
-                    raw_trans_arr = ov_res[self.compiled.output(1)]
-
-                raw_rot0 = raw_rot[0]  # [4, 64, 64]
-                # Denormalise coords: channels 0-2 multiplied by obj extents
-                denorm_coords = raw_rot0[:3] * obj_ext[:, np.newaxis, np.newaxis]
-                # Confidence: min-max normalise channel 3
-                conf = raw_rot0[3]
-                cmin = conf.min()
-                crange = conf.max() - cmin
-                if crange < 1e-8:
-                    crange = 1.0
-                confidence = (conf - cmin) / crange
-                raw_trans = raw_trans_arr[0]
-            else:
-                # compiled graph already provides denorm + conf + raw_trans
-                ov_out = self.compiled({
-                    'preprocessed_tensor': inp_single,
-                    'obj_extents': obj_ext,
-                })
-                denorm_coords = ov_out[self.compiled.output(0)]   # [3, 64, 64]
-                confidence    = ov_out[self.compiled.output(1)]    # [64, 64]
-                raw_trans     = ov_out[self.compiled.output(2)]    # [3]
-
-            # Translation decode
-            T_trans = self._trans_decode(
-                raw_trans, box_batch[i], center_batch[i], scale_batch[i])
-
-            # PnP solve
-            R_pnp, T_pnp, num_corres, pnp_ok = self._pnp_solve(
-                denorm_coords, confidence, obj_ext,
-                center_batch[i], scale_batch[i])
-
-            # Compose pose matrices
-            pose_rot = np.concatenate(
-                [R_pnp, T_pnp.reshape(3, 1)], axis=1)
-            pose_trans = np.concatenate(
-                [R_pnp, T_trans.reshape(3, 1)], axis=1)
-
-            results.append({
-                'pose_rot': pose_rot,
-                'pose_trans': pose_trans,
-                'R': R_pnp,
-                'T_pnp': T_pnp,
-                'T_trans': T_trans,
-                'pred_coor': denorm_coords,
-                'pred_conf': confidence,
-                'num_corres': num_corres,
-                'pnp_success': pnp_ok,
-            })
-
-        return results
 
 
     # internal helpers
+
+    @staticmethod
+    def _model_uses_cdpn_custom_ops(model_path):
+        import xml.etree.ElementTree as ET
+        custom_ops = {
+            'CdpnPreprocess',
+            'CdpnPnpSolve',
+        }
+        try:
+            for _event, elem in ET.iterparse(model_path, events=('start',)):
+                if elem.tag == 'layer' and elem.get('type') in custom_ops:
+                    return True
+        except (OSError, ET.ParseError):
+            return False
+        return False
+
+
     @staticmethod
     def _xywh_to_center_scale(box, pad_ratio, scale_max):
         """Convert xywh bounding box to (centre, scale) for cropping."""
@@ -333,46 +277,161 @@ class CdpnOVInference:
         and PnP solve are all inside the OV graph.
         """
         num_samples = len(rgb_list)
-        results = []
+
+        if num_samples == 0:
+            return []
 
         cam_K_arr = np.array([
             self.camera_matrix[0, 0], self.camera_matrix[1, 1],
             self.camera_matrix[0, 2], self.camera_matrix[1, 2],
         ], dtype=np.float32)
 
+        # Pre-compute per-sample metadata
+        boxes = []
+        extents = []
+        bbox_whs = []
         for i in range(num_samples):
             obj_id = ref.obj2idx(obj_list[i])
-            obj_ext = np.array([
-                abs(self.obj_info[obj_id]['min_x']),
-                abs(self.obj_info[obj_id]['min_y']),
-                abs(self.obj_info[obj_id]['min_z']),
-            ], dtype=np.float32)
             box = np.asarray(box_list[i], dtype=np.float32)
-            bbox_wh = np.array([box[2], box[3]], dtype=np.float32)
+            boxes.append(box)
+            extents.append(self._obj_ext_cache[obj_id])
+            bbox_whs.append(np.array([box[2], box[3]], dtype=np.float32))
 
-            # E2E forward (everything in graph)
-            ov_out = self.compiled({
-                'image': rgb_list[i],        # u8 [H, W, 3]
-                'bbox': box,                  # f32 [4]
-                'obj_extents': obj_ext,       # f32 [3]
-                'bbox_wh': bbox_wh,           # f32 [2]
-                'cam_K': cam_K_arr,           # f32 [4]
-            })
-            pose_rot      = ov_out[self.compiled.output(0)]   # [3, 4]
-            pose_trans    = ov_out[self.compiled.output(1)]   # [3, 4]
-            denorm_coords = ov_out[self.compiled.output(2)]   # [3, 64, 64]
-            confidence    = ov_out[self.compiled.output(3)]   # [64, 64]
-            num_corres_v  = ov_out[self.compiled.output(4)]   # [1]
-            pnp_success_v = ov_out[self.compiled.output(5)]   # [1]
+        all_results = [None] * num_samples
+        h, w = rgb_list[0].shape[:2]
+        img_batch  = np.empty((num_samples, h, w, 3), dtype=np.uint8)
+        bbox_batch = np.empty((num_samples, 1, 1, 4), dtype=np.float32)
+        ext_batch  = np.empty((num_samples, 1, 1, 3), dtype=np.float32)
+        bwh_batch  = np.empty((num_samples, 1, 1, 2), dtype=np.float32)
+        camK_batch = np.empty((num_samples, 1, 1, 4), dtype=np.float32)
 
-            # Extract R, T from poses (no computation - just array slicing)
-            R_pnp = pose_rot[:, :3]                # [3, 3]
-            T_pnp = pose_rot[:, 3]                 # [3]
-            T_trans = pose_trans[:, 3]             # [3]
-            num_corres = int(num_corres_v[0])
-            pnp_ok = bool(pnp_success_v[0] > 0.5)
+        for idx in range(num_samples):
+            img_batch[idx]        = rgb_list[idx]
+            bbox_batch[idx, 0, 0] = boxes[idx]
+            ext_batch[idx, 0, 0]  = extents[idx]
+            bwh_batch[idx, 0, 0]  = bbox_whs[idx]
+            camK_batch[idx, 0, 0] = cam_K_arr
 
-            results.append({
+        ov_out = self.compiled({
+            'image': img_batch,
+            'bbox': bbox_batch,
+            'obj_extents': ext_batch,
+            'bbox_wh': bwh_batch,
+            'cam_K': camK_batch,
+        })
+
+        pose_rot_all      = ov_out[self.compiled.output(0)]
+        pose_trans_all    = ov_out[self.compiled.output(1)]
+        denorm_coords_all = ov_out[self.compiled.output(2)]
+        confidence_all    = ov_out[self.compiled.output(3)]
+        num_corres_all    = ov_out[self.compiled.output(4)]
+        pnp_success_all   = ov_out[self.compiled.output(5)]
+
+        for idx in range(num_samples):
+            pose_rot = pose_rot_all[idx]
+            pose_trans = pose_trans_all[idx]
+            all_results[idx] = {
+                'pose_rot': pose_rot,
+                'pose_trans': pose_trans,
+                'R': pose_rot[:, :3],
+                'T_pnp': pose_rot[:, 3],
+                'T_trans': pose_trans[:, 3],
+                'pred_coor': denorm_coords_all[idx],
+                'pred_conf': confidence_all[idx],
+                'num_corres': int(num_corres_all[idx, 0]),
+                'pnp_success': bool(pnp_success_all[idx, 0] > 0.5),
+            }
+
+        return all_results
+
+
+    def _run_extnn(self, rgb_list, box_list, obj_list):
+        """
+        EXTNN inference path: preprocess + NN + postprocess in graph,
+        PnP on host.
+
+        Graph inputs:
+          image [N,H,W,3] u8, bbox [N,1,1,4] f32, obj_extents [N,1,1,3] f32,
+          bbox_wh [N,1,1,2] f32, cam_K [N,1,1,4] f32
+
+        Graph outputs:
+          denorm_coords [N,3,64,64], confidence [N,1,64,64],
+          translation [N,1,1,3], crop_meta [N,1,1,5]
+
+        Host-side: PnP RANSAC using denorm_coords + confidence + crop_meta.
+        """
+        num_samples = len(rgb_list)
+        if num_samples == 0:
+            return []
+
+        cam_K_arr = np.array([
+            self.camera_matrix[0, 0], self.camera_matrix[1, 1],
+            self.camera_matrix[0, 2], self.camera_matrix[1, 2],
+        ], dtype=np.float32)
+
+        # Pre-compute per-sample metadata
+        boxes = []
+        extents = []
+        bbox_whs = []
+        obj_ext_list = []
+        for i in range(num_samples):
+            obj_id = ref.obj2idx(obj_list[i])
+            box = np.asarray(box_list[i], dtype=np.float32)
+            boxes.append(box)
+            extents.append(self._obj_ext_cache[obj_id])
+            bbox_whs.append(np.array([box[2], box[3]], dtype=np.float32))
+            obj_ext_list.append(self._obj_ext_cache[obj_id])
+
+        all_results = [None] * num_samples
+        h, w = rgb_list[0].shape[:2]
+        img_batch  = np.empty((num_samples, h, w, 3), dtype=np.uint8)
+        bbox_batch = np.empty((num_samples, 1, 1, 4), dtype=np.float32)
+        ext_batch  = np.empty((num_samples, 1, 1, 3), dtype=np.float32)
+        bwh_batch  = np.empty((num_samples, 1, 1, 2), dtype=np.float32)
+        camK_batch = np.empty((num_samples, 1, 1, 4), dtype=np.float32)
+        for idx in range(num_samples):
+            img_batch[idx] = rgb_list[idx]
+            bbox_batch[idx, 0, 0] = boxes[idx]
+            ext_batch[idx, 0, 0] = extents[idx]
+            bwh_batch[idx, 0, 0] = bbox_whs[idx]
+            camK_batch[idx, 0, 0] = cam_K_arr
+
+        ov_out = self.compiled({
+            'image': img_batch,
+            'bbox': bbox_batch,
+            'obj_extents': ext_batch,
+            'bbox_wh': bwh_batch,
+            'cam_K': camK_batch,
+        })
+        denorm_coords_all = ov_out[self.compiled.output(0)]
+        confidence_all    = ov_out[self.compiled.output(1)]
+        translation_all   = ov_out[self.compiled.output(2)]
+        crop_meta_all     = ov_out[self.compiled.output(3)]
+
+        # Per-sample PnP + pose composition (host)
+        for idx in range(num_samples):
+            denorm_coords   = denorm_coords_all[idx]       # [3, 64, 64]
+            confidence      = confidence_all[idx, 0]       # [64, 64]
+            T_trans         = translation_all[idx, 0, 0]   # [3]
+            crop_meta       = crop_meta_all[idx, 0, 0]     # [5]
+
+            c_w = crop_meta[0]
+            c_h = crop_meta[1]
+            s = crop_meta[2]
+            w_begin = crop_meta[3]
+            h_begin = crop_meta[4]
+
+            R_pnp, T_pnp, num_corres, pnp_ok = self._pnp_solve(
+                denorm_coords, confidence, obj_ext_list[idx],
+                np.array([c_w, c_h]), float(s),
+                w_begin=float(w_begin), h_begin=float(h_begin))
+
+            pose_rot = np.concatenate(
+                [R_pnp, T_pnp.reshape(3, 1)], axis=1)
+            pose_trans = np.concatenate(
+                [R_pnp, T_trans.reshape(3, 1)], axis=1)
+
+            all_results[idx] = {
                 'pose_rot': pose_rot,
                 'pose_trans': pose_trans,
                 'R': R_pnp,
@@ -382,76 +441,60 @@ class CdpnOVInference:
                 'pred_conf': confidence,
                 'num_corres': num_corres,
                 'pnp_success': pnp_ok,
-            })
+            }
 
-        return results
+        return all_results
 
 
-    def _run_extnn(self, rgb_list, box_list, obj_list):
+    def _run_nn_batched(self, rgb_list, box_list, obj_list):
         """
-        EXTNN inference path: preprocess + NN + postprocess in graph,
-        PnP on host.
+        NN-only batched inference: host preprocess -> single batched OV
+        forward -> host postprocess (coord denorm, trans decode, PnP).
 
-        Graph inputs:
-          image [1,H,W,3] u8, bbox [1,1,1,4] f32, obj_extents [1,1,1,3] f32,
-          bbox_wh [1,1,1,2] f32, cam_K [1,1,1,4] f32
-
-        Graph outputs:
-          denorm_coords [1,3,64,64], confidence [1,1,64,64],
-          translation [1,1,1,3], crop_meta [1,1,1,5]
-
-        Host-side: PnP RANSAC using denorm_coords + confidence + crop_meta.
+        The NN model has a single input [N, 3, 256, 256] and two outputs:
+          coord_maps [N, 4, 64, 64]  and  translation [N, 3].
+        Dynamic batch is supported by the exported IR.
         """
-        num_samples = len(rgb_list)
+        n = len(rgb_list)
+
+        # Step 1: Preprocess
+        inp_batch, c_batch, s_batch, box_batch = self._preprocess_batch(
+            rgb_list, box_list)
+
+        # Step 2: Single batched OV forward
+        ov_res = self.compiled(inp_batch)
+
+        raw_rot_all = ov_res[0]
+        raw_trans_all = ov_res[1]
+
+        # Step 3: Per-sample postprocess (host CPU)
         results = []
-
-        cam_K_arr = np.array([[[[
-            self.camera_matrix[0, 0], self.camera_matrix[1, 1],
-            self.camera_matrix[0, 2], self.camera_matrix[1, 2],
-        ]]]], dtype=np.float32)  # [1,1,1,4]
-
-        for i in range(num_samples):
+        for i in range(n):
             obj_id = ref.obj2idx(obj_list[i])
-            obj_ext = self._obj_ext_cache[obj_id]  # [3]
-            obj_ext_4d = obj_ext.reshape(1, 1, 1, 3)  # [1,1,1,3]
+            obj_ext = self._obj_ext_cache[obj_id]
 
-            box = np.asarray(box_list[i], dtype=np.float32)
-            bbox_4d = box.reshape(1, 1, 1, 4)   # [1,1,1,4]
-            bbox_wh_4d = np.array([[[[box[2], box[3]]]]], dtype=np.float32)
+            raw_rot = raw_rot_all[i]       # [4, 64, 64]
+            raw_trans = raw_trans_all[i]   # [3]
 
-            # Image: add batch dim [H,W,3] -> [1,H,W,3]
-            image_4d = rgb_list[i][np.newaxis, ...]  # [1,H,W,3]
+            # Coord denorm: channels 0-2 × obj extents
+            denorm_coords = raw_rot[:3] * obj_ext[:, np.newaxis, np.newaxis]
 
-            # OV forward pass
-            ov_out = self.compiled({
-                'image': image_4d,
-                'bbox': bbox_4d,
-                'obj_extents': obj_ext_4d,
-                'bbox_wh': bbox_wh_4d,
-                'cam_K': cam_K_arr,
-            })
-            denorm_coords_4d = ov_out[self.compiled.output(0)]  # [1,3,64,64]
-            confidence_4d    = ov_out[self.compiled.output(1)]  # [1,1,64,64]
-            translation_4d   = ov_out[self.compiled.output(2)]  # [1,1,1,3]
-            crop_meta_4d     = ov_out[self.compiled.output(3)]  # [1,1,1,5]
+            # Confidence: min-max normalise channel 3
+            conf = raw_rot[3]
+            cmin = conf.min()
+            crange = conf.max() - cmin
+            if crange < 1e-8:
+                crange = 1.0
+            confidence = (conf - cmin) / crange
 
-            # Squeeze to working shapes
-            denorm_coords = denorm_coords_4d[0]   # [3, 64, 64]
-            confidence = confidence_4d[0, 0]       # [64, 64]
-            T_trans = translation_4d[0, 0, 0]      # [3]
-            crop_meta = crop_meta_4d[0, 0, 0]      # [5]
+            # Translation decode
+            T_trans = self._trans_decode(
+                raw_trans, box_batch[i], c_batch[i], s_batch[i])
 
             # PnP solve (cv2 C++ backed)
-            c_w = crop_meta[0]
-            c_h = crop_meta[1]
-            crop_scale = crop_meta[2]
-            w_begin = crop_meta[3]
-            h_begin = crop_meta[4]
-
             R_pnp, T_pnp, num_corres, pnp_ok = self._pnp_solve(
                 denorm_coords, confidence, obj_ext,
-                np.array([c_w, c_h]), float(crop_scale),
-                w_begin=float(w_begin), h_begin=float(h_begin))
+                c_batch[i], s_batch[i])
 
             # Compose pose matrices
             pose_rot = np.concatenate(
@@ -480,14 +523,14 @@ class CdpnOVInference:
 
         Parameters
         ----------
-        raw_trans    : (3,) -- [ratio_delta_cx, ratio_delta_cy, ratio_depth]
-        box          : (4,) -- xywh bounding box
-        crop_center  : (2,) -- [c_w, c_h] crop centre from zoom_in
-        crop_scale   : float -- crop scale from zoom_in (int-truncated)
+        raw_trans    : (3,) - [ratio_delta_cx, ratio_delta_cy, ratio_depth]
+        box          : (4,) - xywh bounding box
+        crop_center  : (2,) - [c_w, c_h] crop centre from zoom_in
+        crop_scale   : float - crop scale from zoom_in (int-truncated)
 
         Returns
         -------
-        T_trans : (3,) -- [tx, ty, tz] in metres
+        T_trans : (3,) - [tx, ty, tz] in metres
         """
         ratio_delta_c = raw_trans[:2]
         ratio_depth = raw_trans[2]
@@ -506,13 +549,13 @@ class CdpnOVInference:
 
         Parameters
         ----------
-        denorm_coords : (3, 64, 64)  -- denormalised 3D coordinates
-        confidence    : (64, 64)     -- normalised confidence map
-        obj_ext       : (3,)         -- |min_x|, |min_y|, |min_z|
-        crop_center   : (2,)         -- crop centre [c_w, c_h]
-        crop_scale    : float        -- crop scale
-        w_begin       : float or None -- crop left edge (E2E: from crop_meta)
-        h_begin       : float or None -- crop top edge  (E2E: from crop_meta)
+        denorm_coords : (3, 64, 64)  - denormalised 3D coordinates
+        confidence    : (64, 64)     - normalised confidence map
+        obj_ext       : (3,)         - |min_x|, |min_y|, |min_z|
+        crop_center   : (2,)         - crop centre [c_w, c_h]
+        crop_scale    : float        - crop scale
+        w_begin       : float or None - crop left edge (E2E: from crop_meta)
+        h_begin       : float or None - crop top edge  (E2E: from crop_meta)
 
         Returns
         -------
@@ -650,7 +693,7 @@ def main():
         print('WARNING: No device specified, defaulting to CPU')
 
     print('=' * 70)
-    print('CdpnOVInference -- Batched Test Harness')
+    print('CdpnOVInference - Batched Test Harness')
     print('=' * 70)
 
     # 1. Load obj_info from dataset

@@ -35,7 +35,7 @@ python ov_export.py \
    --verify
 ```
 
-For extended nn (pre/post-processing till pnpsolve in OV graph), add `--extnn` and for end-to-end (full graph with custom ops through OV), add `--e2e --extension ov_plugins/build/cdpn_cpu/cdpn_cpu_extension.so`.
+For extended nn (pre/post-processing till pnpsolve in OV graph), add `--extnn --extension ov_plugins/build/cdpn_cpu/cdpn_extension.so` and for end-to-end (full graph with custom ops through OV), add `--e2e --extension ov_plugins/build/cdpn_cpu/cdpn_extension.so`.
 
 To run the inference through OpenVINO for lm_full dataset the following command can be used:
 ```bash

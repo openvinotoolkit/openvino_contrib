@@ -1,4 +1,9 @@
 #!/usr/bin/env python
+#
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """
 xpu_infer.py -- CDPN Inference Class (Intel XPU)
 

@@ -1,3 +1,6 @@
+// Copyright (C) 2018-2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 // CdpnPnpSolve GPU kernel - EPnP + RANSAC PnP solver.
 //
 // Self-contained single-work-item OpenCL kernel that implements the EPnP
@@ -8,17 +11,17 @@
 //   4. Output R, T, num_corres, pnp_success
 //
 // Tensors (4D BFYX):
-//   input0  denorm_coords: [1, 3, 64, 64]  f32
-//   input1  confidence:    [1, 1, 64, 64]  f32
-//   input2  obj_extents:   [1, 1, 1, 3]    f32
-//   input3  crop_meta:     [1, 1, 1, 5]    f32 (c_w, c_h, s, w_begin, h_begin)
-//   input4  cam_K:         [1, 1, 1, 4]    f32 (fx, fy, cx, cy)
-//   output0 R:             [1, 1, 3, 3]    f32
-//   output1 T_pnp:         [1, 1, 1, 3]    f32
-//   output2 num_corres:    [1, 1, 1, 1]    f32
-//   output3 pnp_success:   [1, 1, 1, 1]    f32
+//   input0  denorm_coords: [N, 3, 64, 64]  f32
+//   input1  confidence:    [N, 1, 64, 64]  f32
+//   input2  obj_extents:   [N, 1, 1, 3]    f32
+//   input3  crop_meta:     [N, 1, 1, 5]    f32 (c_w, c_h, s, w_begin, h_begin)
+//   input4  cam_K:         [N, 1, 1, 4]    f32 (fx, fy, cx, cy)
+//   output0 R:             [N, 1, 3, 3]    f32
+//   output1 T_pnp:         [N, 1, 1, 3]    f32
+//   output2 num_corres:    [N, 1, 1, 1]    f32
+//   output3 pnp_success:   [N, 1, 1, 1]    f32
 //
-// Single work-item kernel (global=1).
+// WorkSizes: global = "B", local = "1" from output0 [N,1,3,3].
 //
 // JIT defines from XML:
 //   MASK_THR     : float (0.5)
@@ -318,29 +321,61 @@ inline void svd3x3(float A[9], float U[9], float S[3], float Vt[9]) {
 // ===============================================================
 
 __kernel void cdpn_pnp_solve_gpu(
-    const __global float* restrict denorm_coords,  // [1,3,64,64]
-    const __global float* restrict confidence,      // [1,1,64,64]
-    const __global float* restrict obj_extents,     // [1,1,1,3]
-    const __global float* restrict crop_meta,       // [1,1,1,5]
-    const __global float* restrict cam_K,           // [1,1,1,4]
-    __global float* restrict R_out,                 // [1,1,3,3]
-    __global float* restrict T_out,                 // [1,1,1,3]
-    __global float* restrict num_corres_out,        // [1,1,1,1]
-    __global float* restrict pnp_success_out)       // [1,1,1,1]
+    const __global float* restrict denorm_coords,   // [N,3,64,64]
+    const __global float* restrict confidence,      // [N,1,64,64]
+    const __global float* restrict obj_extents,     // [N,1,1,3]
+    const __global float* restrict crop_meta,       // [N,1,1,5]
+    const __global float* restrict cam_K,           // [N,1,1,4]
+    __global float* restrict R_out,                 // [N,1,3,3]
+    __global float* restrict T_out,                 // [N,1,1,3]
+    __global float* restrict num_corres_out,        // [N,1,1,1]
+    __global float* restrict pnp_success_out)       // [N,1,1,1]
 {
-    // --- Default outputs ---
-    R_out[0] = 1; R_out[1] = 0; R_out[2] = 0;
-    R_out[3] = 0; R_out[4] = 1; R_out[5] = 0;
-    R_out[6] = 0; R_out[7] = 0; R_out[8] = 1;
-    T_out[0] = T_out[1] = T_out[2] = 0;
-    num_corres_out[0] = 0;
-    pnp_success_out[0] = 0;
+    const int n = get_global_id(0);  // batch index
+    if (n >= OUTPUT0_DIMS[0]) return;
 
-    const float fx = cam_K[0], fy = cam_K[1], cx = cam_K[2], cy = cam_K[3];
-    const float s = crop_meta[2];
-    const float w_begin = crop_meta[3], h_begin = crop_meta[4];
+    // Use GPU plugin pitch macros for correct buffer addressing.
+    // INPUT0 = denorm_coords [N,3,64,64],
+    // INPUT1 = confidence [N,1,64,64]
+    // INPUT2 = obj_extents [N,1,1,3],
+    // INPUT3 = crop_meta [N,1,1,5]
+    // INPUT4 = cam_K [N,1,1,4]
+    // OUTPUT0 = R [N,1,3,3],
+    // OUTPUT1 = T_pnp [N,1,1,3]
+    // OUTPUT2 = num_corres [N,1,1,1],
+    // OUTPUT3 = pnp_success [N,1,1,1]
+    const int denorm_base = n * INPUT0_PITCHES[0] + INPUT0_OFFSET;
+    const int conf_base   = n * INPUT1_PITCHES[0] + INPUT1_OFFSET;
+    const int ext_base    = n * INPUT2_PITCHES[0] + INPUT2_OFFSET;
+    const int meta_base   = n * INPUT3_PITCHES[0] + INPUT3_OFFSET;
+    const int camK_base   = n * INPUT4_PITCHES[0] + INPUT4_OFFSET;
+    const int R_base      = n * OUTPUT0_PITCHES[0] + OUTPUT0_OFFSET;
+    const int T_base      = n * OUTPUT1_PITCHES[0] + OUTPUT1_OFFSET;
+    const int nc_base     = n * OUTPUT2_PITCHES[0] + OUTPUT2_OFFSET;
+    const int ok_base     = n * OUTPUT3_PITCHES[0] + OUTPUT3_OFFSET;
+
+    // --- Default outputs ---
+    R_out[R_base + 0*OUTPUT0_PITCHES[2] + 0] = 1;
+    R_out[R_base + 0*OUTPUT0_PITCHES[2] + 1] = 0;
+    R_out[R_base + 0*OUTPUT0_PITCHES[2] + 2] = 0;
+    R_out[R_base + 1*OUTPUT0_PITCHES[2] + 0] = 0;
+    R_out[R_base + 1*OUTPUT0_PITCHES[2] + 1] = 1;
+    R_out[R_base + 1*OUTPUT0_PITCHES[2] + 2] = 0;
+    R_out[R_base + 2*OUTPUT0_PITCHES[2] + 0] = 0;
+    R_out[R_base + 2*OUTPUT0_PITCHES[2] + 1] = 0;
+    R_out[R_base + 2*OUTPUT0_PITCHES[2] + 2] = 1;
+    T_out[T_base + 0] = T_out[T_base + 1] = T_out[T_base + 2] = 0;
+    num_corres_out[nc_base] = 0;
+    pnp_success_out[ok_base] = 0;
+
+    const float fx = cam_K[camK_base + 0], fy = cam_K[camK_base + 1];
+    const float cx = cam_K[camK_base + 2], cy = cam_K[camK_base + 3];
+    const float s = crop_meta[meta_base + 2];
+    const float w_begin = crop_meta[meta_base + 3], h_begin = crop_meta[meta_base + 4];
     const float w_unit = s / (float)OUT_RES, h_unit = s / (float)OUT_RES;
-    const float ext_x = obj_extents[0], ext_y = obj_extents[1], ext_z = obj_extents[2];
+    const float ext_x = obj_extents[ext_base + 0];
+    const float ext_y = obj_extents[ext_base + 1];
+    const float ext_z = obj_extents[ext_base + 2];
     const float min_x = 0.001f * ext_x, min_y = 0.001f * ext_y, min_z = 0.001f * ext_z;
 
     // --- Build correspondences into local memory ---
@@ -353,11 +388,16 @@ __kernel void cdpn_pnp_solve_gpu(
     int n_pts = 0;
     for (int row = 0; row < OUT_RES; row++) {
         for (int col = 0; col < OUT_RES; col++) {
-            int idx = row * OUT_RES + col;
-            if (confidence[idx] < MASK_THR) continue;
-            float x3 = denorm_coords[0 * SPATIAL + idx];
-            float y3 = denorm_coords[1 * SPATIAL + idx];
-            float z3 = denorm_coords[2 * SPATIAL + idx];
+            // Use pitch macros for confidence [N,1,64,64]
+            float c = confidence[conf_base + row * INPUT1_PITCHES[2] + col * INPUT1_PITCHES[3]];
+            if (c < MASK_THR) continue;
+            // Use pitch macros for denorm_coords [N,3,64,64]
+            float x3 = denorm_coords[denorm_base + 0 * INPUT0_PITCHES[1]
+                                    + row * INPUT0_PITCHES[2] + col * INPUT0_PITCHES[3]];
+            float y3 = denorm_coords[denorm_base + 1 * INPUT0_PITCHES[1]
+                                    + row * INPUT0_PITCHES[2] + col * INPUT0_PITCHES[3]];
+            float z3 = denorm_coords[denorm_base + 2 * INPUT0_PITCHES[1]
+                                    + row * INPUT0_PITCHES[2] + col * INPUT0_PITCHES[3]];
             if (fabs(x3) < min_x && fabs(y3) < min_y && fabs(z3) < min_z)
                 continue;
             pts3d[n_pts*3]   = x3;
@@ -368,7 +408,7 @@ __kernel void cdpn_pnp_solve_gpu(
             n_pts++;
         }
     }
-    num_corres_out[0] = (float)n_pts;
+    num_corres_out[nc_base] = (float)n_pts;
     if (n_pts < 5) return;
 
     // --- EPnP function (operates on a subset in private mem) ---
@@ -989,7 +1029,11 @@ __kernel void cdpn_pnp_solve_gpu(
     }
 
     // --- Write final outputs ---
-    for (int i = 0; i < 9; i++) R_out[i] = best_R[i];
-    for (int i = 0; i < 3; i++) T_out[i] = best_t[i];
-    pnp_success_out[0] = 1.0f;
+    // R [N,1,3,3]
+    for (int r = 0; r < 3; r++)
+        for (int c = 0; c < 3; c++)
+            R_out[R_base + r * OUTPUT0_PITCHES[2] + c] = best_R[r * 3 + c];
+    // T [N,1,1,3]
+    for (int i = 0; i < 3; i++) T_out[T_base + i] = best_t[i];
+    pnp_success_out[ok_base] = 1.0f;
 }

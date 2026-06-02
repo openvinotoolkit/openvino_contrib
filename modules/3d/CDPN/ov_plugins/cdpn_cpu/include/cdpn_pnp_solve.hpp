@@ -1,3 +1,6 @@
+// Copyright (C) 2018-2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 // CdpnPnpSolve - EPnP + RANSAC PnP solver for CDPN E2E pipeline.
 //
 // Self-contained implementation of the EPnP algorithm
@@ -44,33 +47,31 @@ namespace CdpnExtension {
 
 class CdpnPnpSolve : public ov::op::Op {
 public:
-    OPENVINO_OP("CdpnPnpSolve");
+  OPENVINO_OP("CdpnPnpSolve");
 
-    CdpnPnpSolve() = default;
+  CdpnPnpSolve() = default;
 
-    CdpnPnpSolve(const ov::Output<ov::Node>& denorm_coords,
-                  const ov::Output<ov::Node>& confidence,
-                  const ov::Output<ov::Node>& obj_extents,
-                  const ov::Output<ov::Node>& crop_meta,
-                  const ov::Output<ov::Node>& cam_K,
-                  float mask_threshold = 0.5f,
-                  int out_res = 64,
-                  int max_iterations = 100,
-                  float reproj_threshold = 8.0f);
+  CdpnPnpSolve(const ov::Output<ov::Node> &denorm_coords,
+               const ov::Output<ov::Node> &confidence,
+               const ov::Output<ov::Node> &obj_extents,
+               const ov::Output<ov::Node> &crop_meta,
+               const ov::Output<ov::Node> &cam_K, float mask_threshold = 0.5f,
+               int out_res = 64, int max_iterations = 100,
+               float reproj_threshold = 8.0f);
 
-    void validate_and_infer_types() override;
-    std::shared_ptr<ov::Node> clone_with_new_inputs(
-        const ov::OutputVector& new_args) const override;
-    bool visit_attributes(ov::AttributeVisitor& visitor) override;
-    bool evaluate(ov::TensorVector& outputs,
-                  const ov::TensorVector& inputs) const override;
-    bool has_evaluate() const override;
+  void validate_and_infer_types() override;
+  std::shared_ptr<ov::Node>
+  clone_with_new_inputs(const ov::OutputVector &new_args) const override;
+  bool visit_attributes(ov::AttributeVisitor &visitor) override;
+  bool evaluate(ov::TensorVector &outputs,
+                const ov::TensorVector &inputs) const override;
+  bool has_evaluate() const override;
 
 private:
-    float m_mask_threshold = 0.5f;
-    int m_out_res = 64;
-    int m_max_iterations = 100;
-    float m_reproj_threshold = 8.0f;
+  float m_mask_threshold = 0.5f;
+  int m_out_res = 64;
+  int m_max_iterations = 100;
+  float m_reproj_threshold = 8.0f;
 };
 
-}  // namespace CdpnExtension
+} // namespace CdpnExtension

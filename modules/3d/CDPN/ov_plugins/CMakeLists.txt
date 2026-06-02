@@ -1,3 +1,6 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 # CDPN OpenVINO Extension - top-level CMake.
 #
 #   cdpn_cpu/  - C++ extension .so (ov::Op subclasses with evaluate())
@@ -20,8 +23,6 @@ find_package(OpenVINO REQUIRED COMPONENTS Runtime)
 
 set(SRC
     cdpn_cpu/src/cdpn_preprocess.cpp
-    cdpn_cpu/src/cdpn_coord_denorm.cpp
-    cdpn_cpu/src/cdpn_trans_decode.cpp
     cdpn_cpu/src/cdpn_pnp_solve.cpp
     cdpn_cpu/src/ov_extension.cpp
 )

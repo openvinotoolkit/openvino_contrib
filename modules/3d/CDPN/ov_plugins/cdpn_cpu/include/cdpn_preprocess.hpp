@@ -1,3 +1,6 @@
+// Copyright (C) 2018-2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 // CdpnPreprocess - image crop + resize + normalise + HWC->CHW.
 //
 // Steps:
@@ -29,30 +32,27 @@ namespace CdpnExtension {
 
 class CdpnPreprocess : public ov::op::Op {
 public:
-    OPENVINO_OP("CdpnPreprocess");
+  OPENVINO_OP("CdpnPreprocess");
 
-    CdpnPreprocess() = default;
+  CdpnPreprocess() = default;
 
-    CdpnPreprocess(const ov::Output<ov::Node>& image,
-                   const ov::Output<ov::Node>& bbox,
-                   int inp_res = 256,
-                   float pad_ratio = 1.5f,
-                   int im_w = 640,
-                   int im_h = 480);
+  CdpnPreprocess(const ov::Output<ov::Node> &image,
+                 const ov::Output<ov::Node> &bbox, int inp_res = 256,
+                 float pad_ratio = 1.5f, int im_w = 640, int im_h = 480);
 
-    void validate_and_infer_types() override;
-    std::shared_ptr<ov::Node> clone_with_new_inputs(
-        const ov::OutputVector& new_args) const override;
-    bool visit_attributes(ov::AttributeVisitor& visitor) override;
-    bool evaluate(ov::TensorVector& outputs,
-                  const ov::TensorVector& inputs) const override;
-    bool has_evaluate() const override;
+  void validate_and_infer_types() override;
+  std::shared_ptr<ov::Node>
+  clone_with_new_inputs(const ov::OutputVector &new_args) const override;
+  bool visit_attributes(ov::AttributeVisitor &visitor) override;
+  bool evaluate(ov::TensorVector &outputs,
+                const ov::TensorVector &inputs) const override;
+  bool has_evaluate() const override;
 
 private:
-    int m_inp_res = 256;
-    float m_pad_ratio = 1.5f;
-    int m_im_w = 640;
-    int m_im_h = 480;
+  int m_inp_res = 256;
+  float m_pad_ratio = 1.5f;
+  int m_im_w = 640;
+  int m_im_h = 480;
 };
 
-}  // namespace CdpnExtension
+} // namespace CdpnExtension

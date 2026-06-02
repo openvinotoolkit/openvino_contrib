@@ -1,3 +1,6 @@
+// Copyright (C) 2018-2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 #include "cdpn_preprocess.hpp"
 
 #include <algorithm>
@@ -22,11 +25,12 @@ CdpnPreprocess::CdpnPreprocess(const ov::Output<ov::Node>& image,
 }
 
 void CdpnPreprocess::validate_and_infer_types() {
-    set_output_type(0, ov::element::f32,
-                    ov::PartialShape({1, 3, m_inp_res, m_inp_res}));
-    // crop_meta padded to 4D BFYX
-    set_output_type(1, ov::element::f32,
-                    ov::PartialShape({1, 1, 1, 5}));
+  // Propagate batch dim from image input (dynamic or static)
+  auto batch = get_input_partial_shape(0)[0];
+  set_output_type(0, ov::element::f32,
+                  ov::PartialShape({batch, 3, m_inp_res, m_inp_res}));
+  // crop_meta padded to 4D BFYX
+  set_output_type(1, ov::element::f32, ov::PartialShape({batch, 1, 1, 5}));
 }
 
 std::shared_ptr<ov::Node> CdpnPreprocess::clone_with_new_inputs(
@@ -50,59 +54,88 @@ bool CdpnPreprocess::evaluate(ov::TensorVector& outputs,
     // --- Read inputs ---
     // Image may be 3D [H,W,3] or 4D [1,H,W,3]
     const auto img_shape = inputs[0].get_shape();
-    int H, W;
+    int N, H, W;
     if (img_shape.size() == 4) {
-        H = static_cast<int>(img_shape[1]);
-        W = static_cast<int>(img_shape[2]);
+      N = static_cast<int>(img_shape[0]);
+      H = static_cast<int>(img_shape[1]);
+      W = static_cast<int>(img_shape[2]);
     } else {
-        H = static_cast<int>(img_shape[0]);
-        W = static_cast<int>(img_shape[1]);
+      N = 1;
+      H = static_cast<int>(img_shape[0]);
+      W = static_cast<int>(img_shape[1]);
     }
-    const auto* img = inputs[0].data<uint8_t>();
-    const auto* bbox = inputs[1].data<float>();
+    const auto *img_base = inputs[0].data<uint8_t>();
+    const auto *bbox_base = inputs[1].data<float>();
 
     const int res = m_inp_res;
     const int R2 = res * res;
+    const int img_stride = H * W * 3;
+    const int tensor_stride = 3 * R2;
+    const int bbox_stride = 4;
+    const int meta_stride = 5;
 
     // --- Set output shapes ---
-    outputs[0].set_shape({1, 3,
-                          static_cast<size_t>(res),
+    outputs[0].set_shape({static_cast<size_t>(N), 3, static_cast<size_t>(res),
                           static_cast<size_t>(res)});
-    outputs[1].set_shape({1, 1, 1, 5});
-    auto* out_tensor = outputs[0].data<float>();
-    auto* out_meta = outputs[1].data<float>();
+    outputs[1].set_shape({static_cast<size_t>(N), 1, 1, 5});
+    auto *out_tensor_base = outputs[0].data<float>();
+    auto *out_meta_base = outputs[1].data<float>();
+    for (int n = 0; n < N; ++n) {
+      const auto *img = img_base + n * img_stride;
+      const auto *bbox = bbox_base + n * bbox_stride;
+      auto *out_tensor = out_tensor_base + n * tensor_stride;
+      auto *out_meta = out_meta_base + n * meta_stride;
 
-    // --- zoom_in() ---
-    const float bx = bbox[0], by = bbox[1], bw = bbox[2], bh = bbox[3];
+      // --- zoom_in() ---
+      const float bx = bbox[0], by = bbox[1], bw = bbox[2], bh = bbox[3];
+      // Guard: zero-padded batch entries have bbox=[0,0,0,0] -> s=0.
+      // Skip crop and write zeros to avoid out-of-bounds canvas access.
+      if (bw <= 0.0f && bh <= 0.0f) {
+        std::memset(out_tensor, 0, tensor_stride * sizeof(float));
+        std::memset(out_meta, 0, meta_stride * sizeof(float));
+        continue;
+      }
 
-    // Step 1: compute centre and scale (float)
-    float c_w_f = bx + 0.5f * bw;
-    float c_h_f = by + 0.5f * bh;
-    float s_f = std::max(bw, bh) * m_pad_ratio;
-    s_f = std::min(s_f, static_cast<float>(std::max(m_im_w, m_im_h)));
+      // Step 1: compute centre and scale (float)
+      float c_w_f = bx + 0.5f * bw;
+      float c_h_f = by + 0.5f * bh;
+      float s_f = std::max(bw, bh) * m_pad_ratio;
+      s_f = std::min(s_f, static_cast<float>(std::max(m_im_w, m_im_h)));
 
-    // Step 2: int-truncate
-    const int c_w = static_cast<int>(c_w_f);
-    const int c_h = static_cast<int>(c_h_f);
-    const int s = static_cast<int>(s_f);
+      // Step 2: int-truncate
+      const int c_w = static_cast<int>(c_w_f);
+      const int c_h = static_cast<int>(c_h_f);
+      const int s = static_cast<int>(s_f);
 
-    // Step 3: compute crop edges
-    int u = static_cast<int>(c_h - 0.5 * s + 0.5);  // top
-    int l = static_cast<int>(c_w - 0.5 * s + 0.5);  // left
-    int b = u + s;  // bottom
-    int r = l + s;  // right
+      // Step 3: compute crop edges
+      int u = static_cast<int>(c_h - 0.5 * s + 0.5); // top
+      int l = static_cast<int>(c_w - 0.5 * s + 0.5); // left
+      int b = u + s;                                 // bottom
+      int r = l + s;                                 // right
 
-    // Step 4: clamp to image bounds
-    int local_u = 0, local_l = 0, local_b = s, local_r = s;
+      // Step 4: clamp to image bounds
+      int local_u = 0, local_l = 0, local_b = s, local_r = s;
 
-    if (u < 0) { local_u = -u; u = 0; }
-    if (l < 0) { local_l = -l; l = 0; }
-    if (b > H) { local_b = s - (b - H); b = H; }
-    if (r > W) { local_r = s - (r - W); r = W; }
+      if (u < 0) {
+        local_u = -u;
+        u = 0;
+      }
+      if (l < 0) {
+        local_l = -l;
+        l = 0;
+      }
+      if (b > H) {
+        local_b = s - (b - H);
+        b = H;
+      }
+      if (r > W) {
+        local_r = s - (r - W);
+        r = W;
+      }
 
-    // Step 5: create zero-padded canvas [s, s, 3] and copy valid region
-    std::vector<float> canvas(s * s * 3, 0.0f);
-    for (int row = local_u; row < local_b; ++row) {
+      // Step 5: create zero-padded canvas [s, s, 3] and copy valid region
+      std::vector<float> canvas(s * s * 3, 0.0f);
+      for (int row = local_u; row < local_b; ++row) {
         const int src_row = u + (row - local_u);
         for (int col = local_l; col < local_r; ++col) {
             const int src_col = l + (col - local_l);
@@ -111,7 +144,7 @@ bool CdpnPreprocess::evaluate(ov::TensorVector& outputs,
                     static_cast<float>(img[(src_row * W + src_col) * 3 + ch]);
             }
         }
-    }
+      }
 
     // Step 6: bilinear resize from [s, s] to [res, res]
     const float scale_y = static_cast<float>(s) / static_cast<float>(res);
@@ -141,14 +174,13 @@ bool CdpnPreprocess::evaluate(ov::TensorVector& outputs,
             const float w11 = fx * fy;
 
             for (int ch = 0; ch < 3; ++ch) {
-                const float v =
-                    canvas[(y0c * s + x0c) * 3 + ch] * w00 +
-                    canvas[(y0c * s + x1c) * 3 + ch] * w01 +
-                    canvas[(y1c * s + x0c) * 3 + ch] * w10 +
-                    canvas[(y1c * s + x1c) * 3 + ch] * w11;
+              const float v = canvas[(y0c * s + x0c) * 3 + ch] * w00 +
+                              canvas[(y0c * s + x1c) * 3 + ch] * w01 +
+                              canvas[(y1c * s + x0c) * 3 + ch] * w10 +
+                              canvas[(y1c * s + x1c) * 3 + ch] * w11;
 
-                // Normalise [0,255] -> [0,1] and write CHW layout
-                out_tensor[ch * R2 + oy * res + ox] = v / 255.0f;
+              // Normalise [0,255] -> [0,1] and write CHW layout
+              out_tensor[ch * R2 + oy * res + ox] = v / 255.0f;
             }
         }
     }
@@ -172,6 +204,8 @@ bool CdpnPreprocess::evaluate(ov::TensorVector& outputs,
                           - s_out / 2.0f;
     out_meta[3] = w_begin;
     out_meta[4] = h_begin;
+
+    } // end batch loop
 
     return true;
 }

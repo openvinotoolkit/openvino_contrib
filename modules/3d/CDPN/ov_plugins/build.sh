@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-#
+
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 # Build script for CDPN OpenVINO Extension.
 #
 # Builds the CPU extension library:

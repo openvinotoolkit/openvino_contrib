@@ -1,8 +1,10 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0 -->
+
 <!--
   cdpn_custom_gpu_kernels.xml - OpenVINO SimpleGPU custom kernel configuration.
 
-  Registers 3 custom CL kernels for the GPU plugin via CONFIG_FILE property.
+  Registers 2 custom CL kernels for the GPU plugin via CONFIG_FILE property.
   Each <CustomLayer> maps an IR operation type to its kernel entry point.
 
   Usage:
@@ -11,12 +13,14 @@
   Source filename paths are relative to this XML file's directory.
 -->
 
+<?xml version="1.0" encoding="UTF-8"?>
+
 <!-- ======================================================================= -->
-<!-- CdpnPreprocess: image crop + resize + normalise + HWC→CHW             -->
-<!-- Input0: image [1, IM_H, IM_W, 3] u8                                  -->
-<!-- Input1: bbox  [1, 1, 1, 4] f32  (x, y, w, h)                         -->
-<!-- Output0: tensor    [1, 3, 256, 256] f32 (CHW normalised)              -->
-<!-- Output1: crop_meta [1, 1, 1, 5]     f32 (c_w, c_h, s, w_begin, h_begin)  -->
+<!-- CdpnPreprocess: image crop + resize + normalise + HWC→CHW               -->
+<!-- Input0: image [N, IM_H, IM_W, 3] u8                                     -->
+<!-- Input1: bbox  [N, 1, 1, 4] f32  (x, y, w, h)                            -->
+<!-- Output0: tensor    [N, 3, 256, 256] f32 (CHW normalised)                -->
+<!-- Output1: crop_meta [N, 1, 1, 5]     f32 (c_w, c_h, s, w_begin, h_begin) -->
 <!-- ======================================================================= -->
 <CustomLayer name="CdpnPreprocess" type="SimpleGPU" version="1">
   <Kernel entry="cdpn_preprocess_gpu">
@@ -32,65 +36,21 @@
     <Tensor arg-index="2" type="output" port-index="0" format="bfyx"/>
     <Tensor arg-index="3" type="output" port-index="1" format="bfyx"/>
   </Buffers>
-  <CompilerOptions options="-cl-mad-enable -cl-fast-relaxed-math"/>
-  <WorkSizes global="256,256" local="" dim="output"/>
+  <CompilerOptions options="-cl-mad-enable"/>
+  <WorkSizes global="X,Y,B" local="" dim="output"/>
 </CustomLayer>
 
 <!-- ======================================================================= -->
-<!-- CdpnCoordDenorm: scale coord channels + min-max normalise confidence  -->
-<!-- Input0: coord_maps  [1, 4, 64, 64] f32                               -->
-<!-- Input1: obj_extents [1, 1, 1, 3]   f32  (abs_x, abs_y, abs_z)        -->
-<!-- Output0: result     [1, 4, 64, 64] f32  (ch0-2: denorm, ch3: norm conf) -->
-<!-- ======================================================================= -->
-<CustomLayer name="CdpnCoordDenorm" type="SimpleGPU" version="1">
-  <Kernel entry="cdpn_coord_denorm_gpu">
-    <Source filename="src/kernel_selector/cl_kernels/cdpn_coord_denorm_gpu.cl"/>
-    <Define name="SPATIAL_R" type="int" default="64"/>
-  </Kernel>
-  <Buffers>
-    <Tensor arg-index="0" type="input"  port-index="0" format="bfyx"/>
-    <Tensor arg-index="1" type="input"  port-index="1" format="any"/>
-    <Tensor arg-index="2" type="output" port-index="0" format="bfyx"/>
-  </Buffers>
-  <CompilerOptions options="-cl-mad-enable -cl-fast-relaxed-math"/>
-  <WorkSizes global="1" local="1"/>
-</CustomLayer>
-
-<!-- ======================================================================= -->
-<!-- CdpnTransDecode: decode translation from NN predictions (Eq. 5)       -->
-<!-- Input0: pred_trans  [1, 1, 1, 3] f32                                  -->
-<!-- Input1: bbox_wh     [1, 1, 1, 2] f32  (bw, bh)                       -->
-<!-- Input2: crop_meta   [1, 1, 1, 5] f32  (c_w, c_h, s, w_begin, h_begin)-->
-<!-- Input3: cam_K       [1, 1, 1, 4] f32  (fx, fy, cx, cy)               -->
-<!-- Output0: translation [1, 1, 1, 3] f32  (tx, ty, tz)                  -->
-<!-- ======================================================================= -->
-<CustomLayer name="CdpnTransDecode" type="SimpleGPU" version="1">
-  <Kernel entry="cdpn_trans_decode_gpu">
-    <Source filename="src/kernel_selector/cl_kernels/cdpn_trans_decode_gpu.cl"/>
-    <Define name="OUT_RES" type="int" param="out_res" default="64"/>
-  </Kernel>
-  <Buffers>
-    <Tensor arg-index="0" type="input"  port-index="0" format="any"/>
-    <Tensor arg-index="1" type="input"  port-index="1" format="any"/>
-    <Tensor arg-index="2" type="input"  port-index="2" format="any"/>
-    <Tensor arg-index="3" type="input"  port-index="3" format="any"/>
-    <Tensor arg-index="4" type="output" port-index="0" format="bfyx"/>
-  </Buffers>
-  <CompilerOptions options="-cl-mad-enable -cl-fast-relaxed-math"/>
-  <WorkSizes global="1" local="1"/>
-</CustomLayer>
-
-<!-- ======================================================================= -->
-<!-- CdpnPnpSolve: EPnP + RANSAC PnP solver (single work-item)            -->
-<!-- Input0: denorm_coords [1, 3, 64, 64] f32                             -->
-<!-- Input1: confidence    [1, 1, 64, 64] f32                             -->
-<!-- Input2: obj_extents   [1, 1, 1, 3]   f32                             -->
-<!-- Input3: crop_meta     [1, 1, 1, 5]   f32                             -->
-<!-- Input4: cam_K         [1, 1, 1, 4]   f32                             -->
-<!-- Output0: R            [1, 1, 3, 3]   f32                             -->
-<!-- Output1: T_pnp        [1, 1, 1, 3]   f32                             -->
-<!-- Output2: num_corres   [1, 1, 1, 1]   f32                             -->
-<!-- Output3: pnp_success  [1, 1, 1, 1]   f32                             -->
+<!-- CdpnPnpSolve: EPnP + RANSAC PnP solver (one work-item per sample)       -->
+<!-- Input0: denorm_coords [N, 3, 64, 64] f32                                -->
+<!-- Input1: confidence    [N, 1, 64, 64] f32                                -->
+<!-- Input2: obj_extents   [N, 1, 1, 3]   f32                                -->
+<!-- Input3: crop_meta     [N, 1, 1, 5]   f32                                -->
+<!-- Input4: cam_K         [N, 1, 1, 4]   f32                                -->
+<!-- Output0: R            [N, 1, 3, 3]   f32                                -->
+<!-- Output1: T_pnp        [N, 1, 1, 3]   f32                                -->
+<!-- Output2: num_corres   [N, 1, 1, 1]   f32                                -->
+<!-- Output3: pnp_success  [N, 1, 1, 1]   f32                                -->
 <!-- ======================================================================= -->
 <CustomLayer name="CdpnPnpSolve" type="SimpleGPU" version="1">
   <Kernel entry="cdpn_pnp_solve_gpu">
@@ -112,5 +72,5 @@
     <Tensor arg-index="8" type="output" port-index="3" format="bfyx"/>
   </Buffers>
   <CompilerOptions options="-cl-mad-enable"/>
-  <WorkSizes global="1" local="1"/>
+  <WorkSizes global="B" local="1" dim="output"/>
 </CustomLayer>
