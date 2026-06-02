@@ -31,6 +31,10 @@ void append_field(std::ostringstream &os, std::string_view value) {
   os << value.size() << ":" << value << ";";
 }
 
+void append_bool(std::ostringstream &os, bool value) {
+  append_field(os, value ? "1" : "0");
+}
+
 std::string hex64(uint64_t value) {
   std::ostringstream os;
   os << std::hex << std::setw(16) << std::setfill('0') << value;
@@ -98,6 +102,7 @@ std::string make_kernel_abi_fingerprint(const KernelDescriptor &kernel) {
   append_field(material, kernel.layout_contract);
   append_field(material, kernel.precision_contract);
   append_field(material, kernel.dispatch_contract);
+  append_bool(material, kernel.requires_runtime_shape_args);
   for (const auto &role : kernel.tensor_roles) {
     append_field(material, role);
   }
@@ -142,6 +147,8 @@ KernelArtifactDescriptor make_artifact_descriptor(const StageRecord &stage) {
   descriptor.kernel.backend_domain = stage.backend_domain;
   descriptor.kernel.origin = origin_from_route(stage.execution_kind);
   descriptor.kernel.dispatch_contract = stage.dispatch.dispatch_source;
+  descriptor.kernel.requires_runtime_shape_args =
+      stage.requires_runtime_shape_args;
   if (!stage.inputs.empty()) {
     descriptor.kernel.layout_contract = stage.inputs.front().layout;
     descriptor.kernel.precision_contract = stage.inputs.front().element_type;

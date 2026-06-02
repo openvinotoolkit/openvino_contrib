@@ -137,7 +137,6 @@ size_t find_pipeline_stage_index(const std::vector<InferStage>& pipeline,
 
 void assign_runtime_shapes_for_stage(InferStage& stage,
                                      const std::vector<GpuTensor*>& inputs,
-                                     GpuBackend backend,
                                      const char* error_prefix) {
     if (!stage.node) {
         for (size_t out_idx = 0; out_idx < stage.outputs.size(); ++out_idx) {
@@ -191,9 +190,12 @@ void assign_runtime_shapes_for_stage(InferStage& stage,
 
     if (ov::as_type_ptr<const ov::op::v8::Slice>(stage.node) ||
         ov::as_type_ptr<const ov::op::v1::StridedSlice>(stage.node)) {
+        const auto* descriptor = runtime_stage_descriptor_or_null(stage);
+        const bool requires_runtime_shape_args =
+            descriptor && descriptor->requires_runtime_shape_args;
         const auto plan = plan_slice_runtime_values(runtime_inputs,
                                                     outputs,
-                                                    backend == GpuBackend::OpenCL,
+                                                    requires_runtime_shape_args,
                                                     stage_name);
         assign_runtime_value_outputs(plan.values, outputs);
         return;
@@ -226,10 +228,7 @@ bool is_view_op(const InferStage& stage) {
     if (const auto* descriptor = runtime_stage_descriptor_or_null(stage)) {
         return descriptor->tensor_view_only;
     }
-    if (!stage.stage) {
-        return false;
-    }
-    return stage.stage->is_view_only();
+    return false;
 }
 
 ov::Shape ensure_stage_output_shape(InferStage& stage, size_t out_idx) {
@@ -335,6 +334,7 @@ std::vector<InferStage> build_infer_pipeline(const std::vector<PipelineStageDesc
         stage.runtime_stage_index = runtime_stage_index;
         stage.inputs = desc.inputs;
         stage.output_aliases = desc.output_aliases;
+        stage.output_lifetimes = desc.output_lifetimes;
         stage.outputs.reserve(desc.outputs.size());
         stage.output_is_model_output.reserve(desc.outputs.size());
         stage.output_sources.reserve(desc.outputs.size());
@@ -524,7 +524,6 @@ void assign_runtime_stage_output_shapes(
     std::vector<InferStage>& pipeline,
     PreparedInferExecutionPlan& plan,
     const std::vector<GpuTensor>& input_tensors,
-    GpuBackend backend,
     const char* error_prefix) {
     OPENVINO_ASSERT(plan.stages.size() == pipeline.size(),
                     error_prefix,
@@ -562,7 +561,7 @@ void assign_runtime_stage_output_shapes(
             prepared.resolved_inputs[input_idx] = resolved;
         }
 
-        assign_runtime_shapes_for_stage(stage, prepared.resolved_inputs, backend, error_prefix);
+        assign_runtime_shapes_for_stage(stage, prepared.resolved_inputs, error_prefix);
     }
 }
 

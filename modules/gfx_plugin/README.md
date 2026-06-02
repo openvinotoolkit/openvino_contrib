@@ -49,16 +49,18 @@ Read these files first:
   compiler, runtime, and backend code
 - `src/compiler/`: backend target registry, backend capability records,
   operation support policies, backend stage-placement contracts, tensor-layout
-  classification, stage compiler policy, lowering-plan construction, memory
-  planning, manifest/cache-envelope building, executable-bundle assembly, and
-  artifact payload routing used by query and compilation
+  classification, stage compiler policy, lowering-plan construction,
+  pipeline-stage I/O planning, memory planning, manifest/cache-envelope
+  building, executable-bundle assembly, and artifact payload routing used by
+  query and compilation
 - `src/plugin/`: OpenVINO-facing `Plugin`, `CompiledModel`, infer-request
   plumbing, properties, model serialization, backend selection, runtime-provider
   registration, and stateful `ReadValue` / `Assign` handling
 - `src/runtime/`: backend-neutral stage interfaces, submission planning,
   profiling report assembly, runtime executable descriptors, runtime sessions,
-  liveness-aware output workspaces, remote context/tensor helpers,
-  descriptor-backed view-only stages, and target profiles
+  fused-output lifetime planning, liveness-aware output workspaces,
+  remote context/tensor helpers, descriptor-backed view-only stages, and target
+  profiles
 - `src/kernel_ir/`: backend-neutral kernel manifests, custom-kernel family
   metadata, cache keys, dispatch descriptions, embedded Metal/OpenCL helper
   sources, and OpenCL source artifacts
@@ -101,7 +103,10 @@ The high-level path is:
    materialization.
 4. `CompiledModel` validates the executable bundle and builds a
    `RuntimeExecutableDescriptor` that is passed into backend stage creation.
-5. `CompiledModel::build_op_pipeline()` creates a sequence of stage descriptors.
+5. `CompiledModel::build_op_pipeline()` creates a sequence of stage descriptors
+   using `src/compiler/pipeline_stage_plan.*` for model-output flags, input
+   links, and output aliases. Fused output lifetimes are derived from runtime
+   memory contracts in `src/runtime/fused_output_lifetime_plan.*`.
 6. `src/runtime/gfx_stage_policy.*` selects fusion, precision, submit policy,
    and other shared stage traits. `CompiledModel` passes the selected backend
    `StagePlacementPolicy`, `PostOpFusionCapabilities`, and source-kernel
@@ -121,6 +126,8 @@ view-only stages, view-style split outputs, stateful variable buffers, reusable
 host outputs, prepared binding caches, immutable const caches, and
 workspace-managed intermediate outputs all live in the shared runtime/plugin
 layer instead of being duplicated per backend.
+Runtime stages do not own tensor-view or output-lifetime classification; that
+metadata comes from compiler/runtime descriptors.
 
 The compiler layer is the public architecture boundary between OpenVINO graph
 semantics and runtime execution. Do not add new support checks directly in
@@ -185,6 +192,9 @@ roles, scalar ABI, runtime-shape scalars, constant materialization, boolean
 buffer padding, static u32/f32 scalar payloads, and generated Concat/Split
 chunk helpers should stay in the artifact manifest rather than being
 reimplemented in infer-request code.
+Routes that need runtime shape arguments must set
+`KernelUnit::requires_runtime_shape_args`; infer requests consume the resulting
+manifest/runtime-descriptor flag instead of special-casing the OpenCL backend.
 Backend operation support and kernel-unit registration live under
 `src/backends/opencl/compiler/`; runtime loading and enqueue stay under
 `src/backends/opencl/runtime/`.
@@ -341,9 +351,10 @@ parity, duplicate registrations, and forbidden `DISABLED_` registrations.
 3. Add MLIR lowering or a transform in the appropriate `src/mlir/` or
    `src/transforms/` file.
 4. Choose the shared runtime contract first: stage policy, kernel manifest,
-   compiler tensor-layout plan, compiler memory plan, runtime executable
-   descriptor, runtime-value payloads, OpenCL artifact metadata, or Metal
-   MPSRT/Apple MSL source planning.
+   compiler tensor-layout plan, compiler pipeline-stage I/O plan, compiler
+   memory plan, fused-output lifetime plan, runtime executable descriptor,
+   runtime-value payloads, OpenCL artifact metadata, or Metal MPSRT/Apple MSL
+   source planning.
 5. Add backend-specific code only under `src/backends/metal/` or
    `src/backends/opencl/` when the shared path cannot express the behavior.
 6. Add focused unit tests first, then backend or functional coverage when the

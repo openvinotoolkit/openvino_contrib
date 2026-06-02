@@ -31,6 +31,7 @@ Then inspect the relevant code path:
 - common backend/device value types: `src/common/`
 - stage-placement contracts: `src/compiler/stage_placement.*`
 - stage compiler policy: `src/compiler/stage_compiler_policy.*`
+- pipeline-stage I/O contracts: `src/compiler/pipeline_stage_plan.*`
 - memory/cache compiler contracts: `src/compiler/memory_plan.*` and
   `src/compiler/cache_envelope.*`
 - tensor-layout contracts: `src/compiler/tensor_layout.*`
@@ -47,12 +48,15 @@ Then inspect the relevant code path:
 - Treat module docs as the public source of truth.
 - Keep shared behavior in `src/plugin/`, `src/runtime/`, `src/kernel_ir/`, or
   `src/mlir/` unless the code is truly backend-specific.
-- Keep backend target, operation support, lowering plans, manifests,
-  executable bundles, tensor-layout plans, stage-placement value objects, and
-  artifact descriptors in `src/compiler/`.
+- Keep backend target, operation support, lowering plans, pipeline-stage I/O
+  plans, manifests, executable bundles, tensor-layout plans, stage-placement
+  value objects, and artifact descriptors in `src/compiler/`.
 - Keep compiler memory regions, alias groups, lifetimes, transient arenas, and
   cache-envelope fingerprints in `src/compiler/`; request code consumes runtime
   descriptors and `RuntimeSession`.
+- Keep fused-output lifetime and alias-storage planning in
+  `src/runtime/fused_output_lifetime_plan.*`; do not reintroduce runtime-stage
+  type-name checks for view or lifetime classification.
 - Keep configured backend availability in `src/compiler/backend_config.hpp.in`;
   the default `BackendRegistry` contains only backend modules available in the
   configured build.
@@ -85,7 +89,9 @@ For Metal placement, MPSRT, or MSL source changes, keep these aligned:
 
 - `src/compiler/*`
 - `src/compiler/stage_compiler_policy.*`
+- `src/compiler/pipeline_stage_plan.*`
 - `src/compiler/memory_plan.*`
+- `src/runtime/fused_output_lifetime_plan.*`
 - `src/runtime/runtime_session.*`
 - `src/backends/metal/compiler/`
 - `src/backends/metal/compiler/metal_stage_placement.*`

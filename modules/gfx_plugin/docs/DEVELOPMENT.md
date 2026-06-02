@@ -74,6 +74,8 @@ Build-system notes:
   `src/backends/opencl/compiler/opencl_stage_placement.*`.
 - `src/compiler/stage_compiler_policy.*` adapts backend capabilities into the
   explicit policy passed into shared stage-policy and MLIR source-planning code.
+- `src/compiler/pipeline_stage_plan.*` owns compiled-pipeline input links,
+  model-output flags, output-source metadata, and fused output aliases.
 - `src/compiler/memory_plan.*` owns compiler memory regions, lifetimes, alias
   groups, and transient arenas; request code must consume the runtime descriptor
   instead of reconstructing this information.
@@ -81,6 +83,9 @@ Build-system notes:
   fingerprints. It is not a persisted native backend cache in the current code.
 - `src/runtime/runtime_session.*` owns request-local descriptor binding tables
   and prepared executable objects.
+- `src/runtime/output_lifetime.hpp` and
+  `src/runtime/fused_output_lifetime_plan.*` own fused-stage output lifetime and
+  alias-storage planning from runtime memory descriptors.
 - `gfx_metal_mpsrt_contract` contains shared Metal MPSRT model/ABI contracts
   used by Metal runtime and focused contract tests.
 - `gfx_plugin_metal` / `gfx_runtime_metal` and
@@ -124,15 +129,16 @@ Read in this order:
 4. `src/compiler/gfx_compiler_service.*`
 5. `src/compiler/backend_registry.*`
 6. `src/compiler/manifest.*` and `src/compiler/executable_bundle.*`
-7. `src/compiler/memory_plan.*` and `src/compiler/cache_envelope.*`
-8. `src/compiler/tensor_layout.*`
-9. `src/compiler/stage_placement.*` and
+7. `src/compiler/pipeline_stage_plan.*`
+8. `src/compiler/memory_plan.*` and `src/compiler/cache_envelope.*`
+9. `src/compiler/tensor_layout.*`
+10. `src/compiler/stage_placement.*` and
    `src/compiler/stage_compiler_policy.*`
-10. `src/plugin/backend_factory.*`
-11. `src/plugin/compiled_model.cpp`
-12. `src/plugin/infer_pipeline.*`
-13. `src/plugin/infer_submission.*`
-14. the backend directory you are changing
+11. `src/plugin/backend_factory.*`
+12. `src/plugin/compiled_model.cpp`
+13. `src/plugin/infer_pipeline.*`
+14. `src/plugin/infer_submission.*`
+15. the backend directory you are changing
 
 For runtime planning, also inspect:
 
@@ -142,10 +148,13 @@ For runtime planning, also inspect:
 - `src/compiler/tensor_layout.*`
 - `src/compiler/stage_placement.*`
 - `src/compiler/stage_compiler_policy.*`
+- `src/compiler/pipeline_stage_plan.*`
 - `src/compiler/memory_plan.*`
 - `src/compiler/cache_envelope.*`
 - `src/runtime/gfx_stage_policy.*`
 - `src/runtime/runtime_session.*`
+- `src/runtime/fused_output_lifetime_plan.*`
+- `src/runtime/output_lifetime.hpp`
 - `src/runtime/gfx_parallelism.*`
 - `src/runtime/gfx_partitioning.*`
 - `src/runtime/executable_descriptor.*`
@@ -215,8 +224,11 @@ For OpenCL source execution, start with:
    source-plan helper, or transform.
 4. Decide the shared runtime contract before adding backend code:
    - compiler manifest/executable descriptor for stage ABI and artifact payloads
+   - compiler pipeline-stage I/O plan for input links, model-output flags, and
+     output aliases
    - compiler memory plan for region ids, alias groups, lifetimes, and arenas
    - compiler tensor-layout plan for view-only/materialized layout contracts
+   - fused-output lifetime plan for aliasing outputs inside a fused stage
    - backend stage-placement policy for domain/storage selection
    - selected backend compiler policy passed through `GpuStageRuntimeOptions`
      and `compiler::StageCompilerPolicy`
@@ -246,6 +258,8 @@ Common operation families that need extra care:
   Apple MPS/MSL domains and OpenCL currently uses buffer-backed source kernels
 - stateful `ReadValue` / `Assign`
 - view-style `Split` / `VariadicSplit` aliases
+- runtime-shape argument requirements carried by `KernelUnit`,
+  `StageRecord`, artifact descriptors, and runtime descriptors
 - Metal MPS/MPSGraph vendor stages and MPSRT storage bridges
 - Metal custom MSL source plans with explicit kernel-buffer order
 - OpenCL source artifacts with scalar ABI, static u32/f32 scalars, constants,

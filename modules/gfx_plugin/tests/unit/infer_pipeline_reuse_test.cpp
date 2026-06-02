@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "plugin/infer_io_utils.hpp"
+#include "runtime/fused_output_lifetime_plan.hpp"
 #include "openvino/op/add.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/relu.hpp"
@@ -143,7 +144,35 @@ public:
     size_t prewarm_count = 0;
 };
 
-std::shared_ptr<const RuntimeExecutableDescriptor>
+class DescriptorProbeStage final : public GpuStage {
+public:
+    explicit DescriptorProbeStage(std::string type_name)
+        : m_type_name(std::move(type_name)) {}
+
+    void init(GpuBufferManager*) override {}
+    void compile(GpuBufferManager*) override {}
+    void execute(GpuCommandBufferHandle) override {}
+    void set_inputs(const std::vector<GpuTensor*>&) override {}
+    void set_output(GpuTensor*) override {}
+
+    const std::string& name() const override {
+        static const std::string kName = "DescriptorProbeStage";
+        return kName;
+    }
+
+    const std::string& type() const override {
+        return m_type_name;
+    }
+
+    std::unique_ptr<GpuStage> clone() const override {
+        return std::make_unique<DescriptorProbeStage>(m_type_name);
+    }
+
+private:
+    std::string m_type_name;
+};
+
+std::shared_ptr<RuntimeExecutableDescriptor>
 make_test_runtime_descriptor(size_t stage_count,
                              std::vector<size_t> output_last_stages = {}) {
     auto descriptor = std::make_shared<RuntimeExecutableDescriptor>();
@@ -205,6 +234,107 @@ make_test_runtime_descriptor(size_t stage_count,
         descriptor->memory_plan.transient_arenas.push_back(std::move(arena));
     }
     return descriptor;
+}
+
+TEST(InferPipelineReuseTest, RuntimeAliasContractIgnoresLegacyStageTypeFallback) {
+    InferStage split_stage;
+    split_stage.stage = std::make_unique<DescriptorProbeStage>("Split");
+
+    EXPECT_FALSE(is_view_op(split_stage));
+    EXPECT_FALSE(stage_outputs_may_alias_inputs(split_stage));
+}
+
+TEST(InferPipelineReuseTest, RuntimeAliasContractUsesCompilerMemoryPlanOnly) {
+    auto runtime_descriptor = make_test_runtime_descriptor(1);
+    ASSERT_FALSE(runtime_descriptor->memory_plan.alias_groups.empty());
+    runtime_descriptor->memory_plan.alias_groups.front().output_aliasing = true;
+
+    InferStage stage;
+    stage.stage = std::make_unique<DescriptorProbeStage>("Counting");
+    stage.runtime_session = std::make_shared<RuntimeSession>(runtime_descriptor);
+    stage.runtime_stage_index = 0;
+
+    EXPECT_FALSE(is_view_op(stage));
+    EXPECT_TRUE(stage_outputs_may_alias_inputs(stage));
+}
+
+TEST(InferPipelineReuseTest, RuntimeViewContractUsesCompilerDescriptorOnly) {
+    auto runtime_descriptor = make_test_runtime_descriptor(1);
+    runtime_descriptor->stages.front().tensor_view_only = true;
+
+    InferStage stage;
+    stage.stage = std::make_unique<DescriptorProbeStage>("Counting");
+    stage.runtime_session = std::make_shared<RuntimeSession>(runtime_descriptor);
+    stage.runtime_stage_index = 0;
+
+    EXPECT_TRUE(is_view_op(stage));
+    EXPECT_TRUE(stage_outputs_may_alias_inputs(stage));
+}
+
+TEST(InferPipelineReuseTest,
+     SharedFusedOutputLifetimePlannerUsesRuntimeMemoryContracts) {
+    auto runtime_descriptor = make_test_runtime_descriptor(3);
+    ASSERT_EQ(runtime_descriptor->stages.size(), 3u);
+
+    auto& view_stage = runtime_descriptor->stages[1];
+    view_stage.tensor_view_only = true;
+    RuntimeTensorBindingContract view_input;
+    view_input.alias_group = "stage_0";
+    view_stage.input_bindings.push_back(std::move(view_input));
+    ASSERT_FALSE(view_stage.output_bindings.empty());
+    view_stage.output_bindings.front().alias_group = "stage_0";
+
+    std::vector<FusedOutputLifetimeStage> stages(3);
+    stages[0].descriptor = &runtime_descriptor->stages[0];
+    stages[0].output_indices = {0};
+    stages[1].descriptor = &runtime_descriptor->stages[1];
+    stages[1].inputs = {
+        {FusedOutputLifetimeInputRef::Kind::Output, 0}};
+    stages[1].output_indices = {1};
+    stages[2].descriptor = &runtime_descriptor->stages[2];
+    stages[2].inputs = {
+        {FusedOutputLifetimeInputRef::Kind::Output, 1}};
+    stages[2].output_indices = {2};
+
+    const auto lifetimes = build_fused_output_lifetime_plan(
+        stages, runtime_descriptor->memory_plan, /*output_count=*/3);
+
+    ASSERT_EQ(lifetimes.size(), 3u);
+    EXPECT_EQ(lifetimes[0].produced_at, 0u);
+    EXPECT_EQ(lifetimes[0].last_used_at, 2u);
+    EXPECT_TRUE(lifetimes[0].requires_buffer);
+    EXPECT_EQ(lifetimes[1].produced_at, 1u);
+    EXPECT_EQ(lifetimes[1].last_used_at, 2u);
+    EXPECT_FALSE(lifetimes[1].requires_buffer);
+    EXPECT_EQ(lifetimes[1].storage_source_output, 0u);
+    EXPECT_EQ(lifetimes[2].produced_at, 2u);
+    EXPECT_EQ(lifetimes[2].last_used_at, 2u);
+}
+
+TEST(InferPipelineReuseTest, BuildPipelineCarriesCompilerOwnedOutputLifetimes) {
+    PipelineStageDesc desc;
+    desc.stage = std::make_unique<CountingStage>();
+    desc.outputs.push_back(OutputDesc{{4}, ov::element::f32, false});
+    PipelineStageDesc::OutputLifetime first_lifetime;
+    first_lifetime.produced_at = 0;
+    first_lifetime.last_used_at = 2;
+    first_lifetime.requires_buffer = false;
+    desc.output_lifetimes = {first_lifetime};
+
+    std::vector<PipelineStageDesc> descs;
+    descs.push_back(std::move(desc));
+
+    auto pipeline = build_infer_pipeline(descs,
+                                         nullptr,
+                                         nullptr,
+                                         false,
+                                         make_test_runtime_descriptor(1));
+
+    ASSERT_EQ(pipeline.size(), 1u);
+    ASSERT_EQ(pipeline.front().output_lifetimes.size(), 1u);
+    EXPECT_EQ(pipeline.front().output_lifetimes[0].produced_at, 0u);
+    EXPECT_EQ(pipeline.front().output_lifetimes[0].last_used_at, 2u);
+    EXPECT_FALSE(pipeline.front().output_lifetimes[0].requires_buffer);
 }
 
 TEST(InferPipelineReuseTest, ReusesClonedPipelineAndOutputHandlesAcrossPreparations) {

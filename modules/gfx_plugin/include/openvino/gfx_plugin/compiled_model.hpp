@@ -5,18 +5,18 @@
 
 #include <memory>
 #include <mutex>
-#include <limits>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-#include "openvino/core/type/element_type.hpp"
 #include "openvino/runtime/icompiled_model.hpp"
 
+#include "compiler/pipeline_stage_plan.hpp"
 #include "openvino/gfx_plugin/profiling.hpp"
 #include "runtime/execution_dispatcher.hpp"
 #include "runtime/gfx_precision.hpp"
 #include "runtime/gpu_stage.hpp"
+#include "runtime/output_lifetime.hpp"
 
 #include "openvino/gfx_plugin/properties.hpp"
 
@@ -32,32 +32,16 @@ class InferRequest;
 class GfxProfilingTrace;
 struct BackendState;
 struct RuntimeExecutableDescriptor;
-struct OutputDesc {
-  ov::Shape shape;
-  ov::element::Type type = ov::element::dynamic;
-  bool is_model_output = false;
-  std::shared_ptr<const ov::Node> source_node;
-  size_t source_port = 0;
-};
+using OutputDesc = compiler::PipelineStageOutputDesc;
 
-struct PipelineStageDesc {
-  static constexpr size_t npos = std::numeric_limits<size_t>::max();
+struct PipelineStageDesc : compiler::PipelineStageIoPlan {
+  static constexpr size_t npos = compiler::PipelineStageIoPlan::npos;
 
-  std::shared_ptr<const ov::Node> node;
   std::unique_ptr<GpuStage> stage; // runtime prototype; prepared per request
-  size_t runtime_stage_index = npos;
-  struct InputLink {
-    std::shared_ptr<const ov::Node> node;
-    size_t port = 0;
-  };
-  struct OutputAlias {
-    std::shared_ptr<const ov::Node> node;
-    size_t source_port = 0;
-    size_t output_port = 0;
-  };
-  std::vector<OutputDesc> outputs;
-  std::vector<InputLink> inputs;
-  std::vector<OutputAlias> output_aliases;
+  using InputLink = compiler::PipelineStageInputLink;
+  using OutputAlias = compiler::PipelineStageOutputAlias;
+  using OutputLifetime = RuntimeOutputLifetime;
+  std::vector<OutputLifetime> output_lifetimes;
 };
 
 class CompiledModel : public ov::ICompiledModel {

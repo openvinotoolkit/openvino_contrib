@@ -5,6 +5,7 @@
 #include "openvino/gfx_plugin/compiled_model.hpp"
 
 #include "compiler/backend_registry.hpp"
+#include "compiler/pipeline_stage_plan.hpp"
 #include "compiler/stage_compiler_policy.hpp"
 #include "openvino/gfx_plugin/infer_request.hpp"
 #include "openvino/gfx_plugin/plugin.hpp"
@@ -18,6 +19,7 @@
 #include "plugin/gfx_property_lists.hpp"
 #include "plugin/gfx_property_utils.hpp"
 #include "plugin/model_serialization.hpp"
+#include "runtime/fused_output_lifetime_plan.hpp"
 #include "runtime/fused_sequence_stage.hpp"
 #include "runtime/executable_descriptor.hpp"
 #include "runtime/gfx_backend_utils.hpp"
@@ -315,17 +317,6 @@ bool is_absorbable_transpose_candidate(
   return true;
 }
 
-bool is_model_output_port(
-    const std::unordered_map<const ov::Node *, std::vector<bool>>
-        &model_outputs,
-    const ov::Node *node, size_t port) {
-  auto it = model_outputs.find(node);
-  if (it == model_outputs.end() || port >= it->second.size()) {
-    return false;
-  }
-  return it->second[port];
-}
-
 bool is_executable_stage_node(const std::shared_ptr<ov::Node> &node) {
   if (!node) {
     return false;
@@ -365,7 +356,7 @@ std::shared_ptr<const ov::op::v1::Add> residual_add_for_rms(
       rms->input_value(0).get_node_shared_ptr());
   if (!add || add->get_output_size() != 1 || add->get_input_size() != 2 ||
       add->output(0).get_target_inputs().size() != 1 ||
-      is_model_output_port(model_outputs, add.get(), 0) ||
+      compiler::is_model_output_port(model_outputs, add.get(), 0) ||
       fused_nodes.count(add.get()) != 0) {
     return nullptr;
   }
@@ -381,6 +372,12 @@ std::shared_ptr<const ov::op::v1::Add> residual_add_for_rms(
     return nullptr;
   }
   return add;
+}
+
+void apply_pipeline_stage_io_plan(PipelineStageDesc &stage_desc,
+                                  compiler::PipelineStageIoPlan stage_plan) {
+  static_cast<compiler::PipelineStageIoPlan &>(stage_desc) =
+      std::move(stage_plan);
 }
 
 } // namespace
@@ -711,18 +708,9 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
   }
 
   // Track model outputs for bookkeeping (outputs remain device-only).
-  std::unordered_map<const ov::Node *, std::vector<bool>> model_outputs;
-  for (const auto &result : m_runtime_model->get_results()) {
-    auto src = result->input_value(0).get_node_shared_ptr();
-    const size_t port = result->input_value(0).get_index();
-    auto &flags = model_outputs[src.get()];
-    if (flags.empty()) {
-      flags.resize(src->get_output_size(), false);
-    }
-    if (port < flags.size()) {
-      flags[port] = true;
-    }
-  }
+  const auto model_outputs =
+      compiler::collect_model_output_ports(*m_runtime_model);
+  const compiler::PipelineStagePlanBuilder stage_plan_builder(model_outputs);
 
   const auto ordered_ops = m_runtime_model->get_ordered_ops();
   gfx_log_info("StageFactory") << "Ordered ops count=" << ordered_ops.size();
@@ -782,7 +770,7 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
         continue;
       }
       for (size_t port = 0; port < node->get_output_size(); ++port) {
-        if (!is_model_output_port(model_outputs, node.get(), port) &&
+        if (!compiler::is_model_output_port(model_outputs, node.get(), port) &&
             !node->output(port).get_target_inputs().empty()) {
           return true;
         }
@@ -1008,62 +996,7 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
 
   std::unordered_set<size_t> fused_indices;
   fused_indices.reserve(ordered_ops.size());
-  struct NodePortKey {
-    const ov::Node *node = nullptr;
-    size_t port = 0;
-    bool operator==(const NodePortKey &other) const {
-      return node == other.node && port == other.port;
-    }
-  };
-  struct NodePortKeyHash {
-    size_t operator()(const NodePortKey &key) const {
-      size_t h1 = std::hash<const ov::Node *>()(key.node);
-      size_t h2 = std::hash<size_t>()(key.port);
-      return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
-    }
-  };
-  std::unordered_map<NodePortKey, size_t, NodePortKeyHash>
-      fused_output_port_aliases;
-  auto remap_input_link = [&](std::shared_ptr<const ov::Node> linked_node,
-                              size_t linked_port) {
-    auto it = fused_output_port_aliases.find({linked_node.get(), linked_port});
-    if (it != fused_output_port_aliases.end()) {
-      linked_port = it->second;
-    }
-    return PipelineStageDesc::InputLink{std::move(linked_node), linked_port};
-  };
-  auto merge_model_outputs = [&](PipelineStageDesc &stage_desc,
-                                 const ov::Node *node) {
-    auto it = model_outputs.find(node);
-    if (it == model_outputs.end()) {
-      return;
-    }
-    const auto &flags = it->second;
-    for (size_t oi = 0; oi < stage_desc.outputs.size() && oi < flags.size();
-         ++oi) {
-      stage_desc.outputs[oi].is_model_output =
-          stage_desc.outputs[oi].is_model_output || flags[oi];
-    }
-  };
-  auto append_output_alias =
-      [](PipelineStageDesc &stage_desc,
-         const std::shared_ptr<const ov::Node> &source_node, size_t source_port,
-         size_t output_port) {
-        if (!source_node || output_port >= stage_desc.outputs.size()) {
-          return;
-        }
-        const auto duplicate = std::any_of(
-            stage_desc.output_aliases.begin(), stage_desc.output_aliases.end(),
-            [&](const PipelineStageDesc::OutputAlias &alias) {
-              return alias.node.get() == source_node.get() &&
-                     alias.source_port == source_port &&
-                     alias.output_port == output_port;
-            });
-        if (!duplicate) {
-          stage_desc.output_aliases.push_back(
-              {source_node, source_port, output_port});
-        }
-      };
+  compiler::PipelineOutputAliasMap fused_output_port_aliases;
   auto fusion_requires_bias_payload = [](const std::string &kind) {
     return kind == "ConvBias" || kind == "ConvBiasActivation" ||
            kind == "EltwiseBias" || kind == "EltwiseBiasActivation" ||
@@ -1148,25 +1081,31 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
         if (stage && !group->node_indices.empty()) {
           const auto &final_node = ordered_ops[group->node_indices.back()];
           PipelineStageDesc stage_desc;
-          stage_desc.node = final_node;
-          if (const auto *descriptor = runtime_descriptor_for_node(final_node)) {
-            stage_desc.runtime_stage_index = descriptor->stage_index;
-          }
+          apply_pipeline_stage_io_plan(
+              stage_desc,
+              stage_plan_builder.make_fused_stage_plan(
+                  final_node, 1,
+                  runtime_descriptor_for_node(final_node)
+                      ? runtime_descriptor_for_node(final_node)->stage_index
+                      : PipelineStageDesc::npos));
           stage_desc.stage = std::move(stage);
-          stage_desc.inputs.push_back(remap_input_link(
-              plan->query.get_node_shared_ptr(), plan->query.get_index()));
-          stage_desc.inputs.push_back(remap_input_link(
-              plan->key.get_node_shared_ptr(), plan->key.get_index()));
-          stage_desc.inputs.push_back(remap_input_link(
-              plan->value.get_node_shared_ptr(), plan->value.get_index()));
-          stage_desc.outputs.resize(1);
+          stage_desc.inputs.push_back(stage_plan_builder.remap_input_link(
+              fused_output_port_aliases, plan->query.get_node_shared_ptr(),
+              plan->query.get_index()));
+          stage_desc.inputs.push_back(stage_plan_builder.remap_input_link(
+              fused_output_port_aliases, plan->key.get_node_shared_ptr(),
+              plan->key.get_index()));
+          stage_desc.inputs.push_back(stage_plan_builder.remap_input_link(
+              fused_output_port_aliases, plan->value.get_node_shared_ptr(),
+              plan->value.get_index()));
           stage_desc.outputs[0].shape = plan->spec.output_shape;
           stage_desc.outputs[0].type = plan->spec.element_type;
           stage_desc.outputs[0].source_node = final_node;
           stage_desc.outputs[0].source_port = 0;
-          merge_model_outputs(stage_desc, final_node.get());
-          append_output_alias(stage_desc, final_node, 0, 0);
-          fused_output_port_aliases[{final_node.get(), 0}] = 0;
+          stage_plan_builder.merge_model_outputs(stage_desc, final_node.get());
+          stage_plan_builder.append_output_alias(stage_desc, final_node, 0, 0);
+          stage_plan_builder.record_output_alias(fused_output_port_aliases,
+                                                 final_node.get(), 0, 0);
 
           if (compile_trace) {
             compile_trace->increment_counter("fused_stage_count");
@@ -1192,21 +1131,6 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
           group->kind == "AttentionScaleMask" || group->kind == "NativeSDPA") {
         const size_t stage_count = group->node_indices.size();
         if (stage_count >= 3) {
-          struct InputKey {
-            const ov::Node *node = nullptr;
-            size_t port = 0;
-            bool operator==(const InputKey &other) const {
-              return node == other.node && port == other.port;
-            }
-          };
-          struct InputKeyHash {
-            size_t operator()(const InputKey &key) const {
-              size_t h1 = std::hash<const ov::Node *>()(key.node);
-              size_t h2 = std::hash<size_t>()(key.port);
-              return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
-            }
-          };
-
           std::unordered_map<const ov::Node *, size_t> stage_index;
           stage_index.reserve(stage_count);
           for (size_t i = 0; i < stage_count; ++i) {
@@ -1240,10 +1164,14 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
             continue;
           }
 
-          std::unordered_map<InputKey, size_t, InputKeyHash> external_map;
+          std::unordered_map<compiler::PipelineOutputPortKey, size_t,
+                             compiler::PipelineOutputPortKeyHash>
+              external_map;
           std::vector<PipelineStageDesc::InputLink> fused_inputs;
           std::vector<FusedStageInfo> fused_stages;
+          std::vector<FusedOutputLifetimeStage> fused_lifetime_stages;
           fused_stages.reserve(stage_count);
+          fused_lifetime_stages.reserve(stage_count);
 
           for (size_t i = 0; i < stage_count; ++i) {
             const size_t idx = group->node_indices[i];
@@ -1286,18 +1214,18 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
                 continue;
               }
               size_t linked_port = iv.get_index();
-              if (auto alias_it =
-                      fused_output_port_aliases.find({src_node, linked_port});
-                  alias_it != fused_output_port_aliases.end()) {
-                linked_port = alias_it->second;
-              }
-              InputKey key{src_node, linked_port};
+              const auto remapped_input =
+                  stage_plan_builder.remap_input_link(
+                      fused_output_port_aliases, iv.get_node_shared_ptr(),
+                      linked_port);
+              linked_port = remapped_input.port;
+              compiler::PipelineOutputPortKey key{src_node, linked_port};
               auto it_ext = external_map.find(key);
               size_t ext_idx = 0;
               if (it_ext == external_map.end()) {
                 ext_idx = fused_inputs.size();
                 external_map.emplace(key, ext_idx);
-                fused_inputs.push_back({iv.get_node_shared_ptr(), linked_port});
+                fused_inputs.push_back(std::move(remapped_input));
               } else {
                 ext_idx = it_ext->second;
               }
@@ -1306,6 +1234,28 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
             if (!can_fuse) {
               break;
             }
+            FusedOutputLifetimeStage lifetime_stage;
+            lifetime_stage.output_indices = info.output_indices;
+            lifetime_stage.descriptor = runtime_descriptor_for_node(stage_node);
+            lifetime_stage.inputs.reserve(info.inputs.size());
+            for (const auto &input : info.inputs) {
+              FusedOutputLifetimeInputRef lifetime_input;
+              lifetime_input.index = input.index;
+              switch (input.kind) {
+              case FusedInputKind::External:
+                lifetime_input.kind = FusedOutputLifetimeInputRef::Kind::External;
+                break;
+              case FusedInputKind::Output:
+                lifetime_input.kind = FusedOutputLifetimeInputRef::Kind::Output;
+                break;
+              case FusedInputKind::None:
+              default:
+                lifetime_input.kind = FusedOutputLifetimeInputRef::Kind::None;
+                break;
+              }
+              lifetime_stage.inputs.push_back(lifetime_input);
+            }
+            fused_lifetime_stages.push_back(std::move(lifetime_stage));
             fused_stages.emplace_back(std::move(info));
           }
 
@@ -1317,25 +1267,22 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
               compile_trace->increment_counter(
                   "fused_node_count", static_cast<uint64_t>(stage_count));
             }
-            stage_desc.node = final_node;
-            if (const auto *descriptor = runtime_descriptor_for_node(final_node)) {
-              stage_desc.runtime_stage_index = descriptor->stage_index;
-            }
+            apply_pipeline_stage_io_plan(
+                stage_desc,
+                stage_plan_builder.make_fused_stage_plan(
+                    final_node, fused_output_count,
+                    runtime_descriptor_for_node(final_node)
+                        ? runtime_descriptor_for_node(final_node)->stage_index
+                        : PipelineStageDesc::npos));
+            stage_desc.output_lifetimes = build_fused_output_lifetime_plan(
+                fused_lifetime_stages,
+                m_runtime_descriptor->memory_plan, fused_output_count);
             stage_desc.stage = std::make_unique<FusedSequenceStage>(
                 std::move(fused_stages),
                 final_node ? final_node->get_friendly_name()
                            : std::string("fused_attention"),
                 "FusedAttention");
             stage_desc.inputs = std::move(fused_inputs);
-            stage_desc.outputs.resize(fused_output_count);
-
-            auto is_model_output = [&](const ov::Node *n, size_t port) -> bool {
-              auto it = model_outputs.find(n);
-              if (it == model_outputs.end() || it->second.empty()) {
-                return false;
-              }
-              return port < it->second.size() ? it->second[port] : false;
-            };
 
             for (size_t stage_idx = 0; stage_idx < stage_count; ++stage_idx) {
               const size_t node_idx = group->node_indices[stage_idx];
@@ -1346,16 +1293,11 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
               for (size_t port = 0; port < out_node->get_output_size();
                    ++port) {
                 const size_t slot = stage_output_slots[stage_idx][port];
-                auto &out_desc = stage_desc.outputs[slot];
-                if (out_node->get_output_partial_shape(port).is_static()) {
-                  out_desc.shape = out_node->get_output_shape(port);
-                }
-                out_desc.type = out_node->get_output_element_type(port);
-                out_desc.is_model_output =
-                    is_model_output(out_node.get(), port);
-                out_desc.source_node = out_node;
-                out_desc.source_port = port;
-                fused_output_port_aliases[{out_node.get(), port}] = slot;
+                stage_plan_builder.describe_output(stage_desc, slot, out_node,
+                                                   port);
+                stage_plan_builder.record_output_alias(fused_output_port_aliases,
+                                                       out_node.get(), port,
+                                                       slot);
               }
             }
 
@@ -1395,37 +1337,26 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
                     ")");
 
     PipelineStageDesc stage_desc;
-    stage_desc.node = node;
-    if (const auto *descriptor = runtime_descriptor_for_node(node)) {
-      stage_desc.runtime_stage_index = descriptor->stage_index;
-    }
+    apply_pipeline_stage_io_plan(
+        stage_desc,
+        stage_plan_builder.make_stage_plan(
+            node, runtime_descriptor_for_node(node)
+                      ? runtime_descriptor_for_node(node)->stage_index
+                      : PipelineStageDesc::npos));
     stage_desc.stage = std::move(gpu_stage);
-    const size_t out_count = node->get_output_size();
-    stage_desc.outputs.reserve(out_count);
-    for (size_t oi = 0; oi < out_count; ++oi) {
-      OutputDesc out_desc{};
-      if (node->get_output_partial_shape(oi).is_static()) {
-        out_desc.shape = node->get_output_shape(oi);
-      }
-      out_desc.type = node->get_output_element_type(oi);
-      out_desc.source_node = node;
-      out_desc.source_port = oi;
-      stage_desc.outputs.emplace_back(std::move(out_desc));
-    }
-    merge_model_outputs(stage_desc, node.get());
     const auto residual_it = rms_residual_adds.find(node.get());
     if (residual_it != rms_residual_adds.end() && residual_it->second &&
         stage_desc.stage->fuse_residual_add()) {
       const auto &add = residual_it->second;
-      stage_desc.inputs.push_back(
-          remap_input_link(add->input_value(0).get_node_shared_ptr(),
-                           add->input_value(0).get_index()));
-      stage_desc.inputs.push_back(
-          remap_input_link(node->input_value(1).get_node_shared_ptr(),
-                           node->input_value(1).get_index()));
-      stage_desc.inputs.push_back(
-          remap_input_link(add->input_value(1).get_node_shared_ptr(),
-                           add->input_value(1).get_index()));
+      stage_desc.inputs.push_back(stage_plan_builder.remap_input_link(
+          fused_output_port_aliases, add->input_value(0).get_node_shared_ptr(),
+          add->input_value(0).get_index()));
+      stage_desc.inputs.push_back(stage_plan_builder.remap_input_link(
+          fused_output_port_aliases, node->input_value(1).get_node_shared_ptr(),
+          node->input_value(1).get_index()));
+      stage_desc.inputs.push_back(stage_plan_builder.remap_input_link(
+          fused_output_port_aliases, add->input_value(1).get_node_shared_ptr(),
+          add->input_value(1).get_index()));
     } else {
       const auto absorbed_it = absorbed_input_transforms.find(node.get());
       for (size_t input_idx = 0; input_idx < node->get_input_size();
@@ -1448,7 +1379,8 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
                                                   transform_it->second);
           }
         }
-        stage_desc.inputs.push_back(remap_input_link(linked_node, linked_port));
+        stage_desc.inputs.push_back(stage_plan_builder.remap_input_link(
+            fused_output_port_aliases, linked_node, linked_port));
       }
     }
     if (gfx_log_debug_enabled()) {
@@ -1477,8 +1409,8 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
         const auto &fused_node = ordered_ops[fused_idx];
         m_node_to_stage[fused_node.get()] = idx;
         if (aliases_stage_output && fused_node->get_output_size() == 1) {
-          merge_model_outputs(stage, fused_node.get());
-          append_output_alias(stage, fused_node, 0, 0);
+          stage_plan_builder.merge_model_outputs(stage, fused_node.get());
+          stage_plan_builder.append_output_alias(stage, fused_node, 0, 0);
         }
         return true;
       };

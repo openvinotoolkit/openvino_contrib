@@ -27,6 +27,7 @@ set(GFX_PLUGIN_SOURCES
     ${_gfx_src_dir}/compiler/memory_plan.cpp
     ${_gfx_src_dir}/compiler/operation_legalizer.cpp
     ${_gfx_src_dir}/compiler/operation_support.cpp
+    ${_gfx_src_dir}/compiler/pipeline_stage_plan.cpp
     ${_gfx_src_dir}/compiler/stage_compiler_policy.cpp
     ${_gfx_src_dir}/compiler/stage_placement.cpp
     ${_gfx_src_dir}/compiler/tensor_layout.cpp
@@ -71,6 +72,7 @@ set(GFX_PLUGIN_HEADERS
     ${_gfx_src_dir}/compiler/memory_plan.hpp
     ${_gfx_src_dir}/compiler/operation_legalizer.hpp
     ${_gfx_src_dir}/compiler/operation_support.hpp
+    ${_gfx_src_dir}/compiler/pipeline_stage_plan.hpp
     ${_gfx_src_dir}/compiler/stage_compiler_policy.hpp
     ${_gfx_src_dir}/compiler/stage_placement.hpp
     ${_gfx_src_dir}/compiler/tensor_layout.hpp
@@ -101,6 +103,7 @@ set(GFX_PLUGIN_HEADERS
 set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/executable_descriptor.hpp
     ${_gfx_src_dir}/runtime/runtime_session.hpp
+    ${_gfx_src_dir}/runtime/fused_output_lifetime_plan.hpp
     ${_gfx_src_dir}/runtime/gfx_activation.hpp
     ${_gfx_src_dir}/runtime/gfx_batchnorm.hpp
     ${_gfx_src_dir}/runtime/gfx_backend_caps.hpp
@@ -127,6 +130,7 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/immutable_gpu_buffer_cache.hpp
     ${_gfx_src_dir}/runtime/gpu_tensor.hpp
     ${_gfx_src_dir}/runtime/gpu_types.hpp
+    ${_gfx_src_dir}/runtime/output_lifetime.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_codegen_backend.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_dispatch.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_manifest.hpp
@@ -143,6 +147,7 @@ set(GFX_RUNTIME_COMMON_HEADERS
 set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/runtime/executable_descriptor.cpp
     ${_gfx_src_dir}/runtime/runtime_session.cpp
+    ${_gfx_src_dir}/runtime/fused_output_lifetime_plan.cpp
     ${_gfx_src_dir}/runtime/gfx_backend_caps.cpp
     ${_gfx_src_dir}/runtime/gfx_backend_utils.cpp
     ${_gfx_src_dir}/runtime/fused_sequence_stage.cpp

@@ -38,10 +38,12 @@ public:
                                std::string unit_id);
   static KernelUnit describe(LoweringRouteKind route_kind, KernelUnitKind kind,
                              std::string unit_id, std::string backend_domain,
-                             std::string op_family);
+                             std::string op_family,
+                             bool requires_runtime_shape_args = false);
   static KernelUnit describe_handwritten_exception(
       std::string unit_id, std::string backend_domain, std::string op_family,
-      HandwrittenKernelExceptionContract exception);
+      HandwrittenKernelExceptionContract exception,
+      bool requires_runtime_shape_args = false);
 
   const std::string &id() const noexcept { return m_id; }
 
@@ -60,6 +62,10 @@ public:
     return m_exception;
   }
 
+  bool requires_runtime_shape_args() const noexcept {
+    return m_requires_runtime_shape_args;
+  }
+
   bool valid() const noexcept {
     return m_route_kind != LoweringRouteKind::Unsupported && !m_id.empty();
   }
@@ -70,7 +76,8 @@ private:
   KernelUnit(LoweringRouteKind route_kind, KernelUnitKind kind,
              std::string unit_id, std::string backend_domain,
              std::string op_family,
-             HandwrittenKernelExceptionContract exception = {});
+             HandwrittenKernelExceptionContract exception = {},
+             bool requires_runtime_shape_args = false);
 
   KernelUnitKind m_kind = KernelUnitKind::Common;
   LoweringRouteKind m_route_kind = LoweringRouteKind::Unsupported;
@@ -78,6 +85,7 @@ private:
   std::string m_backend_domain;
   std::string m_op_family;
   HandwrittenKernelExceptionContract m_exception;
+  bool m_requires_runtime_shape_args = false;
 };
 
 std::string_view kernel_unit_kind_to_string(KernelUnitKind kind) noexcept;

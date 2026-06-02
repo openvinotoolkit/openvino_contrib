@@ -74,6 +74,7 @@ struct StageRecord {
   std::string backend_domain;
   std::string kernel_unit_id;
   std::string kernel_unit_kind;
+  bool requires_runtime_shape_args = false;
   std::vector<TensorContract> inputs;
   std::vector<TensorContract> outputs;
   RuntimeParamContract runtime_params;

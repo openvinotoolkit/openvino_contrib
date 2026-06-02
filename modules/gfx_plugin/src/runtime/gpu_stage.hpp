@@ -3,7 +3,6 @@
 //
 #pragma once
 
-#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -25,17 +24,6 @@ struct PostOpFusionCapabilities;
 struct GpuStageSubmitPolicy {
   size_t weight = 1;
   bool isolate = false;
-};
-
-struct GpuStageOutputLifetime {
-  static constexpr size_t npos = std::numeric_limits<size_t>::max();
-
-  size_t produced_at = npos;
-  size_t last_used_at = npos;
-  bool requires_buffer = true;
-  size_t storage_source_output = npos;
-
-  bool valid() const { return produced_at != npos && last_used_at != npos; }
 };
 
 struct GpuStageRuntimeOptions {
@@ -97,13 +85,8 @@ public:
 
   virtual const std::string &name() const = 0;
   virtual const std::string &type() const = 0;
-  virtual bool is_view_only() const { return false; }
   virtual GpuStageSubmitPolicy submit_policy() const { return {}; }
   virtual bool has_internal_input_bindings() const { return false; }
-  virtual bool describe_output_lifetimes(
-      std::vector<GpuStageOutputLifetime> & /*lifetimes*/) const {
-    return false;
-  }
 
   virtual std::unique_ptr<GpuStage> clone() const = 0;
 };

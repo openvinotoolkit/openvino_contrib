@@ -39,10 +39,12 @@ std::string default_unit_id(LoweringRouteKind route_kind) {
 KernelUnit::KernelUnit(LoweringRouteKind route_kind, KernelUnitKind kind,
                        std::string unit_id, std::string backend_domain,
                        std::string op_family,
-                       HandwrittenKernelExceptionContract exception)
+                       HandwrittenKernelExceptionContract exception,
+                       bool requires_runtime_shape_args)
     : m_kind(kind), m_route_kind(route_kind), m_id(std::move(unit_id)),
       m_backend_domain(std::move(backend_domain)),
-      m_op_family(std::move(op_family)), m_exception(std::move(exception)) {}
+      m_op_family(std::move(op_family)), m_exception(std::move(exception)),
+      m_requires_runtime_shape_args(requires_runtime_shape_args) {}
 
 KernelUnit KernelUnit::from_route(LoweringRouteKind route_kind,
                                   std::string unit_id) {
@@ -56,21 +58,24 @@ KernelUnit KernelUnit::from_route(LoweringRouteKind route_kind,
 KernelUnit KernelUnit::describe(LoweringRouteKind route_kind,
                                 KernelUnitKind kind, std::string unit_id,
                                 std::string backend_domain,
-                                std::string op_family) {
+                                std::string op_family,
+                                bool requires_runtime_shape_args) {
   if (unit_id.empty() && route_kind != LoweringRouteKind::Unsupported) {
     unit_id = default_unit_id(route_kind);
   }
   return KernelUnit(route_kind, kind, std::move(unit_id),
-                    std::move(backend_domain), std::move(op_family));
+                    std::move(backend_domain), std::move(op_family), {},
+                    requires_runtime_shape_args);
 }
 
 KernelUnit KernelUnit::describe_handwritten_exception(
     std::string unit_id, std::string backend_domain, std::string op_family,
-    HandwrittenKernelExceptionContract exception) {
+    HandwrittenKernelExceptionContract exception,
+    bool requires_runtime_shape_args) {
   return KernelUnit(LoweringRouteKind::HandwrittenKernelException,
                     KernelUnitKind::HandwrittenException, std::move(unit_id),
                     std::move(backend_domain), std::move(op_family),
-                    std::move(exception));
+                    std::move(exception), requires_runtime_shape_args);
 }
 
 std::string KernelUnit::manifest_key() const {

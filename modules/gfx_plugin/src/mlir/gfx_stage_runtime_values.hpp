@@ -242,7 +242,8 @@ RuntimeSplitPlan plan_split_runtime_values(const ov::Node *node,
 RuntimeSlicePlan
 plan_slice_runtime_values(const RuntimeInputResolver &inputs,
                           const std::vector<GpuTensor *> &outputs,
-                          bool is_opencl_backend, std::string_view stage_name);
+                          bool requires_runtime_shape_args,
+                          std::string_view stage_name);
 
 RuntimeTransposePlan
 plan_transpose_runtime_values(const RuntimeInputResolver &inputs,

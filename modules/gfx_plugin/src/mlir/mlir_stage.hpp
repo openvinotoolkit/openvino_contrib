@@ -58,7 +58,6 @@ public:
 
   const std::string &name() const override { return m_name; }
   const std::string &type() const override { return m_type; }
-  bool is_view_only() const override { return m_is_view_op; }
 
   bool fuse_activation(ActivationKind kind, float alpha) override;
   bool fuse_input_activation(size_t input_idx, ActivationKind kind,

@@ -89,8 +89,9 @@ Prefer:
 - `tests/unit/gpu_backend_base_test.cpp`
 - `tests/unit/gfx_backend_architecture_contract_test.cpp`
 - `tests/unit/plugin_tests.cpp` when `query_model()` or compile behavior moved
-- `tests/unit/infer_pipeline_reuse_test.cpp` when runtime-session or prepared
-  executable binding behavior moves
+- `tests/unit/infer_pipeline_reuse_test.cpp` when runtime-session, prepared
+  executable binding, descriptor-owned view/alias classification,
+  fused-output-lifetime planning, or runtime-shape argument policy moves
 - backend artifact tests when payload materialization reaches Metal or OpenCL
   runtime loaders
 - backend stage-placement contract tests when domain/storage selection moves

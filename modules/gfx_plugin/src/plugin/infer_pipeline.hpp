@@ -35,6 +35,7 @@ struct InferStage {
     std::vector<PipelineStageDesc::InputLink> output_sources;
     std::vector<PipelineStageDesc::InputLink> inputs;
     std::vector<PipelineStageDesc::OutputAlias> output_aliases;
+    std::vector<PipelineStageDesc::OutputLifetime> output_lifetimes;
 };
 
 struct StageOutputBufferWorkspace {
@@ -156,7 +157,6 @@ void assign_runtime_stage_output_shapes(
     std::vector<InferStage>& pipeline,
     PreparedInferExecutionPlan& plan,
     const std::vector<GpuTensor>& input_tensors,
-    GpuBackend backend,
     const char* error_prefix = "GFX");
 
 void prepare_reusable_output_plan(
@@ -206,29 +206,27 @@ runtime_stage_descriptor_or_null(const InferStage& stage) {
 }
 
 inline bool stage_outputs_may_alias_inputs(const InferStage& stage) {
-    if (const auto* descriptor = runtime_stage_descriptor_or_null(stage)) {
-        if (descriptor->tensor_view_only) {
-            return true;
-        }
-        const auto& memory_plan = stage.runtime_session->descriptor().memory_plan;
-        for (const auto& output : descriptor->output_bindings) {
-            const auto alias_it =
-                std::find_if(memory_plan.alias_groups.begin(),
-                             memory_plan.alias_groups.end(),
-                             [&](const RuntimeMemoryAliasGroupDescriptor& group) {
-                                 return group.group_id == output.alias_group;
-                             });
-            if (alias_it != memory_plan.alias_groups.end() &&
-                alias_it->output_aliasing) {
-                return true;
-            }
-        }
-    }
-    if (!stage.stage) {
+    const auto* descriptor = runtime_stage_descriptor_or_null(stage);
+    if (!descriptor) {
         return false;
     }
-    const auto& type = stage.stage->type();
-    return is_view_op(stage) || type == "Split" || type == "VariadicSplit";
+    if (descriptor->tensor_view_only) {
+        return true;
+    }
+    const auto& memory_plan = stage.runtime_session->descriptor().memory_plan;
+    for (const auto& output : descriptor->output_bindings) {
+        const auto alias_it =
+            std::find_if(memory_plan.alias_groups.begin(),
+                         memory_plan.alias_groups.end(),
+                         [&](const RuntimeMemoryAliasGroupDescriptor& group) {
+                             return group.group_id == output.alias_group;
+                         });
+        if (alias_it != memory_plan.alias_groups.end() &&
+            alias_it->output_aliasing) {
+            return true;
+        }
+    }
+    return false;
 }
 
 inline const RuntimeMemoryRegionDescriptor*
@@ -622,12 +620,10 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
             auto& stage = pipeline[stage_idx];
             auto protected_input_slots = protect_current_stage_input_slots(stage);
             auto& stage_handles = handles[stage_idx];
-            std::vector<GpuStageOutputLifetime> internal_lifetimes;
             const bool has_internal_lifetimes =
-                stage.stage &&
-                stage.stage->describe_output_lifetimes(internal_lifetimes) &&
-                internal_lifetimes.size() >= stage.outputs.size();
+                stage.output_lifetimes.size() >= stage.outputs.size();
             if (has_internal_lifetimes) {
+                const auto& internal_lifetimes = stage.output_lifetimes;
                 struct InternalOutput {
                     size_t output = 0;
                     size_t produced_at = 0;
@@ -651,7 +647,7 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
                             continue;
                         }
                         const size_t storage_source = internal_lifetimes[oi].storage_source_output;
-                        if (storage_source == GpuStageOutputLifetime::npos ||
+                        if (storage_source == PipelineStageDesc::OutputLifetime::npos ||
                             storage_source >= escapes_stage.size()) {
                             continue;
                         }

@@ -105,6 +105,8 @@ RuntimeStageExecutableDescriptor make_stage_descriptor(
   descriptor.abi_output_arg_count = artifact.abi_output_arg_count;
   descriptor.dispatch_contract = artifact.kernel.dispatch_contract;
   descriptor.layout_contract = artifact.kernel.layout_contract;
+  descriptor.requires_runtime_shape_args =
+      artifact.kernel.requires_runtime_shape_args;
   descriptor.tensor_view_only = descriptor.layout_contract == "view_only";
   descriptor.tensor_roles = artifact.kernel.tensor_roles;
   descriptor.scalar_roles = artifact.kernel.scalar_roles;
@@ -439,6 +441,8 @@ RuntimeExecutableDescriptor::verify(
         stage.abi_output_arg_count != artifact.abi_output_arg_count ||
         stage.dispatch_contract != artifact.kernel.dispatch_contract ||
         stage.layout_contract != artifact.kernel.layout_contract ||
+        stage.requires_runtime_shape_args !=
+            artifact.kernel.requires_runtime_shape_args ||
         stage.tensor_view_only !=
             (artifact.kernel.layout_contract == "view_only") ||
         stage.tensor_roles != artifact.kernel.tensor_roles ||

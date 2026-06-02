@@ -168,6 +168,7 @@ std::string make_manifest_cache_hash(const ManifestBundle &manifest) {
     append_field(material, stage.backend_domain);
     append_field(material, stage.kernel_unit_id);
     append_field(material, stage.kernel_unit_kind);
+    append_bool(material, stage.requires_runtime_shape_args);
     append_field(material, stage.dispatch.dispatch_source);
     append_field(material, stage.memory.alias_group);
     append_bool(material, stage.memory.hidden_host_copy_allowed);

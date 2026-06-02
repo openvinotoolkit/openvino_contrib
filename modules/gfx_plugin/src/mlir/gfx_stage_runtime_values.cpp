@@ -1333,14 +1333,15 @@ RuntimeSplitPlan plan_split_runtime_values(const ov::Node *node,
 RuntimeSlicePlan
 plan_slice_runtime_values(const RuntimeInputResolver &inputs,
                           const std::vector<GpuTensor *> &outputs,
-                          bool is_opencl_backend, std::string_view stage_name) {
+                          bool requires_runtime_shape_args,
+                          std::string_view stage_name) {
   OPENVINO_ASSERT(inputs.node,
                   "GFX MLIR: Slice/StridedSlice node is missing for stage ",
                   stage_name);
   const auto &node = *inputs.node;
 
   RuntimeSlicePlan plan;
-  plan.use_runtime_args = is_opencl_backend ||
+  plan.use_runtime_args = requires_runtime_shape_args ||
                           !node.get_input_partial_shape(0).is_static() ||
                           !node.get_output_partial_shape(0).is_static() ||
                           slice_requires_runtime_indexing(node);

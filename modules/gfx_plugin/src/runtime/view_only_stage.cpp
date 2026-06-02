@@ -101,10 +101,6 @@ public:
         return m_type;
     }
 
-    bool is_view_only() const override {
-        return true;
-    }
-
     std::unique_ptr<GpuStage> clone() const override {
         return std::make_unique<ViewOnlyStage>(m_node, m_descriptor);
     }

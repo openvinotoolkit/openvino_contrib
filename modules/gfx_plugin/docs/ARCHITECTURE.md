@@ -24,14 +24,14 @@ notes or deleted backend code as current behavior.
 - `src/compiler/`: backend target description, backend module registry,
   backend capability records, operation support policies, backend
   stage-placement contracts, operation legalization, tensor-layout
-  classification, stage compiler policy, lowering plans, memory plans,
-  manifest bundles, cache envelopes, executable bundles, and artifact payload
-  routing
+  classification, stage compiler policy, lowering plans, pipeline-stage I/O
+  plans, memory plans, manifest bundles, cache envelopes, executable bundles,
+  and artifact payload routing
 - `src/runtime/`: backend-neutral stage interfaces, execution dispatcher,
   descriptor-backed view-only stages, submission windows, target profiles,
   profiling reports, remote tensor/context helpers, common buffer abstractions,
-  runtime executable descriptors, runtime sessions, selected compiler policy
-  handoff, and reusable caches
+  runtime executable descriptors, runtime sessions, fused-output lifetime
+  planning, selected compiler policy handoff, and reusable caches
 - `src/kernel_ir/`: kernel manifests, custom-kernel family registry, dispatch
   metadata, argument helpers, cache keys, embedded helper kernel sources, and
   OpenCL source artifacts
@@ -79,7 +79,8 @@ parallel support tables.
 - `build_op_pipeline()` stage construction
 - compiled-model properties
 - profiling configuration and report ownership
-- output-source and output-alias metadata for fused or view-style stages
+- compiler-owned pipeline-stage I/O metadata for input links, output-source
+  tracking, and output aliases
 
 The compiled pipeline is a sequence of `PipelineStageDesc` records wrapping
 backend-specific `GpuStage` instances. One stage may represent one OpenVINO node,
@@ -92,10 +93,12 @@ descriptor for payload kind, entry point, ABI fingerprint, explicit roles, and
 artifact payload. If a descriptor is missing or invalid, the backend must fail
 or fall back only to a supported current path, never to a removed route.
 
-`build_op_pipeline()` creates stage prototypes and records runtime-stage indices;
-it does not compile custom kernels eagerly. Kernel preparation is request-local
-and is mediated by `src/runtime/runtime_session.*` so descriptor-owned resource
-bindings and memory-region ids are checked against the current tensor bindings.
+`build_op_pipeline()` uses `src/compiler/pipeline_stage_plan.*` to collect model
+output ports, remap fused input links, and record output aliases. It creates
+stage prototypes and records runtime-stage indices; it does not compile custom
+kernels eagerly. Kernel preparation is request-local and is mediated by
+`src/runtime/runtime_session.*` so descriptor-owned resource bindings and
+memory-region ids are checked against the current tensor bindings.
 
 ### `InferRequest`
 
@@ -154,11 +157,14 @@ Important stage hooks:
   instead of requiring a separate materialized stage
 - `submit_policy()`: communicates scheduling weight and isolation hints to the
   submission planner
-- `describe_output_lifetimes()`: lets complex stages describe internal output
-  lifetimes for workspace reuse
 
 `src/runtime/fused_sequence_stage.*` combines compatible stages when fusion
-rules allow one runtime path to cover several OpenVINO nodes.
+rules allow one runtime path to cover several OpenVINO nodes. Internal output
+lifetimes for such stages are carried by compiler-owned `PipelineStageDesc`
+metadata and consumed by the shared inference pipeline; runtime stages must not
+reclassify tensor views or lifetimes from operation type names.
+`src/runtime/fused_output_lifetime_plan.*` computes that metadata from
+`RuntimeStageExecutableDescriptor` and `RuntimeMemoryPlanDescriptor` contracts.
 
 `src/runtime/view_only_stage.*` handles compiler-owned metadata descriptors for
 ops whose outputs can alias an input buffer without launching a backend kernel.
@@ -312,8 +318,10 @@ Apple source planning is split by responsibility:
 Kernel contracts are split across the current compiler and kernel IR layers:
 
 - `src/compiler/manifest.*`: normalized stage records, tensor contracts,
-  memory-region ids, runtime-parameter contracts, dispatch contracts, and memory
-  contracts
+  memory-region ids, runtime-parameter contracts, dispatch contracts,
+  runtime-shape-argument requirements, and memory contracts
+- `src/compiler/pipeline_stage_plan.*`: model-output flags, input links, and
+  output-alias metadata used by compiled pipeline descriptors
 - `src/compiler/memory_plan.*`: compiler-owned memory regions, lifetimes, alias
   groups, transient arenas, and memory-plan fingerprints
 - `src/compiler/cache_envelope.*`: in-memory cache keys and payload records;
@@ -326,6 +334,8 @@ Kernel contracts are split across the current compiler and kernel IR layers:
 - `src/runtime/runtime_session.*`: request-local resource binding tables and
   prepared executable objects that validate tensor bindings against descriptor
   memory-region ids
+- `src/runtime/fused_output_lifetime_plan.*`: fused-stage output lifetime and
+  alias-storage planning based on runtime memory contracts
 - `src/kernel_ir/gfx_kernel_manifest.hpp` and
   `src/kernel_ir/gfx_custom_kernel_families.*`: custom-kernel family metadata
   and source-plan contracts
@@ -447,6 +457,9 @@ helpers and Transpose also use explicit `opencl/generated/*` source ids. The
 current OpenCL kernel registry has no active handwritten kernel-unit exception.
 Keep those distinctions in the artifact contract rather than duplicating them
 in the OpenCL stage executor.
+Routes that require runtime shape arguments must mark the `KernelUnit`; the
+manifest, executable bundle, runtime descriptor, and infer pipeline carry that
+flag instead of deriving it from backend identity at request time.
 
 Reduction OpenCL paths are split by contract. Numeric f32 `ReduceSum`,
 `ReduceMean`, `ReduceMax`, `ReduceMin`, `ReduceProd`, `ReduceL1`, and
@@ -486,6 +499,7 @@ Reusable inference layers include:
 - prepared backend binding caches
 - liveness-managed stage-output workspaces
 - view-style aliases for compatible Split/VariadicSplit outputs
+- fused-output lifetime plans derived from runtime memory descriptors
 
 ## Profiling Architecture
 

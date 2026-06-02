@@ -96,8 +96,9 @@ Add or update tests when changing:
 - `query_model()` or support probing
 - compiler backend registry, operation policies, lowering plans, manifests,
   executable bundles, runtime executable descriptors, or artifact payloads
-- compiler memory plans, cache envelopes, runtime-session binding tables, or
-  prepared executable binding behavior
+- compiler pipeline-stage I/O plans, memory plans, cache envelopes,
+  runtime-session binding tables, fused-output lifetime plans, or prepared
+  executable binding behavior
 - compiler-owned tensor-layout classification
 - MLIR builders, passes, source plans, or runtime-value planning
 - backend stage-placement policy, stage fusion, precision, or submit policy
@@ -144,7 +145,8 @@ For compiler-service, manifest, or executable-descriptor changes:
   `MpsrtVendorPrimitiveStage`
 - tensor-layout tests when `src/compiler/tensor_layout.*` changes
 - infer-pipeline reuse tests when `RuntimeSession`, prepared executable
-  bindings, or descriptor memory-region use changes
+  bindings, descriptor-owned view/alias classification, fused-output lifetimes,
+  runtime-shape argument policy, or descriptor memory-region use changes
 - OpenCL runtime-bundle contract tests when dynamic loader candidate ordering
   or CLVK tool-path setup changes
 

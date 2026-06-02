@@ -304,6 +304,8 @@ ManifestBundle ManifestBuilder::build(const LoweringPlan &plan) const {
     stage.kernel_unit_id = op.kernel_unit.id();
     stage.kernel_unit_kind =
         std::string(kernel_unit_kind_to_string(op.kernel_unit.kind()));
+    stage.requires_runtime_shape_args =
+        op.kernel_unit.requires_runtime_shape_args();
     stage.inputs = make_input_contracts(op);
     stage.outputs = make_output_contracts(op);
     for (size_t input_idx = 0; input_idx < stage.inputs.size(); ++input_idx) {

@@ -167,7 +167,7 @@ void InferRequest::infer_opencl_impl(
                                         param_map);
         assign_runtime_stage_output_shapes(
             prepared_pipeline, opencl_state->reusable_execution_plan,
-            input_tensors, GpuBackend::OpenCL, "GFX OpenCL");
+            input_tensors, "GFX OpenCL");
       },
       [&](InferStage &stage, size_t oi, GpuTensor &out_ref, GpuBufferDesc &desc,
           const char *error_prefix) {
