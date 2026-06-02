@@ -5,6 +5,8 @@
 #pragma once
 
 #include <algorithm>
+#include <functional>
+#include <utility>
 #include <vector>
 
 namespace ov {
@@ -27,8 +29,8 @@ namespace nvidia_gpu {
 template <typename Key, typename Value, typename Hash = std::hash<Key>>
 class LruCache {
 public:
-    explicit LruCache(size_t capacity) : capacity_{capacity} {
-        entries_.reserve(capacity);
+    explicit LruCache(size_t capacity) : capacity_{std::max<size_t>(capacity, 1)} {
+        entries_.reserve(capacity_);
     }
 
     /**

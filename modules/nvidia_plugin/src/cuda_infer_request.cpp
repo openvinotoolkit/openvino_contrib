@@ -225,6 +225,7 @@ void CudaInferRequest::infer() {
         this->infer_preprocess();
     }
     auto cuda_thread_pool = std::dynamic_pointer_cast<CudaThreadPool>(wait_executor_);
+    OPENVINO_ASSERT(cuda_thread_pool, "wait_executor_ must be a CudaThreadPool");
     wait_executor_->run_and_wait({[this, cuda_thread_pool] {
         auto& threadContext = cuda_thread_pool->get_thread_context();
         {

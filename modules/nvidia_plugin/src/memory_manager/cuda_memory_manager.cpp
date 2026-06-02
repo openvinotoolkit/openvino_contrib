@@ -24,7 +24,7 @@ MemoryManager::InputTensors MemoryManager::inputTensorPointers(const IOperationM
     for (auto id : operation.GetInputIds()) {
         auto dynBuf = dynBufCtx.getDynamicBuffer(id.GetBuffer().GetId());
         if (dynBuf) {
-            result.emplace_back(dynBuf->get());
+            result.emplace_back(static_cast<uint8_t*>(dynBuf->get()) + id.GetOffset());
             continue;
         }
         const void* ptr = immutable_tensors_->deviceTensorPtr(id);
@@ -42,7 +42,7 @@ MemoryManager::OutputTensors MemoryManager::outputTensorPointers(const IOperatio
     for (auto id : operation.GetOutputIds()) {
         auto dynBuf = dynBufCtx.getDynamicBuffer(id.GetBuffer().GetId());
         if (dynBuf) {
-            result.emplace_back(dynBuf->get());
+            result.emplace_back(static_cast<uint8_t*>(dynBuf->get()) + id.GetOffset());
             continue;
         }
         void* ptr = mutable_tensors_model_->deviceTensorPtr(mutableBufferPtr.cast<uint8_t*>(), id);
