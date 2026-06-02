@@ -4,9 +4,11 @@
 
 #include "cuda_dynamic_operation.hpp"
 
+#include <algorithm>
 #include <openvino/op/parameter.hpp>
 #include <openvino/op/result.hpp>
 
+#include "cuda_op_buffers_extractor.hpp"
 #include "cuda_operation_registry.hpp"
 #include "ops/parameter.hpp"
 #include "ops/result.hpp"
@@ -37,6 +39,17 @@ void DynamicOperation::Execute(const InferenceRequestContext& context,
 
     if (auto resultNode = std::dynamic_pointer_cast<ov::op::v0::Result>(original_node_)) {
         executeResult(*resultNode, context, stream, dynBufCtx);
+        return;
+    }
+
+    // Reshape-only nodes (Reshape/Squeeze/Unsqueeze) are modeled as NopOp: their
+    // output aliases the input buffer and no data is moved. Going through the
+    // generic cached path would (a) misinfer the output shape, since
+    // createCachedOperation() replaces the constant target-shape input with a
+    // Parameter, and (b) clobber the shared buffer with a freshly allocated,
+    // never-copied output. Handle them as a boundary condition instead.
+    if (OperationBuffersExtractor::isReshapeOnlyNode(*original_node_)) {
+        executeReshapeOnly(dynBufCtx);
         return;
     }
 
@@ -150,6 +163,42 @@ void DynamicOperation::executeResult(const ov::op::v0::Result& resultNode,
     stream.download(tensor->data(),
                     CUDA::DevicePointer<const void*>{dynBuf->get()},
                     tensor->get_byte_size());
+}
+
+void DynamicOperation::executeReshapeOnly(DynamicBufferContext& dynBufCtx) const {
+    // Recompute the output shape: replace dynamic data inputs with concrete-shape
+    // Parameters, but keep static inputs (the target-shape Constant) intact so
+    // Reshape/Squeeze/Unsqueeze can infer a concrete output shape.
+    ov::OutputVector new_inputs;
+    new_inputs.reserve(original_node_->get_input_size());
+    for (size_t i = 0; i < original_node_->get_input_size(); ++i) {
+        BufferID bufId = input_ids_[i].GetBuffer().GetId();
+        if (dynBufCtx.hasShape(bufId)) {
+            auto param = std::make_shared<ov::op::v0::Parameter>(
+                original_node_->get_input_element_type(i), dynBufCtx.getShape(bufId));
+            new_inputs.push_back(param->output(0));
+        } else {
+            new_inputs.push_back(original_node_->input_value(i));
+        }
+    }
+    auto cloned = original_node_->clone_with_new_inputs(new_inputs);
+    cloned->validate_and_infer_types();
+
+    // The output aliases the input buffer; only the logical shape changes.
+    for (size_t i = 0; i < dynamic_output_ids_.size(); ++i) {
+        BufferID outId = dynamic_output_ids_[i].GetBuffer().GetId();
+        dynBufCtx.updateShape(outId, cloned->get_output_shape(i));
+    }
+
+    for (BufferID id : release_ids_) {
+        // Never release a buffer that is also an aliased output of this op.
+        const bool isAliasedOutput =
+            std::any_of(dynamic_output_ids_.begin(), dynamic_output_ids_.end(),
+                        [id](const TensorID& t) { return t.GetBuffer().GetId() == id; });
+        if (!isAliasedOutput) {
+            dynBufCtx.releaseDynamicBuffer(id);
+        }
+    }
 }
 
 std::shared_ptr<CachedOperation> DynamicOperation::createCachedOperation(const ShapeKey& key) const {

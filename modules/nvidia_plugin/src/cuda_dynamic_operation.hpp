@@ -164,6 +164,8 @@ private:
                        const CUDA::Stream& stream,
                        DynamicBufferContext& dynBufCtx) const;
 
+    void executeReshapeOnly(DynamicBufferContext& dynBufCtx) const;
+
     std::shared_ptr<CachedOperation> createCachedOperation(const ShapeKey& key) const;
 
     std::shared_ptr<ov::Node> original_node_;

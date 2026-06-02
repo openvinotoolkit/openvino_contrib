@@ -66,6 +66,14 @@ public:
         return shapes_.count(id) > 0;
     }
 
+    // Update only the logical shape of an already-registered buffer, keeping
+    // its allocation intact. Used by reshape-only ops (Reshape/Squeeze/
+    // Unsqueeze) whose output aliases the input buffer: no data is moved, only
+    // the shape metadata changes.
+    void updateShape(BufferID id, ov::Shape shape) {
+        shapes_[id] = std::move(shape);
+    }
+
 private:
     std::unordered_map<BufferID, CUDA::Allocation> allocations_;
     std::unordered_map<BufferID, ov::Shape> shapes_;
