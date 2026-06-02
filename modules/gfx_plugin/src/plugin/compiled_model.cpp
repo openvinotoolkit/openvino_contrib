@@ -5,6 +5,7 @@
 #include "openvino/gfx_plugin/compiled_model.hpp"
 
 #include "compiler/backend_registry.hpp"
+#include "compiler/stage_compiler_policy.hpp"
 #include "openvino/gfx_plugin/infer_request.hpp"
 #include "openvino/gfx_plugin/plugin.hpp"
 #include "openvino/gfx_plugin/profiling.hpp"
@@ -25,7 +26,6 @@
 #include "runtime/gfx_precision.hpp"
 #include "runtime/gfx_profiling_report.hpp"
 #include "runtime/gfx_remote_context.hpp"
-#include "runtime/gfx_stage_policy.hpp"
 
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
@@ -670,7 +670,6 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
     return;
   }
 
-  const auto resources = get_backend_resources(backend_state());
   auto *backend_state = m_backend_state.get();
   OPENVINO_ASSERT(backend_state, "GFX: backend state is not initialized");
   const auto backend_module =
@@ -681,7 +680,8 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
   const auto &backend_capabilities = backend_module->capabilities();
   const auto &fusion_capabilities = backend_capabilities.fusion();
   const auto stage_compiler_policy =
-      gfx_stage_compiler_policy_from_capabilities(backend_capabilities);
+      compiler::make_stage_compiler_policy_from_capabilities(
+          backend_capabilities);
   GpuStageRuntimeOptions stage_runtime_options{};
   stage_runtime_options.diagnostic_f32_vendor_image = m_diagnostic_f32_vendor_image;
   stage_runtime_options.stage_placement_policy =
@@ -825,11 +825,9 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
            group.kind == "EltwiseBias" ||
            group.kind == "EltwiseInputActivation";
   };
-  auto is_apple_mpsrt_precision_sensitive_arithmetic_fusion_group =
+  auto compiler_allows_precision_sensitive_arithmetic_fusion_group =
       [&](const FusionGroup &group) {
-        if (backend_state->backend() != GpuBackend::Metal ||
-            group.node_indices.empty() || group.input_activation.has_value() ||
-            group.batchnorm.has_value()) {
+        if (group.node_indices.empty()) {
           return false;
         }
         const auto primary_idx = group.node_indices.front();
@@ -837,36 +835,17 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
           return false;
         }
         const auto &primary = ordered_ops[primary_idx];
-        const std::string stage_type = primary->get_type_name();
-        if (stage_type != "Convolution" && stage_type != "GroupConvolution") {
-          return false;
-        }
-
-        if (group.kind == "ConvBias") {
-          if (!group.bias.has_value() || group.activation.has_value()) {
-            return false;
-          }
-        } else if (group.kind == "ConvActivation" ||
-                   group.kind == "ConvBiasActivation") {
-          if (!group.activation.has_value() ||
-              (group.kind == "ConvBiasActivation" && !group.bias.has_value()) ||
-              !backend_capabilities.allow_stage_activation_fusion(
-                  stage_type, *group.activation)) {
-            return false;
-          }
-        } else {
-          return false;
-        }
-
-        const auto plan = select_stage_optimization_plan(
-            resources.const_manager, GpuBackend::Metal, stage_type, primary,
-            primary->get_output_element_type(0), group.bias.has_value(),
-            group.activation.has_value(),
-            /*has_batchnorm=*/false, {}, &stage_compiler_policy);
-        return plan.placement.domain == GfxStageBackendDomain::AppleMps &&
-               plan.placement.storage == GfxStageStorageKind::Image &&
-               plan.placement.uses_vendor_primitive &&
-               !plan.placement.uses_custom_kernel;
+        compiler::PrecisionSensitiveFusionQuery query{};
+        query.group_kind = group.kind;
+        query.stage_type = primary->get_type_name();
+        query.primary_node = primary;
+        query.element_type = primary->get_output_element_type(0);
+        query.has_bias = group.bias.has_value();
+        query.activation = group.activation;
+        query.has_input_activation = group.input_activation.has_value();
+        query.has_batchnorm = group.batchnorm.has_value();
+        return compiler::allow_precision_sensitive_arithmetic_fusion(
+            stage_compiler_policy, query);
       };
   if (m_enable_fusion && has_unobserved_stage_edges) {
     FusionConfig fusion_cfg;
@@ -890,11 +869,11 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
       if (!fusion_capabilities.enable_precision_sensitive_arithmetic_fusion &&
           is_precision_sensitive_arithmetic_fusion_group(group) &&
           fusion_group_has_fp32_precision(&group)) {
-        if (is_apple_mpsrt_precision_sensitive_arithmetic_fusion_group(
+        if (compiler_allows_precision_sensitive_arithmetic_fusion_group(
                 group)) {
           if (compile_trace) {
             compile_trace->increment_counter(
-                "fusion_precision_sensitive_mpsrt_allow_count");
+                "fusion_precision_sensitive_vendor_allow_count");
           }
         } else {
           if (compile_trace) {
@@ -1170,6 +1149,9 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
           const auto &final_node = ordered_ops[group->node_indices.back()];
           PipelineStageDesc stage_desc;
           stage_desc.node = final_node;
+          if (const auto *descriptor = runtime_descriptor_for_node(final_node)) {
+            stage_desc.runtime_stage_index = descriptor->stage_index;
+          }
           stage_desc.stage = std::move(stage);
           stage_desc.inputs.push_back(remap_input_link(
               plan->query.get_node_shared_ptr(), plan->query.get_index()));
@@ -1336,6 +1318,9 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
                   "fused_node_count", static_cast<uint64_t>(stage_count));
             }
             stage_desc.node = final_node;
+            if (const auto *descriptor = runtime_descriptor_for_node(final_node)) {
+              stage_desc.runtime_stage_index = descriptor->stage_index;
+            }
             stage_desc.stage = std::make_unique<FusedSequenceStage>(
                 std::move(fused_stages),
                 final_node ? final_node->get_friendly_name()
@@ -1411,6 +1396,9 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
 
     PipelineStageDesc stage_desc;
     stage_desc.node = node;
+    if (const auto *descriptor = runtime_descriptor_for_node(node)) {
+      stage_desc.runtime_stage_index = descriptor->stage_index;
+    }
     stage_desc.stage = std::move(gpu_stage);
     const size_t out_count = node->get_output_size();
     stage_desc.outputs.reserve(out_count);
@@ -1597,42 +1585,6 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
         post_ops_ok =
             mark_fused(fused_post_ops[i], aliases_stage_output) && post_ops_ok;
       }
-    }
-  }
-
-  for (auto &stage : m_pipeline) {
-    std::vector<GpuTensor *> inputs;
-    inputs.reserve(stage.node->get_input_size());
-    for (const auto &link : stage.inputs) {
-      (void)link;
-      inputs.push_back(nullptr); // Parameter/Constant or previous stage; not
-                                 // needed for compile
-    }
-    if (gfx_log_debug_enabled()) {
-      gfx_log_debug("StageFactory")
-          << "Compiling stage for " << stage.node->get_type_name()
-          << " name=" << stage.node->get_friendly_name();
-    }
-    stage.stage->set_inputs(inputs);
-    GpuBufferManager *buffer_manager = resources.const_manager;
-    stage.stage->init(buffer_manager);
-    const auto stage_compile_start =
-        compile_trace ? std::chrono::steady_clock::now()
-                      : std::chrono::steady_clock::time_point{};
-    const auto compile_scope_name =
-        stage.node ? stage.node->get_friendly_name() : stage.stage->name();
-    ScopedCompileProfilingContext compile_scope(compile_trace,
-                                                compile_scope_name);
-    stage.stage->compile(buffer_manager);
-    if (compile_trace) {
-      compile_trace->increment_counter("stage_compile_count");
-      compile_trace->add_segment(
-          "compile",
-          stage.node ? stage.node->get_friendly_name() : stage.stage->name(),
-          static_cast<uint64_t>(
-              std::chrono::duration_cast<std::chrono::microseconds>(
-                  std::chrono::steady_clock::now() - stage_compile_start)
-                  .count()));
     }
   }
 

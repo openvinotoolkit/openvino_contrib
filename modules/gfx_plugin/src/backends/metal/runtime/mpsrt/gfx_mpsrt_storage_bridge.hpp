@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <string_view>
 
-#include "runtime/gfx_mpsrt_abi.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_abi.hpp"
 
 namespace ov {
 namespace gfx_plugin {

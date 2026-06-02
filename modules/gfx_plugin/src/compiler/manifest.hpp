@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "compiler/lowering_planner.hpp"
+#include "compiler/memory_plan.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -26,6 +27,7 @@ enum class RuntimeParamKind {
 
 struct TensorContract {
   std::string logical_name;
+  std::string memory_region_id;
   TensorContractRole role = TensorContractRole::TensorInput;
   std::string element_type;
   std::string partial_shape;
@@ -90,6 +92,7 @@ struct ManifestVerificationResult {
 struct ManifestBundle {
   uint32_t schema_version = 2;
   std::string target_fingerprint;
+  MemoryPlan memory_plan;
   std::vector<StageRecord> stages;
 
   ManifestVerificationResult verify() const;

@@ -96,6 +96,8 @@ Add or update tests when changing:
 - `query_model()` or support probing
 - compiler backend registry, operation policies, lowering plans, manifests,
   executable bundles, runtime executable descriptors, or artifact payloads
+- compiler memory plans, cache envelopes, runtime-session binding tables, or
+  prepared executable binding behavior
 - compiler-owned tensor-layout classification
 - MLIR builders, passes, source plans, or runtime-value planning
 - backend stage-placement policy, stage fusion, precision, or submit policy
@@ -132,7 +134,8 @@ For compiler-service, manifest, or executable-descriptor changes:
 
 - `tests/unit/gpu_backend_base_test.cpp`
 - `tests/unit/gfx_backend_architecture_contract_test.cpp` when backend target
-  identity, kernel-unit registration, or manifest contracts move
+  identity, kernel-unit registration, manifest contracts, memory plans, cache
+  envelopes, or runtime-session descriptor contracts move
 - `tests/unit/plugin_tests.cpp` when `query_model()` or compile behavior moves
 - backend artifact tests when payload materialization reaches Metal or OpenCL
   runtime loaders
@@ -140,6 +143,8 @@ For compiler-service, manifest, or executable-descriptor changes:
 - Metal vendor-descriptor coverage when MPS/MPSGraph payloads reach
   `MpsrtVendorPrimitiveStage`
 - tensor-layout tests when `src/compiler/tensor_layout.*` changes
+- infer-pipeline reuse tests when `RuntimeSession`, prepared executable
+  bindings, or descriptor memory-region use changes
 - OpenCL runtime-bundle contract tests when dynamic loader candidate ordering
   or CLVK tool-path setup changes
 

@@ -8,6 +8,7 @@
 
 #include "compiler/backend_registry.hpp"
 #include "compiler/backend_target.hpp"
+#include "compiler/cache_envelope.hpp"
 #include "compiler/executable_bundle.hpp"
 #include "compiler/manifest.hpp"
 #include "compiler/operation_support.hpp"
@@ -28,6 +29,7 @@ struct GfxCompileResult {
     LoweringPlan lowering_plan;
     ManifestBundle manifest;
     ExecutableBundle executable;
+    CacheEnvelope cache_envelope;
     UnsupportedSummary unsupported;
 
     bool supported() const;

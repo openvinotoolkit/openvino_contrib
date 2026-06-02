@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "common/gpu_backend.hpp"
 #include "openvino/core/type/element_type.hpp"
 
 namespace ov {
@@ -19,8 +20,6 @@ using GpuHeapHandle = void*;
 using GpuCommandQueueHandle = void*;
 using GpuCommandBufferHandle = void*;
 using GpuCommandEncoderHandle = void*;
-
-enum class GpuBackend { Unknown = 255, Metal = 0, OpenCL = 1 };
 
 enum class BufferUsage { IO, Const, Intermediate, Temp, Staging };
 

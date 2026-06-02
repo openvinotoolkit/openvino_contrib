@@ -236,8 +236,16 @@ ExecutableBundleVerificationResult ExecutableBundle::verify() const {
   for (const auto &diagnostic : manifest_result.diagnostics) {
     result.diagnostics.push_back("manifest: " + diagnostic);
   }
+  const auto memory_result = memory_plan.verify();
+  for (const auto &diagnostic : memory_result.diagnostics) {
+    result.diagnostics.push_back("memory plan: " + diagnostic);
+  }
   if (target_fingerprint != manifest.target_fingerprint) {
     result.diagnostics.emplace_back("executable bundle target drift");
+  }
+  if (make_memory_plan_fingerprint(memory_plan) !=
+      make_memory_plan_fingerprint(manifest.memory_plan)) {
+    result.diagnostics.emplace_back("executable bundle memory plan drift");
   }
   if (stages.size() != manifest.stages.size()) {
     result.diagnostics.emplace_back("executable bundle stage count drift");
@@ -379,6 +387,7 @@ ExecutableBundleBuilder::build(const ManifestBundle &manifest) const {
   bundle.schema_version = kExecutableBundleSchemaVersion;
   bundle.target_fingerprint = manifest.target_fingerprint;
   bundle.manifest = manifest;
+  bundle.memory_plan = manifest.memory_plan;
   bundle.stages.reserve(manifest.stages.size());
   for (const auto &stage : manifest.stages) {
     ExecutableStageRecord record;

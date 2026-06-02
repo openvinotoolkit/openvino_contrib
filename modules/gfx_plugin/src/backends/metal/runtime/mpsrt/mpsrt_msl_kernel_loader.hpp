@@ -9,7 +9,7 @@
 #include <string>
 
 #include "kernel_ir/gfx_kernel_source.hpp"
-#include "runtime/gfx_mpsrt_model.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_model.hpp"
 
 namespace ov {
 namespace gfx_plugin {

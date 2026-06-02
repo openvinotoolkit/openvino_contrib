@@ -7,6 +7,9 @@
 #import <Metal/Metal.h>
 
 #include <cmath>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/relu.hpp"
@@ -15,6 +18,10 @@
 #include "backends/metal/runtime/metal_command_encoder.hpp"
 #include "backends/metal/runtime/metal_memory.hpp"
 #include "backends/metal/runtime/stage_factory.hpp"
+#include "kernel_ir/gfx_codegen_backend.hpp"
+#include "kernel_ir/gfx_kernel_source.hpp"
+#include "mlir/msl_codegen_apple_msl_activation.hpp"
+#include "openvino/core/except.hpp"
 #include "runtime/execution_dispatcher.hpp"
 #include "runtime/executable_descriptor.hpp"
 
@@ -28,6 +35,42 @@ struct ActivationCase {
 };
 
 RuntimeStageExecutableDescriptor make_metal_test_descriptor(
+    const std::shared_ptr<const ov::Node>& node) {
+    auto source_plan = make_activation_msl_kernel_source_plan(node);
+    OPENVINO_ASSERT(source_plan.valid(),
+                    "GFX Metal activation test requires a compiler-owned MSL "
+                    "source payload");
+    auto msl_source = resolve_msl_source(source_plan.source);
+    OPENVINO_ASSERT(!msl_source.empty(),
+                    "GFX Metal activation test source payload is empty");
+
+    RuntimeStageExecutableDescriptor descriptor;
+    descriptor.stage_index = 0;
+    descriptor.stage_record_key = 1;
+    descriptor.artifact_descriptor_index = 0;
+    descriptor.manifest_ref = "test_manifest";
+    descriptor.abi_fingerprint = "test_abi";
+    descriptor.artifact_key = "test_artifact";
+    descriptor.backend_domain = "metal";
+    descriptor.kernel_id = "metal/generated/activation";
+    descriptor.op_family = node ? node->get_type_name() : "null";
+    descriptor.origin = compiler::KernelArtifactOrigin::Generated;
+    descriptor.payload_kind = compiler::KernelArtifactPayloadKind::MslSource;
+    descriptor.entry_point = source_plan.source.entry_point;
+    descriptor.abi_arg_count = source_plan.source.signature.arg_count;
+    descriptor.abi_output_arg_count =
+        source_plan.source.signature.output_arg_count;
+    descriptor.dispatch_contract = "manifest";
+    descriptor.payload = std::make_shared<GfxKernelSourcePayload>(
+        descriptor.kernel_id,
+        descriptor.backend_domain,
+        descriptor.entry_point,
+        GfxKernelSourceLanguage::MetalShadingLanguage,
+        std::move(msl_source));
+    return descriptor;
+}
+
+RuntimeStageExecutableDescriptor make_legacy_descriptor_without_payload(
     const std::shared_ptr<const ov::Node>& node) {
     RuntimeStageExecutableDescriptor descriptor;
     descriptor.stage_index = 0;
@@ -146,4 +189,59 @@ TEST(GpuStageActivation, Sigmoid) {
 TEST(GpuStageActivation, Tanh) {
     ActivationCase tc{{0.f, 1.f, -1.f}, {0.f, std::tanh(1.f), std::tanh(-1.f)}};
     run_activation<TanhFactory>(tc);
+}
+
+TEST(GpuStageActivation, RejectsRuntimeSourcePlanWithoutCompilerPayload) {
+    ensure_metal_stage_factory_registered();
+    id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+    ASSERT_NE(device, nil);
+    MetalCommandQueueHandle gfx_queue = metal_create_command_queue(device);
+    ASSERT_NE(gfx_queue, nullptr);
+    id<MTLCommandQueue> queue = static_cast<id<MTLCommandQueue>>(gfx_queue);
+
+    MetalDeviceCaps caps = query_metal_device_caps(device);
+    MetalAllocatorCore core(device, caps);
+    MetalHeapPool heaps(core);
+    MetalFreeList freelist;
+    MetalStagingPool staging(core);
+    MetalAllocator allocator(core, heaps, freelist, staging, caps);
+    MetalConstCache const_cache(allocator, gfx_queue);
+    MetalBufferManager mgr(core, &const_cache);
+    MetalBufferManager::set_current_allocator(&allocator);
+
+    std::vector<float> values{1.0f};
+    MetalTensor input{};
+    input.shape = {values.size()};
+    input.expected_type = ov::element::f32;
+    input.buf = mgr.wrap_shared(values.data(), values.size() * sizeof(float),
+                                ov::element::f32);
+
+    MetalTensor output{};
+    output.shape = {values.size()};
+    output.expected_type = ov::element::f32;
+    output.prefer_private = false;
+    GpuBufferDesc out_desc{};
+    out_desc.bytes = values.size() * sizeof(float);
+    out_desc.type = ov::element::f32;
+    out_desc.usage = BufferUsage::IO;
+    out_desc.cpu_read = true;
+    out_desc.prefer_device_local = false;
+    output.buf = mgr.allocate(out_desc);
+    ASSERT_TRUE(output.buf.valid());
+
+    auto param = std::make_shared<ov::op::v0::Parameter>(
+        ov::element::f32, ov::Shape{values.size()});
+    auto node = std::make_shared<ov::op::v0::Relu>(param);
+    const auto descriptor = make_legacy_descriptor_without_payload(node);
+    auto stage = GpuStageFactory::create(node, &descriptor, GpuBackend::Metal,
+                                         device, queue);
+    ASSERT_NE(stage, nullptr);
+    stage->set_inputs({&input});
+    stage->set_output(&output);
+    stage->init(&mgr);
+
+    EXPECT_THROW(stage->compile(&mgr), ov::Exception);
+
+    MetalBufferManager::set_current_allocator(nullptr);
+    metal_release_command_queue(gfx_queue);
 }

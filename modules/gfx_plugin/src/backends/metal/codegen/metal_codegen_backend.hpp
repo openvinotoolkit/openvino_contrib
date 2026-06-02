@@ -10,7 +10,7 @@
 
 #include "kernel_ir/gfx_codegen_backend.hpp"
 #include "backends/metal/runtime/memory/buffer.hpp"
-#include "runtime/gfx_mpsrt_model.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_model.hpp"
 
 #ifdef __OBJC__
 #import <Metal/Metal.h>

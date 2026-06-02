@@ -17,14 +17,17 @@ set(GFX_PLUGIN_SOURCES
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_stage_placement.cpp
     ${_gfx_src_dir}/compiler/backend_registry.cpp
     ${_gfx_src_dir}/compiler/backend_target.cpp
+    ${_gfx_src_dir}/compiler/cache_envelope.cpp
     ${_gfx_src_dir}/compiler/executable_bundle.cpp
     ${_gfx_src_dir}/compiler/gfx_compiler_service.cpp
     ${_gfx_src_dir}/compiler/kernel_registry.cpp
     ${_gfx_src_dir}/compiler/kernel_unit.cpp
     ${_gfx_src_dir}/compiler/lowering_planner.cpp
     ${_gfx_src_dir}/compiler/manifest.cpp
+    ${_gfx_src_dir}/compiler/memory_plan.cpp
     ${_gfx_src_dir}/compiler/operation_legalizer.cpp
     ${_gfx_src_dir}/compiler/operation_support.cpp
+    ${_gfx_src_dir}/compiler/stage_compiler_policy.cpp
     ${_gfx_src_dir}/compiler/stage_placement.cpp
     ${_gfx_src_dir}/compiler/tensor_layout.cpp
     ${_gfx_src_dir}/plugin/backend_factory.cpp
@@ -48,6 +51,8 @@ set(GFX_PLUGIN_SOURCES
 )
 
 set(GFX_PLUGIN_HEADERS
+    ${_gfx_src_dir}/common/gpu_backend.hpp
+    ${_gfx_src_dir}/common/gpu_device_profile.hpp
     ${_gfx_src_dir}/backends/metal/compiler/metal_kernel_artifacts.hpp
     ${_gfx_src_dir}/backends/metal/compiler/metal_operation_support.hpp
     ${_gfx_src_dir}/backends/metal/compiler/metal_stage_placement.hpp
@@ -56,14 +61,17 @@ set(GFX_PLUGIN_HEADERS
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_stage_placement.hpp
     ${_gfx_src_dir}/compiler/backend_registry.hpp
     ${_gfx_src_dir}/compiler/backend_target.hpp
+    ${_gfx_src_dir}/compiler/cache_envelope.hpp
     ${_gfx_src_dir}/compiler/executable_bundle.hpp
     ${_gfx_src_dir}/compiler/gfx_compiler_service.hpp
     ${_gfx_src_dir}/compiler/kernel_registry.hpp
     ${_gfx_src_dir}/compiler/kernel_unit.hpp
     ${_gfx_src_dir}/compiler/lowering_planner.hpp
     ${_gfx_src_dir}/compiler/manifest.hpp
+    ${_gfx_src_dir}/compiler/memory_plan.hpp
     ${_gfx_src_dir}/compiler/operation_legalizer.hpp
     ${_gfx_src_dir}/compiler/operation_support.hpp
+    ${_gfx_src_dir}/compiler/stage_compiler_policy.hpp
     ${_gfx_src_dir}/compiler/stage_placement.hpp
     ${_gfx_src_dir}/compiler/tensor_layout.hpp
     ${_gfx_src_dir}/plugin/backend_factory.hpp
@@ -92,6 +100,7 @@ set(GFX_PLUGIN_HEADERS
 
 set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/executable_descriptor.hpp
+    ${_gfx_src_dir}/runtime/runtime_session.hpp
     ${_gfx_src_dir}/runtime/gfx_activation.hpp
     ${_gfx_src_dir}/runtime/gfx_batchnorm.hpp
     ${_gfx_src_dir}/runtime/gfx_backend_caps.hpp
@@ -133,6 +142,7 @@ set(GFX_RUNTIME_COMMON_HEADERS
 
 set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/runtime/executable_descriptor.cpp
+    ${_gfx_src_dir}/runtime/runtime_session.cpp
     ${_gfx_src_dir}/runtime/gfx_backend_caps.cpp
     ${_gfx_src_dir}/runtime/gfx_backend_utils.cpp
     ${_gfx_src_dir}/runtime/fused_sequence_stage.cpp
@@ -217,17 +227,17 @@ set(GFX_OPENCL_KERNEL_ARTIFACT_SOURCES
 )
 
 set(GFX_METAL_MPSRT_CONTRACT_HEADERS
-    ${_gfx_src_dir}/runtime/gfx_mpsrt_abi.hpp
-    ${_gfx_src_dir}/runtime/gfx_mpsrt_builder_plan.hpp
-    ${_gfx_src_dir}/runtime/gfx_mpsrt_model.hpp
-    ${_gfx_src_dir}/runtime/gfx_mpsrt_kernel_manifest_adapter.hpp
-    ${_gfx_src_dir}/runtime/gfx_mpsrt_plan.hpp
-    ${_gfx_src_dir}/runtime/gfx_mpsrt_program.hpp
-    ${_gfx_src_dir}/runtime/gfx_mpsrt_storage_bridge.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/gfx_mpsrt_abi.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/gfx_mpsrt_builder_plan.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/gfx_mpsrt_model.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/gfx_mpsrt_plan.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/gfx_mpsrt_program.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/gfx_mpsrt_storage_bridge.hpp
 )
 
 set(GFX_METAL_MPSRT_CONTRACT_SOURCES
-    ${_gfx_src_dir}/runtime/gfx_mpsrt_model.cpp
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/gfx_mpsrt_model.cpp
 )
 
 set(GFX_RUNTIME_MLIR_HEADERS

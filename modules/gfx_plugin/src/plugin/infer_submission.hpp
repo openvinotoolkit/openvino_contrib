@@ -15,7 +15,7 @@
 #include "plugin/infer_pipeline.hpp"
 #include "runtime/gfx_profiler.hpp"
 #include "runtime/gpu_buffer.hpp"
-#include "runtime/gpu_buffer_manager.hpp"
+#include "runtime/gpu_device_info.hpp"
 
 namespace ov {
 namespace gfx_plugin {

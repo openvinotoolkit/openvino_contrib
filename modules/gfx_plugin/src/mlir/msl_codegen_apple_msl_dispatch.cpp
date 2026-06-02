@@ -11,27 +11,17 @@
 #include <string_view>
 #include <utility>
 
-#include "compiler/backend_registry.hpp"
 #include "kernel_ir/gfx_custom_kernel_families.hpp"
 #include "mlir/gfx_apple_stage_pipeline.hpp"
 #include "mlir/gfx_backend_custom_kernel_adapter.hpp"
 #include "mlir/gfx_mpsrt_metadata.hpp"
+#include "compiler/stage_compiler_policy.hpp"
 #include "mlir/msl_codegen_apple_msl_ops.hpp"
 #include "runtime/gfx_stage_policy.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 namespace {
-
-GfxStageCompilerPolicy metal_stage_compiler_policy() {
-  const auto backend_module =
-      compiler::BackendRegistry::default_registry().resolve(GpuBackend::Metal);
-  if (!backend_module) {
-    return {};
-  }
-  return gfx_stage_compiler_policy_from_capabilities(
-      backend_module->capabilities());
-}
 
 bool is_msl_ident_char(char c) {
   return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
@@ -489,7 +479,8 @@ static GfxMpsrtKernelSourcePlan configure_msl_kernel_source_plan_for_node(
     return {};
   }
 
-  const auto stage_compiler_policy = metal_stage_compiler_policy();
+  const auto stage_compiler_policy =
+      compiler::resolve_stage_compiler_policy(GpuBackend::Metal);
   auto plan = select_stage_optimization_plan(
       buffer_manager, GpuBackend::Metal, std::string(stage_type), node,
       node->get_output_element_type(0), has_bias, has_activation, has_batchnorm,

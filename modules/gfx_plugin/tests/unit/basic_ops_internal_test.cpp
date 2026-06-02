@@ -78,8 +78,8 @@
 #include "backends/metal/compiler/metal_stage_placement.hpp"
 #include "backends/opencl/compiler/opencl_stage_placement.hpp"
 #include "compiler/operation_support.hpp"
-#include "runtime/gfx_mpsrt_builder_plan.hpp"
-#include "runtime/gfx_mpsrt_kernel_manifest_adapter.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_builder_plan.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp"
 #include "runtime/gfx_stage_policy.hpp"
 #include "transformations/rt_info/disable_fp16_compression.hpp"
 #include "transforms/fusion_pass.hpp"
@@ -102,6 +102,7 @@ test_stage_compiler_policy(ov::gfx_plugin::GpuBackend backend) {
           ov::gfx_plugin::GpuBackend::Metal);
 
   ov::gfx_plugin::GfxStageCompilerPolicy policy{};
+  policy.backend = backend;
   switch (backend) {
   case ov::gfx_plugin::GpuBackend::OpenCL:
     policy.placement = opencl_stage_placement.get();
@@ -114,6 +115,11 @@ test_stage_compiler_policy(ov::gfx_plugin::GpuBackend backend) {
   case ov::gfx_plugin::GpuBackend::Unknown:
   default:
     break;
+  }
+  if (ov::gfx_plugin::backend_known(backend)) {
+    policy.source_kernel_dispatch =
+        ov::gfx_plugin::compiler::make_stage_source_kernel_dispatch_policy(
+            ov::gfx_plugin::compiler::BackendTarget::from_backend(backend));
   }
   return policy;
 }

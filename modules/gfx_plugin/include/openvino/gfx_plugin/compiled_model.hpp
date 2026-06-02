@@ -5,6 +5,7 @@
 
 #include <memory>
 #include <mutex>
+#include <limits>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -40,8 +41,11 @@ struct OutputDesc {
 };
 
 struct PipelineStageDesc {
+  static constexpr size_t npos = std::numeric_limits<size_t>::max();
+
   std::shared_ptr<const ov::Node> node;
-  std::unique_ptr<GpuStage> stage; // compiled prototype
+  std::unique_ptr<GpuStage> stage; // runtime prototype; prepared per request
+  size_t runtime_stage_index = npos;
   struct InputLink {
     std::shared_ptr<const ov::Node> node;
     size_t port = 0;
@@ -88,6 +92,9 @@ public:
   bool op_pipeline_built() const { return m_pipeline_built; }
   const std::vector<PipelineStageDesc> &pipeline_desc() const {
     return m_pipeline;
+  }
+  std::shared_ptr<const RuntimeExecutableDescriptor> runtime_descriptor() const {
+    return m_runtime_descriptor;
   }
   const std::unordered_map<const ov::Node *, size_t> &node_to_stage() const {
     return m_node_to_stage;

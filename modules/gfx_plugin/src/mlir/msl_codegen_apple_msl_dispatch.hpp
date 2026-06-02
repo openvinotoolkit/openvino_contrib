@@ -16,7 +16,7 @@
 #include "mlir/gfx_mpsrt_source_plan.hpp"
 #include "openvino/core/node.hpp"
 #include "openvino/core/shape.hpp"
-#include "runtime/gfx_mpsrt_program.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_program.hpp"
 #include "runtime/gfx_stage_policy.hpp"
 
 namespace ov {

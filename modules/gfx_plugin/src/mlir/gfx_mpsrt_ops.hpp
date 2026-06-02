@@ -4,7 +4,7 @@
 #pragma once
 
 #include "mlir/IR/BuiltinOps.h"
-#include "runtime/gfx_mpsrt_program.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_program.hpp"
 
 namespace ov {
 namespace gfx_plugin {

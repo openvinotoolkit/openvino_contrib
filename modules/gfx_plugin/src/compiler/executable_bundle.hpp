@@ -96,6 +96,7 @@ struct ExecutableBundle {
   uint32_t schema_version = 1;
   std::string target_fingerprint;
   ManifestBundle manifest;
+  MemoryPlan memory_plan;
   std::vector<ExecutableStageRecord> stages;
   std::vector<KernelArtifactDescriptor> artifact_descriptors;
   std::vector<KernelArtifactPayloadRecord> artifact_payloads;

@@ -11,7 +11,7 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 #include "mlir/gfx_backend_custom_kernel_adapter.hpp"
-#include "runtime/gfx_mpsrt_program.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_program.hpp"
 
 namespace ov {
 namespace gfx_plugin {

@@ -11,7 +11,7 @@
 
 #include "kernel_ir/gfx_codegen_backend.hpp"
 #include "mlir/gfx_mpsrt_metadata.hpp"
-#include "runtime/gfx_mpsrt_abi.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_abi.hpp"
 
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -61,8 +61,8 @@ inline std::optional<ov::Tensor> gfx_evaluate_constant_source_tensor(const ov::O
 
 inline bool gfx_mpsrt_const_payload_already_attached(const KernelSource& source,
                                                      GfxMpsrtValue value) {
-    for (const auto& payload : source.mpsrt_const_tensors) {
-        if (payload.value == value) {
+    for (const auto& payload : source.const_tensor_sources) {
+        if (payload.value_id == value) {
             return true;
         }
     }
@@ -75,8 +75,8 @@ inline bool gfx_mpsrt_program_input_is_const(const GfxMpsrtProgram& program,
            (program.inputs[input_idx].flags & GfxMpsrtTensorFlagConst) != 0;
 }
 
-inline void gfx_attach_mpsrt_const_tensors(KernelSource& source,
-                                           const std::shared_ptr<const ov::Node>& node) {
+inline void gfx_attach_mpsrt_const_tensor_sources(
+    KernelSource& source, const std::shared_ptr<const ov::Node>& node) {
     if (!node || !source.module) {
         return;
     }
@@ -97,11 +97,11 @@ inline void gfx_attach_mpsrt_const_tensors(KernelSource& source,
         if (gfx_mpsrt_const_payload_already_attached(source, value)) {
             continue;
         }
-        MpsrtConstTensorSource payload{};
-        payload.value = value;
+        KernelConstTensorSource payload{};
+        payload.value_id = value;
         payload.bytes.resize(const_tensor->get_byte_size());
         std::memcpy(payload.bytes.data(), const_tensor->data(), payload.bytes.size());
-        source.mpsrt_const_tensors.push_back(std::move(payload));
+        source.const_tensor_sources.push_back(std::move(payload));
     }
 }
 

@@ -49,7 +49,8 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
    - configured backend availability generated from
      `src/compiler/backend_config.hpp.in`
    - compiler service, backend registry, lowering-plan, manifest, executable
-     bundle, stage-placement policy, or runtime descriptor behavior
+     bundle, memory plan, cache envelope, stage-placement policy, stage
+     compiler policy, runtime session, or runtime descriptor behavior
    - compiler-owned tensor-layout classification
    - public properties
    - `query_model()` or compile behavior

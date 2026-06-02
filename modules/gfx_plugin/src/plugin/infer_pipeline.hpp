@@ -9,6 +9,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "openvino/gfx_plugin/compiled_model.hpp"
@@ -18,6 +19,7 @@
 #include "runtime/gfx_remote_context.hpp"
 #include "runtime/gpu_buffer_pool.hpp"
 #include "runtime/gpu_stage.hpp"
+#include "runtime/runtime_session.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -25,6 +27,9 @@ namespace gfx_plugin {
 struct InferStage {
     std::shared_ptr<const ov::Node> node;
     std::unique_ptr<GpuStage> stage;
+    std::shared_ptr<RuntimeSession> runtime_session;
+    size_t runtime_stage_index = PipelineStageDesc::npos;
+    std::unique_ptr<PreparedKernelExecutable> prepared_executable;
     std::vector<std::unique_ptr<GpuTensor>> outputs;
     std::vector<bool> output_is_model_output;
     std::vector<PipelineStageDesc::InputLink> output_sources;
@@ -93,7 +98,8 @@ bool is_view_op(const InferStage& stage);
 std::vector<InferStage> build_infer_pipeline(const std::vector<PipelineStageDesc>& descs,
                                              GpuBufferManager* buffer_manager,
                                              void* profiler,
-                                             bool profiling_enabled);
+                                             bool profiling_enabled,
+                                             std::shared_ptr<const RuntimeExecutableDescriptor> runtime_descriptor);
 
 void bind_remote_outputs(const std::vector<ov::Output<const ov::Node>>& outputs,
                          const std::shared_ptr<const ov::Model>& runtime_model,
@@ -137,6 +143,7 @@ std::vector<InferStage> build_bound_pipeline(
     std::vector<std::shared_ptr<GfxRemoteTensor>>& remote_outputs,
     const std::vector<std::shared_ptr<GfxRemoteTensor>>& remote_inputs,
     GpuBackend expected_backend,
+    std::shared_ptr<const RuntimeExecutableDescriptor> runtime_descriptor,
     const char* error_prefix = "GFX");
 
 void prepare_reusable_execution_plan(
@@ -185,12 +192,67 @@ GpuTensor* find_pipeline_output(std::vector<InferStage>& pipeline,
                                 size_t port,
                                 const char* error_prefix = "GFX");
 
+inline const RuntimeStageExecutableDescriptor*
+runtime_stage_descriptor_or_null(const InferStage& stage) {
+    if (!stage.runtime_session ||
+        stage.runtime_stage_index == PipelineStageDesc::npos) {
+        return nullptr;
+    }
+    const auto& runtime_descriptor = stage.runtime_session->descriptor();
+    if (stage.runtime_stage_index >= runtime_descriptor.stages.size()) {
+        return nullptr;
+    }
+    return &runtime_descriptor.stages[stage.runtime_stage_index];
+}
+
 inline bool stage_outputs_may_alias_inputs(const InferStage& stage) {
+    if (const auto* descriptor = runtime_stage_descriptor_or_null(stage)) {
+        if (descriptor->tensor_view_only) {
+            return true;
+        }
+        const auto& memory_plan = stage.runtime_session->descriptor().memory_plan;
+        for (const auto& output : descriptor->output_bindings) {
+            const auto alias_it =
+                std::find_if(memory_plan.alias_groups.begin(),
+                             memory_plan.alias_groups.end(),
+                             [&](const RuntimeMemoryAliasGroupDescriptor& group) {
+                                 return group.group_id == output.alias_group;
+                             });
+            if (alias_it != memory_plan.alias_groups.end() &&
+                alias_it->output_aliasing) {
+                return true;
+            }
+        }
+    }
     if (!stage.stage) {
         return false;
     }
     const auto& type = stage.stage->type();
     return is_view_op(stage) || type == "Split" || type == "VariadicSplit";
+}
+
+inline const RuntimeMemoryRegionDescriptor*
+runtime_output_memory_region_or_null(const InferStage& stage, size_t output_index) {
+    const auto* stage_descriptor = runtime_stage_descriptor_or_null(stage);
+    if (!stage_descriptor || !stage.runtime_session) {
+        return nullptr;
+    }
+    const auto& runtime_descriptor = stage.runtime_session->descriptor();
+    if (output_index >= stage_descriptor->output_bindings.size()) {
+        return nullptr;
+    }
+    const auto& region_id =
+        stage_descriptor->output_bindings[output_index].memory_region_id;
+    if (region_id.empty()) {
+        return nullptr;
+    }
+    const auto& regions = runtime_descriptor.memory_plan.regions;
+    const auto it = std::find_if(
+        regions.begin(), regions.end(),
+        [&](const RuntimeMemoryRegionDescriptor& region) {
+            return region.region_id == region_id;
+        });
+    return it == regions.end() ? nullptr : &*it;
 }
 
 struct StageOutputRef {
@@ -396,6 +458,13 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
             for (size_t oi = 0; oi < stage.output_is_model_output.size() && oi < last_use[stage_idx].size(); ++oi) {
                 if (stage.output_is_model_output[oi]) {
                     last_use[stage_idx][oi] = pipeline.size();
+                }
+            }
+            for (size_t oi = 0; oi < last_use[stage_idx].size(); ++oi) {
+                if (const auto* region =
+                        runtime_output_memory_region_or_null(stage, oi)) {
+                    last_use[stage_idx][oi] =
+                        std::max(last_use[stage_idx][oi], region->last_stage);
                 }
             }
         }
@@ -884,6 +953,25 @@ inline void execute_pipeline(std::vector<InferStage>& pipeline,
                              InputLookup&& input_lookup,
                              StageFn&& on_stage,
                              PreparedInferExecutionPlan* prepared_plan = nullptr) {
+    auto output_refs = [](InferStage& stage) {
+        std::vector<GpuTensor*> outputs;
+        outputs.reserve(stage.outputs.size());
+        for (auto& output : stage.outputs) {
+            outputs.push_back(output.get());
+        }
+        return outputs;
+    };
+    auto bind_prepared_runtime_resources = [&](InferStage& stage,
+                                               std::vector<GpuTensor*>& resolved) {
+        if (!stage.runtime_session || !stage.prepared_executable) {
+            return;
+        }
+        auto bindings = stage.runtime_session->make_binding_table(
+            stage.prepared_executable->descriptor().stage_index,
+            resolved,
+            output_refs(stage));
+        stage.prepared_executable->bind(std::move(bindings));
+    };
     auto resolve_prepared_inputs = [&](PreparedStageExecution& prepared) -> std::vector<GpuTensor*>& {
         for (size_t input_idx = 0; input_idx < prepared.input_refs.size(); ++input_idx) {
             const auto& ref = prepared.input_refs[input_idx];
@@ -908,6 +996,7 @@ inline void execute_pipeline(std::vector<InferStage>& pipeline,
             if (!stage.stage) {
                 continue;
             }
+            bind_prepared_runtime_resources(stage, resolved);
             stage.stage->set_inputs(resolved);
             on_stage(stage, resolved);
         }
@@ -923,6 +1012,7 @@ inline void execute_pipeline(std::vector<InferStage>& pipeline,
         if (!stage.stage) {
             continue;
         }
+        bind_prepared_runtime_resources(stage, resolved);
         stage.stage->set_inputs(resolved);
         on_stage(stage, resolved);
     }

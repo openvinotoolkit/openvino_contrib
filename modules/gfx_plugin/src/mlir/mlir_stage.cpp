@@ -1124,7 +1124,7 @@ void MlirStage::compile_from_plan(MlirKernelPlanContext &plan_ctx,
     src.signature.output_arg_count = static_cast<uint32_t>(output_arg_count);
   }
   if (backend_kind() == GpuBackend::Metal) {
-    gfx_attach_mpsrt_const_tensors(src, m_node);
+    gfx_attach_mpsrt_const_tensor_sources(src, m_node);
   }
   if (src.module) {
     normalize_operand_segment_sizes(src.module);

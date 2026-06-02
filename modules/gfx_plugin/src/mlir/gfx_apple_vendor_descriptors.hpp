@@ -10,8 +10,8 @@
 
 #include "runtime/gfx_activation.hpp"
 #include "runtime/gfx_bias.hpp"
-#include "runtime/gfx_mpsrt_abi.hpp"
-#include "runtime/gfx_mpsrt_program.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_abi.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_program.hpp"
 #include "runtime/gfx_stage_policy.hpp"
 
 namespace ov {

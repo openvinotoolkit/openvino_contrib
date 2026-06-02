@@ -546,34 +546,43 @@ void mark_conv_multi_kernel_required(
       "direct_waits_for_" + plan.algorithm.multi_kernel_family + "_manifest";
 }
 
-GfxParallelismCaps query_stage_caps(const GpuBufferManager *buffer_manager,
-                                    GpuBackend backend) {
+GfxParallelismCaps make_parallelism_caps(
+    const compiler::StageParallelismProfile &profile) {
+  GfxParallelismCaps caps{};
+  caps.backend = profile.backend;
+  caps.device_family = profile.device_family;
+  caps.device_key = profile.device_key;
+  caps.preferred_simd_width = std::max<uint32_t>(profile.preferred_simd_width, 1u);
+  caps.subgroup_size = std::max<uint32_t>(profile.subgroup_size, 1u);
+  caps.max_total_threads_per_group =
+      std::max<uint32_t>(profile.max_total_threads_per_group, 1u);
+  caps.max_threads_per_group = {
+      std::max<uint32_t>(profile.max_threads_per_group[0], 1u),
+      std::max<uint32_t>(profile.max_threads_per_group[1], 1u),
+      std::max<uint32_t>(profile.max_threads_per_group[2], 1u)};
+  caps.supports_conv_output_channel_blocking =
+      profile.supports_conv_output_channel_blocking;
+  caps.supports_conv_channel_block_spatial_tiling =
+      profile.supports_conv_channel_block_spatial_tiling;
+  return caps;
+}
+
+bool source_kernel_dispatch_enabled(
+    const GfxStageCompilerPolicy *compiler_policy) {
+  return compiler_policy && compiler_policy->source_kernel_dispatch.enabled;
+}
+
+GfxParallelismCaps query_stage_caps(
+    const GpuBufferManager *buffer_manager,
+    const GfxStageCompilerPolicy *compiler_policy) {
   if (buffer_manager) {
     return query_parallelism_caps(buffer_manager);
   }
-  GfxParallelismCaps caps{};
-  caps.backend = backend;
-  caps.device_family = backend == GpuBackend::Metal ? GpuDeviceFamily::Apple
-                                                    : GpuDeviceFamily::Generic;
-  if (backend == GpuBackend::OpenCL) {
-    caps.preferred_simd_width = 32;
-    caps.subgroup_size = 32;
-    caps.max_total_threads_per_group = 128;
-    caps.max_threads_per_group = {128, 128, 64};
-  } else if (backend == GpuBackend::Metal) {
-    caps.preferred_simd_width = 32;
-    caps.subgroup_size = 32;
-    caps.max_total_threads_per_group = 256;
-    caps.max_threads_per_group = {256, 256, 64};
-    caps.supports_conv_output_channel_blocking = true;
-    caps.supports_conv_channel_block_spatial_tiling = true;
-  } else {
-    caps.preferred_simd_width = 1;
-    caps.subgroup_size = 1;
-    caps.max_total_threads_per_group = 1;
-    caps.max_threads_per_group = {1, 1, 1};
+  if (!compiler_policy) {
+    return {};
   }
-  return caps;
+  return make_parallelism_caps(
+      compiler_policy->source_kernel_dispatch.fallback_parallelism);
 }
 
 } // namespace
@@ -648,14 +657,6 @@ select_stage_post_op_support(const GfxStageCompilerPolicy *compiler_policy,
   return support;
 }
 
-GfxStageCompilerPolicy gfx_stage_compiler_policy_from_capabilities(
-    const compiler::BackendCapabilities &capabilities) {
-  GfxStageCompilerPolicy policy{};
-  policy.placement = capabilities.stage_placement();
-  policy.post_ops = &capabilities.post_ops();
-  return policy;
-}
-
 GfxStageOptimizationPlan select_stage_optimization_plan(
     const GpuBufferManager *buffer_manager, GpuBackend backend,
     const std::string &stage_type, const std::shared_ptr<const ov::Node> &node,
@@ -675,15 +676,14 @@ GfxStageOptimizationPlan select_stage_optimization_plan(
   plan.execution.fusion.allow_activation = plan.post_ops.activation;
   if (node) {
     plan.conv =
-        select_conv_route_plan(buffer_manager, backend, node, element_type,
-                               has_bias, has_activation, has_batchnorm);
+        select_conv_route_plan(buffer_manager, node, element_type, has_bias,
+                               has_activation, has_batchnorm, compiler_policy);
   }
-  const bool source_kernel_backend = backend == GpuBackend::OpenCL;
-  if (!source_kernel_backend) {
+  if (!source_kernel_dispatch_enabled(compiler_policy)) {
     return plan;
   }
 
-  const auto caps = query_stage_caps(buffer_manager, backend);
+  const auto caps = query_stage_caps(buffer_manager, compiler_policy);
   const uint32_t wave = std::max<uint32_t>(
       1u, std::max(caps.subgroup_size, caps.preferred_simd_width));
   const uint64_t out_elems = output_elements(node);
@@ -790,13 +790,12 @@ select_stage_execution_policy(const GpuBufferManager *buffer_manager,
 
 GfxConvRoutePlan
 select_conv_route_plan(const GpuBufferManager *buffer_manager,
-                       GpuBackend backend,
                        const std::shared_ptr<const ov::Node> &node,
                        const ov::element::Type &element_type, bool has_bias,
-                       bool has_activation, bool has_batchnorm) {
+                       bool has_activation, bool has_batchnorm,
+                       const GfxStageCompilerPolicy *compiler_policy) {
   GfxConvRoutePlan plan{};
-  const bool source_kernel_backend = backend == GpuBackend::OpenCL;
-  if (!source_kernel_backend || !node) {
+  if (!source_kernel_dispatch_enabled(compiler_policy) || !node) {
     return plan;
   }
   if (element_type != ov::element::f16 && element_type != ov::element::f32) {
@@ -866,7 +865,7 @@ select_conv_route_plan(const GpuBufferManager *buffer_manager,
       static_cast<uint64_t>(std::max<size_t>(1, w_shape[2])) *
       static_cast<uint64_t>(std::max<size_t>(1, w_shape[3]));
   const uint64_t out_elems = shape_elements(out_shape);
-  const auto caps = query_stage_caps(buffer_manager, backend);
+  const auto caps = query_stage_caps(buffer_manager, compiler_policy);
   if (conv_needs_distributed_reduction(caps, out_elems, reduction_work)) {
     const uint64_t desired_workgroup_reduction_lanes =
         conv_workgroup_reduction_lanes(caps, reduction_work);

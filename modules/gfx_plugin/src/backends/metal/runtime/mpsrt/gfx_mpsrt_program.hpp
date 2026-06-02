@@ -8,9 +8,9 @@
 #include <utility>
 #include <vector>
 
-#include "runtime/gfx_mpsrt_builder_plan.hpp"
-#include "runtime/gfx_mpsrt_plan.hpp"
-#include "runtime/gfx_mpsrt_storage_bridge.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_builder_plan.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_plan.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_storage_bridge.hpp"
 
 namespace ov {
 namespace gfx_plugin {

@@ -4,6 +4,7 @@
 
 #include "unit/gfx_backend_contracts.hpp"
 
+#include "compiler/cache_envelope.hpp"
 #include "compiler/executable_bundle.hpp"
 #include "compiler/manifest.hpp"
 #include "openvino/core/except.hpp"
@@ -72,6 +73,18 @@ compiler::GfxCompileResult BackendModuleContract::compile_without_graph_pipeline
                           const compiler::PlannedOperation& op) {
             return backend_module.materialize_artifact_payload(descriptor, op);
         }).build(compile_result.manifest, compile_result.lowering_plan);
+    compiler::CacheEnvelopeBuildOptions cache_options;
+    cache_options.model_fingerprint =
+        compiler::make_model_cache_fingerprint(*model);
+    cache_options.backend_capabilities_fingerprint =
+        compiler::make_backend_capabilities_fingerprint(
+            backend_module.capabilities());
+    cache_options.backend_compiler_revision =
+        backend_module.target().compiler_id();
+    cache_options.driver_identity = backend_module.target().driver_id();
+    compile_result.cache_envelope =
+        compiler::CacheEnvelopeBuilder{}.build(compile_result.executable,
+                                               cache_options);
     compile_result.unsupported = compile_result.lowering_plan.unsupported;
     return compile_result;
 }
@@ -81,7 +94,17 @@ bool BackendModuleContract::compile_result_obeys_manifest_contract(
     if (!compile_result.supported() ||
         compile_result.target.fingerprint() != target().fingerprint() ||
         !compile_result.manifest.verify().valid() ||
-        !compile_result.executable.verify().valid()) {
+        !compile_result.executable.verify().valid() ||
+        !compile_result.cache_envelope.verify(compile_result.executable)
+             .valid()) {
+        return false;
+    }
+    if (!compile_result.manifest.memory_plan.valid() ||
+        !compile_result.executable.memory_plan.valid() ||
+        compiler::make_memory_plan_fingerprint(
+            compile_result.manifest.memory_plan) !=
+            compiler::make_memory_plan_fingerprint(
+                compile_result.executable.memory_plan)) {
         return false;
     }
     if (compile_result.manifest.route_count(compiler::LoweringRouteKind::Common) !=
@@ -93,8 +116,22 @@ bool BackendModuleContract::compile_result_obeys_manifest_contract(
         if (stage.memory.hidden_host_copy_allowed ||
             stage.dispatch.backend_domain != stage.backend_domain ||
             stage.dispatch.kernel_unit_id != stage.kernel_unit_id ||
-            stage.dispatch.kernel_unit_kind != stage.kernel_unit_kind) {
+            stage.dispatch.kernel_unit_kind != stage.kernel_unit_kind ||
+            !compile_result.manifest.memory_plan.has_alias_group(
+                stage.memory.alias_group)) {
             return false;
+        }
+        for (const auto& input : stage.inputs) {
+            if (!compile_result.manifest.memory_plan.has_region(
+                    input.memory_region_id)) {
+                return false;
+            }
+        }
+        for (const auto& output : stage.outputs) {
+            if (!compile_result.manifest.memory_plan.has_region(
+                    output.memory_region_id)) {
+                return false;
+            }
         }
     }
     return true;

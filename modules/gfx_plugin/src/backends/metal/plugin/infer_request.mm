@@ -333,6 +333,7 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
                                                                 state.bound_remote_outputs,
                                                                 state.bound_remote_inputs,
                                                                 GpuBackend::Metal,
+                                                                cm->runtime_descriptor(),
                                                                 pool,
                                                                 metal_state->stage_output_handles,
                                                                 &metal_state->stage_output_workspace,

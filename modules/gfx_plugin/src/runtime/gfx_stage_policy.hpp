@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "compiler/stage_compiler_policy.hpp"
 #include "compiler/stage_placement.hpp"
 #include "compiler/tensor_layout.hpp"
 #include "compiler/operation_support.hpp"
@@ -154,14 +155,7 @@ struct GfxStageOptimizationPlan {
   GfxConvRoutePlan conv{};
 };
 
-struct GfxStageCompilerPolicy {
-  const compiler::StagePlacementPolicy *placement = nullptr;
-  const compiler::PostOpFusionCapabilities *post_ops = nullptr;
-};
-
-GfxStageCompilerPolicy
-gfx_stage_compiler_policy_from_capabilities(
-    const compiler::BackendCapabilities &capabilities);
+using GfxStageCompilerPolicy = compiler::StageCompilerPolicy;
 
 GfxStageOptimizationPlan select_stage_optimization_plan(
     const GpuBufferManager *buffer_manager, GpuBackend backend,
@@ -177,10 +171,10 @@ select_stage_execution_policy(const GpuBufferManager *buffer_manager,
                               const GfxStageCompilerPolicy *compiler_policy = nullptr);
 GfxConvRoutePlan
 select_conv_route_plan(const GpuBufferManager *buffer_manager,
-                       GpuBackend backend,
                        const std::shared_ptr<const ov::Node> &node,
                        const ov::element::Type &element_type, bool has_bias,
-                       bool has_activation, bool has_batchnorm);
+                       bool has_activation, bool has_batchnorm,
+                       const GfxStageCompilerPolicy *compiler_policy = nullptr);
 
 const char *
 gfx_conv_multi_kernel_stage_kind_name(GfxConvMultiKernelStageKind kind);

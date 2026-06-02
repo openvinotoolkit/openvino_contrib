@@ -4,17 +4,13 @@
 
 #include "backends/metal/runtime/metal_executor.hpp"
 
-#include <algorithm>
 #include <chrono>
-#include <optional>
 
 #include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "backends/metal/runtime/metal_memory.hpp"
 #include "backends/metal/runtime/metal_runtime_kernel_loader.hpp"
 #include "backends/metal/runtime/profiling/profiler.hpp"
-#include "mlir/msl_codegen.hpp"
 #include "openvino/core/except.hpp"
-#include "runtime/gfx_shape_utils.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -30,53 +26,6 @@ MetalStage::MetalStage(const std::shared_ptr<const ov::Node> &node,
 }
 
 namespace {
-
-// Compute row-major byte strides for a tensor shape. When broadcasting to a
-// higher-rank output, extra leading dimensions are treated as length 1.
-inline std::vector<int32_t>
-compute_broadcast_strides(const ov::Shape &in_shape, const ov::Shape &out_shape,
-                          size_t elem_size) {
-  const size_t out_rank = out_shape.size();
-  const size_t in_rank = in_shape.size();
-  std::vector<int64_t> aligned(out_rank, 1);
-  if (in_rank <= out_rank) {
-    const size_t off = out_rank - in_rank;
-    for (size_t i = 0; i < in_rank; ++i) {
-      aligned[off + i] = static_cast<int64_t>(in_shape[i]);
-    }
-  }
-  std::vector<int32_t> strides(out_rank, 0);
-  int64_t stride = static_cast<int64_t>(elem_size);
-  for (int64_t i = static_cast<int64_t>(out_rank) - 1; i >= 0; --i) {
-    const int64_t dim = aligned[static_cast<size_t>(i)];
-    // Broadcasted dim (size 1) uses zero stride.
-    strides[static_cast<size_t>(i)] =
-        (dim == 1) ? 0 : static_cast<int32_t>(stride);
-    stride *= dim;
-  }
-  return strides;
-}
-
-inline std::vector<int32_t> to_i32_dims(const ov::Shape &shape) {
-  std::vector<int32_t> dims(shape.size());
-  for (size_t i = 0; i < shape.size(); ++i) {
-    dims[i] = static_cast<int32_t>(shape[i]);
-  }
-  return dims;
-}
-
-inline ov::Shape
-resolve_shape_for_stage(const MlirStage &stage,
-                        const std::shared_ptr<const ov::Node> &node,
-                        GpuTensor *out_tensor) {
-  if (out_tensor && !out_tensor->shape.empty()) {
-    return out_tensor->shape;
-  }
-  if (node && node->get_output_partial_shape(0).is_static()) {
-    return node->get_output_shape(0);
-  }
-  return {};
-}
 
 inline bool is_metal_descriptor_domain(std::string_view domain) {
   return domain == "metal" || domain == "apple_msl" ||
@@ -147,65 +96,29 @@ std::unique_ptr<GpuStage> MetalStage::clone() const {
 std::shared_ptr<ICompiledKernel>
 MetalStage::compile_kernel(const KernelSource &source, std::string *log) {
   OPENVINO_ASSERT(m_device, "MetalStage: Metal device handle is null");
-  if (m_executable_descriptor) {
-    OPENVINO_ASSERT(
-        is_metal_descriptor_domain(m_executable_descriptor->backend_domain),
-        "MetalStage: runtime descriptor backend domain mismatch: ",
-        m_executable_descriptor->backend_domain);
-    OPENVINO_ASSERT(
-        m_executable_descriptor->payload_kind !=
-            compiler::KernelArtifactPayloadKind::OpenClSource,
-        "MetalStage: OpenCL source payload cannot execute on Metal");
-    if (m_executable_descriptor->payload_kind ==
-        compiler::KernelArtifactPayloadKind::MslSource) {
-      OPENVINO_ASSERT(m_executable_descriptor->payload,
-                      "MetalStage: MSL source descriptor is missing payload");
-    }
-  }
-  KernelSource src = source;
-  MetalCodegenBackend backend(m_device);
-  if (m_executable_descriptor &&
+  (void)source;
+  OPENVINO_ASSERT(m_executable_descriptor,
+                  "MetalStage: compiler-owned runtime descriptor is required");
+  OPENVINO_ASSERT(is_metal_descriptor_domain(m_executable_descriptor->backend_domain),
+                  "MetalStage: runtime descriptor backend domain mismatch: ",
+                  m_executable_descriptor->backend_domain);
+  OPENVINO_ASSERT(
+      m_executable_descriptor->payload_kind !=
+          compiler::KernelArtifactPayloadKind::OpenClSource,
+      "MetalStage: OpenCL source payload cannot execute on Metal");
+  OPENVINO_ASSERT(
       m_executable_descriptor->payload_kind ==
-          compiler::KernelArtifactPayloadKind::MslSource) {
-    auto descriptor_source =
-        MetalRuntimeKernelLoader::load_msl_source(*m_executable_descriptor);
-    m_last_compiled_kernel_entry_point = descriptor_source.entry_point;
-    return backend.compile(descriptor_source, log);
-  }
-  ov::element::Type storage_type = ov::element::dynamic;
-  if (!m_inputs.empty() && m_inputs.front()) {
-    storage_type = m_inputs.front()->expected_type;
-  }
-  if (storage_type == ov::element::dynamic && !m_outputs.empty() &&
-      m_outputs.front()) {
-    storage_type = m_outputs.front()->expected_type;
-  }
-  if (storage_type == ov::element::dynamic && m_node) {
-    storage_type = m_node->get_output_element_type(0);
-  }
-  const std::optional<ov::Shape> runtime_input_shape =
-      !m_inputs.empty() && m_inputs.front() && !m_inputs.front()->shape.empty()
-          ? std::optional<ov::Shape>(m_inputs.front()->shape)
-          : std::nullopt;
-  auto source_plan = configure_apple_metal_kernel_source_plan_for_stage(
-      src, m_node, m_buffer_manager, m_type, m_has_bias, m_has_activation,
-      m_has_bn, m_activation, storage_type, !m_kernel_extra_inputs.empty(),
-      runtime_input_shape, m_has_bias ? &m_bias_params : nullptr,
-      m_runtime_traits);
-  if (source_plan.valid()) {
-    m_last_compiled_kernel_entry_point = source_plan.source.entry_point;
-    auto kernel = backend.compile(source_plan.source, log);
-    if (source_plan.has_runtime_binding) {
-      apply_source_plan_kernel_runtime_binding_state(
-          source_plan.runtime_binding);
-    }
-    return kernel;
-  }
-  OPENVINO_ASSERT(src.msl_generator || !src.msl_source.empty(),
-                  "MetalStage: missing MSL source/generator for op ",
-                  m_node ? m_node->get_type_name() : "");
-  m_last_compiled_kernel_entry_point = src.entry_point;
-  return backend.compile(src, log);
+          compiler::KernelArtifactPayloadKind::MslSource,
+      "MetalStage: compiler-owned MSL source payload is required for Metal "
+      "custom kernel execution; runtime source-plan generation is forbidden");
+  OPENVINO_ASSERT(m_executable_descriptor->payload,
+                  "MetalStage: MSL source descriptor is missing payload");
+
+  MetalCodegenBackend backend(m_device);
+  auto descriptor_source =
+      MetalRuntimeKernelLoader::load_msl_source(*m_executable_descriptor);
+  m_last_compiled_kernel_entry_point = descriptor_source.entry_point;
+  return backend.compile(descriptor_source, log);
 }
 
 KernelExecutionHooks *

@@ -6,8 +6,8 @@
 #include <string>
 #include <string_view>
 
-#include "runtime/gfx_mpsrt_abi.hpp"
-#include "runtime/gfx_mpsrt_kernel_manifest_adapter.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_abi.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp"
 #include "runtime/gfx_stage_policy.hpp"
 
 namespace ov {

@@ -3,63 +3,19 @@
 //
 #pragma once
 
-#include <array>
 #include <cstddef>
 #include <optional>
 #include <string>
 
 #include "openvino/core/type/element_type.hpp"
 #include "runtime/gpu_buffer.hpp"
+#include "runtime/gpu_device_info.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 
 class GfxProfiler;
 struct GpuBufferDesc;
-
-enum class GpuDeviceFamily {
-  Generic,
-  Apple,
-  QualcommAdreno,
-  BroadcomV3D,
-};
-
-inline const char *gpu_device_family_name(GpuDeviceFamily family) {
-  switch (family) {
-  case GpuDeviceFamily::Apple:
-    return "apple";
-  case GpuDeviceFamily::QualcommAdreno:
-    return "adreno";
-  case GpuDeviceFamily::BroadcomV3D:
-    return "broadcom_v3d";
-  case GpuDeviceFamily::Generic:
-  default:
-    return "generic";
-  }
-}
-
-struct GpuExecutionDeviceInfo {
-  GpuBackend backend = GpuBackend::Unknown;
-  GpuDeviceFamily device_family = GpuDeviceFamily::Generic;
-  std::string device_key;
-  std::string device_name;
-  uint32_t vendor_id = 0;
-  uint32_t device_id = 0;
-  uint32_t driver_version = 0;
-  uint32_t api_version = 0;
-  uint32_t preferred_simd_width = 1;
-  uint32_t subgroup_size = 1;
-  uint32_t max_total_threads_per_group = 1;
-  std::array<uint32_t, 3> max_threads_per_group{{1, 1, 1}};
-  uint64_t min_storage_buffer_offset_alignment = 1;
-  uint64_t non_coherent_atom_size = 1;
-  bool supports_storage_buffer_8bit = false;
-  bool supports_storage_buffer_16bit = false;
-  bool supports_shader_float16 = false;
-  bool supports_shader_int8 = false;
-  bool supports_conv_output_channel_blocking = false;
-  bool supports_conv_channel_block_spatial_tiling = false;
-};
 
 // Backend-neutral buffer manager interface (backend implementations derive from
 // this).

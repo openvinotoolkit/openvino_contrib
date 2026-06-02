@@ -7,9 +7,9 @@
 #include <string>
 #include <string_view>
 
+#include "common/gpu_backend.hpp"
 #include "openvino/core/node.hpp"
 #include "openvino/core/type/element_type.hpp"
-#include "runtime/gfx_backend_utils.hpp"
 
 namespace ov {
 namespace gfx_plugin {

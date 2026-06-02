@@ -14,6 +14,8 @@ validation in `modules/gfx_plugin/`.
 - The task changes MLIR lowering, backend routes, properties, scheduling,
   caches, infer submission, output planning, or profiling.
 - The task changes compiler-owned tensor-layout classification.
+- The task changes compiler-owned memory plans, cache envelopes, runtime
+  executable descriptors, or runtime-session binding behavior.
 - The task changes backend stage-placement policy.
 - The task changes Metal placement, MPSRT metadata, MSL kernel-family routing,
   MPS/MPSGraph vendor descriptors, resource tables, storage bridges, or request
@@ -42,7 +44,8 @@ validation in `modules/gfx_plugin/`.
   property, profiling, and backend regressions
 - `ov_gfx_runtime_micro_tests`: smaller runtime-subgraph checks
 - `tests/unit/gfx_backend_architecture_contract_test.cpp`: backend-target,
-  kernel-registry, stage-placement, tensor-layout, payload-materialization, and
+  kernel-registry, stage-placement, tensor-layout, memory-plan,
+  cache-envelope, payload-materialization, runtime-session, and
   manifest-routing contracts
 - `ov_gfx_compare_runner`: accuracy-only diff tool
 - `ov_gfx_microbench`: MB0-MB3 microbench and calibration workflow
@@ -86,6 +89,8 @@ Prefer:
 - `tests/unit/gpu_backend_base_test.cpp`
 - `tests/unit/gfx_backend_architecture_contract_test.cpp`
 - `tests/unit/plugin_tests.cpp` when `query_model()` or compile behavior moved
+- `tests/unit/infer_pipeline_reuse_test.cpp` when runtime-session or prepared
+  executable binding behavior moves
 - backend artifact tests when payload materialization reaches Metal or OpenCL
   runtime loaders
 - backend stage-placement contract tests when domain/storage selection moves

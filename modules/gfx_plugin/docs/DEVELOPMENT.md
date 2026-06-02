@@ -64,12 +64,23 @@ Build-system notes:
   must not be committed.
 - `gfx_plugin_core`, `gfx_runtime_common`, and `gfx_runtime_mlir` contain shared
   code.
+- `src/common/` owns shared backend id and device-family/profile types used by
+  both compiler and runtime layers.
 - `gfx_opencl_kernel_artifacts` contains OpenCL source-artifact payload
   materialization and embedded OpenCL helper wrappers.
 - `src/compiler/stage_placement.*` defines the shared stage-placement contract;
   backend decisions live in
   `src/backends/metal/compiler/metal_stage_placement.*` and
   `src/backends/opencl/compiler/opencl_stage_placement.*`.
+- `src/compiler/stage_compiler_policy.*` adapts backend capabilities into the
+  explicit policy passed into shared stage-policy and MLIR source-planning code.
+- `src/compiler/memory_plan.*` owns compiler memory regions, lifetimes, alias
+  groups, and transient arenas; request code must consume the runtime descriptor
+  instead of reconstructing this information.
+- `src/compiler/cache_envelope.*` builds in-memory cache metadata and
+  fingerprints. It is not a persisted native backend cache in the current code.
+- `src/runtime/runtime_session.*` owns request-local descriptor binding tables
+  and prepared executable objects.
 - `gfx_metal_mpsrt_contract` contains shared Metal MPSRT model/ABI contracts
   used by Metal runtime and focused contract tests.
 - `gfx_plugin_metal` / `gfx_runtime_metal` and
@@ -113,13 +124,15 @@ Read in this order:
 4. `src/compiler/gfx_compiler_service.*`
 5. `src/compiler/backend_registry.*`
 6. `src/compiler/manifest.*` and `src/compiler/executable_bundle.*`
-7. `src/compiler/tensor_layout.*`
-8. `src/compiler/stage_placement.*`
-9. `src/plugin/backend_factory.*`
-10. `src/plugin/compiled_model.cpp`
-11. `src/plugin/infer_pipeline.*`
-12. `src/plugin/infer_submission.*`
-13. the backend directory you are changing
+7. `src/compiler/memory_plan.*` and `src/compiler/cache_envelope.*`
+8. `src/compiler/tensor_layout.*`
+9. `src/compiler/stage_placement.*` and
+   `src/compiler/stage_compiler_policy.*`
+10. `src/plugin/backend_factory.*`
+11. `src/plugin/compiled_model.cpp`
+12. `src/plugin/infer_pipeline.*`
+13. `src/plugin/infer_submission.*`
+14. the backend directory you are changing
 
 For runtime planning, also inspect:
 
@@ -128,7 +141,11 @@ For runtime planning, also inspect:
 - `src/compiler/kernel_registry.*`
 - `src/compiler/tensor_layout.*`
 - `src/compiler/stage_placement.*`
+- `src/compiler/stage_compiler_policy.*`
+- `src/compiler/memory_plan.*`
+- `src/compiler/cache_envelope.*`
 - `src/runtime/gfx_stage_policy.*`
+- `src/runtime/runtime_session.*`
 - `src/runtime/gfx_parallelism.*`
 - `src/runtime/gfx_partitioning.*`
 - `src/runtime/executable_descriptor.*`
@@ -148,11 +165,11 @@ For Metal placement, MPSRT, or MSL source planning, also inspect:
 - `src/backends/metal/compiler/metal_stage_placement.*`
 - `src/backends/metal/runtime/metal_runtime_kernel_loader.*`
 - `src/backends/metal/runtime/mpsrt_vendor_primitive_stage.*`
-- `src/runtime/gfx_mpsrt_abi.hpp`
-- `src/runtime/gfx_mpsrt_model.*`
-- `src/runtime/gfx_mpsrt_plan.hpp`
-- `src/runtime/gfx_mpsrt_program.hpp`
-- `src/runtime/gfx_mpsrt_kernel_manifest_adapter.hpp`
+- `src/backends/metal/runtime/mpsrt/gfx_mpsrt_abi.hpp`
+- `src/backends/metal/runtime/mpsrt/gfx_mpsrt_model.*`
+- `src/backends/metal/runtime/mpsrt/gfx_mpsrt_plan.hpp`
+- `src/backends/metal/runtime/mpsrt/gfx_mpsrt_program.hpp`
+- `src/backends/metal/runtime/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp`
 - `src/mlir/gfx_apple_stage_pipeline.*`
 - `src/mlir/gfx_apple_vendor_descriptors.*`
 - `src/mlir/gfx_mpsrt_dialect.*`
@@ -198,10 +215,12 @@ For OpenCL source execution, start with:
    source-plan helper, or transform.
 4. Decide the shared runtime contract before adding backend code:
    - compiler manifest/executable descriptor for stage ABI and artifact payloads
+   - compiler memory plan for region ids, alias groups, lifetimes, and arenas
    - compiler tensor-layout plan for view-only/materialized layout contracts
    - backend stage-placement policy for domain/storage selection
    - selected backend compiler policy passed through `GpuStageRuntimeOptions`
-     and `GfxStageCompilerPolicy`
+     and `compiler::StageCompilerPolicy`
+   - runtime session binding tables for request-local resource preparation
    - shared stage policy for fusion, precision, and submission
    - kernel manifest for custom-kernel ABI
    - runtime-value payloads for dynamic metadata
@@ -370,7 +389,7 @@ Metal placement must stay coordinated across:
 - Apple source-plan helpers
 - typed `GfxMpsrtProgram` / generated `gfx_mpsrt_ops`
 - `GfxMpsrtBuilderPlan`
-- `src/runtime/gfx_mpsrt_model.*`
+- `src/backends/metal/runtime/mpsrt/gfx_mpsrt_model.*`
 - `src/backends/metal/runtime/mpsrt/`
 
 When a manifest supplies explicit external-buffer roles, those roles define the

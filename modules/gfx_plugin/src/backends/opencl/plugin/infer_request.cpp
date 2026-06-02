@@ -159,7 +159,7 @@ void InferRequest::infer_opencl_impl(
       opencl_state->reusable_pipeline, descs, backend->const_manager.get(),
       stage_profiler, profiling, cm->get_runtime_model(), get_outputs(),
       node_map, param_map, state.bound_remote_outputs,
-      state.bound_remote_inputs, GpuBackend::OpenCL, pool,
+      state.bound_remote_inputs, GpuBackend::OpenCL, cm->runtime_descriptor(), pool,
       opencl_state->stage_output_handles, &opencl_state->stage_output_workspace,
       [&](std::vector<InferStage> &prepared_pipeline) {
         prepare_reusable_execution_plan(opencl_state->reusable_execution_plan,

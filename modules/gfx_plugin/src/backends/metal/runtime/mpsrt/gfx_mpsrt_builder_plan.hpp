@@ -7,10 +7,10 @@
 #include <string>
 #include <vector>
 
-#include "runtime/gfx_mpsrt_abi.hpp"
-#include "runtime/gfx_mpsrt_kernel_manifest_adapter.hpp"
-#include "runtime/gfx_mpsrt_plan.hpp"
-#include "runtime/gfx_mpsrt_storage_bridge.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_abi.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_plan.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_storage_bridge.hpp"
 
 namespace ov {
 namespace gfx_plugin {

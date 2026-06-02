@@ -23,7 +23,8 @@ bool GfxCompileResult::supported() const {
     return unsupported.type_counts.empty() &&
            lowering_plan.executable() &&
            manifest.valid() &&
-           executable.valid();
+           executable.valid() &&
+           cache_envelope.valid(executable);
 }
 
 std::string GfxCompileResult::unsupported_message() const {
@@ -74,6 +75,15 @@ GfxCompileResult GfxCompilerService::compile(const GfxCompileRequest& request) c
                          const PlannedOperation& op) {
             return backend_module->materialize_artifact_payload(descriptor, op);
         }).build(result.manifest, result.lowering_plan);
+    CacheEnvelopeBuildOptions cache_options;
+    cache_options.model_fingerprint = make_model_cache_fingerprint(*request.model);
+    cache_options.backend_capabilities_fingerprint =
+        make_backend_capabilities_fingerprint(backend_module->capabilities());
+    cache_options.backend_compiler_revision =
+        backend_module->target().compiler_id();
+    cache_options.driver_identity = backend_module->target().driver_id();
+    result.cache_envelope =
+        CacheEnvelopeBuilder{}.build(result.executable, cache_options);
     result.unsupported = result.lowering_plan.unsupported;
     return result;
 }

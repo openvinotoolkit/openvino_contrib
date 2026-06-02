@@ -11,7 +11,7 @@
 
 #include "kernel_ir/gfx_custom_kernel_families.hpp"
 #include "kernel_ir/gfx_kernel_manifest.hpp"
-#include "runtime/gfx_mpsrt_abi.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_abi.hpp"
 #include "runtime/gfx_stage_policy.hpp"
 
 namespace ov {

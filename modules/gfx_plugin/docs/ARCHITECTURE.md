@@ -19,15 +19,19 @@ notes or deleted backend code as current behavior.
 - `src/plugin/`: OpenVINO runtime integration, properties, backend resolution,
   runtime-provider registration, compiled-model state, infer-request helpers,
   output resolution, model serialization, and stateful graph handling
+- `src/common/`: backend id and GPU device-family/profile value types shared
+  across compiler, runtime, and backend code
 - `src/compiler/`: backend target description, backend module registry,
   backend capability records, operation support policies, backend
   stage-placement contracts, operation legalization, tensor-layout
-  classification, lowering plans, manifest bundles, executable bundles, and
-  artifact payload routing
+  classification, stage compiler policy, lowering plans, memory plans,
+  manifest bundles, cache envelopes, executable bundles, and artifact payload
+  routing
 - `src/runtime/`: backend-neutral stage interfaces, execution dispatcher,
   descriptor-backed view-only stages, submission windows, target profiles,
   profiling reports, remote tensor/context helpers, common buffer abstractions,
-  MPSRT model records, selected compiler policy handoff, and reusable caches
+  runtime executable descriptors, runtime sessions, selected compiler policy
+  handoff, and reusable caches
 - `src/kernel_ir/`: kernel manifests, custom-kernel family registry, dispatch
   metadata, argument helpers, cache keys, embedded helper kernel sources, and
   OpenCL source artifacts
@@ -71,6 +75,7 @@ parallel support tables.
 - transformed OpenVINO model
 - selected backend state from `create_backend_state()`
 - runtime executable descriptor derived from the compiler executable bundle
+- runtime descriptor ownership exposed to infer-request construction
 - `build_op_pipeline()` stage construction
 - compiled-model properties
 - profiling configuration and report ownership
@@ -87,6 +92,11 @@ descriptor for payload kind, entry point, ABI fingerprint, explicit roles, and
 artifact payload. If a descriptor is missing or invalid, the backend must fail
 or fall back only to a supported current path, never to a removed route.
 
+`build_op_pipeline()` creates stage prototypes and records runtime-stage indices;
+it does not compile custom kernels eagerly. Kernel preparation is request-local
+and is mediated by `src/runtime/runtime_session.*` so descriptor-owned resource
+bindings and memory-region ids are checked against the current tensor bindings.
+
 ### `InferRequest`
 
 Infer-request logic is split between shared helpers and backend files:
@@ -99,7 +109,9 @@ Infer-request logic is split between shared helpers and backend files:
 
 The shared infer path prepares input/output binding plans, manages reusable host
 outputs, allocates or reuses backend buffers, handles `ReadValue` / `Assign`
-state, groups stages into submission windows, and records profiling segments.
+state, creates `RuntimeSession` binding tables for descriptor-backed stages,
+prepares kernel executables, groups stages into submission windows, and records
+profiling segments.
 
 ## Backend Selection
 
@@ -156,9 +168,11 @@ ops that need real computation.
 
 Concrete stages receive `GpuStageRuntimeOptions` from `CompiledModel`. These
 options carry the selected backend `StagePlacementPolicy` and
-`PostOpFusionCapabilities` as `GfxStageCompilerPolicy` inputs to shared stage
-policy. Runtime stages and MLIR stages should consume that explicit policy
-instead of resolving `BackendRegistry::default_registry()` themselves.
+`PostOpFusionCapabilities` as `compiler::StageCompilerPolicy` inputs to shared
+stage policy. The policy also carries source-kernel dispatch fallback
+parallelism for OpenCL-style source routes. Runtime stages and MLIR stages
+should consume that explicit policy instead of resolving
+`BackendRegistry::default_registry()` themselves.
 
 ## Planning And Scheduling
 
@@ -174,10 +188,10 @@ Backend domain and storage placement are selected through
 `src/compiler/stage_placement.*`; backend-specific placement decisions live in
 `src/backends/metal/compiler/metal_stage_placement.*` and
 `src/backends/opencl/compiler/opencl_stage_placement.*`. `CompiledModel` builds
-`GfxStageCompilerPolicy` from the selected backend capabilities and passes it to
-stage creation, MPS/MSL planning helpers, and shared stage-policy calls. Shared
-stage policy must use that explicit policy instead of carrying all backend
-placement rules inline or resolving a registry on its own.
+`compiler::StageCompilerPolicy` from the selected backend capabilities and
+passes it to stage creation, MPS/MSL planning helpers, and shared stage-policy
+calls. Shared stage policy must use that explicit policy instead of carrying all
+backend placement rules inline or resolving a registry on its own.
 
 `src/runtime/gfx_parallelism.*` and `src/runtime/gfx_partitioning.*` derive
 workgroup and partitioning decisions from `GpuExecutionDeviceInfo` reported by
@@ -206,16 +220,20 @@ runtime execution. The main objects are:
 - `LoweringPlanner`: converts a transformed model into ordered
   `PlannedOperation` records with a `KernelUnit` route and compiler-owned
   tensor-layout plan.
+- `MemoryPlanBuilder`: assigns logical tensor memory regions, alias groups,
+  lifetimes, and transient arenas. Hidden host copies are rejected by contract.
 - `ManifestBuilder`: emits a `ManifestBundle` with stage records, tensor
-  contracts, runtime parameter contracts, dispatch contract, and memory
-  contract.
+  contracts, memory-region ids, runtime parameter contracts, dispatch contract,
+  and memory contract.
 - `ExecutableBundleBuilder`: converts the manifest and lowering plan into
   executable stage records, artifact descriptors, ABI fingerprints, and optional
   artifact payloads.
+- `CacheEnvelopeBuilder`: builds an in-memory cache envelope with model,
+  manifest, backend-capability, compile-option, and kernel-unit fingerprints.
 
-The compiler service currently builds an in-memory executable description. It
-does not emit or load a native backend binary cache. `export_model()` still
-serializes the OpenVINO model.
+The compiler service currently builds an in-memory executable description and a
+cache-envelope record. It does not emit or load a native backend binary cache.
+`export_model()` still serializes the OpenVINO model.
 
 Backend kernel registries are explicit. Generated and vendor routes must name a
 registered `KernelUnit`; generic catch-all ids are rejected by contract tests.
@@ -229,7 +247,9 @@ route.
 runtime capability records default to `GpuBackend::Unknown` until a backend is
 explicitly selected. Unknown backends cannot materialize a target, stage
 factory, or memory ops. This prevents accidental Metal-default behavior in
-shared code.
+shared code. `GpuBackend` and `GpuDeviceFamily` live in `src/common/` so shared
+compiler and runtime code do not depend on plugin or backend headers for these
+identity types.
 
 `BackendLowering` and `metal_lowering` are removed legacy routes. A supported
 operation must lower through common metadata, an explicit generated kernel unit,
@@ -292,11 +312,20 @@ Apple source planning is split by responsibility:
 Kernel contracts are split across the current compiler and kernel IR layers:
 
 - `src/compiler/manifest.*`: normalized stage records, tensor contracts,
-  runtime-parameter contracts, dispatch contracts, and memory contracts
+  memory-region ids, runtime-parameter contracts, dispatch contracts, and memory
+  contracts
+- `src/compiler/memory_plan.*`: compiler-owned memory regions, lifetimes, alias
+  groups, transient arenas, and memory-plan fingerprints
+- `src/compiler/cache_envelope.*`: in-memory cache keys and payload records;
+  currently not persisted by `export_model()`
 - `src/compiler/executable_bundle.*`: artifact descriptors, ABI fingerprints,
-  payload kind, manifest references, and runtime-facing stage records
+  payload kind, manifest references, memory plan, and runtime-facing stage
+  records
 - `src/runtime/executable_descriptor.*`: backend-neutral runtime descriptor
-  consumed by stage factories
+  consumed by stage factories and `RuntimeSession`
+- `src/runtime/runtime_session.*`: request-local resource binding tables and
+  prepared executable objects that validate tensor bindings against descriptor
+  memory-region ids
 - `src/kernel_ir/gfx_kernel_manifest.hpp` and
   `src/kernel_ir/gfx_custom_kernel_families.*`: custom-kernel family metadata
   and source-plan contracts
@@ -327,8 +356,9 @@ The Metal backend is split into:
 Metal stages can use Apple MPS/MPSGraph vendor primitives or Apple MSL custom
 kernels. The shared stage policy selects placement and storage. The compile path
 can materialize a typed MPSRT program and backend-neutral runtime model through
-`src/runtime/gfx_mpsrt_model.*`, `gfx_mpsrt_plan.hpp`,
-`gfx_mpsrt_program.hpp`, and `gfx_mpsrt_kernel_manifest_adapter.hpp`.
+`src/backends/metal/runtime/mpsrt/gfx_mpsrt_model.*`,
+`gfx_mpsrt_plan.hpp`, `gfx_mpsrt_program.hpp`, and
+`gfx_mpsrt_kernel_manifest_adapter.hpp`.
 
 Request-time Metal execution validates external-buffer bindings, model-owned
 resources, transient resources, storage bridges, prepared heaps, and
@@ -507,8 +537,11 @@ Do not move OpenCL source payload materialization back into
   `src/backends/*/compiler/*_stage_placement.*`; do not move backend-specific
   placement rules back into request code.
 - Keep selected backend compiler policy explicit through `CompiledModel`,
-  `GpuStageRuntimeOptions`, and `GfxStageCompilerPolicy`; do not make runtime
-  stages rediscover compiler modules through the default registry.
+  `GpuStageRuntimeOptions`, and `compiler::StageCompilerPolicy`; do not make
+  runtime stages rediscover compiler modules through the default registry.
+- Keep memory-region ids, alias groups, and transient arenas in
+  `src/compiler/memory_plan.*` and `src/runtime/executable_descriptor.*`; do not
+  infer resource identity from tensor position in request code.
 - Keep Metal MPSRT records, MSL source plans, and runtime binding on the
   compiler manifest/MPSRT contract.
 - Do not reintroduce removed backend routes, CPU fallback, runtime defines, or

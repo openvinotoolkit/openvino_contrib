@@ -45,18 +45,20 @@ Read these files first:
 ## Source Layout
 
 - `include/openvino/gfx_plugin/`: public plugin headers and property names
+- `src/common/`: backend ids and device-family/profile value types shared by
+  compiler, runtime, and backend code
 - `src/compiler/`: backend target registry, backend capability records,
   operation support policies, backend stage-placement contracts, tensor-layout
-  classification, lowering-plan construction, manifest building,
-  executable-bundle assembly, and artifact payload routing used by query and
-  compilation
+  classification, stage compiler policy, lowering-plan construction, memory
+  planning, manifest/cache-envelope building, executable-bundle assembly, and
+  artifact payload routing used by query and compilation
 - `src/plugin/`: OpenVINO-facing `Plugin`, `CompiledModel`, infer-request
   plumbing, properties, model serialization, backend selection, runtime-provider
   registration, and stateful `ReadValue` / `Assign` handling
 - `src/runtime/`: backend-neutral stage interfaces, submission planning,
-  profiling report assembly, liveness-aware output workspaces, remote
-  context/tensor helpers, descriptor-backed view-only stages, target profiles,
-  and shared MPSRT runtime-model types
+  profiling report assembly, runtime executable descriptors, runtime sessions,
+  liveness-aware output workspaces, remote context/tensor helpers,
+  descriptor-backed view-only stages, and target profiles
 - `src/kernel_ir/`: backend-neutral kernel manifests, custom-kernel family
   metadata, cache keys, dispatch descriptions, embedded Metal/OpenCL helper
   sources, and OpenCL source artifacts
@@ -89,25 +91,30 @@ The high-level path is:
 2. `src/compiler/BackendRegistry` resolves one of the backend compiler modules
    available in the current configured build. The module owns the immutable
    `BackendTarget`, backend-owned transform `PipelineOptions`, fusion
-   capabilities, post-op fusion capabilities, stage-placement policy, and
-   artifact payload resolver. Runtime state creation is still checked through
-   configured backend support and `src/plugin/backend_factory.*`.
+   capabilities, post-op fusion capabilities, stage-placement policy, source
+   kernel dispatch policy, and artifact payload resolver. Runtime state
+   creation is still checked through configured backend support and
+   `src/plugin/backend_factory.*`.
 3. `GfxCompilerService` runs backend-aware transforms, operation support
-   checks, lowering-plan creation, manifest building, executable-bundle
-   assembly, and artifact payload materialization.
+   checks, lowering-plan creation, memory-plan creation, manifest building,
+   executable-bundle assembly, cache-envelope construction, and artifact payload
+   materialization.
 4. `CompiledModel` validates the executable bundle and builds a
    `RuntimeExecutableDescriptor` that is passed into backend stage creation.
 5. `CompiledModel::build_op_pipeline()` creates a sequence of stage descriptors.
 6. `src/runtime/gfx_stage_policy.*` selects fusion, precision, submit policy,
    and other shared stage traits. `CompiledModel` passes the selected backend
-   `StagePlacementPolicy` and `PostOpFusionCapabilities` through
-   `GpuStageRuntimeOptions` / `GfxStageCompilerPolicy`; stages must not resolve
-   the global backend registry at request time.
+   `StagePlacementPolicy`, `PostOpFusionCapabilities`, and source-kernel
+   dispatch policy through `GpuStageRuntimeOptions` /
+   `compiler::StageCompilerPolicy`; stages must not resolve the global backend
+   registry at request time.
 7. `src/mlir/` lowers supported nodes and materializes backend source plans.
 8. The active backend creates descriptor-backed view-only stages or concrete
    backend `GpuStage` objects through `ExecutionDispatcher`.
-9. Infer requests bind host or remote tensors, allocate or reuse backend
-   buffers, execute submission windows, and collect profiling data.
+9. Infer requests create a `RuntimeSession`, bind host or remote tensors against
+   descriptor memory-region contracts, prepare kernel executables per request,
+   allocate or reuse backend buffers, execute submission windows, and collect
+   profiling data.
 
 The pipeline is intentionally stage-based. Fused stages, descriptor-backed
 view-only stages, view-style split outputs, stateful variable buffers, reusable
@@ -142,7 +149,7 @@ The Metal backend is the Apple production path. It combines:
 - backend compiler policy, generated MSL artifact payloads, and MPS/MPSGraph
   vendor descriptor payloads under
   `src/backends/metal/compiler/`
-- MPSRT runtime-model records under `src/runtime/gfx_mpsrt_*`
+- MPSRT runtime-model records under `src/backends/metal/runtime/mpsrt/gfx_mpsrt_*`
 - embedded MPSRT helper kernels under `src/kernel_ir/metal_kernels/`
 - Objective-C++ request-time execution under `src/backends/metal/runtime/`
 
@@ -334,8 +341,9 @@ parity, duplicate registrations, and forbidden `DISABLED_` registrations.
 3. Add MLIR lowering or a transform in the appropriate `src/mlir/` or
    `src/transforms/` file.
 4. Choose the shared runtime contract first: stage policy, kernel manifest,
-   compiler tensor-layout plan, runtime-value payloads, OpenCL artifact
-   metadata, or Metal MPSRT/Apple MSL source planning.
+   compiler tensor-layout plan, compiler memory plan, runtime executable
+   descriptor, runtime-value payloads, OpenCL artifact metadata, or Metal
+   MPSRT/Apple MSL source planning.
 5. Add backend-specific code only under `src/backends/metal/` or
    `src/backends/opencl/` when the shared path cannot express the behavior.
 6. Add focused unit tests first, then backend or functional coverage when the

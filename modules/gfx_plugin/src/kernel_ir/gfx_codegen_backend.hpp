@@ -11,14 +11,13 @@
 #include <vector>
 
 #include "mlir/IR/BuiltinOps.h"
-#include "runtime/gfx_mpsrt_abi.hpp"
 #include "runtime/gpu_backend_base.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 
-struct MpsrtConstTensorSource {
-    GfxMpsrtValue value = 0;
+struct KernelConstTensorSource {
+    uint32_t value_id = 0;
     std::vector<uint8_t> bytes;
 };
 
@@ -28,7 +27,7 @@ struct KernelSource {
     std::string msl_source;
     std::function<std::string(mlir::ModuleOp)> msl_generator;
     KernelSignature signature{};
-    std::vector<MpsrtConstTensorSource> mpsrt_const_tensors;
+    std::vector<KernelConstTensorSource> const_tensor_sources;
 };
 
 inline std::string resolve_entry_point(const KernelSource& source,

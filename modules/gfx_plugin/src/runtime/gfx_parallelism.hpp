@@ -8,10 +8,12 @@
 #include <vector>
 
 #include "kernel_ir/gfx_kernel_dispatch.hpp"
-#include "runtime/gpu_buffer_manager.hpp"
+#include "runtime/gpu_device_info.hpp"
 
 namespace ov {
 namespace gfx_plugin {
+
+class GpuBufferManager;
 
 struct GfxParallelismCaps {
   GpuBackend backend = GpuBackend::Unknown;

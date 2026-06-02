@@ -4,21 +4,12 @@
 
 #include "runtime/gfx_backend_utils.hpp"
 
+#include "compiler/backend_config.hpp"
+#include "openvino/core/except.hpp"
+#include "openvino/util/common_util.hpp"
+
 namespace ov {
 namespace gfx_plugin {
-
-const char* backend_to_string(GpuBackend backend) {
-    switch (backend) {
-    case GpuBackend::Unknown:
-        return "unknown";
-    case GpuBackend::Metal:
-        return kBackendMetal;
-    case GpuBackend::OpenCL:
-        return kBackendOpenCL;
-    default:
-        return "unknown";
-    }
-}
 
 GpuBackend parse_backend_kind(const std::string& value) {
     const auto backend = ov::util::to_lower(value);
@@ -46,10 +37,6 @@ bool backend_supported(GpuBackend backend) {
     default:
         return false;
     }
-}
-
-bool backend_known(GpuBackend backend) {
-    return backend == GpuBackend::Metal || backend == GpuBackend::OpenCL;
 }
 
 }  // namespace gfx_plugin

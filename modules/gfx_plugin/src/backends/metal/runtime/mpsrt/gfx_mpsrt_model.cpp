@@ -1,7 +1,7 @@
 // Copyright (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
-#include "runtime/gfx_mpsrt_model.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_model.hpp"
 
 #include <algorithm>
 #include <sstream>
@@ -9,7 +9,7 @@
 #include <utility>
 
 #include "openvino/core/except.hpp"
-#include "runtime/gfx_mpsrt_kernel_manifest_adapter.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp"
 
 namespace ov {
 namespace gfx_plugin {

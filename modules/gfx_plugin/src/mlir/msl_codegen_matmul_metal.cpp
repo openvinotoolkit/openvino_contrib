@@ -4,8 +4,8 @@
 
 #include "mlir/msl_codegen_matmul_metal.hpp"
 
-#include "compiler/backend_registry.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
+#include "compiler/stage_compiler_policy.hpp"
 #include "mlir/msl_codegen_matmul_mpsrt.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/matmul.hpp"
@@ -20,16 +20,6 @@
 namespace ov {
 namespace gfx_plugin {
 namespace {
-
-GfxStageCompilerPolicy metal_stage_compiler_policy() {
-  const auto backend_module =
-      compiler::BackendRegistry::default_registry().resolve(GpuBackend::Metal);
-  if (!backend_module) {
-    return {};
-  }
-  return gfx_stage_compiler_policy_from_capabilities(
-      backend_module->capabilities());
-}
 
 ov::element::Type
 resolve_matmul_buffer_type(const ov::element::Type &type,
@@ -69,7 +59,8 @@ GfxMpsrtKernelSourcePlan lower_matmul_node_to_metal_kernel_source_plan(
       resolve_matmul_buffer_type(desc.input_b_type, desc.element_type);
   desc.output_type = output_type;
 
-  const auto stage_compiler_policy = metal_stage_compiler_policy();
+  const auto stage_compiler_policy =
+      compiler::resolve_stage_compiler_policy(GpuBackend::Metal);
   const auto placement = select_stage_optimization_plan(
       buffer_manager, GpuBackend::Metal, "MatMul", node, desc.output_type,
       desc.has_bias, desc.has_activation,

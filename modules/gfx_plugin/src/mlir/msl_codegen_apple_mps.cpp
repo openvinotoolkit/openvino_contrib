@@ -11,7 +11,6 @@
 #include <string>
 #include <vector>
 
-#include "compiler/backend_registry.hpp"
 #include "kernel_ir/gfx_kernel_manifest.hpp"
 #include "mlir/codegen_common.hpp"
 #include "mlir/gfx_apple_stage_pipeline.hpp"
@@ -21,6 +20,7 @@
 #include "mlir/gfx_mpsrt_const_tensor_sources.hpp"
 #include "mlir/gfx_mpsrt_conv_metadata.hpp"
 #include "mlir/gfx_mpsrt_metadata.hpp"
+#include "compiler/stage_compiler_policy.hpp"
 #include "mlir/msl_codegen_matmul_metal.hpp"
 #include "mlir/msl_codegen_matmul_mpsrt.hpp"
 #include "openvino/core/except.hpp"
@@ -73,16 +73,6 @@ bool should_prefer_clean_io_only_mps_vendor_source(
          !module_has_mpsrt_ops_program(module) &&
          (has_apple_msl_custom_kernel_manifest(module) ||
           has_legacy_output_arg_abi(module));
-}
-
-GfxStageCompilerPolicy metal_stage_compiler_policy() {
-  const auto backend_module =
-      compiler::BackendRegistry::default_registry().resolve(GpuBackend::Metal);
-  if (!backend_module) {
-    return {};
-  }
-  return gfx_stage_compiler_policy_from_capabilities(
-      backend_module->capabilities());
 }
 
 bool conv_bias_is_channel_vector(const BiasParams *bias_params,
@@ -170,8 +160,8 @@ void attach_conv_bias_const_tensor(KernelSource &source,
       gfx_mpsrt_const_payload_already_attached(source, 2)) {
     return;
   }
-  MpsrtConstTensorSource payload{};
-  payload.value = 2;
+  KernelConstTensorSource payload{};
+  payload.value_id = 2;
   const auto dtype = program.inputs[2].dtype;
   if (dtype == GfxMpsrtDType::F16) {
     std::vector<ov::float16> values;
@@ -188,7 +178,7 @@ void attach_conv_bias_const_tensor(KernelSource &source,
   } else {
     return;
   }
-  source.mpsrt_const_tensors.push_back(std::move(payload));
+  source.const_tensor_sources.push_back(std::move(payload));
 }
 
 KernelRuntimeBindingState make_conv_mpsrt_runtime_binding(bool has_bias) {
@@ -346,7 +336,7 @@ GfxMpsrtKernelSourcePlan try_make_conv_texture_swish_mpsrt_source_plan(
   if (!source_plan.valid()) {
     return {};
   }
-  gfx_attach_mpsrt_const_tensors(source_plan.source, node);
+  gfx_attach_mpsrt_const_tensor_sources(source_plan.source, node);
   if (has_bias) {
     attach_conv_bias_const_tensor(source_plan.source, bias_params);
   }
@@ -368,7 +358,8 @@ try_configure_apple_mps_vendor_kernel_source_plan_for_node(
   if (has_apple_msl_custom_kernel_manifest(source.module)) {
     return {};
   }
-  const auto stage_compiler_policy = metal_stage_compiler_policy();
+  const auto stage_compiler_policy =
+      compiler::resolve_stage_compiler_policy(GpuBackend::Metal);
 
   const bool conv_base_candidate =
       (ov::is_type<const ov::op::v1::Convolution>(node) ||
@@ -455,7 +446,7 @@ try_configure_apple_mps_vendor_kernel_source_plan_for_node(
       auto source_plan =
           make_mpsrt_kernel_source_plan_from_module(source.module);
       if (source_plan.valid()) {
-        gfx_attach_mpsrt_const_tensors(source_plan.source, node);
+        gfx_attach_mpsrt_const_tensor_sources(source_plan.source, node);
         if (has_bias) {
           attach_conv_bias_const_tensor(source_plan.source, bias_params);
         }

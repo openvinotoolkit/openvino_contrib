@@ -40,13 +40,13 @@
 #include "openvino/op/softmax.hpp"
 #include "openvino/op/topk.hpp"
 #include "openvino/op/transpose.hpp"
-#include "runtime/gfx_mpsrt_abi.hpp"
-#include "runtime/gfx_mpsrt_builder_plan.hpp"
-#include "runtime/gfx_mpsrt_kernel_manifest_adapter.hpp"
-#include "runtime/gfx_mpsrt_model.hpp"
-#include "runtime/gfx_mpsrt_plan.hpp"
-#include "runtime/gfx_mpsrt_program.hpp"
-#include "runtime/gfx_mpsrt_storage_bridge.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_abi.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_builder_plan.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_model.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_plan.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_program.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_storage_bridge.hpp"
 #include "runtime/gfx_precision.hpp"
 #include "runtime/gfx_stage_policy.hpp"
 #include "transformations/rt_info/disable_fp16_compression.hpp"
@@ -92,8 +92,14 @@ test_post_op_fusion_capabilities(GpuBackend backend) {
 
 GfxStageCompilerPolicy test_stage_compiler_policy(GpuBackend backend) {
   GfxStageCompilerPolicy policy{};
+  policy.backend = backend;
   policy.placement = test_stage_placement_policy(backend);
   policy.post_ops = test_post_op_fusion_capabilities(backend);
+  if (backend_known(backend)) {
+    policy.source_kernel_dispatch =
+        compiler::make_stage_source_kernel_dispatch_policy(
+            compiler::BackendTarget::from_backend(backend));
+  }
   return policy;
 }
 

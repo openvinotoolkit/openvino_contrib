@@ -14,7 +14,7 @@
 #include "mlir/gfx_apple_vendor_descriptors.hpp"
 #include "mlir/gfx_mpsrt_metadata.hpp"
 #include "openvino/core/node.hpp"
-#include "runtime/gfx_mpsrt_abi.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_abi.hpp"
 #include "runtime/gfx_bias.hpp"
 #include "runtime/gfx_stage_policy.hpp"
 

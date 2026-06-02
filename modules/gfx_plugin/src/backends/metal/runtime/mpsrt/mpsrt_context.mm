@@ -20,7 +20,7 @@
 #include "openvino/core/except.hpp"
 #include "openvino/core/type/float16.hpp"
 #include "runtime/gfx_compile_profiling.hpp"
-#include "runtime/gfx_mpsrt_storage_bridge.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_storage_bridge.hpp"
 
 @interface OVGfxMpsrtConv2DDataSource : NSObject <MPSCNNConvolutionDataSource> {
 @private

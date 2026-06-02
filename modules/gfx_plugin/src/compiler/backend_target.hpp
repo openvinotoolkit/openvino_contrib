@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-#include "runtime/gfx_backend_utils.hpp"
+#include "common/gpu_backend.hpp"
 
 namespace ov {
 namespace gfx_plugin {

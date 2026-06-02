@@ -145,7 +145,7 @@ std::optional<KernelSource> make_apple_metal_reduction_kernel_source(
   if (!plan.valid()) {
     return std::nullopt;
   }
-  plan.source.mpsrt_const_tensors = std::move(source.mpsrt_const_tensors);
+  plan.source.const_tensor_sources = std::move(source.const_tensor_sources);
   return plan.source;
 }
 

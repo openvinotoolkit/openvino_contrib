@@ -5,6 +5,7 @@
 #include "runtime/executable_descriptor.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -36,8 +37,53 @@ bool same_string(std::string_view lhs, const std::string &rhs) {
   return lhs.size() == rhs.size() && lhs.compare(rhs) == 0;
 }
 
+const compiler::MemoryRegion *
+find_memory_region(const compiler::MemoryPlan &plan,
+                   std::string_view region_id) {
+  for (const auto &region : plan.regions) {
+    if (same_string(region_id, region.region_id)) {
+      return &region;
+    }
+  }
+  return nullptr;
+}
+
+RuntimeTensorBindingContract make_tensor_binding_contract(
+    const compiler::TensorContract &contract,
+    const compiler::MemoryPlan &memory_plan) {
+  RuntimeTensorBindingContract binding;
+  binding.logical_name = contract.logical_name;
+  binding.memory_region_id = contract.memory_region_id;
+  binding.role = std::string(compiler::tensor_contract_role_to_string(contract.role));
+  binding.element_type = contract.element_type;
+  binding.partial_shape = contract.partial_shape;
+  binding.layout = contract.layout;
+  binding.storage_kind = contract.storage_kind;
+  binding.lifetime_class = contract.lifetime_class;
+  if (const auto *region =
+          find_memory_region(memory_plan, contract.memory_region_id)) {
+    binding.alias_group = region->alias_group;
+    binding.external_binding = region->external_binding;
+    binding.host_visible = region->host_visible;
+  }
+  return binding;
+}
+
+std::vector<RuntimeTensorBindingContract> make_tensor_binding_contracts(
+    const std::vector<compiler::TensorContract> &contracts,
+    const compiler::MemoryPlan &memory_plan) {
+  std::vector<RuntimeTensorBindingContract> bindings;
+  bindings.reserve(contracts.size());
+  for (const auto &contract : contracts) {
+    bindings.push_back(make_tensor_binding_contract(contract, memory_plan));
+  }
+  return bindings;
+}
+
 RuntimeStageExecutableDescriptor make_stage_descriptor(
     size_t stage_index, const compiler::ExecutableStageRecord &executable_stage,
+    const compiler::StageRecord &manifest_stage,
+    const compiler::MemoryPlan &memory_plan,
     const compiler::KernelArtifactDescriptor &artifact,
     std::shared_ptr<const compiler::KernelArtifactPayload> payload) {
   RuntimeStageExecutableDescriptor descriptor;
@@ -69,10 +115,255 @@ RuntimeStageExecutableDescriptor make_stage_descriptor(
   descriptor.optional_cache_payload_allowed =
       artifact.optional_cache_payload_allowed;
   descriptor.payload = std::move(payload);
+  descriptor.input_bindings =
+      make_tensor_binding_contracts(manifest_stage.inputs, memory_plan);
+  descriptor.output_bindings =
+      make_tensor_binding_contracts(manifest_stage.outputs, memory_plan);
   return descriptor;
 }
 
+RuntimeMemoryRegionDescriptor
+make_memory_region_descriptor(const compiler::MemoryRegion &region) {
+  RuntimeMemoryRegionDescriptor descriptor;
+  descriptor.region_id = region.region_id;
+  descriptor.logical_tensor_name = region.logical_tensor_name;
+  descriptor.kind =
+      std::string(compiler::memory_region_kind_to_string(region.kind));
+  descriptor.element_type = region.element_type;
+  descriptor.partial_shape = region.partial_shape;
+  descriptor.layout = region.layout;
+  descriptor.storage_kind = region.storage_kind;
+  descriptor.alias_group = region.alias_group;
+  descriptor.first_stage = region.lifetime.first_stage;
+  descriptor.last_stage = region.lifetime.last_stage;
+  descriptor.external_binding = region.external_binding;
+  descriptor.host_visible = region.host_visible;
+  return descriptor;
+}
+
+RuntimeMemoryAliasGroupDescriptor
+make_memory_alias_group_descriptor(const compiler::AliasGroup &group) {
+  RuntimeMemoryAliasGroupDescriptor descriptor;
+  descriptor.group_id = group.group_id;
+  descriptor.region_ids = group.region_ids;
+  descriptor.output_aliasing = group.output_aliasing;
+  return descriptor;
+}
+
+RuntimeTransientArenaDescriptor
+make_transient_arena_descriptor(const compiler::TransientArena &arena) {
+  RuntimeTransientArenaDescriptor descriptor;
+  descriptor.arena_id = arena.arena_id;
+  descriptor.storage_kind = arena.storage_kind;
+  descriptor.region_ids = arena.region_ids;
+  return descriptor;
+}
+
+RuntimeMemoryPlanDescriptor
+make_memory_plan_descriptor(const compiler::MemoryPlan &plan) {
+  RuntimeMemoryPlanDescriptor descriptor;
+  descriptor.schema_version = plan.schema_version;
+  descriptor.fingerprint = compiler::make_memory_plan_fingerprint(plan);
+  descriptor.hidden_host_copies_allowed = plan.hidden_host_copies_allowed;
+  descriptor.regions.reserve(plan.regions.size());
+  for (const auto &region : plan.regions) {
+    descriptor.regions.push_back(make_memory_region_descriptor(region));
+  }
+  descriptor.alias_groups.reserve(plan.alias_groups.size());
+  for (const auto &group : plan.alias_groups) {
+    descriptor.alias_groups.push_back(make_memory_alias_group_descriptor(group));
+  }
+  descriptor.transient_arenas.reserve(plan.transient_arenas.size());
+  for (const auto &arena : plan.transient_arenas) {
+    descriptor.transient_arenas.push_back(
+        make_transient_arena_descriptor(arena));
+  }
+  return descriptor;
+}
+
+bool memory_region_matches(const RuntimeMemoryRegionDescriptor &descriptor,
+                           const compiler::MemoryRegion &region) {
+  return descriptor.region_id == region.region_id &&
+         descriptor.logical_tensor_name == region.logical_tensor_name &&
+         same_string(compiler::memory_region_kind_to_string(region.kind),
+                     descriptor.kind) &&
+         descriptor.element_type == region.element_type &&
+         descriptor.partial_shape == region.partial_shape &&
+         descriptor.layout == region.layout &&
+         descriptor.storage_kind == region.storage_kind &&
+         descriptor.alias_group == region.alias_group &&
+         descriptor.first_stage == region.lifetime.first_stage &&
+         descriptor.last_stage == region.lifetime.last_stage &&
+         descriptor.external_binding == region.external_binding &&
+         descriptor.host_visible == region.host_visible;
+}
+
+bool memory_alias_group_matches(
+    const RuntimeMemoryAliasGroupDescriptor &descriptor,
+    const compiler::AliasGroup &group) {
+  return descriptor.group_id == group.group_id &&
+         descriptor.region_ids == group.region_ids &&
+         descriptor.output_aliasing == group.output_aliasing;
+}
+
+bool transient_arena_matches(const RuntimeTransientArenaDescriptor &descriptor,
+                             const compiler::TransientArena &arena) {
+  return descriptor.arena_id == arena.arena_id &&
+         descriptor.storage_kind == arena.storage_kind &&
+         descriptor.region_ids == arena.region_ids;
+}
+
+bool tensor_binding_matches(const RuntimeTensorBindingContract &binding,
+                            const compiler::TensorContract &contract,
+                            const compiler::MemoryPlan &memory_plan) {
+  if (binding.logical_name != contract.logical_name ||
+      binding.memory_region_id != contract.memory_region_id ||
+      !same_string(compiler::tensor_contract_role_to_string(contract.role),
+                   binding.role) ||
+      binding.element_type != contract.element_type ||
+      binding.partial_shape != contract.partial_shape ||
+      binding.layout != contract.layout ||
+      binding.storage_kind != contract.storage_kind ||
+      binding.lifetime_class != contract.lifetime_class) {
+    return false;
+  }
+  const auto *region = find_memory_region(memory_plan, contract.memory_region_id);
+  if (!region) {
+    return false;
+  }
+  return binding.alias_group == region->alias_group &&
+         binding.external_binding == region->external_binding &&
+         binding.host_visible == region->host_visible;
+}
+
+void append_tensor_binding_diagnostics(
+    RuntimeExecutableDescriptorVerificationResult &result,
+    const RuntimeStageExecutableDescriptor &stage,
+    const compiler::StageRecord &manifest_stage,
+    const compiler::MemoryPlan &memory_plan, size_t stage_index) {
+  if (stage.input_bindings.size() != manifest_stage.inputs.size()) {
+    result.diagnostics.push_back(
+        "runtime executable descriptor input binding count drift at " +
+        std::to_string(stage_index));
+  }
+  const size_t input_count =
+      std::min(stage.input_bindings.size(), manifest_stage.inputs.size());
+  for (size_t i = 0; i < input_count; ++i) {
+    if (!tensor_binding_matches(stage.input_bindings[i],
+                                manifest_stage.inputs[i], memory_plan)) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor input binding drift at " +
+          std::to_string(stage_index) + ":" + std::to_string(i));
+    }
+  }
+
+  if (stage.output_bindings.size() != manifest_stage.outputs.size()) {
+    result.diagnostics.push_back(
+        "runtime executable descriptor output binding count drift at " +
+        std::to_string(stage_index));
+  }
+  const size_t output_count =
+      std::min(stage.output_bindings.size(), manifest_stage.outputs.size());
+  for (size_t i = 0; i < output_count; ++i) {
+    if (!tensor_binding_matches(stage.output_bindings[i],
+                                manifest_stage.outputs[i], memory_plan)) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor output binding drift at " +
+          std::to_string(stage_index) + ":" + std::to_string(i));
+    }
+  }
+}
+
+void append_memory_plan_diagnostics(
+    RuntimeExecutableDescriptorVerificationResult &result,
+    const RuntimeMemoryPlanDescriptor &descriptor,
+    const compiler::MemoryPlan &memory_plan) {
+  const auto memory_plan_result = memory_plan.verify();
+  for (const auto &diagnostic : memory_plan_result.diagnostics) {
+    result.diagnostics.push_back(
+        "runtime executable descriptor source memory plan invalid: " +
+        diagnostic);
+  }
+
+  if (descriptor.schema_version != memory_plan.schema_version) {
+    result.diagnostics.emplace_back(
+        "runtime executable descriptor memory plan schema drift");
+  }
+  if (descriptor.fingerprint !=
+      compiler::make_memory_plan_fingerprint(memory_plan)) {
+    result.diagnostics.emplace_back(
+        "runtime executable descriptor memory plan fingerprint drift");
+  }
+  if (descriptor.hidden_host_copies_allowed !=
+      memory_plan.hidden_host_copies_allowed) {
+    result.diagnostics.emplace_back(
+        "runtime executable descriptor memory plan host-copy policy drift");
+  }
+
+  if (descriptor.regions.size() != memory_plan.regions.size()) {
+    result.diagnostics.emplace_back(
+        "runtime executable descriptor memory region count drift");
+  }
+  const size_t region_count =
+      std::min(descriptor.regions.size(), memory_plan.regions.size());
+  for (size_t i = 0; i < region_count; ++i) {
+    if (!memory_region_matches(descriptor.regions[i],
+                               memory_plan.regions[i])) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor memory region drift at " +
+          std::to_string(i));
+    }
+  }
+
+  if (descriptor.alias_groups.size() != memory_plan.alias_groups.size()) {
+    result.diagnostics.emplace_back(
+        "runtime executable descriptor memory alias group count drift");
+  }
+  const size_t alias_group_count =
+      std::min(descriptor.alias_groups.size(), memory_plan.alias_groups.size());
+  for (size_t i = 0; i < alias_group_count; ++i) {
+    if (!memory_alias_group_matches(descriptor.alias_groups[i],
+                                    memory_plan.alias_groups[i])) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor memory alias group drift at " +
+          std::to_string(i));
+    }
+  }
+
+  if (descriptor.transient_arenas.size() !=
+      memory_plan.transient_arenas.size()) {
+    result.diagnostics.emplace_back(
+        "runtime executable descriptor transient arena count drift");
+  }
+  const size_t arena_count = std::min(descriptor.transient_arenas.size(),
+                                     memory_plan.transient_arenas.size());
+  for (size_t i = 0; i < arena_count; ++i) {
+    if (!transient_arena_matches(descriptor.transient_arenas[i],
+                                 memory_plan.transient_arenas[i])) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor transient arena drift at " +
+          std::to_string(i));
+    }
+  }
+}
+
 } // namespace
+
+bool RuntimeMemoryPlanDescriptor::has_region(
+    std::string_view region_id) const {
+  return std::any_of(regions.begin(), regions.end(),
+                     [&](const RuntimeMemoryRegionDescriptor &region) {
+                       return region.region_id == region_id;
+                     });
+}
+
+bool RuntimeMemoryPlanDescriptor::has_alias_group(
+    std::string_view group_id) const {
+  return std::any_of(alias_groups.begin(), alias_groups.end(),
+                     [&](const RuntimeMemoryAliasGroupDescriptor &group) {
+                       return group.group_id == group_id;
+                     });
+}
 
 RuntimeExecutableDescriptorVerificationResult
 RuntimeExecutableDescriptor::verify(
@@ -91,12 +382,22 @@ RuntimeExecutableDescriptor::verify(
     result.diagnostics.emplace_back(
         "runtime executable descriptor stage count drift");
   }
+  append_memory_plan_diagnostics(result, memory_plan, executable.memory_plan);
 
   std::unordered_set<uint64_t> stage_keys;
   const size_t count = std::min(stages.size(), executable.stages.size());
   for (size_t i = 0; i < count; ++i) {
     const auto &stage = stages[i];
     const auto &executable_stage = executable.stages[i];
+    if (i < executable.manifest.stages.size()) {
+      append_tensor_binding_diagnostics(result, stage,
+                                        executable.manifest.stages[i],
+                                        executable.memory_plan, i);
+    } else {
+      result.diagnostics.push_back(
+          "runtime executable descriptor manifest stage missing at " +
+          std::to_string(i));
+    }
     if (stage.stage_index != i) {
       result.diagnostics.push_back(
           "runtime executable descriptor stage index drift at " +
@@ -231,11 +532,13 @@ RuntimeExecutableDescriptor RuntimeExecutableDescriptorBuilder::build(
   RuntimeExecutableDescriptor descriptor;
   descriptor.schema_version = kRuntimeExecutableDescriptorSchemaVersion;
   descriptor.target_fingerprint = executable.target_fingerprint;
+  descriptor.memory_plan = make_memory_plan_descriptor(executable.memory_plan);
   descriptor.stages.reserve(executable.stages.size());
   for (size_t i = 0; i < executable.stages.size(); ++i) {
     const auto &executable_stage = executable.stages[i];
-    if (executable_stage.artifact_descriptor_index >=
-        executable.artifact_descriptors.size()) {
+    if (i >= executable.manifest.stages.size() ||
+        executable_stage.artifact_descriptor_index >=
+            executable.artifact_descriptors.size()) {
       RuntimeStageExecutableDescriptor stage;
       stage.stage_index = i;
       stage.stage_record_key = executable_stage.stage_record_key;
@@ -248,7 +551,8 @@ RuntimeExecutableDescriptor RuntimeExecutableDescriptorBuilder::build(
         executable
             .artifact_descriptors[executable_stage.artifact_descriptor_index];
     descriptor.stages.push_back(make_stage_descriptor(
-        i, executable_stage, artifact,
+        i, executable_stage, executable.manifest.stages[i],
+        executable.memory_plan, artifact,
         executable.find_artifact_payload(artifact.artifact_key)));
   }
   return descriptor;

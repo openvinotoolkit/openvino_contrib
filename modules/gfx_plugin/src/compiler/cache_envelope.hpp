@@ -1,0 +1,82 @@
+// Copyright (C) 2025 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+#pragma once
+
+#include <cstdint>
+#include <string>
+#include <vector>
+
+#include "compiler/executable_bundle.hpp"
+#include "compiler/operation_support.hpp"
+#include "openvino/core/model.hpp"
+
+namespace ov {
+namespace gfx_plugin {
+namespace compiler {
+
+struct CacheKey {
+  std::string model_fingerprint;
+  std::string manifest_hash;
+  std::string target_fingerprint;
+  std::string backend_capabilities_fingerprint;
+  std::string compiler_revision;
+  std::string backend_compiler_revision;
+  std::string driver_identity;
+  std::string compile_options_hash;
+  std::vector<std::string> kernel_unit_versions;
+  std::string stable_key;
+};
+
+struct CacheBackendPayloadRecord {
+  std::string artifact_key;
+  std::string backend_domain;
+  std::string payload_kind;
+  std::string source_id;
+  std::string entry_point;
+  std::string payload_identity;
+  bool optional = true;
+};
+
+struct CacheEnvelopeVerificationResult {
+  std::vector<std::string> diagnostics;
+
+  bool valid() const noexcept { return diagnostics.empty(); }
+};
+
+struct CacheEnvelope {
+  uint32_t schema_version = 1;
+  CacheKey key;
+  ManifestBundle manifest;
+  std::vector<KernelArtifactDescriptor> artifact_descriptors;
+  std::vector<CacheBackendPayloadRecord> backend_payloads;
+
+  CacheEnvelopeVerificationResult verify(const ExecutableBundle &executable) const;
+  bool valid(const ExecutableBundle &executable) const;
+};
+
+struct CacheEnvelopeBuildOptions {
+  std::string model_fingerprint;
+  std::string backend_capabilities_fingerprint;
+  std::string compiler_revision = "gfx-compiler-cache-v1";
+  std::string backend_compiler_revision;
+  std::string driver_identity;
+  std::string compile_options_hash;
+  bool include_optional_backend_payloads = true;
+};
+
+class CacheEnvelopeBuilder final {
+public:
+  CacheEnvelope build(const ExecutableBundle &executable,
+                      const CacheEnvelopeBuildOptions &options) const;
+};
+
+std::string make_model_cache_fingerprint(const ov::Model &model);
+std::string make_manifest_cache_hash(const ManifestBundle &manifest);
+std::string make_executable_compile_options_hash(const ExecutableBundle &executable);
+std::string make_backend_capabilities_fingerprint(const BackendCapabilities &capabilities);
+std::vector<std::string> make_kernel_unit_cache_versions(const ExecutableBundle &executable);
+
+} // namespace compiler
+} // namespace gfx_plugin
+} // namespace ov

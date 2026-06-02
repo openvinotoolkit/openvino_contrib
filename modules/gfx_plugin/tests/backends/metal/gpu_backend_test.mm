@@ -31,7 +31,7 @@
 #include "mlir/gfx_mpsrt_metadata.hpp"
 #include "mlir/msl_codegen_apple_msl_dispatch.hpp"
 #include "runtime/gfx_compile_profiling.hpp"
-#include "runtime/gfx_mpsrt_builder_plan.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_builder_plan.hpp"
 #include "runtime/gfx_stage_policy.hpp"
 
 #import <Metal/Metal.h>

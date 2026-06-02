@@ -25,7 +25,7 @@
 #include "openvino/core/except.hpp"
 #include "runtime/gfx_compile_profiling.hpp"
 #include "runtime/gfx_logger.hpp"
-#include "runtime/gfx_mpsrt_storage_bridge.hpp"
+#include "backends/metal/runtime/mpsrt/gfx_mpsrt_storage_bridge.hpp"
 
 #include "llvm/Support/raw_ostream.h"
 
@@ -398,20 +398,20 @@ bool set_error(std::string *error, const std::string &message) {
 
 bool register_mpsrt_const_tensor_sources(
     MetalCompiledKernel &kernel, const runtime_mpsrt::MpsrtModel &model,
-    const std::vector<MpsrtConstTensorSource> &const_tensors,
+    const std::vector<KernelConstTensorSource> &const_tensors,
     std::string *log) {
   for (const auto &payload : const_tensors) {
     if (payload.bytes.empty()) {
       return set_error(log, "GFX MPSRT: const tensor source payload is empty");
     }
-    const auto *tensor = runtime_mpsrt::find_mpsrt_tensor(model, payload.value);
+    const auto *tensor = runtime_mpsrt::find_mpsrt_tensor(model, payload.value_id);
     if (!tensor) {
       std::ostringstream stream;
       stream << "GFX MPSRT: const tensor source references unknown value "
-             << payload.value;
+             << payload.value_id;
       return set_error(log, stream.str());
     }
-    if (!kernel.register_mpsrt_const_tensor_data(payload.value, tensor->desc,
+    if (!kernel.register_mpsrt_const_tensor_data(payload.value_id, tensor->desc,
                                                  payload.bytes.data(),
                                                  payload.bytes.size(), log)) {
       return false;
@@ -1193,9 +1193,9 @@ MetalCodegenBackend::compile(const KernelSource &source, std::string *log) {
         m_device, nullptr, std::move(binding_plan), shared_prepared_cache,
         binding_schema);
     kernel->set_mpsrt_model(mpsrt_model);
-    if (!source.mpsrt_const_tensors.empty() &&
+    if (!source.const_tensor_sources.empty() &&
         !register_mpsrt_const_tensor_sources(
-            *kernel, *mpsrt_model, source.mpsrt_const_tensors, log_ptr)) {
+            *kernel, *mpsrt_model, source.const_tensor_sources, log_ptr)) {
       return nullptr;
     }
     return kernel;
@@ -1357,9 +1357,9 @@ MetalCodegenBackend::compile(const KernelSource &source, std::string *log) {
   if (auto metal_kernel =
           std::dynamic_pointer_cast<MetalCompiledKernel>(kernel)) {
     metal_kernel->set_mpsrt_model(mpsrt_model);
-    if (mpsrt_model && !source.mpsrt_const_tensors.empty() &&
+    if (mpsrt_model && !source.const_tensor_sources.empty() &&
         !register_mpsrt_const_tensor_sources(
-            *metal_kernel, *mpsrt_model, source.mpsrt_const_tensors, log_ptr)) {
+            *metal_kernel, *mpsrt_model, source.const_tensor_sources, log_ptr)) {
       return nullptr;
     }
     if (compiled_model_has_msl_dispatch) {

@@ -16,6 +16,8 @@
 #include "openvino/op/tile.hpp"
 #include "runtime/gfx_stage_policy.hpp"
 
+#include <utility>
+
 namespace ov {
 namespace gfx_plugin {
 
@@ -83,6 +85,36 @@ void materialize_constant_outputs(std::vector<InferStage>& pipeline,
         }
         append_materialized_constant_output(pipeline, buffer_manager, source, error_prefix);
     }
+}
+
+void prepare_stage_runtime_executable(InferStage& stage,
+                                      size_t stage_index,
+                                      GpuBufferManager* buffer_manager,
+                                      const std::shared_ptr<RuntimeSession>& runtime_session) {
+    if (!stage.stage) {
+        return;
+    }
+    OPENVINO_ASSERT(runtime_session,
+                    "GFX: runtime session is required to prepare stage ",
+                    stage_index);
+    std::vector<GpuTensor*> placeholder_inputs(stage.inputs.size(), nullptr);
+    std::vector<GpuTensor*> outputs;
+    outputs.reserve(stage.outputs.size());
+    for (auto& output : stage.outputs) {
+        outputs.push_back(output.get());
+    }
+
+    stage.runtime_session = runtime_session;
+    auto bindings = runtime_session->make_binding_table(stage_index,
+                                                        placeholder_inputs,
+                                                        outputs);
+    auto prepared = runtime_session->prepare_stage(
+        stage_index,
+        *stage.stage,
+        buffer_manager,
+        std::move(bindings));
+    stage.prepared_executable =
+        std::make_unique<PreparedKernelExecutable>(std::move(prepared));
 }
 
 size_t find_pipeline_stage_index(const std::vector<InferStage>& pipeline,
@@ -191,6 +223,9 @@ void assign_runtime_shapes_for_stage(InferStage& stage,
 }  // namespace
 
 bool is_view_op(const InferStage& stage) {
+    if (const auto* descriptor = runtime_stage_descriptor_or_null(stage)) {
+        return descriptor->tensor_view_only;
+    }
     if (!stage.stage) {
         return false;
     }
@@ -274,15 +309,30 @@ void normalize_remote_outputs(std::vector<std::shared_ptr<GfxRemoteTensor>>& rem
 std::vector<InferStage> build_infer_pipeline(const std::vector<PipelineStageDesc>& descs,
                                              GpuBufferManager* buffer_manager,
                                              void* profiler,
-                                             bool profiling_enabled) {
+                                             bool profiling_enabled,
+                                             std::shared_ptr<const RuntimeExecutableDescriptor> runtime_descriptor) {
     std::vector<InferStage> pipeline;
     pipeline.reserve(descs.size());
+    OPENVINO_ASSERT(runtime_descriptor,
+                    "GFX: compiler-owned runtime executable descriptor is "
+                    "required to build infer pipeline");
+    auto runtime_session = std::make_shared<RuntimeSession>(std::move(runtime_descriptor));
     for (size_t stage_id = 0; stage_id < descs.size(); ++stage_id) {
         const auto& desc = descs[stage_id];
+        const size_t runtime_stage_index =
+            desc.runtime_stage_index != PipelineStageDesc::npos
+                ? desc.runtime_stage_index
+                : stage_id;
+        OPENVINO_ASSERT(runtime_stage_index < runtime_session->stage_count(),
+                        "GFX: runtime executable descriptor stage index ",
+                        runtime_stage_index,
+                        " is out of range for pipeline stage ",
+                        stage_id);
         InferStage stage;
         stage.node = desc.node;
         stage.stage = desc.stage->clone();
         OPENVINO_ASSERT(stage.stage, "GFX: failed to clone stage for ", desc.node->get_friendly_name());
+        stage.runtime_stage_index = runtime_stage_index;
         stage.inputs = desc.inputs;
         stage.output_aliases = desc.output_aliases;
         stage.outputs.reserve(desc.outputs.size());
@@ -314,6 +364,10 @@ std::vector<InferStage> build_infer_pipeline(const std::vector<PipelineStageDesc
                                       node_name,
                                       node_type);
         }
+        prepare_stage_runtime_executable(stage,
+                                         runtime_stage_index,
+                                         buffer_manager,
+                                         runtime_session);
         pipeline.emplace_back(std::move(stage));
     }
     return pipeline;
@@ -384,8 +438,13 @@ std::vector<InferStage> build_bound_pipeline(
     std::vector<std::shared_ptr<GfxRemoteTensor>>& remote_outputs,
     const std::vector<std::shared_ptr<GfxRemoteTensor>>& remote_inputs,
     GpuBackend expected_backend,
+    std::shared_ptr<const RuntimeExecutableDescriptor> runtime_descriptor,
     const char* error_prefix) {
-    auto pipeline = build_infer_pipeline(descs, buffer_manager, profiler, profiling_enabled);
+    auto pipeline = build_infer_pipeline(descs,
+                                         buffer_manager,
+                                         profiler,
+                                         profiling_enabled,
+                                         std::move(runtime_descriptor));
     materialize_constant_outputs(pipeline,
                                  buffer_manager,
                                  runtime_model,

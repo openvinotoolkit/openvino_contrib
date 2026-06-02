@@ -66,9 +66,9 @@ std::vector<TensorContract> make_input_contracts(const PlannedOperation &op) {
   for (size_t i = 0; i < op.input_element_types.size(); ++i) {
     const std::string shape =
         i < op.input_shapes.size() ? op.input_shapes[i] : std::string{};
-    contracts.push_back(make_tensor_contract(op,
-                                             TensorContractRole::TensorInput, i,
-                                             op.input_element_types[i], shape));
+    auto contract = make_tensor_contract(op, TensorContractRole::TensorInput, i,
+                                         op.input_element_types[i], shape);
+    contracts.push_back(std::move(contract));
   }
   return contracts;
 }
@@ -141,6 +141,10 @@ void verify_tensor_contract(const TensorContract &contract, const char *label,
     result.diagnostics.push_back("stage " + std::to_string(stage_id) + " has " +
                                  label + " with empty logical name");
   }
+  if (contract.memory_region_id.empty()) {
+    result.diagnostics.push_back("stage " + std::to_string(stage_id) + " has " +
+                                 label + " with empty memory region id");
+  }
   if (contract.element_type.empty()) {
     result.diagnostics.push_back("stage " + std::to_string(stage_id) + " has " +
                                  label + " with empty element type");
@@ -186,6 +190,13 @@ ManifestVerificationResult ManifestBundle::verify() const {
   ManifestVerificationResult result;
   if (schema_version != kManifestSchemaVersion || target_fingerprint.empty()) {
     result.diagnostics.emplace_back("manifest header is incomplete");
+  }
+  const auto memory_result = memory_plan.verify();
+  for (const auto &diagnostic : memory_result.diagnostics) {
+    result.diagnostics.push_back("memory plan: " + diagnostic);
+  }
+  if (!stages.empty() && memory_plan.regions.empty()) {
+    result.diagnostics.emplace_back("manifest memory plan is empty");
   }
   for (size_t i = 0; i < stages.size(); ++i) {
     const auto &stage = stages[i];
@@ -235,12 +246,29 @@ ManifestVerificationResult ManifestBundle::verify() const {
       result.diagnostics.push_back("stage " + std::to_string(stage.stage_id) +
                                    " has incomplete memory contract");
     }
+    if (!stage.memory.alias_group.empty() &&
+        !memory_plan.has_alias_group(stage.memory.alias_group)) {
+      result.diagnostics.push_back("stage " + std::to_string(stage.stage_id) +
+                                   " memory alias group is missing from plan");
+    }
     verify_runtime_param_contract(stage.runtime_params, stage.stage_id, result);
     for (const auto &input : stage.inputs) {
       verify_tensor_contract(input, "input", stage.stage_id, result);
+      if (!input.memory_region_id.empty() &&
+          !memory_plan.has_region(input.memory_region_id)) {
+        result.diagnostics.push_back("stage " +
+                                     std::to_string(stage.stage_id) +
+                                     " input memory region is missing from plan");
+      }
     }
     for (const auto &output : stage.outputs) {
       verify_tensor_contract(output, "output", stage.stage_id, result);
+      if (!output.memory_region_id.empty() &&
+          !memory_plan.has_region(output.memory_region_id)) {
+        result.diagnostics.push_back("stage " +
+                                     std::to_string(stage.stage_id) +
+                                     " output memory region is missing from plan");
+      }
     }
   }
   return result;
@@ -262,6 +290,7 @@ ManifestBundle ManifestBuilder::build(const LoweringPlan &plan) const {
   ManifestBundle manifest;
   manifest.schema_version = kManifestSchemaVersion;
   manifest.target_fingerprint = plan.target.fingerprint();
+  manifest.memory_plan = MemoryPlanBuilder{}.build(plan);
   manifest.stages.reserve(plan.operations.size());
   for (size_t i = 0; i < plan.operations.size(); ++i) {
     const auto &op = plan.operations[i];
@@ -277,6 +306,14 @@ ManifestBundle ManifestBuilder::build(const LoweringPlan &plan) const {
         std::string(kernel_unit_kind_to_string(op.kernel_unit.kind()));
     stage.inputs = make_input_contracts(op);
     stage.outputs = make_output_contracts(op);
+    for (size_t input_idx = 0; input_idx < stage.inputs.size(); ++input_idx) {
+      stage.inputs[input_idx].memory_region_id =
+          "stage_" + std::to_string(i) + ".input_" + std::to_string(input_idx);
+    }
+    for (size_t output_idx = 0; output_idx < stage.outputs.size(); ++output_idx) {
+      stage.outputs[output_idx].memory_region_id =
+          "stage_" + std::to_string(i) + ".output_" + std::to_string(output_idx);
+    }
     stage.runtime_params = make_runtime_param_contract(stage);
     stage.dispatch = make_dispatch_contract(stage);
     stage.memory = make_memory_contract(stage);

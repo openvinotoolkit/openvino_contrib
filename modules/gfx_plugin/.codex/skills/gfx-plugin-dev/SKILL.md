@@ -28,7 +28,11 @@ Then inspect the relevant code path:
 
 - plugin contract: `src/plugin/`
 - compiler contracts: `src/compiler/`
+- common backend/device value types: `src/common/`
 - stage-placement contracts: `src/compiler/stage_placement.*`
+- stage compiler policy: `src/compiler/stage_compiler_policy.*`
+- memory/cache compiler contracts: `src/compiler/memory_plan.*` and
+  `src/compiler/cache_envelope.*`
 - tensor-layout contracts: `src/compiler/tensor_layout.*`
 - backend-neutral runtime: `src/runtime/`
 - kernel manifests and source artifacts: `src/kernel_ir/`
@@ -46,6 +50,9 @@ Then inspect the relevant code path:
 - Keep backend target, operation support, lowering plans, manifests,
   executable bundles, tensor-layout plans, stage-placement value objects, and
   artifact descriptors in `src/compiler/`.
+- Keep compiler memory regions, alias groups, lifetimes, transient arenas, and
+  cache-envelope fingerprints in `src/compiler/`; request code consumes runtime
+  descriptors and `RuntimeSession`.
 - Keep configured backend availability in `src/compiler/backend_config.hpp.in`;
   the default `BackendRegistry` contains only backend modules available in the
   configured build.
@@ -63,7 +70,7 @@ Then inspect the relevant code path:
   `BackendRegistry`.
 - Do not make runtime or MLIR stages resolve `BackendRegistry::default_registry()`
   to discover placement or post-op capabilities. Pass the selected backend
-  policy through `GpuStageRuntimeOptions` and `GfxStageCompilerPolicy`.
+  policy through `GpuStageRuntimeOptions` and `compiler::StageCompilerPolicy`.
 - When changing plugin-visible behavior, check properties, `query_model()`,
   compiled-model properties, and docs.
 - Do not modify `third_party/llvm-project/` unless the task explicitly requires
@@ -77,17 +84,20 @@ Then inspect the relevant code path:
 For Metal placement, MPSRT, or MSL source changes, keep these aligned:
 
 - `src/compiler/*`
+- `src/compiler/stage_compiler_policy.*`
+- `src/compiler/memory_plan.*`
+- `src/runtime/runtime_session.*`
 - `src/backends/metal/compiler/`
 - `src/backends/metal/compiler/metal_stage_placement.*`
 - `src/runtime/gfx_stage_policy.*`
 - `src/runtime/view_only_stage.*`
 - `src/kernel_ir/gfx_kernel_manifest.hpp`
 - `src/kernel_ir/gfx_custom_kernel_families.*`
-- `src/runtime/gfx_mpsrt_abi.hpp`
-- `src/runtime/gfx_mpsrt_model.*`
-- `src/runtime/gfx_mpsrt_plan.hpp`
-- `src/runtime/gfx_mpsrt_program.hpp`
-- `src/runtime/gfx_mpsrt_kernel_manifest_adapter.hpp`
+- `src/backends/metal/runtime/mpsrt/gfx_mpsrt_abi.hpp`
+- `src/backends/metal/runtime/mpsrt/gfx_mpsrt_model.*`
+- `src/backends/metal/runtime/mpsrt/gfx_mpsrt_plan.hpp`
+- `src/backends/metal/runtime/mpsrt/gfx_mpsrt_program.hpp`
+- `src/backends/metal/runtime/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp`
 - `src/mlir/gfx_apple_stage_pipeline.*`
 - `src/mlir/gfx_apple_vendor_descriptors.*`
 - `src/mlir/gfx_mpsrt_dialect.*`

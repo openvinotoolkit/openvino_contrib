@@ -86,6 +86,7 @@ inline std::vector<InferStage> build_pipeline_with_outputs(
     std::vector<std::shared_ptr<GfxRemoteTensor>>& remote_outputs,
     const std::vector<std::shared_ptr<GfxRemoteTensor>>& remote_inputs,
     GpuBackend expected_backend,
+    std::shared_ptr<const RuntimeExecutableDescriptor> runtime_descriptor,
     GpuBufferPool& pool,
     std::vector<std::vector<BufferHandle>>& stage_handles,
     StageOutputBufferWorkspace* stage_workspace,
@@ -103,6 +104,7 @@ inline std::vector<InferStage> build_pipeline_with_outputs(
                                          remote_outputs,
                                          remote_inputs,
                                          expected_backend,
+                                         std::move(runtime_descriptor),
                                          error_prefix);
     post_build(pipeline);
     prepare_stage_output_handles(stage_handles, pipeline, pool, /*release_view_only=*/true);
@@ -129,6 +131,7 @@ inline std::vector<InferStage>& prepare_reusable_pipeline_with_outputs(
     std::vector<std::shared_ptr<GfxRemoteTensor>>& remote_outputs,
     const std::vector<std::shared_ptr<GfxRemoteTensor>>& remote_inputs,
     GpuBackend expected_backend,
+    std::shared_ptr<const RuntimeExecutableDescriptor> runtime_descriptor,
     GpuBufferPool& pool,
     std::vector<std::vector<BufferHandle>>& stage_handles,
     StageOutputBufferWorkspace* stage_workspace,
@@ -147,6 +150,7 @@ inline std::vector<InferStage>& prepare_reusable_pipeline_with_outputs(
                                                 remote_outputs,
                                                 remote_inputs,
                                                 expected_backend,
+                                                std::move(runtime_descriptor),
                                                 error_prefix);
     }
 

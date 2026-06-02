@@ -4,6 +4,9 @@
 
 #include <gtest/gtest.h>
 
+#include <string>
+#include <utility>
+
 #include "plugin/infer_io_utils.hpp"
 #include "openvino/op/add.hpp"
 #include "openvino/op/parameter.hpp"
@@ -52,6 +55,7 @@ public:
     static void reset_counters() {
         s_clone_count = 0;
         s_init_count = 0;
+        s_compile_count = 0;
     }
 
     static size_t clone_count() {
@@ -62,11 +66,17 @@ public:
         return s_init_count;
     }
 
+    static size_t compile_count() {
+        return s_compile_count;
+    }
+
     void init(GpuBufferManager*) override {
         ++s_init_count;
     }
 
-    void compile(GpuBufferManager*) override {}
+    void compile(GpuBufferManager*) override {
+        ++s_compile_count;
+    }
     void execute(GpuCommandBufferHandle) override {}
     void set_inputs(const std::vector<GpuTensor*>&) override {}
     void set_output(GpuTensor*) override {}
@@ -89,6 +99,7 @@ public:
 private:
     static inline size_t s_clone_count = 0;
     static inline size_t s_init_count = 0;
+    static inline size_t s_compile_count = 0;
 };
 
 class TrackingStage final : public GpuStage {
@@ -132,11 +143,76 @@ public:
     size_t prewarm_count = 0;
 };
 
+std::shared_ptr<const RuntimeExecutableDescriptor>
+make_test_runtime_descriptor(size_t stage_count,
+                             std::vector<size_t> output_last_stages = {}) {
+    auto descriptor = std::make_shared<RuntimeExecutableDescriptor>();
+    descriptor->target_fingerprint = "test/runtime-session";
+    descriptor->stages.reserve(stage_count);
+    RuntimeTransientArenaDescriptor arena;
+    arena.arena_id = "test_transient_arena";
+    arena.storage_kind = "device_buffer";
+    for (size_t i = 0; i < stage_count; ++i) {
+        RuntimeStageExecutableDescriptor stage;
+        stage.stage_index = i;
+        stage.stage_record_key = static_cast<uint64_t>(i + 1);
+        stage.artifact_descriptor_index = i;
+        stage.manifest_ref = "test/manifest/" + std::to_string(i);
+        stage.abi_fingerprint = "test/abi/" + std::to_string(i);
+        stage.artifact_key = "test/artifact/" + std::to_string(i);
+        stage.backend_domain = "test";
+        stage.kernel_id = "test/kernel/" + std::to_string(i);
+        stage.op_family = "test";
+        stage.origin = compiler::KernelArtifactOrigin::Metadata;
+        stage.payload_kind = compiler::KernelArtifactPayloadKind::None;
+        RuntimeTensorBindingContract output_binding;
+        output_binding.logical_name = "test.stage." + std::to_string(i) + ".output0";
+        output_binding.memory_region_id =
+            "stage_" + std::to_string(i) + ".output_0";
+        output_binding.role = "tensor_output";
+        output_binding.element_type = "f32";
+        output_binding.partial_shape = "{4}";
+        output_binding.layout = "logical";
+        output_binding.storage_kind = "device_buffer";
+        output_binding.lifetime_class = "stage_output";
+        output_binding.alias_group = "stage_" + std::to_string(i);
+        stage.output_bindings.push_back(std::move(output_binding));
+
+        RuntimeMemoryRegionDescriptor region;
+        region.region_id = "stage_" + std::to_string(i) + ".output_0";
+        region.logical_tensor_name =
+            "test.stage." + std::to_string(i) + ".output0";
+        region.kind = "transient_tensor";
+        region.element_type = "f32";
+        region.partial_shape = "{4}";
+        region.layout = "logical";
+        region.storage_kind = "device_buffer";
+        region.alias_group = "stage_" + std::to_string(i);
+        region.first_stage = i;
+        region.last_stage =
+            i < output_last_stages.size() ? output_last_stages[i] : i;
+        descriptor->memory_plan.regions.push_back(std::move(region));
+
+        RuntimeMemoryAliasGroupDescriptor alias_group;
+        alias_group.group_id = "stage_" + std::to_string(i);
+        alias_group.region_ids.push_back("stage_" + std::to_string(i) +
+                                         ".output_0");
+        descriptor->memory_plan.alias_groups.push_back(std::move(alias_group));
+        arena.region_ids.push_back("stage_" + std::to_string(i) + ".output_0");
+        descriptor->stages.push_back(std::move(stage));
+    }
+    if (!arena.region_ids.empty()) {
+        descriptor->memory_plan.transient_arenas.push_back(std::move(arena));
+    }
+    return descriptor;
+}
+
 TEST(InferPipelineReuseTest, ReusesClonedPipelineAndOutputHandlesAcrossPreparations) {
     CountingStage::reset_counters();
 
     PipelineStageDesc desc;
     desc.stage = std::make_unique<CountingStage>();
+    desc.runtime_stage_index = 2;
     desc.outputs.push_back(OutputDesc{{4}, ov::element::f32, false});
     std::vector<PipelineStageDesc> descs;
     descs.push_back(std::move(desc));
@@ -151,6 +227,7 @@ TEST(InferPipelineReuseTest, ReusesClonedPipelineAndOutputHandlesAcrossPreparati
     const std::vector<ov::Output<const ov::Node>> outputs;
     const std::unordered_map<const ov::Node*, size_t> node_map;
     const std::unordered_map<const ov::Node*, size_t> param_map;
+    auto runtime_descriptor = make_test_runtime_descriptor(3);
 
     auto describe_output = [](InferStage& stage,
                               size_t oi,
@@ -179,6 +256,7 @@ TEST(InferPipelineReuseTest, ReusesClonedPipelineAndOutputHandlesAcrossPreparati
                                                          remote_outputs,
                                                          remote_inputs,
                                                          GpuBackend::Metal,
+                                                         runtime_descriptor,
                                                          pool,
                                                          stage_handles,
                                                          &stage_workspace,
@@ -192,6 +270,7 @@ TEST(InferPipelineReuseTest, ReusesClonedPipelineAndOutputHandlesAcrossPreparati
 
     EXPECT_EQ(CountingStage::clone_count(), 1u);
     EXPECT_EQ(CountingStage::init_count(), 1u);
+    EXPECT_EQ(CountingStage::compile_count(), 1u);
     EXPECT_EQ(allocator.allocate_count(), 1u);
 
     auto& second = prepare_reusable_pipeline_with_outputs(reusable_pipeline,
@@ -206,6 +285,7 @@ TEST(InferPipelineReuseTest, ReusesClonedPipelineAndOutputHandlesAcrossPreparati
                                                           remote_outputs,
                                                           remote_inputs,
                                                           GpuBackend::Metal,
+                                                          runtime_descriptor,
                                                           pool,
                                                           stage_handles,
                                                           &stage_workspace,
@@ -218,8 +298,80 @@ TEST(InferPipelineReuseTest, ReusesClonedPipelineAndOutputHandlesAcrossPreparati
 
     EXPECT_EQ(CountingStage::clone_count(), 1u);
     EXPECT_EQ(CountingStage::init_count(), 1u);
+    EXPECT_EQ(CountingStage::compile_count(), 1u);
     EXPECT_EQ(allocator.allocate_count(), 1u);
     EXPECT_EQ(second.front().outputs.front()->buf.allocation_uid, first_uid);
+}
+
+TEST(InferPipelineReuseTest, RuntimeMemoryPlanExtendsWorkspaceOutputLifetime) {
+    CountingStage::reset_counters();
+
+    std::vector<PipelineStageDesc> descs;
+    for (size_t i = 0; i < 2; ++i) {
+        PipelineStageDesc desc;
+        desc.stage = std::make_unique<CountingStage>();
+        desc.runtime_stage_index = i;
+        desc.outputs.push_back(OutputDesc{{4}, ov::element::f32, false});
+        descs.push_back(std::move(desc));
+    }
+
+    FakeAllocator allocator;
+    GpuBufferPool pool(allocator);
+    std::vector<InferStage> reusable_pipeline;
+    std::vector<std::vector<BufferHandle>> stage_handles;
+    StageOutputBufferWorkspace stage_workspace;
+    std::vector<std::shared_ptr<GfxRemoteTensor>> remote_outputs;
+    const std::vector<std::shared_ptr<GfxRemoteTensor>> remote_inputs;
+    const std::vector<ov::Output<const ov::Node>> outputs;
+    const std::unordered_map<const ov::Node*, size_t> node_map;
+    const std::unordered_map<const ov::Node*, size_t> param_map;
+    auto runtime_descriptor =
+        make_test_runtime_descriptor(2, /*output_last_stages=*/{1, 1});
+
+    auto describe_output = [](InferStage& stage,
+                              size_t oi,
+                              GpuTensor& out_ref,
+                              GpuBufferDesc& desc,
+                              const char* error_prefix) {
+        return init_stage_output_desc(GpuBackend::Metal,
+                                      stage,
+                                      oi,
+                                      out_ref,
+                                      desc,
+                                      /*is_model_output=*/false,
+                                      /*skip_view_ops=*/true,
+                                      error_prefix);
+    };
+
+    auto& pipeline = prepare_reusable_pipeline_with_outputs(
+        reusable_pipeline,
+        descs,
+        nullptr,
+        nullptr,
+        false,
+        nullptr,
+        outputs,
+        node_map,
+        param_map,
+        remote_outputs,
+        remote_inputs,
+        GpuBackend::Metal,
+        runtime_descriptor,
+        pool,
+        stage_handles,
+        &stage_workspace,
+        [](std::vector<InferStage>&) {},
+        describe_output,
+        "test");
+
+    ASSERT_EQ(pipeline.size(), 2u);
+    ASSERT_TRUE(pipeline[0].outputs.front()->buf.valid());
+    ASSERT_TRUE(pipeline[1].outputs.front()->buf.valid());
+    EXPECT_NE(pipeline[0].outputs.front()->buf.allocation_uid,
+              pipeline[1].outputs.front()->buf.allocation_uid);
+    EXPECT_EQ(allocator.allocate_count(), 2u);
+    EXPECT_EQ(stage_workspace.last_slots_used, 2u);
+    EXPECT_EQ(stage_workspace.last_peak_live_slots, 2u);
 }
 
 TEST(InferPipelineReuseTest, ReusesPreparedExecutionInputsAcrossInferences) {

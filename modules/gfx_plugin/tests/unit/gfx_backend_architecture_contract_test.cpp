@@ -10,12 +10,16 @@
 #include <stdexcept>
 #include <string_view>
 #include <type_traits>
+#include <utility>
+#include <vector>
 
 #include "backends/metal/compiler/metal_operation_support.hpp"
 #include "backends/opencl/compiler/opencl_kernel_artifacts.hpp"
 #include "backends/opencl/compiler/opencl_operation_support.hpp"
+#include "compiler/cache_envelope.hpp"
 #include "compiler/executable_bundle.hpp"
 #include "compiler/gfx_compiler_service.hpp"
+#include "compiler/memory_plan.hpp"
 #include "compiler/tensor_layout.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/convert.hpp"
@@ -29,6 +33,7 @@
 #include "runtime/execution_dispatcher.hpp"
 #include "runtime/gpu_buffer.hpp"
 #include "runtime/gpu_memory_ops.hpp"
+#include "runtime/runtime_session.hpp"
 #include "transforms/pipeline.hpp"
 #include "unit/gfx_backend_contracts.hpp"
 
@@ -59,6 +64,13 @@ static_assert(
                                       const RuntimeStageExecutableDescriptor *,
                                       GpuBackend, void *, void *)>,
     "GpuStageFactory must require compiler-owned runtime descriptors");
+
+static_assert(
+    std::is_same_v<decltype(&RuntimeSession::prepare_stage),
+                   PreparedKernelExecutable (RuntimeSession::*)(
+                       size_t, GpuStage &, GpuBufferManager *,
+                       ResourceBindingTable) const>,
+    "RuntimeSession must own request-time executable preparation");
 
 static_assert(
     std::is_same_v<decltype(&transforms::run_pipeline),
@@ -120,6 +132,30 @@ std::filesystem::path find_gfx_module_root_for_source_contract() {
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
+       CommonRuntimeDoesNotOwnMpsrtContracts) {
+  const auto module_root = find_gfx_module_root_for_source_contract();
+  const auto runtime_root = module_root / "src/runtime";
+  ASSERT_TRUE(std::filesystem::exists(runtime_root));
+  const std::string old_mpsrt_include_prefix = std::string("runtime/") + "gfx_mpsrt_";
+
+  for (const auto &entry :
+       std::filesystem::recursive_directory_iterator(runtime_root)) {
+    if (!entry.is_regular_file()) {
+      continue;
+    }
+    const auto path = entry.path();
+    EXPECT_EQ(path.filename().string().find("gfx_mpsrt_"), std::string::npos)
+        << path;
+    const auto extension = path.extension().string();
+    if (extension == ".cpp" || extension == ".hpp" || extension == ".mm") {
+      const auto source = read_text_file(path);
+      EXPECT_EQ(source.find(old_mpsrt_include_prefix), std::string::npos)
+          << path;
+    }
+  }
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
        RuntimeStagePolicyDoesNotResolveCompilerBackendRegistry) {
   const auto module_root = find_gfx_module_root_for_source_contract();
   const auto stage_policy_source =
@@ -132,11 +168,128 @@ TEST_F(GfxBackendArchitectureContractTest,
             std::string::npos);
 }
 
+TEST_F(GfxBackendArchitectureContractTest,
+       CommonKernelCodegenSourceDoesNotDependOnMetalMpsrtRuntime) {
+  const auto module_root = find_gfx_module_root_for_source_contract();
+  const auto source =
+      read_text_file(module_root / "src/kernel_ir/gfx_codegen_backend.hpp");
+
+  EXPECT_EQ(source.find("backends/metal/"), std::string::npos);
+  EXPECT_EQ(source.find("gfx_mpsrt_"), std::string::npos);
+  EXPECT_EQ(source.find("MpsrtConstTensorSource"), std::string::npos);
+  EXPECT_NE(source.find("KernelConstTensorSource"), std::string::npos);
+  EXPECT_NE(source.find("const_tensor_sources"), std::string::npos);
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       RuntimeStagePolicyConsumesCompilerOwnedSourceDispatchPolicy) {
+  const auto module_root = find_gfx_module_root_for_source_contract();
+  const auto stage_policy_source =
+      read_text_file(module_root / "src/runtime/gfx_stage_policy.cpp");
+
+  EXPECT_EQ(stage_policy_source.find("backend == GpuBackend::OpenCL"),
+            std::string::npos);
+  EXPECT_EQ(stage_policy_source.find("backend == GpuBackend::Metal"),
+            std::string::npos);
+  EXPECT_NE(stage_policy_source.find("source_kernel_dispatch"),
+            std::string::npos);
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       CompilerBackendIdentityContractsDoNotDependOnRuntimeHeaders) {
+  const auto module_root = find_gfx_module_root_for_source_contract();
+  const auto assert_no_runtime_backend_identity_include =
+      [&](const char *relative_path) {
+        const auto source = read_text_file(module_root / relative_path);
+        EXPECT_EQ(source.find("runtime/gfx_backend_utils.hpp"), std::string::npos)
+            << relative_path;
+        EXPECT_EQ(source.find("runtime/gpu_device_info.hpp"), std::string::npos)
+            << relative_path;
+      };
+
+  assert_no_runtime_backend_identity_include("src/compiler/backend_target.hpp");
+  assert_no_runtime_backend_identity_include(
+      "src/compiler/stage_compiler_policy.hpp");
+  assert_no_runtime_backend_identity_include("src/compiler/stage_placement.hpp");
+
+  const auto backend_target =
+      read_text_file(module_root / "src/compiler/backend_target.hpp");
+  EXPECT_NE(backend_target.find("common/gpu_backend.hpp"), std::string::npos);
+
+  const auto stage_compiler_policy =
+      read_text_file(module_root / "src/compiler/stage_compiler_policy.hpp");
+  EXPECT_NE(stage_compiler_policy.find("common/gpu_backend.hpp"),
+            std::string::npos);
+  EXPECT_NE(stage_compiler_policy.find("common/gpu_device_profile.hpp"),
+            std::string::npos);
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       MlirSourcePlanBuildersUseCompilerOwnedStageCompilerPolicyResolver) {
+  const auto module_root = find_gfx_module_root_for_source_contract();
+  const auto resolver_source =
+      read_text_file(module_root / "src/compiler/stage_compiler_policy.cpp");
+  EXPECT_NE(resolver_source.find("compiler/backend_registry.hpp"),
+            std::string::npos);
+  EXPECT_NE(resolver_source.find("BackendRegistry::default_registry()"),
+            std::string::npos);
+  EXPECT_NE(
+      resolver_source.find("make_stage_compiler_policy_from_capabilities("),
+      std::string::npos);
+
+  const auto assert_uses_shared_resolver = [&](const char *relative_path) {
+    const auto source = read_text_file(module_root / relative_path);
+    EXPECT_EQ(source.find("compiler/backend_registry.hpp"), std::string::npos)
+        << relative_path;
+    EXPECT_EQ(source.find("BackendRegistry::default_registry()"),
+              std::string::npos)
+        << relative_path;
+    EXPECT_EQ(source.find("metal_stage_compiler_policy"), std::string::npos)
+        << relative_path;
+    EXPECT_EQ(source.find("mlir/gfx_stage_compiler_policy_resolver.hpp"),
+              std::string::npos)
+        << relative_path;
+    EXPECT_NE(source.find("compiler/stage_compiler_policy.hpp"),
+              std::string::npos)
+        << relative_path;
+    EXPECT_NE(source.find(
+                  "compiler::resolve_stage_compiler_policy(GpuBackend::Metal)"),
+              std::string::npos)
+        << relative_path;
+  };
+
+  assert_uses_shared_resolver("src/mlir/msl_codegen_apple_mps.cpp");
+  assert_uses_shared_resolver("src/mlir/msl_codegen_apple_msl_dispatch.cpp");
+  assert_uses_shared_resolver("src/mlir/msl_codegen_matmul_metal.cpp");
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       CompiledModelUsesCompilerOwnedPrecisionSensitiveFusionPolicy) {
+  const auto module_root = find_gfx_module_root_for_source_contract();
+  const auto compiled_model_source =
+      read_text_file(module_root / "src/plugin/compiled_model.cpp");
+
+  EXPECT_EQ(compiled_model_source.find("runtime/gfx_stage_policy.hpp"),
+            std::string::npos);
+  EXPECT_EQ(compiled_model_source.find("select_stage_optimization_plan("),
+            std::string::npos);
+  EXPECT_EQ(compiled_model_source.find("GpuBackend::Metal"), std::string::npos);
+  EXPECT_EQ(compiled_model_source.find("AppleMps"), std::string::npos);
+  EXPECT_EQ(compiled_model_source.find("fusion_precision_sensitive_mpsrt"),
+            std::string::npos);
+  EXPECT_NE(compiled_model_source.find(
+                "compiler::allow_precision_sensitive_arithmetic_fusion("),
+            std::string::npos);
+}
+
 compiler::TensorContract
 make_tensor_contract(compiler::TensorContractRole role) {
   compiler::TensorContract contract;
   contract.logical_name =
       role == compiler::TensorContractRole::TensorInput ? "input0" : "output0";
+  contract.memory_region_id =
+      role == compiler::TensorContractRole::TensorInput ? "stage_0.input_0"
+                                                        : "stage_0.output_0";
   contract.role = role;
   contract.element_type = "f32";
   contract.partial_shape = "{1,3}";
@@ -146,6 +299,58 @@ make_tensor_contract(compiler::TensorContractRole role) {
                                 ? "producer_or_external"
                                 : "stage_output";
   return contract;
+}
+
+compiler::MemoryRegion make_memory_region_for_contract(
+    const compiler::TensorContract &contract, size_t stage_id) {
+  compiler::MemoryRegion region;
+  region.region_id = contract.memory_region_id;
+  region.logical_tensor_name = contract.logical_name;
+  region.kind = contract.role == compiler::TensorContractRole::TensorInput
+                    ? compiler::MemoryRegionKind::ExternalTensor
+                    : compiler::MemoryRegionKind::TransientTensor;
+  region.element_type = contract.element_type;
+  region.partial_shape = contract.partial_shape;
+  region.layout = contract.layout;
+  region.storage_kind = contract.storage_kind;
+  region.alias_group = contract.role == compiler::TensorContractRole::TensorInput
+                           ? contract.memory_region_id
+                           : "stage_" + std::to_string(stage_id);
+  region.lifetime = {0, stage_id};
+  region.external_binding = contract.role == compiler::TensorContractRole::TensorInput;
+  return region;
+}
+
+compiler::MemoryPlan make_single_stage_memory_plan(
+    const compiler::StageRecord &stage) {
+  compiler::MemoryPlan plan;
+  plan.schema_version = 1;
+  for (const auto &input : stage.inputs) {
+    auto region = make_memory_region_for_contract(input, stage.stage_id);
+    compiler::AliasGroup group;
+    group.group_id = region.alias_group;
+    group.region_ids.push_back(region.region_id);
+    plan.alias_groups.push_back(std::move(group));
+    plan.regions.push_back(std::move(region));
+  }
+  compiler::TransientArena arena;
+  arena.arena_id = "transient_device_buffer_arena";
+  arena.storage_kind = "device_buffer";
+  compiler::AliasGroup output_group;
+  output_group.group_id = stage.memory.alias_group;
+  for (const auto &output : stage.outputs) {
+    auto region = make_memory_region_for_contract(output, stage.stage_id);
+    output_group.region_ids.push_back(region.region_id);
+    arena.region_ids.push_back(region.region_id);
+    plan.regions.push_back(std::move(region));
+  }
+  if (!output_group.region_ids.empty()) {
+    plan.alias_groups.push_back(std::move(output_group));
+  }
+  if (!arena.region_ids.empty()) {
+    plan.transient_arenas.push_back(std::move(arena));
+  }
+  return plan;
 }
 
 compiler::ManifestBundle make_single_payload_route_manifest(
@@ -174,6 +379,7 @@ compiler::ManifestBundle make_single_payload_route_manifest(
   compiler::ManifestBundle manifest;
   manifest.schema_version = 2;
   manifest.target_fingerprint = stage.backend_domain + ":test-target";
+  manifest.memory_plan = make_single_stage_memory_plan(stage);
   manifest.stages.push_back(std::move(stage));
   return manifest;
 }
@@ -185,6 +391,20 @@ std::shared_ptr<ov::Model> make_relu_model() {
   auto result = std::make_shared<ov::op::v0::Result>(relu);
   return std::make_shared<ov::Model>(ov::ResultVector{result},
                                      ov::ParameterVector{input});
+}
+
+compiler::CacheEnvelopeBuildOptions make_test_cache_options(
+    const ov::Model &model,
+    std::string backend_capabilities_fingerprint = "test-capabilities-v1",
+    std::string backend_compiler_revision = "test-backend-compiler-v1",
+    std::string driver_identity = "test-driver-v1") {
+  compiler::CacheEnvelopeBuildOptions options;
+  options.model_fingerprint = compiler::make_model_cache_fingerprint(model);
+  options.backend_capabilities_fingerprint =
+      std::move(backend_capabilities_fingerprint);
+  options.backend_compiler_revision = std::move(backend_compiler_revision);
+  options.driver_identity = std::move(driver_identity);
+  return options;
 }
 
 compiler::PlannedOperation make_metadata_planned_operation(
@@ -311,6 +531,224 @@ TEST_F(GfxBackendArchitectureContractTest,
       materialized_transpose, materialized_plan);
   EXPECT_EQ(materialized_descriptor.layout_contract, "materialized");
   EXPECT_FALSE(materialized_descriptor.tensor_view_only);
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       CompilerOwnsMemoryPlanInManifestExecutableAndCacheIdentity) {
+  auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                       ov::Shape{1, 2, 3});
+  const auto layout = compiler::select_tensor_layout_plan("Relu", input);
+  compiler::LoweringPlan lowering_plan;
+  lowering_plan.target = compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
+  lowering_plan.operations.push_back(make_metadata_planned_operation(input, layout));
+
+  const auto manifest = compiler::ManifestBuilder{}.build(lowering_plan);
+  ASSERT_TRUE(manifest.verify().valid());
+  ASSERT_TRUE(manifest.memory_plan.valid());
+  ASSERT_EQ(manifest.stages.size(), 1u);
+  const auto &stage = manifest.stages.front();
+  ASSERT_FALSE(stage.inputs.empty());
+  ASSERT_FALSE(stage.outputs.empty());
+  EXPECT_TRUE(manifest.memory_plan.has_region(stage.inputs.front().memory_region_id));
+  EXPECT_TRUE(manifest.memory_plan.has_region(stage.outputs.front().memory_region_id));
+  EXPECT_TRUE(manifest.memory_plan.has_alias_group(stage.memory.alias_group));
+  EXPECT_FALSE(manifest.memory_plan.hidden_host_copies_allowed);
+
+  const auto executable = compiler::ExecutableBundleBuilder{}.build(manifest);
+  ASSERT_TRUE(executable.verify().valid());
+  EXPECT_EQ(compiler::make_memory_plan_fingerprint(executable.memory_plan),
+            compiler::make_memory_plan_fingerprint(manifest.memory_plan));
+
+  auto stale_manifest = manifest;
+  ASSERT_FALSE(stale_manifest.memory_plan.regions.empty());
+  stale_manifest.memory_plan.regions.front().layout = "stale_layout";
+  EXPECT_NE(compiler::make_manifest_cache_hash(stale_manifest),
+            compiler::make_manifest_cache_hash(manifest));
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       RuntimeExecutableDescriptorCarriesCompilerOwnedMemoryPlan) {
+  for (const auto *backend_domain : {"opencl", "metal"}) {
+    SCOPED_TRACE(backend_domain);
+    const auto manifest = make_single_payload_route_manifest(
+        LoweringRouteKind::Metadata, backend_domain, "metadata", "metadata");
+    ASSERT_TRUE(manifest.valid());
+
+    const auto executable = compiler::ExecutableBundleBuilder{}.build(manifest);
+    ASSERT_TRUE(executable.valid());
+    ASSERT_FALSE(executable.memory_plan.regions.empty());
+    ASSERT_FALSE(executable.memory_plan.alias_groups.empty());
+    ASSERT_FALSE(executable.memory_plan.transient_arenas.empty());
+
+    const auto runtime_descriptor =
+        RuntimeExecutableDescriptorBuilder{}.build(executable);
+    const auto verification = runtime_descriptor.verify(executable);
+    ASSERT_TRUE(verification.valid())
+        << (verification.diagnostics.empty() ? std::string{}
+                                             : verification.diagnostics.front());
+
+    EXPECT_EQ(runtime_descriptor.memory_plan.schema_version,
+              executable.memory_plan.schema_version);
+    EXPECT_EQ(runtime_descriptor.memory_plan.fingerprint,
+              compiler::make_memory_plan_fingerprint(executable.memory_plan));
+    EXPECT_EQ(runtime_descriptor.memory_plan.regions.size(),
+              executable.memory_plan.regions.size());
+    EXPECT_EQ(runtime_descriptor.memory_plan.alias_groups.size(),
+              executable.memory_plan.alias_groups.size());
+    EXPECT_EQ(runtime_descriptor.memory_plan.transient_arenas.size(),
+              executable.memory_plan.transient_arenas.size());
+    EXPECT_FALSE(runtime_descriptor.memory_plan.hidden_host_copies_allowed);
+    EXPECT_TRUE(runtime_descriptor.memory_plan.has_region(
+        executable.memory_plan.regions.front().region_id));
+    EXPECT_TRUE(runtime_descriptor.memory_plan.has_alias_group(
+        executable.memory_plan.alias_groups.front().group_id));
+    EXPECT_EQ(runtime_descriptor.memory_plan.regions.front().layout,
+              executable.memory_plan.regions.front().layout);
+    ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
+    const auto &runtime_stage = runtime_descriptor.stages.front();
+    ASSERT_EQ(runtime_stage.input_bindings.size(), 1u);
+    ASSERT_EQ(runtime_stage.output_bindings.size(), 1u);
+    EXPECT_EQ(runtime_stage.input_bindings.front().memory_region_id,
+              executable.manifest.stages.front().inputs.front().memory_region_id);
+    EXPECT_EQ(runtime_stage.output_bindings.front().memory_region_id,
+              executable.manifest.stages.front().outputs.front().memory_region_id);
+    EXPECT_EQ(runtime_stage.input_bindings.front().alias_group,
+              executable.memory_plan.regions.front().alias_group);
+
+    std::vector<GpuTensor *> input_slots(runtime_stage.input_bindings.size(),
+                                         nullptr);
+    std::vector<GpuTensor *> output_slots(runtime_stage.output_bindings.size(),
+                                          nullptr);
+    const auto binding_table =
+        ResourceBindingTable::for_stage(input_slots, output_slots, runtime_stage);
+    EXPECT_TRUE(binding_table.compatible_with(runtime_stage));
+    EXPECT_EQ(binding_table.input_region_ids().front(),
+              runtime_stage.input_bindings.front().memory_region_id);
+    EXPECT_EQ(binding_table.output_region_ids().front(),
+              runtime_stage.output_bindings.front().memory_region_id);
+
+    output_slots.clear();
+    const auto incomplete_binding_table =
+        ResourceBindingTable::for_stage(input_slots, output_slots, runtime_stage);
+    EXPECT_FALSE(incomplete_binding_table.compatible_with(runtime_stage));
+
+    auto stale_region_descriptor = runtime_descriptor;
+    stale_region_descriptor.memory_plan.regions.front().layout =
+        "stale_runtime_layout";
+    const auto stale_region_verification =
+        stale_region_descriptor.verify(executable);
+    EXPECT_FALSE(stale_region_verification.valid());
+    EXPECT_TRUE(has_diagnostic_containing(
+        stale_region_verification.diagnostics, "memory region drift"));
+
+    auto stale_fingerprint_descriptor = runtime_descriptor;
+    stale_fingerprint_descriptor.memory_plan.fingerprint =
+        "stale-runtime-memory-plan";
+    const auto stale_fingerprint_verification =
+        stale_fingerprint_descriptor.verify(executable);
+    EXPECT_FALSE(stale_fingerprint_verification.valid());
+    EXPECT_TRUE(has_diagnostic_containing(
+        stale_fingerprint_verification.diagnostics,
+        "memory plan fingerprint drift"));
+
+    auto stale_binding_descriptor = runtime_descriptor;
+    stale_binding_descriptor.stages.front().input_bindings.front().memory_region_id =
+        "stale-runtime-input-region";
+    const auto stale_binding_verification =
+        stale_binding_descriptor.verify(executable);
+    EXPECT_FALSE(stale_binding_verification.valid());
+    EXPECT_TRUE(has_diagnostic_containing(
+        stale_binding_verification.diagnostics, "input binding drift"));
+  }
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       CompiledModelDoesNotPrepareBackendKernelsDuringPipelineBuild) {
+  const auto root = find_gfx_module_root_for_source_contract();
+  const auto compiled_model_source =
+      read_text_file(root / "src/plugin/compiled_model.cpp");
+  EXPECT_EQ(compiled_model_source.find("stage.stage->compile("),
+            std::string::npos);
+  EXPECT_EQ(compiled_model_source.find("stage->compile("), std::string::npos);
+
+  const auto infer_pipeline_source =
+      read_text_file(root / "src/plugin/infer_pipeline.cpp");
+  EXPECT_NE(infer_pipeline_source.find("prepare_stage_runtime_executable"),
+            std::string::npos);
+  EXPECT_NE(infer_pipeline_source.find("RuntimeSession"), std::string::npos);
+  EXPECT_EQ(infer_pipeline_source.find("stage.stage->compile("),
+            std::string::npos);
+  EXPECT_EQ(infer_pipeline_source.find("stage->compile("), std::string::npos);
+
+  const auto runtime_session_source =
+      read_text_file(root / "src/runtime/runtime_session.cpp");
+  EXPECT_NE(runtime_session_source.find("PreparedKernelExecutable::prepare"),
+            std::string::npos);
+  EXPECT_NE(runtime_session_source.find("stage.compile("), std::string::npos);
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       CacheEnvelopeContainsDocsRequiredCompilerOwnedIdentity) {
+  const auto manifest = make_single_payload_route_manifest(
+      LoweringRouteKind::Metadata, "opencl", "metadata", "metadata");
+  const auto executable = compiler::ExecutableBundleBuilder{}.build(manifest);
+  ASSERT_TRUE(executable.verify().valid());
+
+  const auto model = make_relu_model();
+  const auto envelope = compiler::CacheEnvelopeBuilder{}.build(
+      executable, make_test_cache_options(*model));
+
+  const auto verification = envelope.verify(executable);
+  EXPECT_TRUE(verification.valid())
+      << (verification.diagnostics.empty() ? std::string{}
+                                           : verification.diagnostics.front());
+  EXPECT_FALSE(envelope.key.model_fingerprint.empty());
+  EXPECT_EQ(envelope.key.manifest_hash,
+            compiler::make_manifest_cache_hash(manifest));
+  EXPECT_EQ(envelope.key.target_fingerprint, manifest.target_fingerprint);
+  EXPECT_EQ(envelope.key.compile_options_hash,
+            compiler::make_executable_compile_options_hash(executable));
+  EXPECT_FALSE(envelope.key.backend_capabilities_fingerprint.empty());
+  EXPECT_FALSE(envelope.key.compiler_revision.empty());
+  EXPECT_FALSE(envelope.key.backend_compiler_revision.empty());
+  EXPECT_FALSE(envelope.key.driver_identity.empty());
+  EXPECT_FALSE(envelope.key.kernel_unit_versions.empty());
+  EXPECT_FALSE(envelope.key.stable_key.empty());
+  EXPECT_EQ(envelope.manifest.target_fingerprint, manifest.target_fingerprint);
+  EXPECT_EQ(envelope.artifact_descriptors.size(),
+            executable.artifact_descriptors.size());
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       CacheEnvelopeRejectsStaleManifestDriverAndKernelIdentity) {
+  const auto manifest = make_single_payload_route_manifest(
+      LoweringRouteKind::Metadata, "metal", "metadata", "metadata");
+  const auto executable = compiler::ExecutableBundleBuilder{}.build(manifest);
+  ASSERT_TRUE(executable.verify().valid());
+
+  const auto model = make_relu_model();
+  const auto envelope = compiler::CacheEnvelopeBuilder{}.build(
+      executable, make_test_cache_options(*model));
+  ASSERT_TRUE(envelope.verify(executable).valid());
+
+  auto stale_manifest = envelope;
+  stale_manifest.key.manifest_hash = "stale-manifest";
+  EXPECT_FALSE(stale_manifest.verify(executable).valid());
+  EXPECT_TRUE(has_diagnostic_containing(
+      stale_manifest.verify(executable).diagnostics, "manifest hash drift"));
+
+  auto missing_driver = envelope;
+  missing_driver.key.driver_identity.clear();
+  EXPECT_FALSE(missing_driver.verify(executable).valid());
+  EXPECT_TRUE(has_diagnostic_containing(
+      missing_driver.verify(executable).diagnostics, "driver identity"));
+
+  auto stale_kernel_unit = envelope;
+  stale_kernel_unit.key.kernel_unit_versions.front() = "stale-kernel-unit";
+  EXPECT_FALSE(stale_kernel_unit.verify(executable).valid());
+  EXPECT_TRUE(has_diagnostic_containing(
+      stale_kernel_unit.verify(executable).diagnostics,
+      "kernel unit versions drift"));
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
