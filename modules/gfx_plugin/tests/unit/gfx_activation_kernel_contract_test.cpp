@@ -21,7 +21,7 @@
 #include "kernel_ir/gfx_kernel_source.hpp"
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
 #include "kernel_ir/opencl_kernels/activation_kernel.hpp"
-#include "mlir/msl_codegen_apple_msl_activation.hpp"
+#include "backends/metal/compiler/msl_codegen_apple_msl_activation.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/op/abs.hpp"
 #include "openvino/op/constant.hpp"

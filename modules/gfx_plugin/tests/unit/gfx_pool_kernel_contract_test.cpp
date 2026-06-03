@@ -26,7 +26,7 @@
 #include "kernel_ir/opencl_kernels/pool2d_f32_kernel.hpp"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/gfx_apple_vendor_descriptors.hpp"
+#include "backends/metal/compiler/apple_vendor_descriptors.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/mlir_passes.hpp"
 #include "mlir/mlir_support.hpp"

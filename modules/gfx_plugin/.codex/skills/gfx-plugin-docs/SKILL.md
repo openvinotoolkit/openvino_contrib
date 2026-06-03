@@ -57,7 +57,7 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
    - compiler-owned tensor-layout classification
    - public properties
    - `query_model()` or compile behavior
-   - MLIR support/lowering/source planning
+   - MLIR support/lowering/backend hooks and backend-owned source planning
    - Metal placement, MPSRT records, MPS/MPSGraph descriptors,
      vendor attention artifact materialization,
      `VendorDescriptor` payloads, generated activation/elementwise/reduction/

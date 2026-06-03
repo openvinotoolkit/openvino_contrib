@@ -17,7 +17,7 @@
 
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
-#include "runtime/gfx_activation.hpp"
+#include "common/gfx_activation.hpp"
 
 namespace ov {
 namespace gfx_plugin {

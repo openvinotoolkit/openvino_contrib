@@ -8,8 +8,6 @@
 #include "openvino/gfx_plugin/plugin.hpp"
 #include "openvino/gfx_plugin/profiling.hpp"
 #include "openvino/gfx_plugin/properties.hpp"
-#include "plugin/backend_factory.hpp"
-#include "plugin/backend_state.hpp"
 #include "plugin/compiled_model_backend_resources.hpp"
 #include "plugin/gfx_profiling_utils.hpp"
 #include "plugin/gfx_property_lists.hpp"
@@ -17,12 +15,15 @@
 #include "plugin/model_serialization.hpp"
 #include "compiler/pipeline_stage_builder.hpp"
 #include "runtime/executable_descriptor.hpp"
+#include "runtime/backend_runtime.hpp"
+#include "runtime/backend_runtime_provider.hpp"
 #include "runtime/gfx_backend_utils.hpp"
 #include "runtime/gfx_compile_profiling.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "runtime/gfx_precision.hpp"
 #include "runtime/gfx_profiling_report.hpp"
 #include "runtime/gfx_remote_context.hpp"
+#include "runtime/pipeline_stage_materializer.hpp"
 
 #include "openvino/core/except.hpp"
 #include "openvino/runtime/exec_model_info.hpp"
@@ -327,16 +328,30 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
                   "executable descriptor");
   compiler::PipelineStageBuildRequest request;
   request.runtime_model = m_runtime_model;
-  request.stage_factory = backend_state;
   request.runtime_descriptor = m_runtime_descriptor.get();
   request.backend = m_backend;
   request.backend_name = m_backend_name;
   request.enable_fusion = m_enable_fusion;
-  request.diagnostic_f32_vendor_image = m_diagnostic_f32_vendor_image;
   request.compile_trace = compile_trace;
 
-  auto result = compiler::build_pipeline_stage_descriptors(request);
-  m_pipeline = std::move(result.pipeline);
+  auto result = compiler::build_pipeline_stage_plan(request);
+
+  GpuStageRuntimeOptions stage_runtime_options{};
+  stage_runtime_options.diagnostic_f32_vendor_image =
+      m_diagnostic_f32_vendor_image;
+  stage_runtime_options.stage_placement_policy =
+      result.stage_compiler_policy.placement;
+  stage_runtime_options.post_op_fusion_capabilities =
+      result.stage_compiler_policy.post_ops;
+
+  PipelineStageRuntimeMaterializationRequest materialization_request;
+  materialization_request.stage_factory = backend_state;
+  materialization_request.runtime_descriptor = m_runtime_descriptor.get();
+  materialization_request.build_result = &result;
+  materialization_request.runtime_options = stage_runtime_options;
+  materialization_request.compile_trace = compile_trace;
+
+  m_pipeline = materialize_pipeline_stage_descriptors(materialization_request);
   m_node_to_stage = std::move(result.node_to_stage);
   m_param_index = std::move(result.param_index);
   m_pipeline_built = true;

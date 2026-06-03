@@ -25,7 +25,7 @@
 #include "openvino/core/except.hpp"
 #include "runtime/gfx_compile_profiling.hpp"
 #include "runtime/gfx_logger.hpp"
-#include "backends/metal/runtime/mpsrt/gfx_mpsrt_storage_bridge.hpp"
+#include "backends/metal/common/mpsrt/gfx_mpsrt_storage_bridge.hpp"
 
 #include "llvm/Support/raw_ostream.h"
 

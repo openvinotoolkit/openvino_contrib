@@ -11,7 +11,7 @@
 #include "compiler/executable_bundle.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
-#include "runtime/gfx_stage_policy.hpp"
+#include "compiler/stage_policy.hpp"
 #include "runtime/gpu_tensor.hpp"
 
 namespace ov {

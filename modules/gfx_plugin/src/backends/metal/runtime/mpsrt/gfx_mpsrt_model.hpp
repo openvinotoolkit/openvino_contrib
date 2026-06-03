@@ -8,9 +8,9 @@
 #include <vector>
 
 #include "kernel_ir/gfx_kernel_manifest.hpp"
-#include "backends/metal/runtime/mpsrt/gfx_mpsrt_abi.hpp"
-#include "backends/metal/runtime/mpsrt/gfx_mpsrt_builder_plan.hpp"
-#include "backends/metal/runtime/mpsrt/gfx_mpsrt_plan.hpp"
+#include "backends/metal/common/mpsrt/gfx_mpsrt_abi.hpp"
+#include "backends/metal/common/mpsrt/gfx_mpsrt_builder_plan.hpp"
+#include "backends/metal/common/mpsrt/gfx_mpsrt_plan.hpp"
 
 namespace ov {
 namespace gfx_plugin {

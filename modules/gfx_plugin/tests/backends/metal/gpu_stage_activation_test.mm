@@ -20,7 +20,7 @@
 #include "backends/metal/runtime/stage_factory.hpp"
 #include "kernel_ir/gfx_codegen_backend.hpp"
 #include "kernel_ir/gfx_kernel_source.hpp"
-#include "mlir/msl_codegen_apple_msl_activation.hpp"
+#include "backends/metal/compiler/msl_codegen_apple_msl_activation.hpp"
 #include "openvino/core/except.hpp"
 #include "runtime/execution_dispatcher.hpp"
 #include "runtime/executable_descriptor.hpp"
@@ -110,12 +110,12 @@ void run_activation(const ActivationCase& tc) {
     MetalBufferManager::set_current_allocator(&allocator);
 
     // Prepare tensors
-    MetalTensor input{};
+    GpuTensor input{};
     input.shape = {tc.in.size()};
     input.expected_type = ov::element::f32;
     input.buf = mgr.wrap_shared(tc.in.data(), tc.in.size() * sizeof(float), ov::element::f32);
 
-    MetalTensor output{};
+    GpuTensor output{};
     output.shape = {tc.in.size()};
     output.expected_type = ov::element::f32;
     output.prefer_private = false;
@@ -210,13 +210,13 @@ TEST(GpuStageActivation, RejectsRuntimeSourcePlanWithoutCompilerPayload) {
     MetalBufferManager::set_current_allocator(&allocator);
 
     std::vector<float> values{1.0f};
-    MetalTensor input{};
+    GpuTensor input{};
     input.shape = {values.size()};
     input.expected_type = ov::element::f32;
     input.buf = mgr.wrap_shared(values.data(), values.size() * sizeof(float),
                                 ov::element::f32);
 
-    MetalTensor output{};
+    GpuTensor output{};
     output.shape = {values.size()};
     output.expected_type = ov::element::f32;
     output.prefer_private = false;

@@ -9,7 +9,8 @@
 namespace ov {
 namespace gfx_plugin {
 
-void InferRequest::infer_opencl_impl(const std::shared_ptr<const CompiledModel>&) {
+void execute_opencl_infer_request(InferRequest&,
+                                  const std::shared_ptr<const CompiledModel>&) {
     OPENVINO_THROW("GFX OpenCL backend is not available in this build");
 }
 

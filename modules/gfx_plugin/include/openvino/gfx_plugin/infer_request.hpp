@@ -22,7 +22,11 @@ class GfxRemoteTensor;
 struct GpuTensor;
 struct InferStage;
 struct OutputViewInfo;
+struct BufferHandle;
+struct GfxProfiler;
+struct OutputBindingResult;
 struct InferRequestState;
+struct InferRequestBackendAccess;
 
 class InferRequest : public ov::ISyncInferRequest {
 public:
@@ -37,13 +41,13 @@ public:
     ov::Tensor get_output_tensor(size_t idx) const;
     ov::Tensor get_output_tensor() const { return get_output_tensor(0); }
     std::vector<ov::ProfilingInfo> get_profiling_info() const override;
-    std::vector<ov::SoPtr<ov::IVariableState>> query_state() const override { return {}; }
+    std::vector<ov::SoPtr<ov::IVariableState>> query_state() const override;
     const std::vector<std::pair<std::string, ov::Tensor>>& get_debug_tensors() const;
 
 private:
+    friend struct InferRequestBackendAccess;
+
     const std::shared_ptr<const CompiledModel> get_compiled_model_typed() const;
-    void infer_metal_impl(const std::shared_ptr<const CompiledModel>& cm);
-    void infer_opencl_impl(const std::shared_ptr<const CompiledModel>& cm);
     ov::Tensor resolve_host_input_tensor(size_t idx);
     GpuTensor resolve_remote_input_tensor(size_t idx,
                                           GpuBackend expected_backend,
@@ -59,6 +63,15 @@ private:
         const std::function<void(size_t, const GpuTensor&)>& remote_handler,
         const std::function<void(size_t, const ov::Tensor&)>& host_handler,
         const char* error_prefix);
+    void bind_inputs_before_infer(
+        GpuBackend expected_backend,
+        std::vector<GpuTensor>& input_tensors,
+        const std::function<GpuTensor(size_t, const ov::Tensor&, BufferHandle*)>& host_binder,
+        const std::function<void(size_t, const GpuTensor&)>& device_result_handler,
+        GfxProfiler* profiler,
+        bool profiling,
+        bool with_staging,
+        const char* error_prefix);
     void bind_outputs_for_infer(
         const std::shared_ptr<const CompiledModel>& cm,
         std::vector<InferStage>& pipeline,
@@ -68,6 +81,20 @@ private:
         const std::function<void(size_t, const std::shared_ptr<GfxRemoteTensor>&)>& remote_setter,
         const std::function<void(size_t, GpuTensor&, const OutputViewInfo&, const ov::Tensor*)>& device_setter,
         bool allow_missing,
+        const char* error_prefix);
+    void bind_outputs_after_infer(
+        const std::shared_ptr<const CompiledModel>& cm,
+        std::vector<InferStage>& pipeline,
+        const std::function<GpuTensor*(size_t)>& output_input_lookup,
+        const std::function<OutputBindingResult(size_t,
+                                                GpuTensor&,
+                                                const OutputViewInfo&,
+                                                const ov::Tensor*,
+                                                ov::Tensor*,
+                                                BufferHandle*)>& device_binder,
+        const std::function<void(size_t, const OutputBindingResult&)>& device_result_handler,
+        GfxProfiler* profiler,
+        bool profiling,
         const char* error_prefix);
 
     std::unique_ptr<InferRequestState> m_state;

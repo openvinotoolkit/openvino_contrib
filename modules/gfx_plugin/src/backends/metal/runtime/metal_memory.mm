@@ -278,151 +278,6 @@ void metal_copy_buffer_regions(MetalCommandQueueHandle execution_context,
 #endif
 }
 
-MetalTensor &MetalTensorMap::bind_input(size_t index, const ov::Tensor &host,
-                                        MetalAllocatorCore &core) {
-  auto &binding = m_inputs[index];
-  binding.host = host;
-  const size_t bytes = host.get_byte_size();
-  OPENVINO_ASSERT(bytes > 0 && host.data(),
-                  "MetalTensorMap::bind_input: host tensor is empty");
-  binding.dev = MetalTensor{};
-  binding.dev.buf =
-      core.wrap_shared(host.data(), bytes, host.get_element_type());
-  binding.dev.shape = host.get_shape();
-  binding.dev.expected_type = host.get_element_type();
-  binding.dev.prefer_private = false;
-  return binding.dev;
-}
-
-MetalTensor &MetalTensorMap::bind_input_device(size_t index,
-                                               const MetalTensor &dev) {
-  auto &binding = m_inputs[index];
-  binding.host = {};
-  binding.dev = dev;
-  if (binding.dev.expected_type == ov::element::dynamic)
-    binding.dev.expected_type = dev.buf.type;
-  return binding.dev;
-}
-
-MetalTensor &MetalTensorMap::ensure_output_device(
-    size_t index, const ov::Shape &shape, ov::element::Type type,
-    MetalAllocator &alloc, const MetalDeviceCaps &caps, bool prefer_private) {
-  auto &binding = m_outputs[index];
-  MetalDType dtype = resolve_metal_dtype(type);
-  const size_t elem_size = element_size(dtype);
-  const size_t bytes = ov::shape_size(shape) * elem_size;
-
-  BufferDesc desc;
-  desc.bytes = bytes;
-  desc.type = dtype.ov_type;
-  desc.usage = BufferUsage::IO;
-  desc.storage = (prefer_private && caps.prefer_private_intermediates)
-                     ? MetalStorage::Private
-                     : MetalStorage::Shared;
-  desc.cpu_read = !prefer_private;
-  desc.cpu_write = !prefer_private;
-
-  binding.dev.buf =
-      alloc.ensure_handle(binding.handle, desc, /*persistent=*/false);
-  if (!binding.dev.buf.buffer) {
-    OPENVINO_THROW("GFX: failed to allocate output buffer");
-  }
-  binding.dev.shape = shape;
-  binding.dev.expected_type = type;
-  binding.dev.prefer_private = prefer_private;
-  return binding.dev;
-}
-
-bool MetalTensorMap::has_output_device(size_t index) const {
-  return m_outputs.find(index) != m_outputs.end() &&
-         m_outputs.at(index).dev.buf.valid();
-}
-
-const MetalTensor &MetalTensorMap::get_output_device(size_t index) const {
-  auto it = m_outputs.find(index);
-  OPENVINO_ASSERT(it != m_outputs.end(),
-                  "MetalTensorMap: output device not found");
-  return it->second.dev;
-}
-
-bool MetalTensorMap::has_host_for_output(size_t index) const {
-  auto it = m_outputs.find(index);
-  return it != m_outputs.end() && it->second.host;
-}
-
-ov::Tensor &MetalTensorMap::get_or_create_host_for_output(size_t index) {
-  auto it = m_outputs.find(index);
-  OPENVINO_ASSERT(it != m_outputs.end(),
-                  "MetalTensorMap: output binding missing");
-  if (!it->second.host) {
-    OPENVINO_THROW("GFX: host output access disabled (no CPU copies)");
-  }
-  return it->second.host;
-}
-
-void MetalTensorMap::bind_host_for_output(size_t index, ov::Tensor host) {
-  auto &binding = m_outputs[index];
-  binding.host = std::move(host);
-}
-
-MetalTensor &MetalTensorMap::bind_output_device(size_t index,
-                                                const MetalTensor &dev) {
-  auto &binding = m_outputs[index];
-  binding.dev = dev;
-  if (binding.dev.expected_type == ov::element::dynamic)
-    binding.dev.expected_type = dev.buf.type;
-  return binding.dev;
-}
-
-bool MetalTensorMap::has_input_device(size_t index) const {
-  return m_inputs.find(index) != m_inputs.end() &&
-         m_inputs.at(index).dev.buf.valid();
-}
-
-MetalTensor &MetalTensorMap::get_input_device(size_t index) {
-  auto it = m_inputs.find(index);
-  OPENVINO_ASSERT(it != m_inputs.end(),
-                  "MetalTensorMap: input device not found");
-  return it->second.dev;
-}
-
-const MetalTensor &MetalTensorMap::get_input_device(size_t index) const {
-  auto it = m_inputs.find(index);
-  OPENVINO_ASSERT(it != m_inputs.end(),
-                  "MetalTensorMap: input device not found");
-  return it->second.dev;
-}
-
-bool MetalTensorMap::has_input_host(size_t index) const {
-  auto it = m_inputs.find(index);
-  return it != m_inputs.end() && it->second.host;
-}
-
-ov::Tensor &MetalTensorMap::get_input_host(size_t index) {
-  auto it = m_inputs.find(index);
-  OPENVINO_ASSERT(it != m_inputs.end(), "MetalTensorMap: input host not found");
-  return it->second.host;
-}
-
-void MetalTensorMap::reset_inference(MetalAllocatorCore *core) {
-  if (core) {
-    for (auto &kv : m_inputs) {
-      if (kv.second.dev.buf.external) {
-        metal_release_external_buffer(kv.second.dev.buf);
-      }
-    }
-    for (auto &kv : m_outputs) {
-      if (kv.second.dev.buf.external) {
-        metal_release_external_buffer(kv.second.dev.buf);
-      }
-    }
-  }
-  m_inputs.clear();
-  for (auto &kv : m_outputs) {
-    kv.second.host = {};
-  }
-}
-
 namespace {
 thread_local MetalAllocator *tls_alloc = nullptr;
 thread_local MetalMemorySession *tls_session = nullptr;
@@ -560,6 +415,10 @@ MetalBufferManager::query_execution_device_info() const {
   info.supports_shader_float16 = true;
   info.supports_conv_output_channel_blocking = true;
   info.supports_conv_channel_block_spatial_tiling = true;
+  info.parallelism_profile.sort_matmul_tiles_by_shape = false;
+  info.parallelism_profile.supports_conv_output_channel_blocking = true;
+  info.parallelism_profile.supports_conv_channel_block_spatial_tiling = true;
+  info.parallelism_profile.chunk_dispatch = make_metal_chunk_dispatch_profile();
 
   std::ostringstream os;
   os << "metal:" << gpu_device_family_name(info.device_family) << ':'
@@ -569,6 +428,7 @@ MetalBufferManager::query_execution_device_info() const {
      << ':' << info.max_threads_per_group[1] << ':'
      << info.max_threads_per_group[2];
   info.device_key = os.str();
+  info.parallelism_profile.profile_key = info.device_key + ":parallelism";
   return info;
 }
 

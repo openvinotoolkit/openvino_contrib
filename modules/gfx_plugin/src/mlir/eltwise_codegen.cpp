@@ -7,7 +7,7 @@
 #include <sstream>
 #include <unordered_set>
 
-#include "mlir/msl_codegen_apple_msl_common.hpp"
+#include "backends/metal/compiler/msl_codegen_apple_msl_common.hpp"
 #include "openvino/core/except.hpp"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"

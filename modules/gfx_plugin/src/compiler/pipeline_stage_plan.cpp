@@ -14,6 +14,7 @@
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/result.hpp"
 #include "openvino/op/transpose.hpp"
+#include "openvino/op/util/assign_base.hpp"
 #include "transformations/rt_info/decompression.hpp"
 
 namespace ov {
@@ -74,6 +75,29 @@ bool is_absorbable_transpose_candidate(
 }
 
 } // namespace
+
+std::string direct_stateful_assign_variable_id(
+    const std::shared_ptr<const ov::Node> &node, size_t output_idx) {
+  if (!node || output_idx >= node->get_output_size()) {
+    return {};
+  }
+  const ov::op::util::AssignBase *assign = nullptr;
+  size_t non_assign_consumers = 0;
+  for (const auto &target : node->output(output_idx).get_target_inputs()) {
+    auto *candidate =
+        dynamic_cast<const ov::op::util::AssignBase *>(target.get_node());
+    if (!candidate || target.get_index() != 0) {
+      ++non_assign_consumers;
+      continue;
+    }
+    if (assign && assign != candidate) {
+      return {};
+    }
+    assign = candidate;
+  }
+  return assign && non_assign_consumers == 0 ? assign->get_variable_id()
+                                             : std::string{};
+}
 
 size_t PipelineOutputPortKeyHash::operator()(
     const PipelineOutputPortKey &key) const {
@@ -234,6 +258,13 @@ void PipelineStagePlanBuilder::append_output_alias(
     stage_plan.output_aliases.push_back(
         {source_node, source_port, output_port});
   }
+  if (output_port < stage_plan.outputs.size()) {
+    auto &output = stage_plan.outputs[output_port];
+    if (output.direct_stateful_assign_variable_id.empty()) {
+      output.direct_stateful_assign_variable_id =
+          direct_stateful_assign_variable_id(source_node, source_port);
+    }
+  }
 }
 
 void PipelineStagePlanBuilder::describe_output(
@@ -255,6 +286,8 @@ void PipelineStagePlanBuilder::describe_output(
       is_model_output_port(m_model_outputs, source_node.get(), source_port);
   out_desc.source_node = source_node;
   out_desc.source_port = source_port;
+  out_desc.direct_stateful_assign_variable_id =
+      direct_stateful_assign_variable_id(source_node, source_port);
 }
 
 void PipelineStagePlanBuilder::record_output_alias(

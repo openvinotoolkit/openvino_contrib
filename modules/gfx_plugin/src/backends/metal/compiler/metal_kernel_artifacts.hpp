@@ -7,7 +7,7 @@
 #include <string_view>
 
 #include "compiler/executable_bundle.hpp"
-#include "mlir/gfx_apple_vendor_descriptors.hpp"
+#include "backends/metal/compiler/apple_vendor_descriptors.hpp"
 
 namespace ov {
 namespace gfx_plugin {

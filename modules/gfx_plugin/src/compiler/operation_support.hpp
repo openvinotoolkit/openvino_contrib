@@ -9,11 +9,11 @@
 #include <utility>
 #include <vector>
 
+#include "common/gfx_activation.hpp"
+#include "common/gpu_parallelism_profile.hpp"
 #include "compiler/backend_target.hpp"
 #include "compiler/stage_placement.hpp"
 #include "openvino/core/model.hpp"
-#include "runtime/gfx_activation.hpp"
-#include "runtime/gpu_backend_base.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -53,6 +53,11 @@ struct FusionCapabilities {
     bool enable_precision_sensitive_arithmetic_fusion = true;
 };
 
+struct BackendExecutionCapabilities {
+    bool source_kernel_dispatch_enabled = false;
+    GpuParallelismProfile fallback_parallelism{};
+};
+
 struct PostOpFusionCapabilities {
     bool enable_bias_fusion_for_convolution = true;
     bool enable_bias_fusion_for_group_convolution = true;
@@ -78,8 +83,6 @@ struct PostOpFusionCapabilities {
                                        ActivationKind kind) const;
 };
 
-PostOpFusionCapabilities make_post_op_fusion_capabilities(GpuBackend backend);
-
 std::string_view lowering_route_kind_to_string(LoweringRouteKind kind) noexcept;
 OperationSupportResult make_supported_operation(std::string semantic_reason,
                                                 LoweringRouteKind route_kind,
@@ -100,7 +103,8 @@ public:
                         std::shared_ptr<const OperationSupportPolicy> operation_policy,
                         FusionCapabilities fusion_capabilities = {},
                         PostOpFusionCapabilities post_op_fusion_capabilities = {},
-                        std::shared_ptr<const StagePlacementPolicy> stage_placement_policy = {});
+                        std::shared_ptr<const StagePlacementPolicy> stage_placement_policy = {},
+                        BackendExecutionCapabilities execution_capabilities = {});
 
     const BackendTarget& target() const noexcept {
         return m_target;
@@ -122,6 +126,10 @@ public:
         return m_stage_placement_policy.get();
     }
 
+    const BackendExecutionCapabilities& execution() const noexcept {
+        return m_execution_capabilities;
+    }
+
     OperationSupportResult query_operation(const OperationSupportQuery& query) const;
     bool supports_node(const std::shared_ptr<const ov::Node>& node) const;
     bool allow_stage_bias_fusion(std::string_view stage_type) const;
@@ -135,6 +143,7 @@ private:
     FusionCapabilities m_fusion_capabilities;
     PostOpFusionCapabilities m_post_op_fusion_capabilities;
     std::shared_ptr<const StagePlacementPolicy> m_stage_placement_policy;
+    BackendExecutionCapabilities m_execution_capabilities;
 };
 
 bool is_supported_node(const std::shared_ptr<const ov::Node>& node, GpuBackend backend);

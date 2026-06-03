@@ -102,6 +102,7 @@ std::string make_kernel_abi_fingerprint(const KernelDescriptor &kernel) {
   append_field(material, kernel.layout_contract);
   append_field(material, kernel.precision_contract);
   append_field(material, kernel.dispatch_contract);
+  append_field(material, kernel.runtime_shape_rule);
   append_bool(material, kernel.requires_runtime_shape_args);
   for (const auto &role : kernel.tensor_roles) {
     append_field(material, role);
@@ -162,6 +163,7 @@ KernelArtifactDescriptor make_artifact_descriptor(const StageRecord &stage) {
   descriptor.kernel.backend_domain = stage.backend_domain;
   descriptor.kernel.origin = origin_from_route(stage.execution_kind);
   descriptor.kernel.dispatch_contract = stage.dispatch.dispatch_source;
+  descriptor.kernel.runtime_shape_rule = stage.runtime_shape.rule;
   descriptor.kernel.requires_runtime_shape_args =
       stage.requires_runtime_shape_args;
   if (!stage.inputs.empty()) {
@@ -310,6 +312,7 @@ ExecutableBundleVerificationResult ExecutableBundle::verify() const {
     if (artifact.stage_record_key != manifest_stage.stable_record_key ||
         artifact.kernel.kernel_id != manifest_stage.kernel_unit_id ||
         artifact.kernel.backend_domain != manifest_stage.backend_domain ||
+        artifact.kernel.runtime_shape_rule != manifest_stage.runtime_shape.rule ||
         artifact.kernel.origin !=
             origin_from_route(manifest_stage.execution_kind)) {
       result.diagnostics.push_back("executable bundle artifact drift at " +

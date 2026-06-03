@@ -7,7 +7,7 @@
 #include "openvino/core/except.hpp"
 #include "runtime/gfx_remote_context.hpp"
 #include "plugin/gfx_property_utils.hpp"
-#include "plugin/backend_factory.hpp"
+#include "runtime/backend_runtime_provider.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "backends/metal/runtime/metal_memory.hpp"
 #include "backends/metal/runtime/profiling/signpost_trace_sink.hpp"
@@ -16,6 +16,10 @@
 
 namespace ov {
 namespace gfx_plugin {
+
+void execute_metal_infer_request(InferRequest& request,
+                                 const std::shared_ptr<const CompiledModel>& compiled_model);
+
 namespace {
 
 std::unique_ptr<BackendState> create_metal_backend_state_provider(
@@ -27,6 +31,7 @@ std::unique_ptr<BackendState> create_metal_backend_state_provider(
 const BackendRuntimeProviderRegistration kMetalRuntimeProviderRegistration({
     GpuBackend::Metal,
     create_metal_backend_state_provider,
+    execute_metal_infer_request,
     register_metal_profiling_trace_sinks,
 });
 

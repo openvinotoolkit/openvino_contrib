@@ -9,6 +9,7 @@
 
 #include "common/gpu_backend.hpp"
 #include "common/gpu_device_profile.hpp"
+#include "common/gpu_parallelism_profile.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -34,6 +35,7 @@ struct GpuExecutionDeviceInfo {
   bool supports_shader_int8 = false;
   bool supports_conv_output_channel_blocking = false;
   bool supports_conv_channel_block_spatial_tiling = false;
+  GpuParallelismProfile parallelism_profile;
 };
 
 } // namespace gfx_plugin

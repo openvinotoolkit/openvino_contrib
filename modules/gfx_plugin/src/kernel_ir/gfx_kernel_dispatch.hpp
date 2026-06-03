@@ -6,8 +6,8 @@
 #include <algorithm>
 #include <cstdint>
 
+#include "common/gpu_dispatch_config.hpp"
 #include "openvino/core/shape.hpp"
-#include "runtime/gpu_backend_base.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -27,19 +27,9 @@ inline KernelDispatch make_default_dispatch(const ov::Shape& shape, size_t tg0 =
     return dispatch;
 }
 
-struct ParallelDispatchConfig {
-    bool enabled = false;
-    size_t loop_dims = 0;
-    uint32_t tile_h = 1;
-    uint32_t tile_w = 1;
-    uint32_t threads_h = 1;
-    uint32_t threads_w = 1;
-    uint32_t channel_block = 1;
-};
-
 inline KernelDispatch make_parallel_dispatch(const ov::Shape& shape,
                                              const ParallelDispatchConfig& cfg,
-                                             const ICompiledKernel* kernel = nullptr) {
+                                             size_t clamped_threads_per_group_x = 0) {
     KernelDispatch dispatch{};
     if (!cfg.enabled) {
         return dispatch;
@@ -89,7 +79,7 @@ inline KernelDispatch make_parallel_dispatch(const ov::Shape& shape,
         }
     }
     dispatch.threads_per_group[0] =
-        kernel ? kernel->clamp_threadgroup_size(thread_w) : std::max<uint64_t>(thread_w, 1);
+        clamped_threads_per_group_x ? clamped_threads_per_group_x : std::max<uint64_t>(thread_w, 1);
     dispatch.threads_per_group[1] = thread_h;
     dispatch.threads_per_group[2] = 1;
     return dispatch;

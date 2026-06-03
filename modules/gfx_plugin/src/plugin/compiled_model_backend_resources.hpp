@@ -3,7 +3,7 @@
 //
 #pragma once
 
-#include "plugin/backend_state.hpp"
+#include "runtime/backend_runtime.hpp"
 
 namespace ov {
 namespace gfx_plugin {

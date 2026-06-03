@@ -14,11 +14,11 @@
 #include "mlir/gfx_mlir_kernel_metadata.hpp"
 #include "openvino/core/node.hpp"
 #include "openvino/core/type/float16.hpp"
-#include "runtime/gfx_activation.hpp"
+#include "common/gfx_activation.hpp"
 #include "runtime/gfx_backend_utils.hpp"
 #include "runtime/gfx_batchnorm.hpp"
-#include "runtime/gfx_bias.hpp"
-#include "runtime/gfx_stage_policy.hpp"
+#include "common/gfx_bias.hpp"
+#include "compiler/stage_policy.hpp"
 #include "runtime/gpu_stage.hpp"
 #include "runtime/gpu_tensor.hpp"
 
@@ -27,7 +27,7 @@ namespace gfx_plugin {
 
 struct MlirKernelPlanContext;
 struct MatMulCodegenDesc;
-struct GfxMslGeneratedKernelSourcePlan;
+struct MlirStageBackendSourcePlan;
 struct RuntimeStageExecutableDescriptor;
 
 class MlirStage : public GpuStage {
@@ -190,9 +190,8 @@ private:
   void compile_prebuilt_kernel_source(const KernelSource &source,
                                       KernelRuntimeBindingState binding,
                                       std::string_view stage_kind);
-  void compile_generated_msl_source_plan(
-      const GfxMslGeneratedKernelSourcePlan &source_plan,
-      std::string_view stage_kind);
+  void compile_backend_source_plan(
+      const MlirStageBackendSourcePlan &source_plan, std::string_view stage_kind);
   KernelRuntimeBindingState resolved_kernel_runtime_binding_state() const;
   std::vector<GpuTensor> m_small_i64_const_output_cache;
 };

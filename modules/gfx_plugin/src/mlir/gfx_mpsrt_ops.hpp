@@ -4,10 +4,11 @@
 #pragma once
 
 #include "mlir/IR/BuiltinOps.h"
-#include "backends/metal/runtime/mpsrt/gfx_mpsrt_program.hpp"
 
 namespace ov {
 namespace gfx_plugin {
+
+struct GfxMpsrtProgram;
 
 inline constexpr const char* kGfxMpsrtOpsSymbol = "gfx_mpsrt_ops";
 

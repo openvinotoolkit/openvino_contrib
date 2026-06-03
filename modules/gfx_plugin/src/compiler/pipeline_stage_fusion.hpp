@@ -12,12 +12,12 @@
 #include <unordered_set>
 #include <vector>
 
+#include "common/gfx_activation.hpp"
 #include "compiler/executable_bundle.hpp"
 #include "compiler/operation_support.hpp"
 #include "compiler/pipeline_stage_plan.hpp"
 #include "compiler/stage_compiler_policy.hpp"
 #include "openvino/core/type/element_type.hpp"
-#include "runtime/gfx_activation.hpp"
 #include "transforms/fusion_pass.hpp"
 
 namespace ov {

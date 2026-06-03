@@ -25,6 +25,12 @@ enum class RuntimeParamKind {
   Shape,
 };
 
+enum class StatefulEffectKind {
+  None,
+  ReadValue,
+  Assign,
+};
+
 struct TensorContract {
   std::string logical_name;
   std::string memory_region_id;
@@ -34,6 +40,9 @@ struct TensorContract {
   std::string layout = "logical";
   std::string storage_kind = "device_buffer";
   std::string lifetime_class;
+  std::string stateful_prebind_variable_id;
+  std::string stateful_prebind_shape_rule = "none";
+  int64_t stateful_prebind_shape_axis = -1;
 };
 
 struct RuntimeParamDescriptor {
@@ -48,6 +57,15 @@ struct RuntimeParamContract {
   size_t shape_param_count = 0;
   std::vector<RuntimeParamDescriptor> params;
   std::vector<std::string> runtime_param_names;
+};
+
+struct RuntimeShapeContract {
+  std::string rule = "static_or_descriptor";
+};
+
+struct StatefulEffectContract {
+  StatefulEffectKind kind = StatefulEffectKind::None;
+  std::string variable_id;
 };
 
 struct DispatchContract {
@@ -65,6 +83,12 @@ struct MemoryContract {
   std::string alias_group;
 };
 
+struct SubmissionContract {
+  uint32_t stage_weight = 1;
+  uint64_t macs_estimate = 0;
+  bool dependency_extension_boundary = false;
+};
+
 struct StageRecord {
   size_t stage_id = 0;
   uint64_t stable_record_key = 0;
@@ -78,8 +102,11 @@ struct StageRecord {
   std::vector<TensorContract> inputs;
   std::vector<TensorContract> outputs;
   RuntimeParamContract runtime_params;
+  RuntimeShapeContract runtime_shape;
+  StatefulEffectContract stateful_effect;
   DispatchContract dispatch;
   MemoryContract memory;
+  SubmissionContract submission;
   HandwrittenKernelExceptionContract handwritten_exception;
   double profitability_score = 0.0;
 };
@@ -109,6 +136,7 @@ public:
 std::string_view
 tensor_contract_role_to_string(TensorContractRole role) noexcept;
 std::string_view runtime_param_kind_to_string(RuntimeParamKind kind) noexcept;
+std::string_view stateful_effect_kind_to_string(StatefulEffectKind kind) noexcept;
 
 } // namespace compiler
 } // namespace gfx_plugin

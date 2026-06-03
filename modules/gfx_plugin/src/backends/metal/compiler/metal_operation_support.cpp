@@ -8,11 +8,11 @@
 #include <exception>
 #include <vector>
 
-#include "mlir/gfx_apple_vendor_descriptors.hpp"
-#include "mlir/msl_codegen_apple_msl_activation.hpp"
-#include "mlir/msl_codegen_apple_msl_eltwise.hpp"
-#include "mlir/msl_codegen_apple_msl_reduction.hpp"
-#include "mlir/msl_codegen_apple_msl_softmax.hpp"
+#include "backends/metal/compiler/apple_vendor_descriptors.hpp"
+#include "backends/metal/compiler/msl_codegen_apple_msl_activation.hpp"
+#include "backends/metal/compiler/msl_codegen_apple_msl_eltwise.hpp"
+#include "backends/metal/compiler/msl_codegen_apple_msl_reduction.hpp"
+#include "backends/metal/compiler/msl_codegen_apple_msl_softmax.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/avg_pool.hpp"
 #include "openvino/op/concat.hpp"

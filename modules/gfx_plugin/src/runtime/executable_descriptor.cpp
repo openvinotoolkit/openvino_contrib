@@ -61,6 +61,11 @@ make_tensor_binding_contract(const compiler::TensorContract &contract,
   binding.layout = contract.layout;
   binding.storage_kind = contract.storage_kind;
   binding.lifetime_class = contract.lifetime_class;
+  binding.stateful_prebind_variable_id =
+      contract.stateful_prebind_variable_id;
+  binding.stateful_prebind_shape_rule = contract.stateful_prebind_shape_rule;
+  binding.stateful_prebind_shape_axis =
+      contract.stateful_prebind_shape_axis;
   if (const auto *region =
           find_memory_region(memory_plan, contract.memory_region_id)) {
     binding.alias_group = region->alias_group;
@@ -106,9 +111,20 @@ RuntimeStageExecutableDescriptor make_stage_descriptor(
   descriptor.abi_output_arg_count = artifact.abi_output_arg_count;
   descriptor.dispatch_contract = artifact.kernel.dispatch_contract;
   descriptor.layout_contract = artifact.kernel.layout_contract;
+  descriptor.runtime_shape_rule = artifact.kernel.runtime_shape_rule;
   descriptor.requires_runtime_shape_args =
       artifact.kernel.requires_runtime_shape_args;
   descriptor.tensor_view_only = descriptor.layout_contract == "view_only";
+  descriptor.submission_stage_weight =
+      manifest_stage.submission.stage_weight;
+  descriptor.submission_macs_estimate =
+      manifest_stage.submission.macs_estimate;
+  descriptor.submission_dependency_boundary =
+      manifest_stage.submission.dependency_extension_boundary;
+  descriptor.stateful_effect =
+      std::string(compiler::stateful_effect_kind_to_string(
+          manifest_stage.stateful_effect.kind));
+  descriptor.stateful_variable_id = manifest_stage.stateful_effect.variable_id;
   descriptor.tensor_roles = artifact.kernel.tensor_roles;
   descriptor.scalar_roles = artifact.kernel.scalar_roles;
   descriptor.exception_ticket = artifact.kernel.exception_ticket;
@@ -228,7 +244,13 @@ bool tensor_binding_matches(const RuntimeTensorBindingContract &binding,
       binding.partial_shape != contract.partial_shape ||
       binding.layout != contract.layout ||
       binding.storage_kind != contract.storage_kind ||
-      binding.lifetime_class != contract.lifetime_class) {
+      binding.lifetime_class != contract.lifetime_class ||
+      binding.stateful_prebind_variable_id !=
+          contract.stateful_prebind_variable_id ||
+      binding.stateful_prebind_shape_rule !=
+          contract.stateful_prebind_shape_rule ||
+      binding.stateful_prebind_shape_axis !=
+          contract.stateful_prebind_shape_axis) {
     return false;
   }
   const auto *region =
@@ -442,10 +464,23 @@ RuntimeExecutableDescriptor::verify(
         stage.abi_output_arg_count != artifact.abi_output_arg_count ||
         stage.dispatch_contract != artifact.kernel.dispatch_contract ||
         stage.layout_contract != artifact.kernel.layout_contract ||
+        stage.runtime_shape_rule != artifact.kernel.runtime_shape_rule ||
         stage.requires_runtime_shape_args !=
             artifact.kernel.requires_runtime_shape_args ||
         stage.tensor_view_only !=
             (artifact.kernel.layout_contract == "view_only") ||
+        stage.submission_stage_weight !=
+            executable.manifest.stages[i].submission.stage_weight ||
+        stage.submission_macs_estimate !=
+            executable.manifest.stages[i].submission.macs_estimate ||
+        stage.submission_dependency_boundary !=
+            executable.manifest.stages[i]
+                .submission.dependency_extension_boundary ||
+        stage.stateful_effect !=
+            compiler::stateful_effect_kind_to_string(
+                executable.manifest.stages[i].stateful_effect.kind) ||
+        stage.stateful_variable_id !=
+            executable.manifest.stages[i].stateful_effect.variable_id ||
         stage.tensor_roles != artifact.kernel.tensor_roles ||
         stage.scalar_roles != artifact.kernel.scalar_roles ||
         stage.exception_ticket != artifact.kernel.exception_ticket ||
@@ -460,7 +495,9 @@ RuntimeExecutableDescriptor::verify(
     }
     if (stage.manifest_ref.empty() || stage.abi_fingerprint.empty() ||
         stage.artifact_key.empty() || stage.backend_domain.empty() ||
-        stage.kernel_id.empty() || stage.op_family.empty()) {
+        stage.kernel_id.empty() || stage.op_family.empty() ||
+        stage.runtime_shape_rule.empty() ||
+        stage.submission_stage_weight == 0u) {
       result.diagnostics.push_back(
           "runtime executable descriptor has incomplete identity at " +
           std::to_string(i));

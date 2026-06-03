@@ -9,7 +9,7 @@
 #include "kernel_ir/gfx_kernel_dispatch.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "openvino/core/node.hpp"
-#include "runtime/gfx_activation.hpp"
+#include "common/gfx_activation.hpp"
 #include "runtime/gfx_input_transform.hpp"
 
 namespace ov {

@@ -48,12 +48,12 @@
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/codegen_common.hpp"
-#include "mlir/gfx_apple_stage_pipeline.hpp"
+#include "backends/metal/compiler/apple_stage_pipeline.hpp"
 #include "mlir/gfx_backend_custom_kernel_adapter.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/gfx_mlir_kernel_metadata.hpp"
-#include "mlir/gfx_mpsrt_conv_metadata.hpp"
-#include "mlir/gfx_mpsrt_matmul_metadata.hpp"
+#include "backends/metal/compiler/apple_mpsrt_conv_metadata.hpp"
+#include "backends/metal/compiler/apple_mpsrt_matmul_metadata.hpp"
 #include "mlir/gfx_mpsrt_metadata.hpp"
 #include "mlir/gfx_mpsrt_ops.hpp"
 #include "mlir/gfx_stage_kernel_binding.hpp"
@@ -61,26 +61,28 @@
 #include "mlir/mlir_kernel_plan_utils.hpp"
 #include "mlir/mlir_passes.hpp"
 #include "mlir/mlir_support.hpp"
-#include "mlir/msl_codegen.hpp"
-#include "mlir/msl_codegen_apple_mps.hpp"
-#include "mlir/msl_codegen_apple_msl.hpp"
-#include "mlir/msl_codegen_apple_msl_dispatch.hpp"
-#include "mlir/msl_codegen_apple_msl_shape.hpp"
-#include "mlir/msl_codegen_apple_msl_slice_static.hpp"
-#include "mlir/msl_codegen_apple_msl_split.hpp"
-#include "mlir/msl_codegen_attention.hpp"
-#include "mlir/msl_codegen_matmul_metal.hpp"
-#include "mlir/msl_codegen_matmul_mpsrt.hpp"
+#include "backends/metal/compiler/msl_codegen.hpp"
+#include "backends/metal/compiler/msl_codegen_apple_mps.hpp"
+#include "backends/metal/compiler/msl_codegen_apple_msl.hpp"
+#include "backends/metal/compiler/msl_codegen_apple_msl_dispatch.hpp"
+#include "backends/metal/compiler/msl_codegen_apple_msl_shape.hpp"
+#include "backends/metal/compiler/msl_codegen_apple_msl_slice_static.hpp"
+#include "backends/metal/compiler/msl_codegen_apple_msl_split.hpp"
+#include "backends/metal/compiler/msl_codegen_attention.hpp"
+#include "backends/metal/compiler/msl_codegen_matmul_metal.hpp"
+#include "backends/metal/compiler/msl_codegen_matmul_mpsrt.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/relu.hpp"
 #include "openvino/op/result.hpp"
 #include "openvino/op/sigmoid.hpp"
+#include "backends/metal/compiler/metal_backend_module.hpp"
 #include "backends/metal/compiler/metal_stage_placement.hpp"
+#include "backends/opencl/compiler/opencl_backend_module.hpp"
 #include "backends/opencl/compiler/opencl_stage_placement.hpp"
 #include "compiler/operation_support.hpp"
-#include "backends/metal/runtime/mpsrt/gfx_mpsrt_builder_plan.hpp"
-#include "backends/metal/runtime/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp"
-#include "runtime/gfx_stage_policy.hpp"
+#include "backends/metal/common/mpsrt/gfx_mpsrt_builder_plan.hpp"
+#include "backends/metal/common/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp"
+#include "compiler/stage_policy.hpp"
 #include "transformations/rt_info/disable_fp16_compression.hpp"
 #include "transforms/fusion_pass.hpp"
 #include "transforms/pipeline.hpp"
@@ -94,45 +96,49 @@ test_stage_compiler_policy(ov::gfx_plugin::GpuBackend backend) {
       ov::gfx_plugin::compiler::make_opencl_stage_placement_policy();
   static const auto metal_stage_placement =
       ov::gfx_plugin::compiler::make_metal_stage_placement_policy();
-  static const auto opencl_post_ops =
-      ov::gfx_plugin::compiler::make_post_op_fusion_capabilities(
-          ov::gfx_plugin::GpuBackend::OpenCL);
-  static const auto metal_post_ops =
-      ov::gfx_plugin::compiler::make_post_op_fusion_capabilities(
-          ov::gfx_plugin::GpuBackend::Metal);
+  static const auto opencl_module =
+      ov::gfx_plugin::compiler::make_opencl_backend_module();
+  static const auto metal_module =
+      ov::gfx_plugin::compiler::make_metal_backend_module();
 
   ov::gfx_plugin::GfxStageCompilerPolicy policy{};
   policy.backend = backend;
   switch (backend) {
   case ov::gfx_plugin::GpuBackend::OpenCL:
     policy.placement = opencl_stage_placement.get();
-    policy.post_ops = &opencl_post_ops;
+    policy.post_ops = &opencl_module->capabilities().post_ops();
     break;
   case ov::gfx_plugin::GpuBackend::Metal:
     policy.placement = metal_stage_placement.get();
-    policy.post_ops = &metal_post_ops;
+    policy.post_ops = &metal_module->capabilities().post_ops();
     break;
   case ov::gfx_plugin::GpuBackend::Unknown:
   default:
     break;
   }
   if (ov::gfx_plugin::backend_known(backend)) {
+    ov::gfx_plugin::compiler::BackendExecutionCapabilities execution;
+    execution.source_kernel_dispatch_enabled =
+        backend == ov::gfx_plugin::GpuBackend::OpenCL;
+    execution.fallback_parallelism =
+        backend == ov::gfx_plugin::GpuBackend::Metal
+            ? ov::gfx_plugin::make_metal_parallelism_profile("metal:test")
+            : ov::gfx_plugin::make_opencl_parallelism_profile("opencl:test");
     policy.source_kernel_dispatch =
         ov::gfx_plugin::compiler::make_stage_source_kernel_dispatch_policy(
-            ov::gfx_plugin::compiler::BackendTarget::from_backend(backend));
+            execution);
   }
   return policy;
 }
 
 ov::gfx_plugin::GfxStageOptimizationPlan select_test_stage_optimization_plan(
-    const ov::gfx_plugin::GpuBufferManager *buffer_manager,
     ov::gfx_plugin::GpuBackend backend, const std::string &stage_type,
     const std::shared_ptr<const ov::Node> &node,
     const ov::element::Type &element_type, bool has_bias, bool has_activation,
     bool has_batchnorm, const ov::gfx_plugin::GfxStageRuntimeTraits &traits) {
   const auto policy = test_stage_compiler_policy(backend);
   return ov::gfx_plugin::select_stage_optimization_plan(
-      buffer_manager, backend, stage_type, node, element_type, has_bias,
+      backend, stage_type, node, element_type, has_bias,
       has_activation, has_batchnorm, traits, &policy);
 }
 
@@ -1061,7 +1067,7 @@ TEST(GfxMlir, MatMulMpsrtMetadataAnnotatesPlacementAndTensorDescriptors) {
           ov::gfx_plugin::GfxMpsrtTensorFlagExternalIo),
       contract));
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "MatMul", matmul,
+      ov::gfx_plugin::GpuBackend::Metal, "MatMul", matmul,
       ov::element::f16, false, false, false, {});
   const auto materialized =
       ov::gfx_plugin::materialize_apple_mps_vendor_contract_program(
@@ -1219,7 +1225,7 @@ TEST(GfxMlir, ConvMpsrtMetadataAnnotatesVendorDescriptorFromOpenVINONode) {
   ASSERT_TRUE(module);
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "Convolution", conv,
+      ov::gfx_plugin::GpuBackend::Metal, "Convolution", conv,
       ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -1416,7 +1422,7 @@ TEST(GfxMlir, GroupConvMpsrtMetadataDerivesStageTypeFromManifest) {
   ASSERT_TRUE(module);
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "GroupConvolution",
+      ov::gfx_plugin::GpuBackend::Metal, "GroupConvolution",
       group_conv, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -1495,7 +1501,7 @@ TEST(GfxMlir, MpsrtTypedProgramMaterializesMatrixStorageConversionOps) {
       {1, 8, 4}, ov::element::f16, ov::gfx_plugin::GfxStageStorageKind::Matrix,
       ov::gfx_plugin::GfxMpsrtTensorFlagExternalIo);
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "MatMul", nullptr,
+      ov::gfx_plugin::GpuBackend::Metal, "MatMul", nullptr,
       ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -1848,7 +1854,7 @@ TEST(GfxMlir, AppleMpsrtProgramPlanMaterializesExplicitMixedValueEdges) {
       ov::gfx_plugin::GfxMpsrtTensorFlagExternalIo);
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "MatMul", nullptr,
+      ov::gfx_plugin::GpuBackend::Metal, "MatMul", nullptr,
       ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -1959,7 +1965,7 @@ TEST(GfxMlir, MatMulMpsrtLoweringEntryPointSelectsSingleAndMultiStagePlans) {
   desc.K = 256;
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "MatMul", matmul,
+      ov::gfx_plugin::GpuBackend::Metal, "MatMul", matmul,
       ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -2091,7 +2097,7 @@ TEST(GfxMlir, AppleMpsrtTypedProgramMaterializesMultiStageBuilderRecords) {
   desc.activation = ov::gfx_plugin::ActivationKind::Swish;
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "MatMul", matmul,
+      ov::gfx_plugin::GpuBackend::Metal, "MatMul", matmul,
       ov::element::f16,
       /*has_bias=*/true,
       /*has_activation=*/true,
@@ -2310,7 +2316,7 @@ TEST(GfxMlir, AddMslMetadataUsesRequiredMpsrtKernelFamily) {
   mlir::Builder builder(module.getContext());
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
+      ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
@@ -2522,7 +2528,7 @@ TEST(GfxMlir, AppleMslLoweringMaterializesStageManifestBeforeTypedProgram) {
   ASSERT_TRUE(module);
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
+      ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
@@ -2587,7 +2593,7 @@ TEST(GfxMlir, AppleStagePipelineRunsNamedPassBoundariesBeforeTypedProgram) {
   ASSERT_TRUE(module);
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
+      ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
@@ -2678,7 +2684,7 @@ TEST(GfxMlir, AppleStagePipelineOwnsImageStorageBridgeAssignment) {
   ASSERT_TRUE(module);
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "Convolution", conv,
+      ov::gfx_plugin::GpuBackend::Metal, "Convolution", conv,
       ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -2734,7 +2740,7 @@ TEST(GfxMlir, AppleMpsPrimitiveMaterializersOwnDescriptorEnrichment) {
   ASSERT_TRUE(topk_module);
 
   const auto pool_plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "MaxPool", max_pool,
+      ov::gfx_plugin::GpuBackend::Metal, "MaxPool", max_pool,
       ov::element::f16, false, false, false, {});
   ov::gfx_plugin::GfxMpsrtPool2DAbiDesc pool_desc{};
   pool_desc.kernel[0] = 2;
@@ -2753,7 +2759,7 @@ TEST(GfxMlir, AppleMpsPrimitiveMaterializersOwnDescriptorEnrichment) {
   ASSERT_TRUE(pool_materialized.typed_program_materialized);
 
   const auto softmax_plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "Softmax", softmax,
+      ov::gfx_plugin::GpuBackend::Metal, "Softmax", softmax,
       ov::element::f16, false, false, false, {});
   ov::gfx_plugin::GfxMpsrtSoftmaxAbiDesc softmax_desc{};
   softmax_desc.axis = 2;
@@ -2767,7 +2773,7 @@ TEST(GfxMlir, AppleMpsPrimitiveMaterializersOwnDescriptorEnrichment) {
   ASSERT_TRUE(softmax_materialized.typed_program_materialized);
 
   const auto topk_plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "TopK", topk,
+      ov::gfx_plugin::GpuBackend::Metal, "TopK", topk,
       ov::element::f16, false, false, false, {});
   ov::gfx_plugin::GfxMpsrtTopKAbiDesc topk_desc{};
   topk_desc.axis = 2;
@@ -2881,7 +2887,7 @@ TEST(GfxMlir,
   mlir::Builder builder(module.getContext());
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
+      ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
@@ -2971,7 +2977,7 @@ TEST(GfxMlir, StageManifestAloneDoesNotMaterializeMpsrtStageOrProgramReader) {
   ASSERT_TRUE(module);
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
+      ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
@@ -3050,7 +3056,7 @@ TEST(GfxMlir, StageManifestOverridesConflictingGeneratedStageAttrs) {
   mlir::Builder builder(module.getContext());
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
+      ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
@@ -3131,7 +3137,7 @@ TEST(GfxMlir, StageManifestSuppliesRoleAbiWithoutModuleMpsrtAttrs) {
   ASSERT_TRUE(module);
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
+      ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
@@ -3179,7 +3185,7 @@ TEST(GfxMlir, TypedProgramExternalBufferAbiWinsOverStaleModuleManifest) {
   ASSERT_TRUE(module);
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
+      ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
@@ -3235,7 +3241,7 @@ TEST(GfxMlir,
   ASSERT_TRUE(module);
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
+      ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
@@ -3274,7 +3280,7 @@ TEST(GfxMlir,
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", nullptr,
+      ov::gfx_plugin::GpuBackend::Metal, "Add", nullptr,
       ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -3310,7 +3316,7 @@ TEST(GfxMlir, OpenClMetadataReaderIgnoresAppleMslStageManifest) {
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", nullptr,
+      ov::gfx_plugin::GpuBackend::Metal, "Add", nullptr,
       ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -3624,7 +3630,7 @@ TEST(GfxMlir, MpsrtOpsExternalAbiSuppliesKernelRuntimeMetadata) {
       {1, 8, 4}, ov::element::f16, ov::gfx_plugin::GfxStageStorageKind::Matrix,
       ov::gfx_plugin::GfxMpsrtTensorFlagExternalIo);
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "MatMul", nullptr,
+      ov::gfx_plugin::GpuBackend::Metal, "MatMul", nullptr,
       ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -3677,7 +3683,7 @@ TEST(GfxMlir, TypedVendorProgramDerivesExternalIoAbiFromTypedStagePlan) {
       {1, 8, 4}, ov::element::f16, ov::gfx_plugin::GfxStageStorageKind::Matrix,
       ov::gfx_plugin::GfxMpsrtTensorFlagExternalIo);
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "MatMul", nullptr,
+      ov::gfx_plugin::GpuBackend::Metal, "MatMul", nullptr,
       ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4058,7 +4064,7 @@ TEST(GfxMlir, TypedMpsrtProgramMaterializationErasesLegacyExternalAbiAttrs) {
       {1, 4}, ov::element::f32, ov::gfx_plugin::GfxStageStorageKind::Buffer,
       ov::gfx_plugin::GfxMpsrtTensorFlagExternalIo);
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "MatMul", nullptr,
+      ov::gfx_plugin::GpuBackend::Metal, "MatMul", nullptr,
       ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4291,7 +4297,7 @@ TEST(GfxMlir, StageManifestSuppliesElementwiseRoleAbiWithoutLegacyMpsrtAttrs) {
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", nullptr,
+      ov::gfx_plugin::GpuBackend::Metal, "Add", nullptr,
       ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4315,7 +4321,7 @@ TEST(GfxMlir,
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "Softmax", nullptr,
+      ov::gfx_plugin::GpuBackend::Metal, "Softmax", nullptr,
       ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4344,7 +4350,7 @@ TEST(
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "Gather", nullptr,
+      ov::gfx_plugin::GpuBackend::Metal, "Gather", nullptr,
       ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4372,7 +4378,7 @@ TEST(GfxMlir, SoftmaxMslMetadataUsesRoleBasedExternalAbi) {
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "Softmax", nullptr,
+      ov::gfx_plugin::GpuBackend::Metal, "Softmax", nullptr,
       ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4414,7 +4420,7 @@ TEST(GfxMlir, MslSourcePlanKeepsExactManifestAbiOverLegacySignature) {
   ASSERT_TRUE(module);
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f32,
+      ov::gfx_plugin::GpuBackend::Metal, "Add", add, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
@@ -4871,7 +4877,7 @@ TEST(GfxMlir, TopKMslMetadataUsesRoleBasedExternalAbi) {
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "TopK", nullptr,
+      ov::gfx_plugin::GpuBackend::Metal, "TopK", nullptr,
       ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4959,7 +4965,7 @@ TEST(GfxMlir, GatherMslMetadataUsesRolePatternWithRuntimeParams) {
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "Gather", nullptr,
+      ov::gfx_plugin::GpuBackend::Metal, "Gather", nullptr,
       ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -4991,7 +4997,7 @@ TEST(GfxMlir, SliceMslMetadataUsesRolePatternForTrailingRuntimeParams) {
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "Slice", nullptr,
+      ov::gfx_plugin::GpuBackend::Metal, "Slice", nullptr,
       ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
@@ -5123,7 +5129,7 @@ TEST(GfxMlir, MslKernelManifestAdapterResolvesExactRolesWithoutSignatureHints) {
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Metal, "GatherElements", nullptr,
+      ov::gfx_plugin::GpuBackend::Metal, "GatherElements", nullptr,
       ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,

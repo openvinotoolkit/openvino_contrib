@@ -8,7 +8,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Operation.h"
-#include "runtime/gfx_activation.hpp"
+#include "common/gfx_activation.hpp"
 
 namespace ov {
 namespace gfx_plugin {

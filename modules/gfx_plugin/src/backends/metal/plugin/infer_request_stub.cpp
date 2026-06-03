@@ -9,16 +9,17 @@
 namespace ov {
 namespace gfx_plugin {
 
-void MetalBackendState::init_infer_state(InferRequestState& /*state*/) const {}
+void MetalBackendState::init_infer_state(BackendRequestState& /*state*/) const {}
 
 ov::SoPtr<ov::ITensor> MetalBackendState::get_tensor_override(
-    const InferRequestState& /*state*/,
+    const BackendRequestState& /*state*/,
     size_t /*idx*/,
     const std::vector<ov::Output<const ov::Node>>& /*outputs*/) const {
     return {};
 }
 
-void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& /*cm*/) {
+void execute_metal_infer_request(InferRequest&,
+                                 const std::shared_ptr<const CompiledModel>& /*cm*/) {
     OPENVINO_THROW("GFX Metal backend is not available in this build");
 }
 

@@ -8,20 +8,22 @@
 #include <string>
 #include <vector>
 
+#include "backends/metal/compiler/metal_backend_module.hpp"
 #include "backends/metal/compiler/metal_stage_placement.hpp"
+#include "backends/opencl/compiler/opencl_backend_module.hpp"
 #include "backends/opencl/compiler/opencl_stage_placement.hpp"
 #include "compiler/operation_support.hpp"
 #include "kernel_ir/gfx_custom_kernel_families.hpp"
 #include "mlir/codegen_common.hpp"
-#include "mlir/gfx_apple_vendor_descriptors.hpp"
+#include "backends/metal/compiler/apple_vendor_descriptors.hpp"
 #include "mlir/gfx_backend_custom_kernel_adapter.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/gfx_mlir_kernel_metadata.hpp"
-#include "mlir/msl_codegen.hpp"
-#include "mlir/msl_codegen_apple_msl.hpp"
-#include "mlir/msl_codegen_apple_msl_dispatch.hpp"
-#include "mlir/msl_codegen_apple_msl_ops.hpp"
-#include "mlir/msl_codegen_apple_msl_split.hpp"
+#include "backends/metal/compiler/msl_codegen.hpp"
+#include "backends/metal/compiler/msl_codegen_apple_msl.hpp"
+#include "backends/metal/compiler/msl_codegen_apple_msl_dispatch.hpp"
+#include "backends/metal/compiler/msl_codegen_apple_msl_ops.hpp"
+#include "backends/metal/compiler/msl_codegen_apple_msl_split.hpp"
 #include "openvino/op/add.hpp"
 #include "openvino/op/batch_norm.hpp"
 #include "openvino/op/concat.hpp"
@@ -40,15 +42,15 @@
 #include "openvino/op/softmax.hpp"
 #include "openvino/op/topk.hpp"
 #include "openvino/op/transpose.hpp"
-#include "backends/metal/runtime/mpsrt/gfx_mpsrt_abi.hpp"
-#include "backends/metal/runtime/mpsrt/gfx_mpsrt_builder_plan.hpp"
-#include "backends/metal/runtime/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp"
+#include "backends/metal/common/mpsrt/gfx_mpsrt_abi.hpp"
+#include "backends/metal/common/mpsrt/gfx_mpsrt_builder_plan.hpp"
+#include "backends/metal/common/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp"
 #include "backends/metal/runtime/mpsrt/gfx_mpsrt_model.hpp"
-#include "backends/metal/runtime/mpsrt/gfx_mpsrt_plan.hpp"
-#include "backends/metal/runtime/mpsrt/gfx_mpsrt_program.hpp"
-#include "backends/metal/runtime/mpsrt/gfx_mpsrt_storage_bridge.hpp"
+#include "backends/metal/common/mpsrt/gfx_mpsrt_plan.hpp"
+#include "backends/metal/common/mpsrt/gfx_mpsrt_program.hpp"
+#include "backends/metal/common/mpsrt/gfx_mpsrt_storage_bridge.hpp"
 #include "runtime/gfx_precision.hpp"
-#include "runtime/gfx_stage_policy.hpp"
+#include "compiler/stage_policy.hpp"
 #include "transformations/rt_info/disable_fp16_compression.hpp"
 
 using namespace ov::gfx_plugin;
@@ -75,69 +77,68 @@ test_stage_placement_policy(GpuBackend backend) {
 
 const compiler::PostOpFusionCapabilities *
 test_post_op_fusion_capabilities(GpuBackend backend) {
-  static const auto opencl_capabilities =
-      compiler::make_post_op_fusion_capabilities(GpuBackend::OpenCL);
-  static const auto metal_capabilities =
-      compiler::make_post_op_fusion_capabilities(GpuBackend::Metal);
+  static const auto opencl_module = compiler::make_opencl_backend_module();
+  static const auto metal_module = compiler::make_metal_backend_module();
   switch (backend) {
   case GpuBackend::OpenCL:
-    return &opencl_capabilities;
+    return &opencl_module->capabilities().post_ops();
   case GpuBackend::Metal:
-    return &metal_capabilities;
+    return &metal_module->capabilities().post_ops();
   case GpuBackend::Unknown:
   default:
     return nullptr;
   }
 }
 
-GfxStageCompilerPolicy test_stage_compiler_policy(GpuBackend backend) {
+GfxStageCompilerPolicy test_stage_compiler_policy(
+    GpuBackend backend,
+    const compiler::StageParallelismProfile *parallelism_profile = nullptr) {
   GfxStageCompilerPolicy policy{};
   policy.backend = backend;
   policy.placement = test_stage_placement_policy(backend);
   policy.post_ops = test_post_op_fusion_capabilities(backend);
   if (backend_known(backend)) {
+    compiler::BackendExecutionCapabilities execution;
+    execution.source_kernel_dispatch_enabled = backend == GpuBackend::OpenCL;
+    execution.fallback_parallelism =
+        backend == GpuBackend::Metal
+            ? make_metal_parallelism_profile("metal:test")
+            : make_opencl_parallelism_profile("opencl:test");
+    if (parallelism_profile) {
+      execution.fallback_parallelism = *parallelism_profile;
+    }
     policy.source_kernel_dispatch =
-        compiler::make_stage_source_kernel_dispatch_policy(
-            compiler::BackendTarget::from_backend(backend));
+        compiler::make_stage_source_kernel_dispatch_policy(execution);
   }
   return policy;
 }
 
 GfxStageOptimizationPlan select_test_stage_optimization_plan(
-    const GpuBufferManager *buffer_manager, GpuBackend backend,
+    const compiler::StageParallelismProfile *parallelism_profile,
+    GpuBackend backend,
     const std::string &stage_type, const std::shared_ptr<const ov::Node> &node,
     const ov::element::Type &element_type, bool has_bias, bool has_activation,
     bool has_batchnorm, const GfxStageRuntimeTraits &traits) {
-  const auto policy = test_stage_compiler_policy(backend);
+  const auto policy = test_stage_compiler_policy(backend, parallelism_profile);
   return ov::gfx_plugin::select_stage_optimization_plan(
-      buffer_manager, backend, stage_type, node, element_type, has_bias,
+      backend, stage_type, node, element_type, has_bias,
       has_activation, has_batchnorm, traits, &policy);
 }
 
-class FakeDeviceInfoBufferManager final : public GpuBufferManager {
-public:
-  explicit FakeDeviceInfoBufferManager(GpuExecutionDeviceInfo info)
-      : m_info(std::move(info)) {}
+compiler::StageParallelismProfile make_constrained_opencl_stage_profile() {
+  compiler::StageParallelismProfile profile{};
+  profile.profile_key = "opencl:test-constrained";
+  profile.preferred_simd_width = 16u;
+  profile.subgroup_size = 16u;
+  profile.max_total_threads_per_group = 256u;
+  profile.max_threads_per_group = {256u, 256u, 64u};
+  return profile;
+}
 
-  std::optional<GpuExecutionDeviceInfo>
-  query_execution_device_info() const override {
-    return m_info;
-  }
-
-private:
-  GpuExecutionDeviceInfo m_info;
-};
-
-GpuExecutionDeviceInfo make_broadcom_v3d_info() {
-  GpuExecutionDeviceInfo info;
-  info.backend = GpuBackend::OpenCL;
-  info.device_key = "test-rpi";
-  info.device_family = GpuDeviceFamily::BroadcomV3D;
-  info.preferred_simd_width = 16u;
-  info.subgroup_size = 16u;
-  info.max_total_threads_per_group = 256u;
-  info.max_threads_per_group = {256u, 256u, 64u};
-  return info;
+compiler::StageParallelismProfile make_broadcom_v3d_stage_profile() {
+  auto profile = make_constrained_opencl_stage_profile();
+  profile.profile_key = "opencl:test-v3d";
+  return profile;
 }
 
 std::shared_ptr<const ov::Node>
@@ -510,12 +511,11 @@ TEST(
 TEST(
     GfxStagePolicyTest,
     HeavyBroadcomConvRequiresCooperativeReductionManifestButDoesNotSelectLegacyAlgorithm) {
-  auto info = make_broadcom_v3d_info();
-  info.supports_conv_output_channel_blocking = true;
-  FakeDeviceInfoBufferManager buffer_manager(info);
+  auto profile = make_broadcom_v3d_stage_profile();
+  profile.supports_conv_output_channel_blocking = true;
   const auto conv = make_heavy_spatial_conv_node();
   const auto plan =
-      select_test_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
+      select_test_stage_optimization_plan(&profile, GpuBackend::OpenCL,
                                      "Convolution", conv, ov::element::f16,
                                      /*has_bias=*/false,
                                      /*has_activation=*/false,
@@ -598,9 +598,9 @@ TEST(
   EXPECT_GT(plan.conv.algorithm.workgroup_reduction_lanes, 1u);
   EXPECT_GT(plan.conv.algorithm.workgroup_output_lanes, 0u);
   EXPECT_LE(plan.conv.algorithm.workgroup_reduction_lanes *
-                plan.conv.algorithm.multi_kernel_manifest
+            plan.conv.algorithm.multi_kernel_manifest
                     .coarse_spatial_tile_elements,
-            static_cast<uint64_t>(info.max_total_threads_per_group));
+            static_cast<uint64_t>(profile.max_total_threads_per_group));
   EXPECT_GT(plan.conv.algorithm.output_channel_reuse_lanes, 1u);
   EXPECT_EQ(plan.conv.algorithm.spatial_output_reuse_lanes, 1u);
   EXPECT_EQ(plan.conv.algorithm.output_reuse_lanes,
@@ -615,13 +615,12 @@ TEST(
 
 TEST(GfxStagePolicyTest,
      CooperativeReductionManifestInheritsSpatialReuseOnlyFromCapability) {
-  auto info = make_broadcom_v3d_info();
-  info.supports_conv_output_channel_blocking = true;
-  info.supports_conv_channel_block_spatial_tiling = true;
-  FakeDeviceInfoBufferManager buffer_manager(info);
+  auto profile = make_broadcom_v3d_stage_profile();
+  profile.supports_conv_output_channel_blocking = true;
+  profile.supports_conv_channel_block_spatial_tiling = true;
   const auto conv = make_heavy_spatial_conv_node();
   const auto plan =
-      select_test_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
+      select_test_stage_optimization_plan(&profile, GpuBackend::OpenCL,
                                      "Convolution", conv, ov::element::f16,
                                      /*has_bias=*/false,
                                      /*has_activation=*/false,
@@ -642,13 +641,12 @@ TEST(GfxStagePolicyTest,
 
 TEST(GfxStagePolicyTest,
      CooperativeReductionManifestCarriesWidthInputReuseForStride2SpatialTile) {
-  auto info = make_broadcom_v3d_info();
-  info.supports_conv_output_channel_blocking = true;
-  info.supports_conv_channel_block_spatial_tiling = true;
-  FakeDeviceInfoBufferManager buffer_manager(info);
+  auto profile = make_broadcom_v3d_stage_profile();
+  profile.supports_conv_output_channel_blocking = true;
+  profile.supports_conv_channel_block_spatial_tiling = true;
   const auto conv = make_width_reuse_stride2_conv_node();
   const auto plan =
-      select_test_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
+      select_test_stage_optimization_plan(&profile, GpuBackend::OpenCL,
                                      "Convolution", conv, ov::element::f16,
                                      /*has_bias=*/false,
                                      /*has_activation=*/false,
@@ -4081,8 +4079,7 @@ TEST(GfxStagePolicyTest,
 }
 
 TEST(GfxStagePolicyTest, OpenClConvolutionAllowsReluAndSwishActivationFusion) {
-  const auto post_ops =
-      compiler::make_post_op_fusion_capabilities(GpuBackend::OpenCL);
+  const auto &post_ops = *test_post_op_fusion_capabilities(GpuBackend::OpenCL);
   EXPECT_TRUE(post_ops.allow_stage_activation_fusion("Convolution",
                                                      ActivationKind::Relu));
   EXPECT_TRUE(post_ops.allow_stage_activation_fusion("Convolution",
@@ -4094,8 +4091,7 @@ TEST(GfxStagePolicyTest, OpenClConvolutionAllowsReluAndSwishActivationFusion) {
 }
 
 TEST(GfxStagePolicyTest, MetalConvolutionAllowsOnlyMpsBackedActivationFusion) {
-  const auto post_ops =
-      compiler::make_post_op_fusion_capabilities(GpuBackend::Metal);
+  const auto &post_ops = *test_post_op_fusion_capabilities(GpuBackend::Metal);
   EXPECT_TRUE(post_ops.allow_stage_activation_fusion("Convolution",
                                                      ActivationKind::Relu));
   EXPECT_TRUE(post_ops.allow_stage_activation_fusion("Convolution",
@@ -4188,19 +4184,12 @@ TEST(GfxStagePolicyTest, OpenClLargeConcatUsesIsolatedSubmitWindow) {
 
 TEST(GfxStagePolicyTest,
      OpenClConstrainedLargeBinaryChunkedStageCanShareSubmitWindow) {
-  GpuExecutionDeviceInfo info;
-  info.backend = GpuBackend::OpenCL;
-  info.device_key = "test-rpi";
-  info.preferred_simd_width = 16u;
-  info.subgroup_size = 16u;
-  info.max_total_threads_per_group = 256u;
-  info.max_threads_per_group = {256u, 256u, 64u};
-  FakeDeviceInfoBufferManager buffer_manager(info);
+  auto profile = make_constrained_opencl_stage_profile();
   const auto add = make_large_add_node();
   GfxStageRuntimeTraits traits{};
   traits.binary_chunked = true;
   const auto plan = select_test_stage_optimization_plan(
-      &buffer_manager, GpuBackend::OpenCL, "Add", add, ov::element::f16,
+      &profile, GpuBackend::OpenCL, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, traits);
@@ -4212,19 +4201,12 @@ TEST(GfxStagePolicyTest,
 
 TEST(GfxStagePolicyTest,
      OpenClConstrainedLargeUnaryChunkedStageCanShareSubmitWindow) {
-  GpuExecutionDeviceInfo info;
-  info.backend = GpuBackend::OpenCL;
-  info.device_key = "test-rpi";
-  info.preferred_simd_width = 16u;
-  info.subgroup_size = 16u;
-  info.max_total_threads_per_group = 256u;
-  info.max_threads_per_group = {256u, 256u, 64u};
-  FakeDeviceInfoBufferManager buffer_manager(info);
+  auto profile = make_constrained_opencl_stage_profile();
   const auto sigmoid = make_very_large_sigmoid_node();
   GfxStageRuntimeTraits traits{};
   traits.unary_chunked = true;
   const auto plan = select_test_stage_optimization_plan(
-      &buffer_manager, GpuBackend::OpenCL, "Sigmoid", sigmoid, ov::element::f16,
+      &profile, GpuBackend::OpenCL, "Sigmoid", sigmoid, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, traits);
@@ -4251,19 +4233,12 @@ TEST(GfxStagePolicyTest,
 }
 
 TEST(GfxStagePolicyTest, OpenClConstrainedLargeConcatCanShareSubmitWindow) {
-  GpuExecutionDeviceInfo info;
-  info.backend = GpuBackend::OpenCL;
-  info.device_key = "test-rpi";
-  info.preferred_simd_width = 16u;
-  info.subgroup_size = 16u;
-  info.max_total_threads_per_group = 256u;
-  info.max_threads_per_group = {256u, 256u, 64u};
-  FakeDeviceInfoBufferManager buffer_manager(info);
+  auto profile = make_constrained_opencl_stage_profile();
   const auto concat = make_large_concat_node();
   GfxStageRuntimeTraits traits{};
   traits.split_concat_chunked = true;
   const auto plan = select_test_stage_optimization_plan(
-      &buffer_manager, GpuBackend::OpenCL, "Concat", concat, ov::element::f16,
+      &profile, GpuBackend::OpenCL, "Concat", concat, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, traits);
@@ -4320,10 +4295,11 @@ TEST(GfxStagePolicyTest,
 
 TEST(GfxStagePolicyTest,
      BroadcomHeavyPlainConvolutionStaysOnSharedMlirDirectRoute) {
-  FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
+  auto profile = make_broadcom_v3d_stage_profile();
+  profile.supports_conv_output_channel_blocking = true;
   const auto conv = make_large_chunked_conv_node();
   const auto plan =
-      select_test_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
+      select_test_stage_optimization_plan(&profile, GpuBackend::OpenCL,
                                      "Convolution", conv, ov::element::f16,
                                      /*has_bias=*/false,
                                      /*has_activation=*/false,
@@ -4349,10 +4325,11 @@ TEST(GfxStagePolicyTest,
 
 TEST(GfxStagePolicyTest,
      BroadcomHeavyConvolutionWithBiasStaysOnSharedMlirDirectRoute) {
-  FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
+  auto profile = make_broadcom_v3d_stage_profile();
+  profile.supports_conv_output_channel_blocking = true;
   const auto conv = make_large_chunked_conv_node();
   const auto plan =
-      select_test_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
+      select_test_stage_optimization_plan(&profile, GpuBackend::OpenCL,
                                      "Convolution", conv, ov::element::f16,
                                      /*has_bias=*/true,
                                      /*has_activation=*/false,
@@ -4371,10 +4348,11 @@ TEST(GfxStagePolicyTest,
 
 TEST(GfxStagePolicyTest,
      BroadcomHeavyConvolutionWithActivationStaysOnSharedMlirDirectRoute) {
-  FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
+  auto profile = make_broadcom_v3d_stage_profile();
+  profile.supports_conv_output_channel_blocking = true;
   const auto conv = make_large_chunked_conv_node();
   const auto plan =
-      select_test_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
+      select_test_stage_optimization_plan(&profile, GpuBackend::OpenCL,
                                      "Convolution", conv, ov::element::f16,
                                      /*has_bias=*/true,
                                      /*has_activation=*/true,
@@ -4387,10 +4365,11 @@ TEST(GfxStagePolicyTest,
 
 TEST(GfxStagePolicyTest,
      BroadcomHeavyConvolutionWithBatchNormStaysOnSharedMlirDirectRoute) {
-  FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
+  auto profile = make_broadcom_v3d_stage_profile();
+  profile.supports_conv_output_channel_blocking = true;
   const auto conv = make_large_chunked_conv_node();
   const auto plan =
-      select_test_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
+      select_test_stage_optimization_plan(&profile, GpuBackend::OpenCL,
                                      "Convolution", conv, ov::element::f16,
                                      /*has_bias=*/false,
                                      /*has_activation=*/false,
@@ -4403,10 +4382,10 @@ TEST(GfxStagePolicyTest,
 
 TEST(GfxStagePolicyTest,
      BroadcomPointwiseConvolutionStaysOnSharedMlirDirectRoute) {
-  FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
+  auto profile = make_broadcom_v3d_stage_profile();
   const auto conv = make_pointwise_conv_node();
   const auto plan =
-      select_test_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
+      select_test_stage_optimization_plan(&profile, GpuBackend::OpenCL,
                                      "Convolution", conv, ov::element::f16,
                                      /*has_bias=*/false,
                                      /*has_activation=*/false,

@@ -20,7 +20,7 @@
 #include "compiler/operation_legalizer.hpp"
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
 #include "kernel_ir/opencl_kernels/matmul_f32_kernel.hpp"
-#include "mlir/gfx_apple_vendor_descriptors.hpp"
+#include "backends/metal/compiler/apple_vendor_descriptors.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/op/matmul.hpp"
 #include "openvino/op/parameter.hpp"

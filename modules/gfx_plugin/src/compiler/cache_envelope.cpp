@@ -34,6 +34,42 @@ void append_bool(std::ostringstream &os, bool value) {
   append_field(os, value ? "1" : "0");
 }
 
+void append_parallelism_band(std::ostringstream &os,
+                             const GpuChunkDispatchBand &band) {
+  append_field(os, std::to_string(band.min_work_per_elem));
+  append_field(os, std::to_string(band.elems_per_dispatch));
+  append_field(os, std::to_string(band.max_elems_per_dispatch));
+  append_field(os, std::to_string(band.target_dispatches));
+}
+
+void append_parallelism_profile(std::ostringstream &os,
+                                const GpuParallelismProfile &profile) {
+  append_field(os, profile.profile_key);
+  append_field(os, std::to_string(profile.preferred_simd_width));
+  append_field(os, std::to_string(profile.subgroup_size));
+  append_field(os, std::to_string(profile.max_total_threads_per_group));
+  append_field(os, std::to_string(profile.max_threads_per_group[0]));
+  append_field(os, std::to_string(profile.max_threads_per_group[1]));
+  append_field(os, std::to_string(profile.max_threads_per_group[2]));
+  append_bool(os, profile.supports_conv_output_channel_blocking);
+  append_bool(os, profile.supports_conv_channel_block_spatial_tiling);
+  append_bool(os, profile.sort_matmul_tiles_by_shape);
+  append_bool(os, profile.enable_skinny_matmul_tiles);
+  append_bool(os, profile.scale_conv_threads_for_large_spatial);
+  append_bool(os, profile.scale_conv_threads_for_dense_reduction);
+  append_bool(os, profile.scale_conv_threads_for_pointwise_reduction);
+  append_bool(os, profile.conv_spatial_micro_tile_requires_large_output_area);
+  append_field(
+      os, std::to_string(profile.chunk_dispatch.small_total_elems_threshold));
+  append_field(os, std::to_string(
+                       profile.chunk_dispatch.small_min_elems_per_dispatch));
+  append_parallelism_band(os, profile.chunk_dispatch.light);
+  append_parallelism_band(os, profile.chunk_dispatch.medium);
+  append_parallelism_band(os, profile.chunk_dispatch.heavy);
+  append_parallelism_band(os, profile.chunk_dispatch.very_heavy);
+  append_bool(os, profile.chunk_dispatch.retune_threads_to_workload);
+}
+
 std::string hex64(uint64_t value) {
   std::ostringstream os;
   os << std::hex << std::setw(16) << std::setfill('0') << value;
@@ -168,10 +204,14 @@ std::string make_manifest_cache_hash(const ManifestBundle &manifest) {
     append_field(material, stage.backend_domain);
     append_field(material, stage.kernel_unit_id);
     append_field(material, stage.kernel_unit_kind);
+    append_field(material, stage.runtime_shape.rule);
     append_bool(material, stage.requires_runtime_shape_args);
     append_field(material, stage.dispatch.dispatch_source);
     append_field(material, stage.memory.alias_group);
     append_bool(material, stage.memory.hidden_host_copy_allowed);
+    append_field(material, std::to_string(stage.submission.stage_weight));
+    append_field(material, std::to_string(stage.submission.macs_estimate));
+    append_bool(material, stage.submission.dependency_extension_boundary);
     append_field(material, std::to_string(stage.inputs.size()));
     for (const auto &tensor : stage.inputs) {
       append_field(material, tensor.logical_name);
@@ -255,6 +295,9 @@ std::string make_backend_capabilities_fingerprint(
   append_bool(material, post_ops.enable_hsigmoid_activation_fusion);
   append_bool(material, post_ops.enable_abs_activation_fusion);
   append_bool(material, post_ops.enable_sign_activation_fusion);
+  const auto &execution = capabilities.execution();
+  append_bool(material, execution.source_kernel_dispatch_enabled);
+  append_parallelism_profile(material, execution.fallback_parallelism);
   append_bool(material, capabilities.stage_placement() != nullptr);
   return hash_material(material.str());
 }

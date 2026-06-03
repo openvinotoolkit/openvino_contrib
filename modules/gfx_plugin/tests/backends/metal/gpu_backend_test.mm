@@ -16,10 +16,12 @@
 
 #include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "backends/metal/codegen/metal_compiler.hpp"
+#include "backends/metal/compiler/metal_backend_module.hpp"
 #include "backends/metal/compiler/metal_stage_placement.hpp"
 #include "backends/metal/runtime/metal_command_encoder.hpp"
 #include "backends/metal/runtime/mpsrt/mpsrt_context.hpp"
 #include "backends/metal/runtime/mpsrt/mpsrt_request.hpp"
+#include "backends/opencl/compiler/opencl_backend_module.hpp"
 #include "backends/opencl/compiler/opencl_stage_placement.hpp"
 #include "compiler/operation_support.hpp"
 #include "kernel_ir/gfx_custom_kernel_families.hpp"
@@ -29,10 +31,10 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/gfx_backend_custom_kernel_adapter.hpp"
 #include "mlir/gfx_mpsrt_metadata.hpp"
-#include "mlir/msl_codegen_apple_msl_dispatch.hpp"
+#include "backends/metal/compiler/msl_codegen_apple_msl_dispatch.hpp"
 #include "runtime/gfx_compile_profiling.hpp"
-#include "backends/metal/runtime/mpsrt/gfx_mpsrt_builder_plan.hpp"
-#include "runtime/gfx_stage_policy.hpp"
+#include "backends/metal/common/mpsrt/gfx_mpsrt_builder_plan.hpp"
+#include "compiler/stage_policy.hpp"
 
 #import <Metal/Metal.h>
 
@@ -48,20 +50,18 @@ GfxStageCompilerPolicy test_stage_compiler_policy(GpuBackend backend) {
       compiler::make_opencl_stage_placement_policy();
   static const auto metal_stage_placement =
       compiler::make_metal_stage_placement_policy();
-  static const auto opencl_post_ops =
-      compiler::make_post_op_fusion_capabilities(GpuBackend::OpenCL);
-  static const auto metal_post_ops =
-      compiler::make_post_op_fusion_capabilities(GpuBackend::Metal);
+  static const auto opencl_module = compiler::make_opencl_backend_module();
+  static const auto metal_module = compiler::make_metal_backend_module();
 
   GfxStageCompilerPolicy policy{};
   switch (backend) {
   case GpuBackend::OpenCL:
     policy.placement = opencl_stage_placement.get();
-    policy.post_ops = &opencl_post_ops;
+    policy.post_ops = &opencl_module->capabilities().post_ops();
     break;
   case GpuBackend::Metal:
     policy.placement = metal_stage_placement.get();
-    policy.post_ops = &metal_post_ops;
+    policy.post_ops = &metal_module->capabilities().post_ops();
     break;
   case GpuBackend::Unknown:
   default:
@@ -71,13 +71,13 @@ GfxStageCompilerPolicy test_stage_compiler_policy(GpuBackend backend) {
 }
 
 GfxStageOptimizationPlan select_test_stage_optimization_plan(
-    const GpuBufferManager *buffer_manager, GpuBackend backend,
-    const std::string &stage_type, const std::shared_ptr<const ov::Node> &node,
+    GpuBackend backend, const std::string &stage_type,
+    const std::shared_ptr<const ov::Node> &node,
     const ov::element::Type &element_type, bool has_bias, bool has_activation,
     bool has_batchnorm, const GfxStageRuntimeTraits &traits) {
   const auto policy = test_stage_compiler_policy(backend);
   return ov::gfx_plugin::select_stage_optimization_plan(
-      buffer_manager, backend, stage_type, node, element_type, has_bias,
+      backend, stage_type, node, element_type, has_bias,
       has_activation, has_batchnorm, traits, &policy);
 }
 
@@ -1628,7 +1628,7 @@ kernel void softmax_kernel(device const float* input [[buffer(0)]],
   mlir::MLIRContext ctx;
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, GpuBackend::Metal, "Softmax", nullptr, ov::element::f32,
+      GpuBackend::Metal, "Softmax", nullptr, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
@@ -1799,7 +1799,7 @@ kernel void gather_elements_kernel(device const float* data [[buffer(0)]],
   mlir::MLIRContext ctx;
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, GpuBackend::Metal, "GatherElements", nullptr, ov::element::f32,
+      GpuBackend::Metal, "GatherElements", nullptr, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
@@ -1984,7 +1984,7 @@ kernel void slice_kernel(device const float* input [[buffer(0)]],
   mlir::MLIRContext ctx;
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
   const auto plan = select_test_stage_optimization_plan(
-      nullptr, GpuBackend::Metal, "Slice", nullptr, ov::element::f32,
+      GpuBackend::Metal, "Slice", nullptr, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});

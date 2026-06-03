@@ -92,7 +92,8 @@ bool is_transpose_node(const std::shared_ptr<const ov::Node> &node) {
 
 OperationSupportResult
 query_opencl_operation(const std::shared_ptr<const ov::Node> &node) {
-  if (auto artifact = resolve_gfx_opencl_source_artifact(node)) {
+  if (auto artifact = resolve_gfx_opencl_source_artifact(node);
+      artifact && artifact->valid) {
     const bool generated = is_generated_opencl_kernel_unit(*artifact);
     return make_supported_operation(
         generated ? "generated_opencl_kernel_unit"

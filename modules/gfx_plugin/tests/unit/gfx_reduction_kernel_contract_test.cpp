@@ -30,7 +30,7 @@
 #include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/mlir_passes.hpp"
 #include "mlir/mlir_support.hpp"
-#include "mlir/msl_codegen_apple_msl_reduction.hpp"
+#include "backends/metal/compiler/msl_codegen_apple_msl_reduction.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/parameter.hpp"

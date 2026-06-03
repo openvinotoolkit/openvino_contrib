@@ -143,7 +143,7 @@ For Metal placement, MPSRT, MSL source planning, or request binding:
   integration behavior
 - for generated activation MSL plans, keep
   `tests/unit/gfx_activation_msl_contract_cases.cpp` aligned with
-  `src/mlir/msl_codegen_apple_msl_activation.*`
+  `src/backends/metal/compiler/msl_codegen_apple_msl_activation.*`
 - for generated reduction MSL plans, include
   `tests/unit/gfx_reduction_kernel_contract_test.cpp`
 - for generated Softmax/LogSoftmax MSL plans, include

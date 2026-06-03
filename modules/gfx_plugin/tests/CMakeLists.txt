@@ -154,7 +154,9 @@ set(GFX_TEST_LINK_LIBS
     gmock
     gtest_main
     gtest
-    gfx_runtime_common)
+    gfx_runtime_common
+    gfx_runtime_mlir
+    gfx_compiler_common)
 
 set(GFX_UNIT_TEST_LINK_LIBS
     openvino::funcSharedTests
@@ -166,9 +168,11 @@ set(GFX_UNIT_TEST_LINK_LIBS
     common_test_utils
     gfx_runtime_common
     gfx_runtime_mlir
+    gfx_compiler_common
     gfx_metal_mpsrt_contract
     gfx_mlir
     gfx_plugin_core
+    gfx_backend_module_provider
     MLIRInferIntRangeCommon
     MLIRInferIntRangeInterface
     MLIRTransformUtils

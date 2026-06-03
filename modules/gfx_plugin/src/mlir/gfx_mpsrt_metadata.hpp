@@ -14,12 +14,12 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/gfx_mpsrt_ops.hpp"
 #include "openvino/core/type/element_type.hpp"
-#include "backends/metal/runtime/mpsrt/gfx_mpsrt_abi.hpp"
-#include "backends/metal/runtime/mpsrt/gfx_mpsrt_builder_plan.hpp"
-#include "backends/metal/runtime/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp"
-#include "backends/metal/runtime/mpsrt/gfx_mpsrt_plan.hpp"
-#include "backends/metal/runtime/mpsrt/gfx_mpsrt_program.hpp"
-#include "runtime/gfx_stage_policy.hpp"
+#include "backends/metal/common/mpsrt/gfx_mpsrt_abi.hpp"
+#include "backends/metal/common/mpsrt/gfx_mpsrt_builder_plan.hpp"
+#include "backends/metal/common/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp"
+#include "backends/metal/common/mpsrt/gfx_mpsrt_plan.hpp"
+#include "backends/metal/common/mpsrt/gfx_mpsrt_program.hpp"
+#include "compiler/stage_policy.hpp"
 
 namespace ov {
 namespace gfx_plugin {

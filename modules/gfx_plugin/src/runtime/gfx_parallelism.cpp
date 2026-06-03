@@ -15,6 +15,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "runtime/gpu_buffer_manager.hpp"
+
 namespace ov {
 namespace gfx_plugin {
 
@@ -32,20 +34,19 @@ const char *conv_channel_block_accumulation_name(
 namespace {
 
 struct MatMulCacheKey {
-  GpuBackend backend = GpuBackend::Unknown;
-  std::string device_key;
+  std::string profile_key;
   ov::Shape output_shape;
 
   bool operator==(const MatMulCacheKey &other) const {
-    return backend == other.backend && device_key == other.device_key &&
+    return profile_key == other.profile_key &&
            output_shape == other.output_shape;
   }
 };
 
 struct MatMulCacheKeyHash {
   size_t operator()(const MatMulCacheKey &key) const {
-    size_t h = static_cast<size_t>(key.backend);
-    h ^= std::hash<std::string>{}(key.device_key) + 0x9e3779b9 + (h << 6) +
+    size_t h = std::hash<std::string>{}(key.profile_key);
+    h ^= 0x9e3779b9 + (h << 6) +
          (h >> 2);
     for (const auto dim : key.output_shape) {
       h ^= std::hash<size_t>{}(dim) + 0x9e3779b9 + (h << 6) + (h >> 2);
@@ -82,10 +83,10 @@ private:
 };
 
 struct ConvParallelCacheKey {
-  GpuBackend backend = GpuBackend::Unknown;
-  std::string device_key;
+  std::string profile_key;
   bool supports_conv_output_channel_blocking = false;
   bool supports_conv_channel_block_spatial_tiling = false;
+  bool conv_spatial_micro_tile_requires_large_output_area = false;
   ov::Shape output_shape;
   uint64_t input_channels = 0;
   uint64_t output_channels = 0;
@@ -94,11 +95,13 @@ struct ConvParallelCacheKey {
   bool depthwise = false;
 
   bool operator==(const ConvParallelCacheKey &other) const {
-    return backend == other.backend && device_key == other.device_key &&
+    return profile_key == other.profile_key &&
            supports_conv_output_channel_blocking ==
                other.supports_conv_output_channel_blocking &&
            supports_conv_channel_block_spatial_tiling ==
                other.supports_conv_channel_block_spatial_tiling &&
+           conv_spatial_micro_tile_requires_large_output_area ==
+               other.conv_spatial_micro_tile_requires_large_output_area &&
            output_shape == other.output_shape &&
            input_channels == other.input_channels &&
            output_channels == other.output_channels &&
@@ -109,12 +112,13 @@ struct ConvParallelCacheKey {
 
 struct ConvParallelCacheKeyHash {
   size_t operator()(const ConvParallelCacheKey &key) const {
-    size_t h = static_cast<size_t>(key.backend);
-    h ^= std::hash<std::string>{}(key.device_key) + 0x9e3779b9 + (h << 6) +
-         (h >> 2);
+    size_t h = std::hash<std::string>{}(key.profile_key);
     h ^= std::hash<bool>{}(key.supports_conv_output_channel_blocking) +
          0x9e3779b9 + (h << 6) + (h >> 2);
     h ^= std::hash<bool>{}(key.supports_conv_channel_block_spatial_tiling) +
+         0x9e3779b9 + (h << 6) + (h >> 2);
+    h ^= std::hash<bool>{}(
+             key.conv_spatial_micro_tile_requires_large_output_area) +
          0x9e3779b9 + (h << 6) + (h >> 2);
     for (const auto dim : key.output_shape) {
       h ^= std::hash<size_t>{}(dim) + 0x9e3779b9 + (h << 6) + (h >> 2);
@@ -161,14 +165,13 @@ private:
 };
 
 struct ChunkCacheKey {
-  GpuBackend backend = GpuBackend::Unknown;
-  std::string device_key;
+  std::string profile_key;
   std::string op_kind;
   uint64_t total_bucket = 0;
   uint64_t work_bucket = 0;
 
   bool operator==(const ChunkCacheKey &other) const {
-    return backend == other.backend && device_key == other.device_key &&
+    return profile_key == other.profile_key &&
            op_kind == other.op_kind && total_bucket == other.total_bucket &&
            work_bucket == other.work_bucket;
   }
@@ -176,9 +179,7 @@ struct ChunkCacheKey {
 
 struct ChunkCacheKeyHash {
   size_t operator()(const ChunkCacheKey &key) const {
-    size_t h = static_cast<size_t>(key.backend);
-    h ^= std::hash<std::string>{}(key.device_key) + 0x9e3779b9 + (h << 6) +
-         (h >> 2);
+    size_t h = std::hash<std::string>{}(key.profile_key);
     h ^= std::hash<std::string>{}(key.op_kind) + 0x9e3779b9 + (h << 6) +
          (h >> 2);
     h ^= std::hash<uint64_t>{}(key.total_bucket) + 0x9e3779b9 + (h << 6) +
@@ -256,25 +257,31 @@ MatMulDims extract_matmul_dims(const ov::Shape &output_shape) {
   return dims;
 }
 
-std::string make_device_key_fallback(const GfxParallelismCaps &caps) {
+std::string make_profile_key_fallback(const GfxParallelismCaps &caps) {
   std::ostringstream os;
-  os << static_cast<int>(caps.backend) << ':'
-     << gpu_device_family_name(caps.device_family) << ':'
-     << caps.preferred_simd_width << ':' << caps.subgroup_size << ':'
+  os << "parallelism:" << caps.preferred_simd_width << ':'
+     << caps.subgroup_size << ':'
      << caps.max_total_threads_per_group << ':' << caps.max_threads_per_group[0]
      << ':' << caps.max_threads_per_group[1] << ':'
      << caps.max_threads_per_group[2] << ':'
      << (caps.supports_conv_output_channel_blocking ? 1 : 0) << ':'
-     << (caps.supports_conv_channel_block_spatial_tiling ? 1 : 0);
+     << (caps.supports_conv_channel_block_spatial_tiling ? 1 : 0) << ':'
+     << (caps.sort_matmul_tiles_by_shape ? 1 : 0) << ':'
+     << (caps.enable_skinny_matmul_tiles ? 1 : 0) << ':'
+     << (caps.scale_conv_threads_for_large_spatial ? 1 : 0) << ':'
+     << (caps.scale_conv_threads_for_dense_reduction ? 1 : 0) << ':'
+     << (caps.scale_conv_threads_for_pointwise_reduction ? 1 : 0) << ':'
+     << (caps.conv_spatial_micro_tile_requires_large_output_area ? 1 : 0)
+     << ':' << (caps.chunk_dispatch.retune_threads_to_workload ? 1 : 0);
   return os.str();
 }
 
 MatMulCacheKey make_cache_key(const GfxParallelismCaps &caps,
                               const ov::Shape &output_shape) {
   MatMulCacheKey key;
-  key.backend = caps.backend;
-  key.device_key = caps.device_key.empty() ? make_device_key_fallback(caps)
-                                           : caps.device_key;
+  key.profile_key =
+      caps.profile_key.empty() ? make_profile_key_fallback(caps)
+                               : caps.profile_key;
   key.output_shape = output_shape;
   return key;
 }
@@ -284,13 +291,15 @@ ConvParallelCacheKey make_conv_parallel_cache_key(
     uint64_t input_channels, uint64_t output_channels, uint64_t kernel_work,
     bool stride2, bool depthwise) {
   ConvParallelCacheKey key;
-  key.backend = caps.backend;
-  key.device_key = caps.device_key.empty() ? make_device_key_fallback(caps)
-                                           : caps.device_key;
+  key.profile_key =
+      caps.profile_key.empty() ? make_profile_key_fallback(caps)
+                               : caps.profile_key;
   key.supports_conv_output_channel_blocking =
       caps.supports_conv_output_channel_blocking;
   key.supports_conv_channel_block_spatial_tiling =
       caps.supports_conv_channel_block_spatial_tiling;
+  key.conv_spatial_micro_tile_requires_large_output_area =
+      caps.conv_spatial_micro_tile_requires_large_output_area;
   key.output_shape = output_shape;
   key.input_channels = input_channels;
   key.output_channels = output_channels;
@@ -485,9 +494,9 @@ ChunkCacheKey make_chunk_cache_key(const GfxParallelismCaps &caps,
                                    uint64_t total_elems,
                                    uint64_t work_per_elem) {
   ChunkCacheKey key;
-  key.backend = caps.backend;
-  key.device_key = caps.device_key.empty() ? make_device_key_fallback(caps)
-                                           : caps.device_key;
+  key.profile_key =
+      caps.profile_key.empty() ? make_profile_key_fallback(caps)
+                               : caps.profile_key;
   key.op_kind = op_kind;
   key.total_bucket = bucketize(total_elems);
   key.work_bucket = bucketize(work_per_elem);
@@ -627,13 +636,9 @@ ThreadPair choose_conv_thread_pair(const GfxParallelismCaps &caps,
 
 uint32_t select_conv_accumulator_budget(const GfxParallelismCaps &caps);
 
-bool uses_compact_conv_channel_only_guard(const GfxParallelismCaps &caps) {
-  return caps.device_family == GpuDeviceFamily::BroadcomV3D;
-}
-
 uint64_t min_output_area_for_conv_spatial_micro_tile(
     const GfxParallelismCaps &caps, uint32_t wave) {
-  if (!uses_compact_conv_channel_only_guard(caps)) {
+  if (!caps.conv_spatial_micro_tile_requires_large_output_area) {
     return 1;
   }
   return static_cast<uint64_t>(std::max<uint32_t>(1u, wave)) *
@@ -895,10 +900,10 @@ ConvParallelismPlan make_conv_parallelism_plan(
 
 GfxParallelismCaps
 make_caps_from_device_info(const GpuExecutionDeviceInfo &info) {
-  GfxParallelismCaps caps{};
-  caps.backend = info.backend;
-  caps.device_family = info.device_family;
-  caps.device_key = info.device_key;
+  GfxParallelismCaps caps = info.parallelism_profile;
+  if (caps.profile_key.empty()) {
+    caps.profile_key = info.device_key;
+  }
   caps.preferred_simd_width = std::max<uint32_t>(info.preferred_simd_width, 1u);
   caps.subgroup_size = std::max<uint32_t>(info.subgroup_size, 1u);
   caps.max_total_threads_per_group =
@@ -914,28 +919,14 @@ make_caps_from_device_info(const GpuExecutionDeviceInfo &info) {
   return caps;
 }
 
-GfxParallelismCaps make_default_caps(GpuBackend backend) {
+GfxParallelismCaps make_default_caps() {
   GfxParallelismCaps caps{};
-  caps.backend = backend;
-  caps.device_family = backend == GpuBackend::Metal ? GpuDeviceFamily::Apple
-                                                    : GpuDeviceFamily::Generic;
+  caps.profile_key = "parallelism:default";
   caps.preferred_simd_width = 32;
   caps.subgroup_size = 32;
-  if (backend == GpuBackend::OpenCL) {
-    caps.device_key = "opencl:default";
-    caps.max_total_threads_per_group = 128;
-    caps.max_threads_per_group = {128, 128, 64};
-  } else if (backend == GpuBackend::Metal) {
-    caps.device_key = "metal:default";
-    caps.max_total_threads_per_group = 64;
-    caps.max_threads_per_group = {64, 64, 64};
-    caps.supports_conv_output_channel_blocking = true;
-    caps.supports_conv_channel_block_spatial_tiling = true;
-  } else {
-    caps.device_key = "unknown:default";
-    caps.max_total_threads_per_group = 1;
-    caps.max_threads_per_group = {1, 1, 1};
-  }
+  caps.max_total_threads_per_group = 128;
+  caps.max_threads_per_group = {128, 128, 64};
+  caps.chunk_dispatch = make_opencl_chunk_dispatch_profile();
   return caps;
 }
 
@@ -1021,36 +1012,26 @@ ChunkDispatchPlan select_chunk_dispatch_plan_generic(
       std::max<uint32_t>(wave, 64u),
       std::max<uint32_t>(1u, caps.max_total_threads_per_group));
 
-  uint32_t elems = 1024;
-  uint32_t max_elems = 16384;
-  uint32_t target_dispatches = 16;
-  if (caps.backend == GpuBackend::Metal) {
-    elems = work_per_elem >= 256 ? 4096 : 8192;
-    max_elems = 16384;
-    target_dispatches = work_per_elem >= 256 ? 8u : 12u;
-  } else {
-    if (work_per_elem >= 1024) {
-      elems = 4096;
-      max_elems = 16384;
-      target_dispatches = 8;
-    } else if (work_per_elem >= 256) {
-      elems = 8192;
-      max_elems = 32768;
-      target_dispatches = 8;
-    } else if (work_per_elem >= 64) {
-      elems = 16384;
-      max_elems = 32768;
-      target_dispatches = 12;
-    } else {
-      elems = 32768;
-      max_elems = 65536;
-      target_dispatches = 16;
-    }
+  const auto &chunk_profile = caps.chunk_dispatch;
+  const GpuChunkDispatchBand *band = &chunk_profile.light;
+  if (work_per_elem >= chunk_profile.very_heavy.min_work_per_elem) {
+    band = &chunk_profile.very_heavy;
+  } else if (work_per_elem >= chunk_profile.heavy.min_work_per_elem) {
+    band = &chunk_profile.heavy;
+  } else if (work_per_elem >= chunk_profile.medium.min_work_per_elem) {
+    band = &chunk_profile.medium;
   }
 
-  if (total_elems <= 16384) {
-    elems =
-        static_cast<uint32_t>(std::max<uint64_t>(1024, bucketize(total_elems)));
+  uint32_t elems = std::max<uint32_t>(1u, band->elems_per_dispatch);
+  uint32_t max_elems = std::max<uint32_t>(
+      elems, std::max<uint32_t>(1u, band->max_elems_per_dispatch));
+  uint32_t target_dispatches =
+      std::max<uint32_t>(1u, band->target_dispatches);
+
+  if (total_elems <= chunk_profile.small_total_elems_threshold) {
+    elems = static_cast<uint32_t>(std::max<uint64_t>(
+        std::max<uint32_t>(1u, chunk_profile.small_min_elems_per_dispatch),
+        bucketize(total_elems)));
   } else {
     const uint64_t min_elems_for_budget =
         bucketize(ceil_div_u64(total_elems, target_dispatches));
@@ -1060,165 +1041,20 @@ ChunkDispatchPlan select_chunk_dispatch_plan_generic(
   elems = std::min<uint32_t>(elems, max_elems);
 
   plan.elems_per_dispatch = elems;
+  if (chunk_profile.retune_threads_to_workload) {
+    plan.threads_per_group = select_hardware_relative_threadgroup(
+        caps, total_elems, work_per_elem, plan.threads_per_group);
+  }
   plan.variant = op_kind + "_chunk_" + std::to_string(plan.elems_per_dispatch);
   return plan;
 }
 
-class ParallelismStrategy {
-public:
-  virtual ~ParallelismStrategy() = default;
-
-  virtual std::vector<MatMulParallelismPlan>
-  enumerate_matmul(const GfxParallelismCaps &caps,
-                   const ov::Shape &output_shape) const {
-    return enumerate_matmul_parallelism_candidates_generic(
-        caps, output_shape, /*include_skinny_candidates=*/false);
-  }
-
-  virtual ChunkDispatchPlan
-  select_chunk_dispatch(const GfxParallelismCaps &caps,
-                        const std::string &op_kind, uint64_t total_elems,
-                        uint64_t work_per_elem) const = 0;
-
-  virtual ConvParallelismPlan
-  select_conv_parallel(const GfxParallelismCaps &caps,
-                       const ov::Shape &output_shape, uint64_t input_channels,
-                       uint64_t output_channels, uint64_t kernel_work,
-                       bool stride2, bool depthwise) const = 0;
-};
-
-class MetalParallelismStrategy final : public ParallelismStrategy {
-public:
-  ChunkDispatchPlan
-  select_chunk_dispatch(const GfxParallelismCaps &caps,
-                        const std::string &op_kind, uint64_t total_elems,
-                        uint64_t work_per_elem) const override {
-    return select_chunk_dispatch_plan_generic(caps, op_kind, total_elems,
-                                              work_per_elem);
-  }
-
-  ConvParallelismPlan select_conv_parallel(const GfxParallelismCaps &caps,
-                                           const ov::Shape &output_shape,
-                                           uint64_t input_channels,
-                                           uint64_t output_channels,
-                                           uint64_t kernel_work, bool stride2,
-                                           bool depthwise) const override {
-    const uint32_t wave = std::max<uint32_t>(
-        1u, std::max(caps.subgroup_size, caps.preferred_simd_width));
-    return make_conv_parallelism_plan(caps, output_shape, input_channels,
-                                      output_channels, kernel_work, stride2,
-                                      depthwise, wave);
-  }
-};
-
-class OpenClParallelismStrategyBase : public ParallelismStrategy {
-public:
-  std::vector<MatMulParallelismPlan>
-  enumerate_matmul(const GfxParallelismCaps &caps,
-                   const ov::Shape &output_shape) const override {
-    auto plans = enumerate_matmul_parallelism_candidates_generic(
-        caps, output_shape, /*include_skinny_candidates=*/false);
-    tune_matmul_candidates(caps, output_shape, plans);
-    return plans;
-  }
-
-  ChunkDispatchPlan select_chunk_dispatch(const GfxParallelismCaps &caps,
-                                          const std::string &op_kind,
-                                          uint64_t total_elems,
-                                          uint64_t work_per_elem) const final {
-    auto plan = select_chunk_dispatch_plan_generic(caps, op_kind, total_elems,
-                                                   work_per_elem);
-    tune_chunk_dispatch(caps, op_kind, total_elems, work_per_elem, plan);
-    return plan;
-  }
-
-  ConvParallelismPlan select_conv_parallel(const GfxParallelismCaps &caps,
-                                           const ov::Shape &output_shape,
-                                           uint64_t input_channels,
-                                           uint64_t output_channels,
-                                           uint64_t kernel_work, bool stride2,
-                                           bool depthwise) const final {
-    const uint32_t wave = std::max<uint32_t>(
-        1u, std::max(caps.subgroup_size, caps.preferred_simd_width));
-    auto plan = make_conv_parallelism_plan(caps, output_shape, input_channels,
-                                           output_channels, kernel_work,
-                                           stride2, depthwise, wave);
-    tune_conv_parallel(caps, output_shape, input_channels, output_channels,
-                       kernel_work, stride2, depthwise, plan);
-    return plan;
-  }
-
-protected:
-  virtual void
-  tune_matmul_candidates(const GfxParallelismCaps &caps,
-                         const ov::Shape &output_shape,
-                         std::vector<MatMulParallelismPlan> &plans) const {
-    sort_matmul_candidates_by_shape(caps, output_shape, plans,
-                                    /*prefer_skinny_tiles=*/false);
-  }
-
-  virtual void tune_chunk_dispatch(const GfxParallelismCaps & /*caps*/,
-                                   const std::string & /*op_kind*/,
-                                   uint64_t /*total_elems*/,
-                                   uint64_t /*work_per_elem*/,
-                                   ChunkDispatchPlan & /*plan*/) const {}
-
-  virtual void tune_conv_parallel(const GfxParallelismCaps & /*caps*/,
-                                  const ov::Shape & /*output_shape*/,
-                                  uint64_t /*input_channels*/,
-                                  uint64_t /*output_channels*/,
-                                  uint64_t /*kernel_work*/, bool /*stride2*/,
-                                  bool /*depthwise*/,
-                                  ConvParallelismPlan & /*plan*/) const {}
-};
-
-class GenericOpenClParallelismStrategy final
-    : public OpenClParallelismStrategyBase {};
-
-class AdrenoOpenClParallelismStrategy final
-    : public OpenClParallelismStrategyBase {};
-
-class BroadcomV3DParallelismStrategy final
-    : public OpenClParallelismStrategyBase {
-protected:
-  std::vector<MatMulParallelismPlan>
-  enumerate_matmul(const GfxParallelismCaps &caps,
-                   const ov::Shape &output_shape) const override {
-    const auto dims = extract_matmul_dims(output_shape);
-    const bool include_skinny_candidates =
-        dims.batch == 1 && dims.n >= dims.m * 8u;
-    auto plans = enumerate_matmul_parallelism_candidates_generic(
-        caps, output_shape, include_skinny_candidates);
-    tune_matmul_candidates(caps, output_shape, plans);
-    return plans;
-  }
-
-  void tune_matmul_candidates(
-      const GfxParallelismCaps &caps, const ov::Shape &output_shape,
-      std::vector<MatMulParallelismPlan> &plans) const override {
-    const auto dims = extract_matmul_dims(output_shape);
-    const bool prefer_skinny_tiles = dims.batch == 1 && dims.n >= dims.m * 8u;
-    sort_matmul_candidates_by_shape(caps, output_shape, plans,
-                                    prefer_skinny_tiles);
-  }
-
-  void tune_chunk_dispatch(const GfxParallelismCaps &caps,
-                           const std::string & /*op_kind*/,
-                           uint64_t total_elems, uint64_t work_per_elem,
-                           ChunkDispatchPlan &plan) const override {
-    plan.threads_per_group = select_hardware_relative_threadgroup(
-        caps, total_elems, work_per_elem, plan.threads_per_group);
-  }
-
-  void tune_conv_parallel(const GfxParallelismCaps &caps,
-                          const ov::Shape &output_shape,
-                          uint64_t input_channels, uint64_t output_channels,
-                          uint64_t kernel_work, bool stride2, bool depthwise,
-                          ConvParallelismPlan &plan) const override {
-    const auto profile =
-        make_conv_workload_profile(caps, output_shape, input_channels,
-                                   output_channels, kernel_work, depthwise);
-    uint32_t default_threads = profile.wave;
+uint32_t select_conv_default_threads(const GfxParallelismCaps &caps,
+                                     const ConvWorkloadProfile &profile,
+                                     uint64_t output_channels, bool stride2,
+                                     bool depthwise) {
+  uint32_t default_threads = profile.wave;
+  if (caps.scale_conv_threads_for_large_spatial) {
     if (!depthwise && profile.spatially_huge) {
       const uint32_t huge_spatial_threads =
           output_channels >= static_cast<uint64_t>(profile.wave) * 2u
@@ -1229,55 +1065,33 @@ protected:
                output_channels >= static_cast<uint64_t>(profile.wave) * 2u) {
       default_threads = clamp_threadgroup_candidate(caps, profile.wave * 2u);
     }
-    if (!depthwise && profile.dense_reduction &&
-        profile.spatial >= static_cast<uint64_t>(profile.wave) * profile.wave *
-                               4u) {
-      default_threads =
-          clamp_threadgroup_candidate(caps, stride2 ? profile.wave * 4u
-                                                    : profile.wave * 2u);
-      if (!stride2 && profile.very_dense_reduction &&
-          profile.spatially_large) {
-        default_threads = profile.dense_threads;
-      } else if (stride2 && profile.very_dense_reduction &&
-                 profile.spatial >=
-                     static_cast<uint64_t>(profile.wave) * profile.wave * 8u) {
-        default_threads = profile.dense_threads;
-      }
-      if (profile.ultra_dense_reduction && profile.spatially_huge) {
-        default_threads = profile.dense_threads;
-      }
+  }
+  if (caps.scale_conv_threads_for_dense_reduction && !depthwise &&
+      profile.dense_reduction &&
+      profile.spatial >=
+          static_cast<uint64_t>(profile.wave) * profile.wave * 4u) {
+    default_threads =
+        clamp_threadgroup_candidate(caps, stride2 ? profile.wave * 4u
+                                                  : profile.wave * 2u);
+    if (!stride2 && profile.very_dense_reduction && profile.spatially_large) {
+      default_threads = profile.dense_threads;
+    } else if (stride2 && profile.very_dense_reduction &&
+               profile.spatial >=
+                   static_cast<uint64_t>(profile.wave) * profile.wave * 8u) {
+      default_threads = profile.dense_threads;
     }
+    if (profile.ultra_dense_reduction && profile.spatially_huge) {
+      default_threads = profile.dense_threads;
+    }
+  }
+  if (caps.scale_conv_threads_for_pointwise_reduction) {
     if (profile.pointwise_or_light_reduction) {
       default_threads = profile.balanced_threads;
     } else if (profile.pointwise_dense_reduction) {
       default_threads = profile.dense_threads;
     }
-    plan = make_conv_parallelism_plan(caps, output_shape, input_channels,
-                                      output_channels, kernel_work, stride2,
-                                      depthwise, default_threads);
   }
-};
-
-const ParallelismStrategy &
-select_parallelism_strategy(const GfxParallelismCaps &caps) {
-  static const MetalParallelismStrategy metal_strategy{};
-  static const GenericOpenClParallelismStrategy generic_source_strategy{};
-  static const AdrenoOpenClParallelismStrategy adreno_source_strategy{};
-  static const BroadcomV3DParallelismStrategy broadcom_v3d_strategy{};
-
-  if (caps.backend == GpuBackend::Metal) {
-    return metal_strategy;
-  }
-  switch (caps.device_family) {
-  case GpuDeviceFamily::QualcommAdreno:
-    return adreno_source_strategy;
-  case GpuDeviceFamily::BroadcomV3D:
-    return broadcom_v3d_strategy;
-  case GpuDeviceFamily::Apple:
-  case GpuDeviceFamily::Generic:
-  default:
-    return generic_source_strategy;
-  }
+  return default_threads;
 }
 
 } // namespace
@@ -1289,13 +1103,23 @@ query_parallelism_caps(const GpuBufferManager *buffer_manager) {
       return make_caps_from_device_info(*info);
     }
   }
-  return make_default_caps(GpuBackend::Unknown);
+  return make_default_caps();
 }
 
 std::vector<MatMulParallelismPlan>
 enumerate_matmul_parallelism_candidates(const GfxParallelismCaps &caps,
                                         const ov::Shape &output_shape) {
-  return select_parallelism_strategy(caps).enumerate_matmul(caps, output_shape);
+  const auto dims = extract_matmul_dims(output_shape);
+  const bool skinny_output = dims.batch == 1 && dims.n >= dims.m * 8u;
+  auto plans = enumerate_matmul_parallelism_candidates_generic(
+      caps, output_shape,
+      caps.enable_skinny_matmul_tiles && skinny_output);
+  if (caps.sort_matmul_tiles_by_shape) {
+    sort_matmul_candidates_by_shape(
+        caps, output_shape,
+        plans, caps.enable_skinny_matmul_tiles && skinny_output);
+  }
+  return plans;
 }
 
 MatMulParallelismPlan select_matmul_parallelism(const GfxParallelismCaps &caps,
@@ -1334,10 +1158,16 @@ ConvParallelismPlan select_conv_parallelism(const GfxParallelismCaps &caps,
     return *cached;
   }
 
+  const auto profile =
+      make_conv_workload_profile(caps, output_shape, input_channels,
+                                 output_channels, kernel_work, depthwise);
+  const uint32_t default_threads =
+      select_conv_default_threads(caps, profile, output_channels, stride2,
+                                  depthwise);
   ConvParallelismPlan plan =
-      select_parallelism_strategy(caps).select_conv_parallel(
-          caps, output_shape, input_channels, output_channels, kernel_work,
-          stride2, depthwise);
+      make_conv_parallelism_plan(caps, output_shape, input_channels,
+                                 output_channels, kernel_work, stride2,
+                                 depthwise, default_threads);
   ConvParallelTuningCache::instance().store(key, plan);
   return plan;
 }
@@ -1353,8 +1183,8 @@ ChunkDispatchPlan select_chunk_dispatch_plan(const GfxParallelismCaps &caps,
   }
 
   ChunkDispatchPlan plan =
-      select_parallelism_strategy(caps).select_chunk_dispatch(
-          caps, op_kind, total_elems, work_per_elem);
+      select_chunk_dispatch_plan_generic(caps, op_kind, total_elems,
+                                         work_per_elem);
   ChunkTuningCache::instance().store(key, plan);
   return plan;
 }

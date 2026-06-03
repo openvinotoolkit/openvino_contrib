@@ -10,9 +10,9 @@
 #include <vector>
 
 #include "openvino/core/model.hpp"
-#include "runtime/gfx_activation.hpp"
+#include "common/gfx_activation.hpp"
 #include "runtime/gfx_batchnorm.hpp"
-#include "runtime/gfx_bias.hpp"
+#include "common/gfx_bias.hpp"
 
 namespace ov {
 namespace gfx_plugin {

@@ -24,6 +24,9 @@ struct RuntimeTensorBindingContract {
   std::string storage_kind = "device_buffer";
   std::string lifetime_class;
   std::string alias_group;
+  std::string stateful_prebind_variable_id;
+  std::string stateful_prebind_shape_rule = "none";
+  int64_t stateful_prebind_shape_axis = -1;
   bool external_binding = false;
   bool host_visible = false;
 };
@@ -48,8 +51,14 @@ struct RuntimeStageExecutableDescriptor {
   uint32_t abi_output_arg_count = 0;
   std::string dispatch_contract;
   std::string layout_contract = "logical";
+  std::string runtime_shape_rule = "static_or_descriptor";
   bool requires_runtime_shape_args = false;
   bool tensor_view_only = false;
+  uint32_t submission_stage_weight = 1;
+  uint64_t submission_macs_estimate = 0;
+  bool submission_dependency_boundary = false;
+  std::string stateful_effect = "none";
+  std::string stateful_variable_id;
   std::vector<std::string> tensor_roles;
   std::vector<std::string> scalar_roles;
   std::string exception_ticket;

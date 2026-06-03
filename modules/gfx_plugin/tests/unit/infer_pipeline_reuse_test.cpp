@@ -9,6 +9,7 @@
 
 #include "plugin/infer_io_utils.hpp"
 #include "runtime/fused_output_lifetime_plan.hpp"
+#include "runtime/infer_executor.hpp"
 #include "openvino/op/add.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/relu.hpp"
@@ -365,14 +366,13 @@ TEST(InferPipelineReuseTest, ReusesClonedPipelineAndOutputHandlesAcrossPreparati
 
     FakeAllocator allocator;
     GpuBufferPool pool(allocator);
-    std::vector<InferStage> reusable_pipeline;
-    std::vector<std::vector<BufferHandle>> stage_handles;
-    StageOutputBufferWorkspace stage_workspace;
+    BackendInferState runtime_state;
     std::vector<std::shared_ptr<GfxRemoteTensor>> remote_outputs;
     const std::vector<std::shared_ptr<GfxRemoteTensor>> remote_inputs;
     const std::vector<ov::Output<const ov::Node>> outputs;
     const std::unordered_map<const ov::Node*, size_t> node_map;
     const std::unordered_map<const ov::Node*, size_t> param_map;
+    const std::shared_ptr<const ov::Model> runtime_model;
     auto runtime_descriptor = make_test_runtime_descriptor(3);
 
     auto describe_output = [](InferStage& stage,
@@ -390,25 +390,23 @@ TEST(InferPipelineReuseTest, ReusesClonedPipelineAndOutputHandlesAcrossPreparati
                                       error_prefix);
     };
 
-    auto& first = prepare_reusable_pipeline_with_outputs(reusable_pipeline,
-                                                         descs,
-                                                         nullptr,
-                                                         nullptr,
-                                                         false,
-                                                         nullptr,
-                                                         outputs,
-                                                         node_map,
-                                                         param_map,
-                                                         remote_outputs,
-                                                         remote_inputs,
-                                                         GpuBackend::Metal,
-                                                         runtime_descriptor,
-                                                         pool,
-                                                         stage_handles,
-                                                         &stage_workspace,
-                                                         [](std::vector<InferStage>&) {},
-                                                         describe_output,
-                                                         "test");
+    InferRuntimeExecutionConfig config;
+    config.state = &runtime_state;
+    config.descs = &descs;
+    config.runtime_model = &runtime_model;
+    config.public_outputs = &outputs;
+    config.node_map = &node_map;
+    config.param_map = &param_map;
+    config.remote_outputs = &remote_outputs;
+    config.remote_inputs = &remote_inputs;
+    config.expected_backend = GpuBackend::Metal;
+    config.runtime_descriptor = runtime_descriptor;
+    config.pool = &pool;
+    config.post_prepare = [](std::vector<InferStage>&) {};
+    config.init_output_desc = describe_output;
+    config.error_prefix = "test";
+
+    auto& first = prepare_reusable_infer_runtime_pipeline(config);
     ASSERT_EQ(first.size(), 1u);
     ASSERT_EQ(first.front().outputs.size(), 1u);
     ASSERT_TRUE(first.front().outputs.front()->buf.valid());
@@ -419,25 +417,7 @@ TEST(InferPipelineReuseTest, ReusesClonedPipelineAndOutputHandlesAcrossPreparati
     EXPECT_EQ(CountingStage::compile_count(), 1u);
     EXPECT_EQ(allocator.allocate_count(), 1u);
 
-    auto& second = prepare_reusable_pipeline_with_outputs(reusable_pipeline,
-                                                          descs,
-                                                          nullptr,
-                                                          nullptr,
-                                                          false,
-                                                          nullptr,
-                                                          outputs,
-                                                          node_map,
-                                                          param_map,
-                                                          remote_outputs,
-                                                          remote_inputs,
-                                                          GpuBackend::Metal,
-                                                          runtime_descriptor,
-                                                          pool,
-                                                          stage_handles,
-                                                          &stage_workspace,
-                                                          [](std::vector<InferStage>&) {},
-                                                          describe_output,
-                                                          "test");
+    auto& second = prepare_reusable_infer_runtime_pipeline(config);
     ASSERT_EQ(second.size(), 1u);
     ASSERT_EQ(second.front().outputs.size(), 1u);
     ASSERT_TRUE(second.front().outputs.front()->buf.valid());
@@ -463,14 +443,13 @@ TEST(InferPipelineReuseTest, RuntimeMemoryPlanExtendsWorkspaceOutputLifetime) {
 
     FakeAllocator allocator;
     GpuBufferPool pool(allocator);
-    std::vector<InferStage> reusable_pipeline;
-    std::vector<std::vector<BufferHandle>> stage_handles;
-    StageOutputBufferWorkspace stage_workspace;
+    BackendInferState runtime_state;
     std::vector<std::shared_ptr<GfxRemoteTensor>> remote_outputs;
     const std::vector<std::shared_ptr<GfxRemoteTensor>> remote_inputs;
     const std::vector<ov::Output<const ov::Node>> outputs;
     const std::unordered_map<const ov::Node*, size_t> node_map;
     const std::unordered_map<const ov::Node*, size_t> param_map;
+    const std::shared_ptr<const ov::Model> runtime_model;
     auto runtime_descriptor =
         make_test_runtime_descriptor(2, /*output_last_stages=*/{1, 1});
 
@@ -489,26 +468,23 @@ TEST(InferPipelineReuseTest, RuntimeMemoryPlanExtendsWorkspaceOutputLifetime) {
                                       error_prefix);
     };
 
-    auto& pipeline = prepare_reusable_pipeline_with_outputs(
-        reusable_pipeline,
-        descs,
-        nullptr,
-        nullptr,
-        false,
-        nullptr,
-        outputs,
-        node_map,
-        param_map,
-        remote_outputs,
-        remote_inputs,
-        GpuBackend::Metal,
-        runtime_descriptor,
-        pool,
-        stage_handles,
-        &stage_workspace,
-        [](std::vector<InferStage>&) {},
-        describe_output,
-        "test");
+    InferRuntimeExecutionConfig config;
+    config.state = &runtime_state;
+    config.descs = &descs;
+    config.runtime_model = &runtime_model;
+    config.public_outputs = &outputs;
+    config.node_map = &node_map;
+    config.param_map = &param_map;
+    config.remote_outputs = &remote_outputs;
+    config.remote_inputs = &remote_inputs;
+    config.expected_backend = GpuBackend::Metal;
+    config.runtime_descriptor = runtime_descriptor;
+    config.pool = &pool;
+    config.post_prepare = [](std::vector<InferStage>&) {};
+    config.init_output_desc = describe_output;
+    config.error_prefix = "test";
+
+    auto& pipeline = prepare_reusable_infer_runtime_pipeline(config);
 
     ASSERT_EQ(pipeline.size(), 2u);
     ASSERT_TRUE(pipeline[0].outputs.front()->buf.valid());
@@ -516,8 +492,8 @@ TEST(InferPipelineReuseTest, RuntimeMemoryPlanExtendsWorkspaceOutputLifetime) {
     EXPECT_NE(pipeline[0].outputs.front()->buf.allocation_uid,
               pipeline[1].outputs.front()->buf.allocation_uid);
     EXPECT_EQ(allocator.allocate_count(), 2u);
-    EXPECT_EQ(stage_workspace.last_slots_used, 2u);
-    EXPECT_EQ(stage_workspace.last_peak_live_slots, 2u);
+    EXPECT_EQ(runtime_state.stage_output_workspace.last_slots_used, 2u);
+    EXPECT_EQ(runtime_state.stage_output_workspace.last_peak_live_slots, 2u);
 }
 
 TEST(InferPipelineReuseTest, ReusesPreparedExecutionInputsAcrossInferences) {

@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -57,6 +58,7 @@ struct PipelineStageOutputDesc {
   bool is_model_output = false;
   std::shared_ptr<const ov::Node> source_node;
   size_t source_port = 0;
+  std::string direct_stateful_assign_variable_id;
 };
 
 struct PipelineStageIoPlan {
@@ -93,6 +95,9 @@ bool is_model_output_port(const ModelOutputPorts &model_outputs,
                           const ov::Node *node, size_t port);
 
 bool is_executable_stage_node(const std::shared_ptr<ov::Node> &node);
+
+std::string direct_stateful_assign_variable_id(
+    const std::shared_ptr<const ov::Node> &node, size_t output_idx);
 
 PipelineAbsorbedInputTransformPlan plan_absorbed_input_transforms(
     const std::vector<std::shared_ptr<ov::Node>> &ordered_ops,

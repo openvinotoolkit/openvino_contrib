@@ -302,6 +302,20 @@ GpuExecutionDeviceInfo make_opencl_execution_device_info(const OpenClDeviceSelec
     info.supports_storage_buffer_8bit = true;
     info.supports_conv_output_channel_blocking = info.device_family == GpuDeviceFamily::QualcommAdreno;
     info.supports_conv_channel_block_spatial_tiling = info.device_family == GpuDeviceFamily::QualcommAdreno;
+    info.parallelism_profile.profile_key = info.device_key + ":parallelism";
+    info.parallelism_profile.chunk_dispatch = make_opencl_chunk_dispatch_profile();
+    info.parallelism_profile.supports_conv_output_channel_blocking =
+        info.supports_conv_output_channel_blocking;
+    info.parallelism_profile.supports_conv_channel_block_spatial_tiling =
+        info.supports_conv_channel_block_spatial_tiling;
+    if (info.device_family == GpuDeviceFamily::BroadcomV3D) {
+        info.parallelism_profile.enable_skinny_matmul_tiles = true;
+        info.parallelism_profile.chunk_dispatch.retune_threads_to_workload = true;
+        info.parallelism_profile.scale_conv_threads_for_large_spatial = true;
+        info.parallelism_profile.scale_conv_threads_for_dense_reduction = true;
+        info.parallelism_profile.scale_conv_threads_for_pointwise_reduction = true;
+        info.parallelism_profile.conv_spatial_micro_tile_requires_large_output_area = true;
+    }
     return info;
 }
 

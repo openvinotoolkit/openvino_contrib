@@ -3,13 +3,12 @@
 //
 #pragma once
 
-#include <array>
 #include <memory>
 #include <optional>
 #include <string>
 
 #include "common/gpu_backend.hpp"
-#include "common/gpu_device_profile.hpp"
+#include "common/gpu_parallelism_profile.hpp"
 #include "compiler/backend_target.hpp"
 #include "compiler/operation_support.hpp"
 #include "openvino/core/node.hpp"
@@ -19,17 +18,7 @@ namespace ov {
 namespace gfx_plugin {
 namespace compiler {
 
-struct StageParallelismProfile {
-  GpuBackend backend = GpuBackend::Unknown;
-  GpuDeviceFamily device_family = GpuDeviceFamily::Generic;
-  std::string device_key;
-  uint32_t preferred_simd_width = 1;
-  uint32_t subgroup_size = 1;
-  uint32_t max_total_threads_per_group = 1;
-  std::array<uint32_t, 3> max_threads_per_group{{1, 1, 1}};
-  bool supports_conv_output_channel_blocking = false;
-  bool supports_conv_channel_block_spatial_tiling = false;
-};
+using StageParallelismProfile = GpuParallelismProfile;
 
 struct StageSourceKernelDispatchPolicy {
   bool enabled = false;
@@ -59,7 +48,8 @@ StageCompilerPolicy make_stage_compiler_policy_from_capabilities(
     const BackendCapabilities &capabilities);
 
 StageSourceKernelDispatchPolicy
-make_stage_source_kernel_dispatch_policy(const BackendTarget &target);
+make_stage_source_kernel_dispatch_policy(
+    const BackendExecutionCapabilities &execution);
 
 StageCompilerPolicy resolve_stage_compiler_policy(GpuBackend backend);
 

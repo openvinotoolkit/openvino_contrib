@@ -9,7 +9,7 @@
 #include <utility>
 
 #include "openvino/core/except.hpp"
-#include "backends/metal/runtime/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp"
+#include "backends/metal/common/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp"
 
 namespace ov {
 namespace gfx_plugin {

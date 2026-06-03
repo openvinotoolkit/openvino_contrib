@@ -6,20 +6,19 @@
 
 #include <chrono>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
 #include "compiler/backend_config.hpp"
 #include "compiler/backend_registry.hpp"
-#include "compiler/pipeline_stage_fusion.hpp"
-#include "compiler/pipeline_stage_plan.hpp"
 #include "compiler/stage_compiler_policy.hpp"
 #include "runtime/executable_descriptor.hpp"
 #include "runtime/gfx_compile_profiling.hpp"
 #include "runtime/gfx_logger.hpp"
-#include "runtime/pipeline_stage_materializer.hpp"
 
 #include "openvino/core/except.hpp"
+#include "openvino/op/constant.hpp"
 #include "openvino/op/transpose.hpp"
 #include "transformations/rt_info/disable_fp16_compression.hpp"
 
@@ -28,20 +27,201 @@ namespace gfx_plugin {
 namespace compiler {
 namespace {
 
-void apply_pipeline_stage_io_plan(PipelineStageDesc &stage_desc,
-                                  compiler::PipelineStageIoPlan stage_plan) {
-  static_cast<compiler::PipelineStageIoPlan &>(stage_desc) =
-      std::move(stage_plan);
+using RuntimeStageDescriptorMap =
+    std::unordered_map<const ov::Node *,
+                       const RuntimeStageExecutableDescriptor *>;
+
+RuntimeStageDescriptorMap build_runtime_stage_descriptor_map(
+    const std::vector<std::shared_ptr<ov::Node>> &ordered_ops,
+    const RuntimeExecutableDescriptor &runtime_descriptor) {
+  OPENVINO_ASSERT(
+      runtime_descriptor.stages.size() == ordered_ops.size(),
+      "GFX: runtime executable descriptor stage count drift: descriptor=",
+      runtime_descriptor.stages.size(), " ordered_ops=", ordered_ops.size());
+
+  RuntimeStageDescriptorMap descriptors;
+  descriptors.reserve(runtime_descriptor.stages.size());
+  for (size_t i = 0; i < runtime_descriptor.stages.size(); ++i) {
+    const auto &node = ordered_ops[i];
+    const auto &descriptor = runtime_descriptor.stages[i];
+    OPENVINO_ASSERT(node, "GFX: runtime model ordered op ", i, " is null");
+    OPENVINO_ASSERT(
+        descriptor.stage_index == i,
+        "GFX: runtime executable descriptor stage index drift at ordered op ",
+        i);
+    OPENVINO_ASSERT(
+        descriptor.op_family == node->get_type_name(),
+        "GFX: runtime executable descriptor op-family drift at ordered op ", i,
+        ": descriptor=", descriptor.op_family, " node=", node->get_type_name());
+    const auto inserted = descriptors.emplace(node.get(), &descriptor);
+    OPENVINO_ASSERT(inserted.second,
+                    "GFX: duplicate runtime executable descriptor for node ",
+                    node->get_friendly_name(), " (", node->get_type_name(),
+                    ")");
+  }
+  return descriptors;
+}
+
+const RuntimeStageExecutableDescriptor *descriptor_for_node(
+    const RuntimeStageDescriptorMap &descriptors,
+    const std::shared_ptr<const ov::Node> &node) {
+  if (!node) {
+    return nullptr;
+  }
+  const auto it = descriptors.find(node.get());
+  return it == descriptors.end() ? nullptr : it->second;
+}
+
+size_t stage_index_for_node(const RuntimeStageDescriptorMap &descriptors,
+                            const std::shared_ptr<const ov::Node> &node) {
+  const auto *descriptor = descriptor_for_node(descriptors, node);
+  OPENVINO_ASSERT(descriptor,
+                  "GFX: missing compiler-owned runtime executable descriptor "
+                  "for stage index of op ",
+                  node ? node->get_friendly_name() : std::string("<null>"),
+                  " (", node ? node->get_type_name() : "<null>", ")");
+  return descriptor->stage_index;
+}
+
+PipelineStageFusionContract fusion_contract_for_node(
+    const RuntimeStageDescriptorMap &descriptors,
+    const std::shared_ptr<const ov::Node> &node) {
+  const auto *descriptor = descriptor_for_node(descriptors, node);
+  OPENVINO_ASSERT(descriptor,
+                  "GFX: missing compiler-owned runtime executable descriptor "
+                  "for fusion contract of op ",
+                  node ? node->get_friendly_name() : std::string("<null>"),
+                  " (", node ? node->get_type_name() : "<null>", ")");
+  PipelineStageFusionContract contract;
+  contract.op_family = !descriptor->op_family.empty()
+                           ? descriptor->op_family
+                           : (node ? node->get_type_name() : std::string{});
+  contract.origin = descriptor->origin;
+  contract.payload_kind = descriptor->payload_kind;
+  if (node && node->get_output_size() > 0) {
+    contract.element_type = node->get_output_element_type(0);
+  }
+  return contract;
+}
+
+struct AttentionSequenceStagePlan {
+  PipelineStageIoPlan io_plan;
+  std::vector<PipelineFusedInnerStagePlan> inner_stages;
+};
+
+std::optional<AttentionSequenceStagePlan> make_attention_sequence_stage_plan(
+    const FusionGroup &group,
+    const std::vector<std::shared_ptr<ov::Node>> &ordered_ops,
+    const PipelineStagePlanBuilder &stage_plan_builder,
+    const PipelineOutputAliasMap &output_aliases,
+    const RuntimeStageDescriptorMap &descriptors) {
+  const size_t stage_count = group.node_indices.size();
+  if (stage_count < 3) {
+    return std::nullopt;
+  }
+
+  std::unordered_map<const ov::Node *, size_t> fused_stage_index;
+  fused_stage_index.reserve(stage_count);
+  for (size_t i = 0; i < stage_count; ++i) {
+    const auto idx = group.node_indices[i];
+    if (idx >= ordered_ops.size()) {
+      return std::nullopt;
+    }
+    fused_stage_index[ordered_ops[idx].get()] = i;
+  }
+
+  std::vector<std::vector<size_t>> stage_output_slots(stage_count);
+  size_t fused_output_count = 1;
+  for (size_t i = 0; i < stage_count; ++i) {
+    const size_t idx = group.node_indices[i];
+    if (idx >= ordered_ops.size()) {
+      return std::nullopt;
+    }
+    const auto &stage_node = ordered_ops[idx];
+    stage_output_slots[i].reserve(stage_node->get_output_size());
+    for (size_t port = 0; port < stage_node->get_output_size(); ++port) {
+      if (i + 1 == stage_count && port == 0) {
+        stage_output_slots[i].push_back(0);
+      } else {
+        stage_output_slots[i].push_back(fused_output_count++);
+      }
+    }
+  }
+
+  std::unordered_map<PipelineOutputPortKey, size_t, PipelineOutputPortKeyHash>
+      external_map;
+  std::vector<PipelineStageInputLink> fused_inputs;
+  std::vector<PipelineFusedInnerStagePlan> inner_stages;
+  inner_stages.reserve(stage_count);
+  for (size_t i = 0; i < stage_count; ++i) {
+    const size_t idx = group.node_indices[i];
+    const auto &stage_node = ordered_ops[idx];
+    PipelineFusedInnerStagePlan inner_stage;
+    inner_stage.output_indices = stage_output_slots[i];
+    inner_stage.inputs.reserve(stage_node->get_input_size());
+    for (const auto &iv : stage_node->input_values()) {
+      auto src_node = iv.get_node();
+      const auto it_stage = fused_stage_index.find(src_node);
+      if (it_stage != fused_stage_index.end()) {
+        const size_t src_stage = it_stage->second;
+        if (iv.get_index() >= stage_output_slots[src_stage].size()) {
+          return std::nullopt;
+        }
+        inner_stage.inputs.push_back(
+            {PipelineFusedInputPlan::Kind::Output,
+             stage_output_slots[src_stage][iv.get_index()]});
+        continue;
+      }
+      if (ov::as_type_ptr<const ov::op::v0::Constant>(
+              iv.get_node_shared_ptr())) {
+        inner_stage.inputs.push_back({PipelineFusedInputPlan::Kind::None, 0});
+        continue;
+      }
+
+      auto remapped = stage_plan_builder.remap_input_link(
+          output_aliases, iv.get_node_shared_ptr(), iv.get_index());
+      PipelineOutputPortKey key{remapped.node.get(), remapped.port};
+      if (external_map.find(key) != external_map.end()) {
+        inner_stage.inputs.push_back(
+            {PipelineFusedInputPlan::Kind::External, external_map.at(key)});
+        continue;
+      }
+      const size_t ext_idx = fused_inputs.size();
+      external_map.emplace(key, ext_idx);
+      fused_inputs.push_back(std::move(remapped));
+      inner_stage.inputs.push_back(
+          {PipelineFusedInputPlan::Kind::External, ext_idx});
+    }
+    inner_stages.push_back(std::move(inner_stage));
+  }
+
+  const auto &final_node = ordered_ops[group.node_indices.back()];
+  AttentionSequenceStagePlan result;
+  result.io_plan = stage_plan_builder.make_fused_stage_plan(
+      final_node, fused_output_count, stage_index_for_node(descriptors, final_node));
+  result.io_plan.inputs = std::move(fused_inputs);
+  result.inner_stages = std::move(inner_stages);
+
+  for (size_t stage_idx = 0; stage_idx < stage_count; ++stage_idx) {
+    const size_t node_idx = group.node_indices[stage_idx];
+    const auto &out_node = ordered_ops[node_idx];
+    for (size_t port = 0; port < out_node->get_output_size(); ++port) {
+      const size_t slot = stage_output_slots[stage_idx][port];
+      stage_plan_builder.describe_output(result.io_plan, slot, out_node, port);
+      stage_plan_builder.append_output_alias(result.io_plan, out_node, port,
+                                             slot);
+    }
+  }
+
+  return result;
 }
 
 } // namespace
 
 PipelineStageBuildResult
-build_pipeline_stage_descriptors(const PipelineStageBuildRequest &request) {
+build_pipeline_stage_plan(const PipelineStageBuildRequest &request) {
   OPENVINO_ASSERT(request.runtime_model,
                   "GFX: pipeline stage builder requires runtime model");
-  OPENVINO_ASSERT(request.stage_factory,
-                  "GFX: pipeline stage builder requires backend stage factory");
   OPENVINO_ASSERT(request.runtime_descriptor,
                   "GFX: pipeline stage builder requires compiler-owned runtime "
                   "executable descriptor");
@@ -56,16 +236,8 @@ build_pipeline_stage_descriptors(const PipelineStageBuildRequest &request) {
       compiler::make_stage_compiler_policy_from_capabilities(
           backend_capabilities);
 
-  GpuStageRuntimeOptions stage_runtime_options{};
-  stage_runtime_options.diagnostic_f32_vendor_image =
-      request.diagnostic_f32_vendor_image;
-  stage_runtime_options.stage_placement_policy =
-      stage_compiler_policy.placement;
-  stage_runtime_options.post_op_fusion_capabilities =
-      stage_compiler_policy.post_ops;
-
-  gfx_log_info("StageFactory")
-      << "Building pipeline for backend=" << request.backend_name
+  gfx_log_info("StagePlan")
+      << "Planning pipeline for backend=" << request.backend_name
       << " ops=" << request.runtime_model->get_ops().size();
   const auto build_start = request.compile_trace
                                ? std::chrono::steady_clock::now()
@@ -77,6 +249,7 @@ build_pipeline_stage_descriptors(const PipelineStageBuildRequest &request) {
   }
 
   PipelineStageBuildResult result;
+  result.stage_compiler_policy = stage_compiler_policy;
   for (size_t i = 0; i < request.runtime_model->inputs().size(); ++i) {
     result.param_index[request.runtime_model->inputs()[i].get_node()] = i;
   }
@@ -85,18 +258,12 @@ build_pipeline_stage_descriptors(const PipelineStageBuildRequest &request) {
       compiler::collect_model_output_ports(*request.runtime_model);
   const compiler::PipelineStagePlanBuilder stage_plan_builder(model_outputs);
 
-  const auto ordered_ops = request.runtime_model->get_ordered_ops();
-  gfx_log_info("StageFactory") << "Ordered ops count=" << ordered_ops.size();
-  result.pipeline.reserve(ordered_ops.size());
-
-  const PipelineStageMaterializer stage_materializer(
-      *request.stage_factory, ordered_ops, *request.runtime_descriptor,
-      stage_runtime_options,
-      [&](uint64_t stage_record_key,
-          const compiler::PipelineVendorAttentionPlan &plan) {
-        return backend_module->materialize_vendor_attention_artifact(
-            stage_record_key, plan);
-      });
+  result.ordered_ops = request.runtime_model->get_ordered_ops();
+  const auto &ordered_ops = result.ordered_ops;
+  const auto descriptors = build_runtime_stage_descriptor_map(
+      ordered_ops, *request.runtime_descriptor);
+  gfx_log_info("StagePlan") << "Ordered ops count=" << ordered_ops.size();
+  result.stage_plans.reserve(ordered_ops.size());
 
   const bool has_unobserved_stage_edges = [&]() {
     for (const auto &node : ordered_ops) {
@@ -121,7 +288,7 @@ build_pipeline_stage_descriptors(const PipelineStageBuildRequest &request) {
   fusion_options.stage_compiler_policy = &stage_compiler_policy;
   fusion_options.fusion_contract_for =
       [&](const std::shared_ptr<const ov::Node> &stage_node) {
-        return stage_materializer.fusion_contract_for(stage_node);
+        return fusion_contract_for_node(descriptors, stage_node);
       };
 
   const auto fusion_selection = compiler::plan_pipeline_fusions(
@@ -191,7 +358,7 @@ build_pipeline_stage_descriptors(const PipelineStageBuildRequest &request) {
       continue;
     }
     if (!compiler::allow_stage_residual_add_fusion(
-            stage_materializer.fusion_contract_for(node))) {
+            fusion_contract_for_node(descriptors, node))) {
       continue;
     }
     rms_residual_adds.emplace(node.get(), add);
@@ -245,31 +412,33 @@ build_pipeline_stage_descriptors(const PipelineStageBuildRequest &request) {
         const auto &final_node = group->node_indices.empty()
                                      ? std::shared_ptr<ov::Node>{}
                                      : ordered_ops[group->node_indices.back()];
-        auto stage = plan ? stage_materializer.create_vendor_attention_stage(
-                                *plan, final_node)
-                          : nullptr;
-        if (request.compile_trace) {
-          request.compile_trace->increment_counter("stage_create_count");
-        }
-        if (stage && !group->node_indices.empty()) {
-          PipelineStageDesc stage_desc;
-          apply_pipeline_stage_io_plan(
-              stage_desc, stage_plan_builder.make_fused_stage_plan(
-                              final_node, 1,
-                              stage_materializer.stage_index_for(final_node)));
-          stage_desc.stage = std::move(stage);
-          stage_desc.inputs.push_back(stage_plan_builder.remap_input_link(
+        const auto *base_descriptor = descriptor_for_node(descriptors, final_node);
+        auto artifact =
+            plan && base_descriptor
+                ? backend_module->materialize_vendor_attention_artifact(
+                      base_descriptor->stage_record_key, *plan)
+                : PipelineVendorAttentionArtifact{};
+        if (plan && artifact.valid() && !group->node_indices.empty()) {
+          PipelineStageMaterializationPlan stage_plan;
+          stage_plan.kind = PipelineStageMaterializationKind::VendorAttention;
+          stage_plan.vendor_attention = *plan;
+          stage_plan.vendor_attention_artifact = std::move(artifact);
+          stage_plan.io_plan = stage_plan_builder.make_fused_stage_plan(
+              final_node, 1, stage_index_for_node(descriptors, final_node));
+          stage_plan.io_plan.inputs.push_back(stage_plan_builder.remap_input_link(
               fused_output_port_aliases, plan->query.node, plan->query.port));
-          stage_desc.inputs.push_back(stage_plan_builder.remap_input_link(
+          stage_plan.io_plan.inputs.push_back(stage_plan_builder.remap_input_link(
               fused_output_port_aliases, plan->key.node, plan->key.port));
-          stage_desc.inputs.push_back(stage_plan_builder.remap_input_link(
+          stage_plan.io_plan.inputs.push_back(stage_plan_builder.remap_input_link(
               fused_output_port_aliases, plan->value.node, plan->value.port));
-          stage_desc.outputs[0].shape = plan->output_shape;
-          stage_desc.outputs[0].type = plan->element_type;
-          stage_desc.outputs[0].source_node = final_node;
-          stage_desc.outputs[0].source_port = 0;
-          stage_plan_builder.merge_model_outputs(stage_desc, final_node.get());
-          stage_plan_builder.append_output_alias(stage_desc, final_node, 0, 0);
+          stage_plan.io_plan.outputs[0].shape = plan->output_shape;
+          stage_plan.io_plan.outputs[0].type = plan->element_type;
+          stage_plan.io_plan.outputs[0].source_node = final_node;
+          stage_plan.io_plan.outputs[0].source_port = 0;
+          stage_plan_builder.merge_model_outputs(stage_plan.io_plan,
+                                                 final_node.get());
+          stage_plan_builder.append_output_alias(stage_plan.io_plan, final_node,
+                                                 0, 0);
           stage_plan_builder.record_output_alias(fused_output_port_aliases,
                                                  final_node.get(), 0, 0);
 
@@ -282,8 +451,8 @@ build_pipeline_stage_descriptors(const PipelineStageBuildRequest &request) {
                 "vendor_attention_stage_count");
           }
 
-          const size_t idx = result.pipeline.size();
-          result.pipeline.emplace_back(std::move(stage_desc));
+          const size_t idx = result.stage_plans.size();
+          result.stage_plans.emplace_back(std::move(stage_plan));
           for (const auto node_idx : group->node_indices) {
             if (node_idx < ordered_ops.size()) {
               fused_indices.insert(node_idx);
@@ -296,19 +465,21 @@ build_pipeline_stage_descriptors(const PipelineStageBuildRequest &request) {
       }
       if (group->kind == "Attention" || group->kind == "AttentionScale" ||
           group->kind == "AttentionScaleMask" || group->kind == "NativeSDPA") {
-        auto materialized = stage_materializer.create_attention_sequence_stage(
-            *group, ordered_ops, stage_plan_builder, fused_output_port_aliases);
-        if (materialized) {
-          PipelineStageDesc stage_desc;
-          apply_pipeline_stage_io_plan(stage_desc,
-                                       std::move(materialized->io_plan));
-          stage_desc.output_lifetimes =
-              std::move(materialized->output_lifetimes);
-          stage_desc.stage = std::move(materialized->stage);
+        auto sequence_plan = make_attention_sequence_stage_plan(
+            *group, ordered_ops, stage_plan_builder, fused_output_port_aliases,
+            descriptors);
+        if (sequence_plan) {
+          PipelineStageMaterializationPlan stage_plan;
+          stage_plan.kind =
+              PipelineStageMaterializationKind::FusedAttentionSequence;
+          stage_plan.fusion_group = *group;
+          stage_plan.io_plan = std::move(sequence_plan->io_plan);
+          stage_plan.fused_inner_stages =
+              std::move(sequence_plan->inner_stages);
 
-          const size_t idx = result.pipeline.size();
-          result.pipeline.emplace_back(std::move(stage_desc));
-          for (const auto &alias : result.pipeline.back().output_aliases) {
+          const size_t idx = result.stage_plans.size();
+          result.stage_plans.emplace_back(std::move(stage_plan));
+          for (const auto &alias : result.stage_plans.back().io_plan.output_aliases) {
             stage_plan_builder.record_output_alias(
                 fused_output_port_aliases, alias.node.get(), alias.source_port,
                 alias.output_port);
@@ -321,8 +492,6 @@ build_pipeline_stage_descriptors(const PipelineStageBuildRequest &request) {
             }
           }
           if (request.compile_trace) {
-            request.compile_trace->increment_counter(
-                "stage_create_count", materialized->materialized_stage_count);
             request.compile_trace->increment_counter("fused_stage_count");
             request.compile_trace->increment_counter(
                 "fused_node_count",
@@ -334,8 +503,8 @@ build_pipeline_stage_descriptors(const PipelineStageBuildRequest &request) {
     }
 
     if (gfx_log_debug_enabled()) {
-      gfx_log_debug("StageFactory")
-          << "Preparing stage for " << node->get_type_name()
+      gfx_log_debug("StagePlan")
+          << "Planning stage for " << node->get_type_name()
           << " name=" << node->get_friendly_name();
     }
     if (primary_group &&
@@ -344,30 +513,23 @@ build_pipeline_stage_descriptors(const PipelineStageBuildRequest &request) {
         !ov::fp16_compression_is_disabled(node)) {
       ov::disable_fp16_compression(node);
     }
-    auto gpu_stage = stage_materializer.create_stage(node);
-    if (request.compile_trace) {
-      request.compile_trace->increment_counter("stage_create_count");
-    }
-    OPENVINO_ASSERT(gpu_stage, "GFX: unsupported op in MLIR pipeline: ",
-                    node->get_friendly_name(), " (", node->get_type_name(),
-                    ")");
 
-    PipelineStageDesc stage_desc;
-    apply_pipeline_stage_io_plan(
-        stage_desc, stage_plan_builder.make_stage_plan(
-                        node, stage_materializer.stage_index_for(node)));
-    stage_desc.stage = std::move(gpu_stage);
+    PipelineStageMaterializationPlan stage_plan;
+    stage_plan.kind = PipelineStageMaterializationKind::SingleStage;
+    stage_plan.io_plan = stage_plan_builder.make_stage_plan(
+        node, stage_index_for_node(descriptors, node));
     const auto residual_it = rms_residual_adds.find(node.get());
-    if (residual_it != rms_residual_adds.end() && residual_it->second &&
-        stage_desc.stage->fuse_residual_add()) {
+    if (residual_it != rms_residual_adds.end() && residual_it->second) {
+      stage_plan.residual_add =
+          PipelineStageResidualAddFusionPlan{residual_it->second};
       const auto &add = residual_it->second;
-      stage_desc.inputs.push_back(stage_plan_builder.remap_input_link(
+      stage_plan.io_plan.inputs.push_back(stage_plan_builder.remap_input_link(
           fused_output_port_aliases, add->input_value(0).get_node_shared_ptr(),
           add->input_value(0).get_index()));
-      stage_desc.inputs.push_back(stage_plan_builder.remap_input_link(
+      stage_plan.io_plan.inputs.push_back(stage_plan_builder.remap_input_link(
           fused_output_port_aliases, node->input_value(1).get_node_shared_ptr(),
           node->input_value(1).get_index()));
-      stage_desc.inputs.push_back(stage_plan_builder.remap_input_link(
+      stage_plan.io_plan.inputs.push_back(stage_plan_builder.remap_input_link(
           fused_output_port_aliases, add->input_value(1).get_node_shared_ptr(),
           add->input_value(1).get_index()));
     } else {
@@ -390,33 +552,27 @@ build_pipeline_stage_descriptors(const PipelineStageBuildRequest &request) {
                 node->get_friendly_name());
             linked_node = transpose->input_value(0).get_node_shared_ptr();
             linked_port = transpose->input_value(0).get_index();
-            GfxInputTransform transform;
-            transform.source_shape = transform_it->second.source_shape;
-            transform.transpose_permutation =
-                transform_it->second.transpose_permutation;
-            stage_desc.stage->set_input_transform(input_idx, transform);
+            stage_plan.input_transforms.push_back(
+                PipelineStageInputTransformBinding{input_idx,
+                                                   transform_it->second});
           }
         }
-        stage_desc.inputs.push_back(stage_plan_builder.remap_input_link(
+        stage_plan.io_plan.inputs.push_back(stage_plan_builder.remap_input_link(
             fused_output_port_aliases, linked_node, linked_port));
       }
     }
-    if (gfx_log_debug_enabled()) {
-      gfx_log_debug("StageFactory")
-          << "Created GpuStage for " << node->get_type_name()
-          << " name=" << node->get_friendly_name();
-    }
 
-    const size_t idx = result.pipeline.size();
+    const size_t idx = result.stage_plans.size();
     result.node_to_stage[node.get()] = idx;
     if (residual_it != rms_residual_adds.end() && residual_it->second) {
       result.node_to_stage[residual_it->second.get()] = idx;
     }
-    result.pipeline.emplace_back(std::move(stage_desc));
+    result.stage_plans.emplace_back(std::move(stage_plan));
 
     if (primary_group) {
       const auto *group = primary_group;
-      auto &stage = result.pipeline[idx];
+      auto &planned_stage = result.stage_plans[idx];
+      auto &io_plan = planned_stage.io_plan;
       auto mark_fused = [&](size_t fused_idx,
                             bool aliases_stage_output) -> bool {
         if (fused_idx >= ordered_ops.size()) {
@@ -426,8 +582,8 @@ build_pipeline_stage_descriptors(const PipelineStageBuildRequest &request) {
         const auto &fused_node = ordered_ops[fused_idx];
         result.node_to_stage[fused_node.get()] = idx;
         if (aliases_stage_output && fused_node->get_output_size() == 1) {
-          stage_plan_builder.merge_model_outputs(stage, fused_node.get());
-          stage_plan_builder.append_output_alias(stage, fused_node, 0, 0);
+          stage_plan_builder.merge_model_outputs(io_plan, fused_node.get());
+          stage_plan_builder.append_output_alias(io_plan, fused_node, 0, 0);
         }
         return true;
       };
@@ -446,30 +602,31 @@ build_pipeline_stage_descriptors(const PipelineStageBuildRequest &request) {
         const size_t input_idx = group->input_activation_input;
         bool input_activation_ok = false;
         const bool input_activation_exclusive =
-            stage.node &&
+            io_plan.node &&
             compiler::pipeline_input_activation_has_exclusive_consumer(
                 *group, op_index, ordered_ops, model_outputs);
         if (input_activation_exclusive && group->node_indices.size() > 1 &&
-            input_idx < stage.inputs.size() &&
-            stage.stage->fuse_input_activation(input_idx,
-                                               *group->input_activation,
-                                               group->input_activation_alpha)) {
+            input_idx < io_plan.inputs.size()) {
           const size_t act_idx = group->node_indices[1];
           if (act_idx < ordered_ops.size()) {
             const auto &act_node = ordered_ops[act_idx];
-            if (stage.inputs[input_idx].node.get() == act_node.get() &&
+            if (io_plan.inputs[input_idx].node.get() == act_node.get() &&
                 act_node->get_input_size() == 1) {
-              stage.inputs[input_idx].node =
+              io_plan.inputs[input_idx].node =
                   act_node->input_value(0).get_node_shared_ptr();
-              stage.inputs[input_idx].port =
+              io_plan.inputs[input_idx].port =
                   act_node->input_value(0).get_index();
+              planned_stage.post_ops.input_activation =
+                  PipelineStageInputActivationFusionPlan{
+                      input_idx, *group->input_activation,
+                      group->input_activation_alpha};
               input_activation_ok = mark_fused(act_idx, false);
             }
           }
         }
         if (!input_activation_ok && gfx_log_debug_enabled()) {
           gfx_log_debug("Fusion")
-              << "Failed input activation fusion for "
+              << "Failed input activation fusion planning for "
               << (node ? node->get_friendly_name() : std::string("<null>"));
         }
       }
@@ -485,19 +642,19 @@ build_pipeline_stage_descriptors(const PipelineStageBuildRequest &request) {
       }
       std::vector<size_t> fused_post_ops;
       if (group->batchnorm.has_value()) {
-        if (group->node_indices.size() <= next_post_op_idx ||
-            !stage.stage->fuse_batchnorm(*group->batchnorm)) {
+        if (group->node_indices.size() <= next_post_op_idx) {
           post_ops_ok = false;
         } else {
+          planned_stage.post_ops.batchnorm = *group->batchnorm;
           fused_post_ops.push_back(group->node_indices[next_post_op_idx]);
           ++next_post_op_idx;
         }
       }
       if (post_ops_ok && group->bias.has_value()) {
-        if (group->node_indices.size() <= next_post_op_idx ||
-            !stage.stage->fuse_bias(*group->bias)) {
+        if (group->node_indices.size() <= next_post_op_idx) {
           post_ops_ok = false;
         } else {
+          planned_stage.post_ops.bias = *group->bias;
           fused_post_ops.push_back(group->node_indices[next_post_op_idx]);
           ++next_post_op_idx;
         }
@@ -505,11 +662,15 @@ build_pipeline_stage_descriptors(const PipelineStageBuildRequest &request) {
       bool activation_fused = false;
       if (post_ops_ok && group->activation.has_value() &&
           group->node_indices.size() > next_post_op_idx) {
-        if (stage.stage->fuse_activation(*group->activation,
-                                         group->activation_alpha)) {
-          activation_fused = mark_fused_tail(next_post_op_idx);
-          post_ops_ok = activation_fused;
-        }
+        planned_stage.post_ops.activation = *group->activation;
+        planned_stage.post_ops.activation_alpha = group->activation_alpha;
+        activation_fused = mark_fused_tail(next_post_op_idx);
+        post_ops_ok = activation_fused;
+      }
+      if (!post_ops_ok) {
+        planned_stage.post_ops.batchnorm.reset();
+        planned_stage.post_ops.bias.reset();
+        planned_stage.post_ops.activation.reset();
       }
       for (size_t i = 0; i < fused_post_ops.size(); ++i) {
         const bool aliases_stage_output =
@@ -522,17 +683,18 @@ build_pipeline_stage_descriptors(const PipelineStageBuildRequest &request) {
 
   if (request.compile_trace) {
     request.compile_trace->set_counter(
-        "pipeline_stage_count", static_cast<uint64_t>(result.pipeline.size()));
+        "pipeline_stage_count",
+        static_cast<uint64_t>(result.stage_plans.size()));
     request.compile_trace->add_segment(
-        "compile", "build_op_pipeline",
+        "compile", "build_pipeline_stage_plan",
         static_cast<uint64_t>(
             std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now() - build_start)
                 .count()));
   }
-  gfx_log_info("StageFactory")
-      << "Built GFX " << request.backend_name << " pipeline with "
-      << result.pipeline.size() << " stages";
+  gfx_log_info("StagePlan")
+      << "Planned GFX " << request.backend_name << " pipeline with "
+      << result.stage_plans.size() << " stages";
   return result;
 }
 

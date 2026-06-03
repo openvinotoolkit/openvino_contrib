@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-#include "mlir/msl_codegen_apple_msl_common.hpp"
+#include "backends/metal/compiler/msl_codegen_apple_msl_common.hpp"
 #include "openvino/core/except.hpp"
 #include "llvm/Support/Casting.h"
 

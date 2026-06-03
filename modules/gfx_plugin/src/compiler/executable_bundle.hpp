@@ -63,6 +63,7 @@ struct KernelDescriptor {
   std::string layout_contract = "logical";
   std::string precision_contract = "inferred";
   std::string dispatch_contract = "manifest";
+  std::string runtime_shape_rule = "static_or_descriptor";
   bool requires_runtime_shape_args = false;
   std::string exception_ticket;
   std::string exception_reason;

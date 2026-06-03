@@ -11,7 +11,7 @@
 #include "backends/opencl/runtime/opencl_runtime_kernel_loader.hpp"
 #include "backends/opencl/runtime/stage_factory.hpp"
 #include "openvino/core/except.hpp"
-#include "plugin/backend_state.hpp"
+#include "runtime/backend_runtime.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -28,7 +28,7 @@ struct OpenClBackendState final : BackendState {
     }
     bool requires_const_manager() const override { return true; }
     bool has_const_manager() const override { return const_manager != nullptr; }
-    void init_infer_state(InferRequestState& state) const override;
+    void init_infer_state(BackendRequestState& state) const override;
     std::unique_ptr<GpuStage> create_stage(
         const std::shared_ptr<const ov::Node>& node,
         const RuntimeStageExecutableDescriptor* descriptor) const override {

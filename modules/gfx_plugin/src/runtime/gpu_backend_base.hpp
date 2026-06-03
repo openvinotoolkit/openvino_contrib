@@ -14,6 +14,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "common/gpu_dispatch_config.hpp"
 #include "openvino/core/except.hpp"
 #include "runtime/gpu_types.hpp"
 
@@ -52,11 +53,6 @@ inline KernelArg make_bytes_arg(uint32_t index, const void* data, size_t size) {
     arg.byte_size = size;
     return arg;
 }
-
-struct KernelDispatch {
-    size_t grid[3] = {1, 1, 1};
-    size_t threads_per_group[3] = {1, 1, 1};
-};
 
 struct KernelExecutionHooks {
     std::string_view stage_name;

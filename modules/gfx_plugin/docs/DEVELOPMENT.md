@@ -73,10 +73,16 @@ Build-system notes:
   `src/backends/metal/compiler/metal_stage_placement.*` and
   `src/backends/opencl/compiler/opencl_stage_placement.*`.
 - `src/compiler/stage_compiler_policy.*` adapts backend capabilities into the
-  explicit policy passed into shared stage-policy and MLIR source-planning code.
-- `src/compiler/pipeline_stage_builder.*` owns compiled-pipeline descriptor
-  construction, node-to-stage mapping, and backend-policy handoff from
-  `CompiledModel`.
+  explicit policy passed into shared stage-policy code and backend
+  source-planning hooks.
+- `src/compiler/backend_module_provider.*` builds the configured default
+  compiler backend modules from `src/backends/*/compiler/*_backend_module.*`.
+- `src/runtime/backend_runtime_provider.*` owns runtime provider registration
+  for backend-state creation, backend infer execution, and profiling trace-sink
+  registration.
+- `src/compiler/pipeline_stage_builder.*` owns stage descriptor construction,
+  node-to-stage mapping, and backend-policy handoff from `CompiledModel` while
+  consuming compiler-owned plan/fusion contracts.
 - `src/compiler/pipeline_stage_fusion.*` owns compiler-side fusion selection,
   fusion contracts, residual-add detection, and vendor attention planning.
 - `src/compiler/pipeline_stage_plan.*` owns compiled-pipeline input links,
@@ -140,22 +146,25 @@ Read in this order:
 3. `src/plugin/plugin.cpp`
 4. `src/compiler/gfx_compiler_service.*`
 5. `src/compiler/backend_registry.*`
-6. `src/compiler/manifest.*` and `src/compiler/executable_bundle.*`
-7. `src/compiler/pipeline_stage_builder.*`
-8. `src/compiler/pipeline_stage_fusion.*`
-9. `src/compiler/pipeline_stage_plan.*`
-10. `src/compiler/memory_plan.*` and `src/compiler/cache_envelope.*`
-11. `src/compiler/tensor_layout.*`
-12. `src/compiler/stage_placement.*` and
+6. `src/compiler/backend_module_provider.*`
+7. `src/compiler/manifest.*` and `src/compiler/executable_bundle.*`
+8. `src/compiler/pipeline_stage_builder.*`
+9. `src/compiler/pipeline_stage_fusion.*`
+10. `src/compiler/pipeline_stage_plan.*`
+11. `src/compiler/memory_plan.*` and `src/compiler/cache_envelope.*`
+12. `src/compiler/tensor_layout.*`
+13. `src/compiler/stage_placement.*` and
    `src/compiler/stage_compiler_policy.*`
-13. `src/runtime/backend_stage_factory.hpp`
-14. `src/runtime/pipeline_stage_desc.hpp`
-15. `src/runtime/pipeline_stage_materializer.*`
-16. `src/plugin/backend_factory.*`
-17. `src/plugin/compiled_model.cpp`
-18. `src/plugin/infer_pipeline.*`
-19. `src/plugin/infer_submission.*`
-20. the backend directory you are changing
+14. `src/compiler/stage_policy.*`
+15. `src/runtime/backend_runtime.*` and
+   `src/runtime/backend_runtime_provider.*`
+16. `src/runtime/backend_stage_factory.hpp`
+17. `src/runtime/pipeline_stage_desc.hpp`
+18. `src/runtime/pipeline_stage_materializer.*`
+19. `src/runtime/infer_pipeline.*`, `src/runtime/infer_executor.*`, and
+   `src/runtime/infer_submission.*`
+20. `src/plugin/compiled_model.cpp`
+21. the backend directory you are changing
 
 For runtime planning, also inspect:
 
@@ -165,16 +174,22 @@ For runtime planning, also inspect:
 - `src/compiler/tensor_layout.*`
 - `src/compiler/stage_placement.*`
 - `src/compiler/stage_compiler_policy.*`
+- `src/compiler/stage_policy.*`
 - `src/compiler/pipeline_stage_builder.*`
 - `src/compiler/pipeline_stage_fusion.*`
 - `src/compiler/pipeline_stage_plan.*`
 - `src/compiler/memory_plan.*`
 - `src/compiler/cache_envelope.*`
+- `src/runtime/backend_runtime.*`
+- `src/runtime/backend_runtime_provider.*`
+- `src/runtime/backend_request_state.hpp`
 - `src/runtime/backend_stage_factory.hpp`
 - `src/runtime/pipeline_stage_desc.hpp`
 - `src/runtime/pipeline_stage_materializer.*`
-- `src/runtime/gfx_stage_policy.*`
 - `src/runtime/runtime_session.*`
+- `src/runtime/infer_pipeline.*`
+- `src/runtime/infer_executor.*`
+- `src/runtime/infer_submission.*`
 - `src/runtime/fused_output_lifetime_plan.*`
 - `src/runtime/output_lifetime.hpp`
 - `src/runtime/gfx_parallelism.*`
@@ -187,30 +202,31 @@ For runtime planning, also inspect:
 - `src/kernel_ir/gfx_custom_kernel_families.*`
 - `src/kernel_ir/gfx_kernel_source.*`
 - `src/kernel_ir/gfx_opencl_source_artifacts.*`
-- `src/mlir/gfx_stage_runtime_values.*`
+- `src/runtime/gfx_stage_runtime_values.*`
 - `src/mlir/gfx_backend_custom_kernel_adapter.*`
 
 For Metal placement, MPSRT, or MSL source planning, also inspect:
 
 - `src/backends/metal/compiler/`
 - `src/backends/metal/compiler/metal_stage_placement.*`
+- `src/backends/metal/compiler/apple_mlir_stage_hooks.*`
+- `src/backends/metal/compiler/apple_stage_pipeline.*`
+- `src/backends/metal/compiler/apple_vendor_descriptors.*`
+- `src/backends/metal/compiler/apple_mpsrt_source_plan.hpp`
+- `src/backends/metal/compiler/msl_codegen_apple_msl*.{cpp,hpp}`
+- `src/backends/metal/compiler/msl_codegen_apple_mps.*`
+- `src/backends/metal/compiler/msl_codegen_matmul_*`
+- `src/backends/metal/compiler/msl_codegen_attention.*`
+- `src/backends/metal/compiler/msl_codegen_compressed_matmul.*`
+- `src/backends/metal/common/mpsrt/gfx_mpsrt_abi.hpp`
+- `src/backends/metal/common/mpsrt/gfx_mpsrt_plan.hpp`
+- `src/backends/metal/common/mpsrt/gfx_mpsrt_program.hpp`
+- `src/backends/metal/common/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp`
 - `src/backends/metal/runtime/metal_runtime_kernel_loader.*`
 - `src/backends/metal/runtime/mpsrt_vendor_primitive_stage.*`
-- `src/backends/metal/runtime/mpsrt/gfx_mpsrt_abi.hpp`
 - `src/backends/metal/runtime/mpsrt/gfx_mpsrt_model.*`
-- `src/backends/metal/runtime/mpsrt/gfx_mpsrt_plan.hpp`
-- `src/backends/metal/runtime/mpsrt/gfx_mpsrt_program.hpp`
-- `src/backends/metal/runtime/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp`
-- `src/mlir/gfx_apple_stage_pipeline.*`
-- `src/mlir/gfx_apple_vendor_descriptors.*`
 - `src/mlir/gfx_mpsrt_dialect.*`
 - `src/mlir/gfx_mpsrt_ops.*`
-- `src/mlir/gfx_mpsrt_source_plan.hpp`
-- `src/mlir/msl_codegen_apple_msl*.{cpp,hpp}`
-- `src/mlir/msl_codegen_apple_mps.*`
-- `src/mlir/msl_codegen_matmul_*`
-- `src/mlir/msl_codegen_attention.*`
-- `src/mlir/msl_codegen_compressed_matmul.*`
 - `src/backends/metal/runtime/mpsrt/`
 
 For OpenCL source execution, start with:
@@ -242,8 +258,8 @@ For OpenCL source execution, start with:
    - Metal policy, kernel registry, or artifact resolver in
      `src/backends/metal/compiler/`
    - OpenCL policy or kernel registry in `src/backends/opencl/compiler/`
-3. Add or adjust lowering in the relevant `mlir_builder_*.cpp`,
-   source-plan helper, or transform.
+3. Add or adjust lowering in the relevant `mlir_builder_*.cpp`, backend
+   compiler source-plan helper, or transform.
 4. Decide the shared runtime contract before adding backend code:
    - compiler manifest/executable descriptor for stage ABI and artifact payloads
    - compiler pipeline-stage builder for stage descriptor construction and
@@ -323,16 +339,16 @@ Prefer these shared locations:
 - graph rewrites: `src/transforms/`
 - support probing and lowering: `src/mlir/`
 - stage fusion/precision/submission policy and parallelism:
-  `src/runtime/gfx_stage_policy.*`, `gfx_parallelism.*`, and
-  `gfx_partitioning.*`
+  `src/compiler/stage_policy.*`, `src/runtime/gfx_parallelism.*`, and
+  `src/runtime/gfx_partitioning.*`
 - descriptor-backed stage creation and pipeline descriptors:
   `src/runtime/backend_stage_factory.hpp`,
   `src/runtime/pipeline_stage_desc.hpp`, and
   `src/runtime/pipeline_stage_materializer.*`
 - binding and manifest contracts: `src/kernel_ir/` and
   `src/mlir/gfx_backend_custom_kernel_adapter.*`
-- infer planning and submission: `src/plugin/infer_pipeline.*` and
-  `src/plugin/infer_submission.*`
+- infer planning and submission: `src/runtime/infer_pipeline.*`,
+  `src/runtime/infer_executor.*`, and `src/runtime/infer_submission.*`
 
 Use backend directories only for real backend boundaries:
 
@@ -430,12 +446,13 @@ contract.
 
 Metal placement must stay coordinated across:
 
-- `gfx_stage_policy.*`
+- `src/compiler/stage_policy.*`
 - `GfxKernelStageManifest`
 - custom-kernel family metadata
-- Apple source-plan helpers
+- Apple source-plan helpers under `src/backends/metal/compiler/`
 - typed `GfxMpsrtProgram` / generated `gfx_mpsrt_ops`
 - `GfxMpsrtBuilderPlan`
+- `src/backends/metal/common/mpsrt/`
 - `src/backends/metal/runtime/mpsrt/gfx_mpsrt_model.*`
 - `src/backends/metal/runtime/mpsrt/`
 
@@ -452,7 +469,7 @@ reintroducing large inline MSL strings in request encoders.
 Compiler-owned Metal payloads now include both generated MSL sources and
 MPS/MPSGraph `VendorDescriptor` payloads. When adding a vendor primitive route,
 update the Metal operation policy, `metal_kernel_artifacts.*`, the typed vendor
-descriptor helpers in `src/mlir/gfx_apple_vendor_descriptors.*`, and
+descriptor helpers in `src/backends/metal/compiler/apple_vendor_descriptors.*`, and
 `mpsrt_vendor_primitive_stage.*` only if the existing runtime contract cannot
 express the new primitive. Do not rebuild vendor descriptors from request-time
 node checks.
@@ -464,19 +481,21 @@ and the materialization path in `src/runtime/pipeline_stage_materializer.*`.
 Do not reintroduce the deleted standalone
 `src/backends/metal/runtime/mps_graph_attention_stage.*`.
 
-Generated Metal activation, elementwise, reduction, Softmax, and Transpose paths are
-planned through `src/mlir/msl_codegen_apple_msl_activation.*`,
-`src/mlir/msl_codegen_apple_msl_eltwise.*`,
-`src/mlir/msl_codegen_apple_msl_reduction.*`, and
-`src/mlir/msl_codegen_apple_msl_softmax.*`, plus layout planning in
-`src/mlir/msl_codegen_apple_msl_layout.cpp`. Keep those source plans aligned
-with `src/backends/metal/compiler/metal_operation_support.cpp`,
-`metal_kernel_registry.cpp`,
-`metal_kernel_artifacts.cpp`, and embedded helper source wrappers under
-`src/kernel_ir/metal_kernels/`. For `Swish`, keep static-beta and runtime-beta
-binding roles aligned with `src/mlir/mlir_builder_unary.cpp` and the OpenCL
-source artifact ABI. For Softmax, keep generated `Softmax` and `LogSoftmax`
-runtime-parameter roles aligned with the registered f32/f16 kernel units.
+Generated Metal activation, elementwise, reduction, Softmax, and Transpose paths
+are planned through
+`src/backends/metal/compiler/msl_codegen_apple_msl_activation.*`,
+`src/backends/metal/compiler/msl_codegen_apple_msl_eltwise.*`,
+`src/backends/metal/compiler/msl_codegen_apple_msl_reduction.*`, and
+`src/backends/metal/compiler/msl_codegen_apple_msl_softmax.*`, plus layout
+planning in `src/backends/metal/compiler/msl_codegen_apple_msl_layout.cpp`.
+Keep those source plans aligned with
+`src/backends/metal/compiler/metal_operation_support.cpp`,
+`metal_kernel_registry.cpp`, `metal_kernel_artifacts.cpp`, and embedded helper
+source wrappers under `src/kernel_ir/metal_kernels/`. For `Swish`, keep
+static-beta and runtime-beta binding roles aligned with
+`src/mlir/mlir_builder_unary.cpp` and the OpenCL source artifact ABI. For
+Softmax, keep generated `Softmax` and `LogSoftmax` runtime-parameter roles
+aligned with the registered f32/f16 kernel units.
 
 ## Properties
 

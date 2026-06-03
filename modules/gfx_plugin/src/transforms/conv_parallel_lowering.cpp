@@ -11,7 +11,7 @@
 #include <string>
 
 #include "mlir/gfx_mlir_debug.hpp"
-#include "runtime/gfx_activation.hpp"
+#include "common/gfx_activation.hpp"
 #include "runtime/gfx_logger.hpp"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"

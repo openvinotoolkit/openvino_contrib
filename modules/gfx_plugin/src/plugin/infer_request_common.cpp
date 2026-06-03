@@ -4,6 +4,8 @@
 
 #include "openvino/gfx_plugin/infer_request.hpp"
 
+#include <chrono>
+
 #include "openvino/gfx_plugin/compiled_model.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/runtime/iremote_tensor.hpp"
@@ -11,14 +13,34 @@
 #include "openvino/runtime/profiling_info.hpp"
 #include "openvino/runtime/tensor.hpp"
 #include "plugin/infer_request_state.hpp"
-#include "plugin/backend_state.hpp"
+#include "plugin/infer_request_variable_state.hpp"
 #include "plugin/infer_io_utils.hpp"
-#include "plugin/infer_pipeline.hpp"
+#include "runtime/backend_runtime.hpp"
+#include "runtime/backend_runtime_provider.hpp"
 #include "runtime/gfx_backend_utils.hpp"
 #include "runtime/gfx_remote_context.hpp"
+#include "runtime/infer_pipeline.hpp"
 
 namespace ov {
 namespace gfx_plugin {
+
+namespace {
+
+bool host_output_matches_public_port(const ov::Tensor& tensor,
+                                     const ov::Output<const ov::Node>& port) {
+    if (!tensor || !tensor.data()) {
+        return false;
+    }
+    if (tensor.get_element_type() != port.get_element_type()) {
+        return false;
+    }
+    if (port.get_partial_shape().is_static()) {
+        return tensor.get_shape() == port.get_shape();
+    }
+    return tensor.get_byte_size() > 0;
+}
+
+}  // namespace
 
 InferRequest::InferRequest(const std::shared_ptr<const ov::ICompiledModel>& compiled_model)
     : ov::ISyncInferRequest(compiled_model) {
@@ -45,7 +67,8 @@ InferRequest::InferRequest(const std::shared_ptr<const ov::ICompiledModel>& comp
 
     if (auto cm = get_compiled_model_typed()) {
         if (auto* backend = cm->backend_state()) {
-            backend->init_infer_state(state);
+            initialize_variable_states(state, cm->get_runtime_model(), backend->resources());
+            backend->init_infer_state(state.runtime);
         }
     }
 }
@@ -145,13 +168,28 @@ ov::SoPtr<ov::ITensor> InferRequest::get_tensor(const ov::Output<const ov::Node>
     auto found = find_port(port);
     if (found.found() && found.is_output()) {
         size_t idx = found.idx;
-        const auto& state = *m_state;
+        auto& state = *m_state;
         if (idx < state.bound_remote_outputs.size() && state.bound_remote_outputs[idx]) {
             return ov::SoPtr<ov::ITensor>{state.bound_remote_outputs[idx], nullptr};
         }
+        if (idx < state.bound_output_hosts.size() && state.bound_output_hosts[idx]) {
+            return ov::get_tensor_impl(state.bound_output_hosts[idx]);
+        }
+        auto current = ov::ISyncInferRequest::get_tensor(port);
+        if (current._ptr && !std::dynamic_pointer_cast<ov::IRemoteTensor>(current._ptr)) {
+            auto host_output = ov::make_tensor(current);
+            if (host_output_matches_public_port(host_output, get_outputs().at(idx))) {
+                if (idx >= state.bound_output_hosts.size()) {
+                    state.bound_output_hosts.resize(get_outputs().size());
+                }
+                state.bound_output_hosts[idx] = host_output;
+                return ov::get_tensor_impl(state.bound_output_hosts[idx]);
+            }
+            return current;
+        }
         if (auto cm = get_compiled_model_typed()) {
             if (auto* backend = cm->backend_state()) {
-                auto override_tensor = backend->get_tensor_override(state, idx, get_outputs());
+                auto override_tensor = backend->get_tensor_override(state.runtime, idx, get_outputs());
                 if (override_tensor._ptr) {
                     return override_tensor;
                 }
@@ -169,20 +207,16 @@ ov::Tensor InferRequest::get_output_tensor(size_t idx) const {
 void InferRequest::infer() {
     auto cm = get_compiled_model_typed();
     OPENVINO_ASSERT(cm, "CompiledModel is null");
-    switch (cm->backend()) {
-        case GpuBackend::Metal:
-            infer_metal_impl(cm);
-            break;
-        case GpuBackend::OpenCL:
-            infer_opencl_impl(cm);
-            break;
-        default:
-            OPENVINO_THROW("GFX: unsupported backend for infer");
-    }
+    execute_backend_infer(cm->backend(), *this, cm);
 }
 
 std::vector<ov::ProfilingInfo> InferRequest::get_profiling_info() const {
     return m_state ? m_state->last_profiling : std::vector<ov::ProfilingInfo>{};
+}
+
+std::vector<ov::SoPtr<ov::IVariableState>> InferRequest::query_state() const {
+    return m_state ? query_variable_states(*m_state)
+                   : std::vector<ov::SoPtr<ov::IVariableState>>{};
 }
 
 const std::shared_ptr<const CompiledModel> InferRequest::get_compiled_model_typed() const {
@@ -191,21 +225,16 @@ const std::shared_ptr<const CompiledModel> InferRequest::get_compiled_model_type
 
 ov::Tensor InferRequest::resolve_host_input_tensor(size_t idx) {
     auto& state = *m_state;
-    if (idx < state.bound_inputs.size() && state.bound_inputs[idx]) {
-        if (state.bound_inputs[idx].data()) {
-            return state.bound_inputs[idx];
-        }
-    }
     auto impl = ov::ISyncInferRequest::get_tensor(get_inputs().at(idx));
     ov::Tensor src;
-    if (!impl._ptr) {
-        ov::Shape sh = get_inputs().at(idx).get_partial_shape().is_static()
-                           ? get_inputs().at(idx).get_shape()
-                           : ov::Shape{1};
-        src = ov::Tensor{get_inputs().at(idx).get_element_type(), sh};
-        ov::ISyncInferRequest::set_tensor(get_inputs().at(idx), ov::get_tensor_impl(src));
-    } else {
+    if (impl._ptr) {
         src = ov::make_tensor(impl);
+    }
+    if ((!src || !src.data()) &&
+        idx < state.bound_inputs.size() &&
+        state.bound_inputs[idx] &&
+        state.bound_inputs[idx].data()) {
+        src = state.bound_inputs[idx];
     }
     if (!src || !src.data()) {
         ov::Shape sh = get_inputs().at(idx).get_partial_shape().is_static()
@@ -258,23 +287,23 @@ const std::vector<std::pair<std::string, ov::Tensor>>& InferRequest::get_debug_t
 }
 
 void InferRequest::ensure_output_staging_handles(size_t count, const char* error_prefix) {
-    OPENVINO_ASSERT(m_state && m_state->backend, error_prefix, ": infer backend state is not initialized");
-    auto& handles = m_state->backend->output_staging_handles;
+    OPENVINO_ASSERT(m_state && m_state->runtime.backend, error_prefix, ": infer backend state is not initialized");
+    auto& handles = m_state->runtime.backend->output_staging_handles;
     if (handles.size() < count) {
         handles.resize(count);
     }
 }
 
 void InferRequest::ensure_input_handles(size_t count, bool with_staging, const char* error_prefix) {
-    OPENVINO_ASSERT(m_state && m_state->backend, error_prefix, ": infer backend state is not initialized");
-    auto& handles = m_state->backend->input_handles;
+    OPENVINO_ASSERT(m_state && m_state->runtime.backend, error_prefix, ": infer backend state is not initialized");
+    auto& handles = m_state->runtime.backend->input_handles;
     if (handles.size() < count) {
         handles.resize(count);
     }
     if (!with_staging) {
         return;
     }
-    auto& staging = m_state->backend->input_staging_handles;
+    auto& staging = m_state->runtime.backend->input_staging_handles;
     if (staging.size() < count) {
         staging.resize(count);
     }
@@ -299,6 +328,51 @@ void InferRequest::bind_inputs_for_infer(
         host_handler);
 }
 
+void InferRequest::bind_inputs_before_infer(
+    GpuBackend expected_backend,
+    std::vector<GpuTensor>& input_tensors,
+    const std::function<GpuTensor(size_t, const ov::Tensor&, BufferHandle*)>& host_binder,
+    const std::function<void(size_t, const GpuTensor&)>& device_result_handler,
+    GfxProfiler* profiler,
+    bool profiling,
+    bool with_staging,
+    const char* error_prefix) {
+    OPENVINO_ASSERT(host_binder, error_prefix, ": input host binder is not configured");
+    const size_t input_count = get_inputs().size();
+    if (input_tensors.size() != input_count) {
+        input_tensors.assign(input_count, {});
+    }
+
+    ensure_input_handles(input_count, with_staging, error_prefix);
+    auto& input_handles = m_state->runtime.backend->input_handles;
+    const auto bind_inputs_start =
+        profiling ? std::chrono::steady_clock::now()
+                  : std::chrono::steady_clock::time_point{};
+    bind_inputs_for_infer(
+        expected_backend,
+        [&](size_t idx, const GpuTensor& dev) {
+            input_tensors[idx] = dev;
+            if (device_result_handler) {
+                device_result_handler(idx, input_tensors[idx]);
+            }
+        },
+        [&](size_t idx, const ov::Tensor& host) {
+            input_tensors[idx] =
+                host_binder(idx, host, &input_handles[idx]);
+            if (device_result_handler) {
+                device_result_handler(idx, input_tensors[idx]);
+            }
+        },
+        error_prefix);
+    if (profiling && profiler) {
+        profiler->record_segment(
+            "upload",
+            "bind_inputs_for_infer",
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - bind_inputs_start));
+    }
+}
+
 void InferRequest::bind_outputs_for_infer(
     const std::shared_ptr<const CompiledModel>& cm,
     std::vector<InferStage>& pipeline,
@@ -311,16 +385,16 @@ void InferRequest::bind_outputs_for_infer(
     const char* error_prefix) {
     OPENVINO_ASSERT(cm, error_prefix, ": compiled model is null");
     auto& state = *m_state;
-    OPENVINO_ASSERT(state.backend, error_prefix, ": infer backend state is not initialized");
-    prepare_reusable_output_plan(state.backend->reusable_output_plan,
+    OPENVINO_ASSERT(state.runtime.backend, error_prefix, ": infer backend state is not initialized");
+    prepare_reusable_output_plan(state.runtime.backend->reusable_output_plan,
                                  get_outputs(),
                                  cm->get_runtime_model(),
                                  pipeline,
                                  node_map,
                                  param_map,
                                  error_prefix);
-    prepare_reusable_host_output_plan(state.backend->reusable_host_output_plan,
-                                      state.backend->reusable_output_plan,
+    prepare_reusable_host_output_plan(state.runtime.backend->reusable_host_output_plan,
+                                      state.runtime.backend->reusable_output_plan,
                                       state.bound_output_hosts);
     bind_outputs_common(
         get_outputs(),
@@ -335,9 +409,87 @@ void InferRequest::bind_outputs_for_infer(
         },
         remote_setter,
         device_setter,
-        &state.backend->reusable_output_plan,
+        &state.runtime.backend->reusable_output_plan,
         allow_missing,
         error_prefix);
+}
+
+void InferRequest::bind_outputs_after_infer(
+    const std::shared_ptr<const CompiledModel>& cm,
+    std::vector<InferStage>& pipeline,
+    const std::function<GpuTensor*(size_t)>& output_input_lookup,
+    const std::function<OutputBindingResult(size_t,
+                                            GpuTensor&,
+                                            const OutputViewInfo&,
+                                            const ov::Tensor*,
+                                            ov::Tensor*,
+                                            BufferHandle*)>& device_binder,
+    const std::function<void(size_t, const OutputBindingResult&)>& device_result_handler,
+    GfxProfiler* profiler,
+    bool profiling,
+    const char* error_prefix) {
+    OPENVINO_ASSERT(cm, error_prefix, ": compiled model is null");
+    OPENVINO_ASSERT(m_state && m_state->runtime.backend,
+                    error_prefix,
+                    ": infer backend state is not initialized");
+    OPENVINO_ASSERT(device_binder, error_prefix, ": output device binder is not configured");
+
+    ensure_output_staging_handles(get_outputs().size(), error_prefix);
+    auto& output_handles = m_state->runtime.backend->output_staging_handles;
+    auto& output_tensors = m_state->runtime.backend->output_tensors;
+    output_tensors.assign(get_outputs().size(), {});
+
+    const auto bind_outputs_start =
+        profiling ? std::chrono::steady_clock::now()
+                  : std::chrono::steady_clock::time_point{};
+    bind_outputs_for_infer(
+        cm,
+        pipeline,
+        cm->node_to_stage(),
+        cm->parameter_index(),
+        output_input_lookup,
+        [&](size_t idx, const std::shared_ptr<GfxRemoteTensor>& remote) {
+            ov::ISyncInferRequest::set_tensor(
+                get_outputs()[idx],
+                ov::SoPtr<ov::ITensor>{remote, nullptr});
+        },
+        [&](size_t idx,
+            GpuTensor& dev,
+            const OutputViewInfo& info,
+            const ov::Tensor* host_override) {
+            ov::Tensor* reusable_host = nullptr;
+            auto& host_plan =
+                m_state->runtime.backend->reusable_host_output_plan;
+            if (idx < host_plan.outputs.size()) {
+                auto& prepared = host_plan.outputs[idx];
+                if (prepared.host) {
+                    reusable_host = &prepared.host;
+                }
+            }
+            auto bound = device_binder(idx,
+                                       dev,
+                                       info,
+                                       host_override,
+                                       reusable_host,
+                                       &output_handles[idx]);
+            if (idx < output_tensors.size()) {
+                output_tensors[idx] = bound.device_tensor;
+            }
+            if (device_result_handler) {
+                device_result_handler(idx, bound);
+            }
+            ov::ISyncInferRequest::set_tensor(get_outputs()[idx],
+                                              ov::get_tensor_impl(bound.host_tensor));
+        },
+        /*allow_missing=*/false,
+        error_prefix);
+    if (profiling && profiler) {
+        profiler->record_segment(
+            "download",
+            "bind_outputs_for_infer",
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - bind_outputs_start));
+    }
 }
 
 }  // namespace gfx_plugin

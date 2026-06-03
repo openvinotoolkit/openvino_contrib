@@ -132,76 +132,51 @@ TEST_F(GfxBufferManagerTest, ConstCacheContextIsSharedAcrossCacheInstances) {
     EXPECT_EQ(first.buffer, second.buffer);
 }
 
-class GfxTensorMapTest : public ::testing::Test {
-protected:
-    id<MTLDevice> device = nil;
-    MetalDeviceCaps caps{};
-    std::unique_ptr<MetalAllocatorCore> core;
-    std::unique_ptr<MetalHeapPool> heaps;
-    std::unique_ptr<MetalFreeList> freelist;
-    std::unique_ptr<MetalStagingPool> staging;
-    std::unique_ptr<MetalAllocator> allocator;
-    std::unique_ptr<MetalConstCache> const_cache;
-    std::unique_ptr<MetalBufferManager> mgr;
-    MetalTensorMap tensor_map;
-    MetalCommandQueueHandle queue = nullptr;
-
-    void SetUp() override {
-        device = MTLCreateSystemDefaultDevice();
-        ASSERT_NE(device, nil);
-        caps = query_metal_device_caps(device);
-        core = std::make_unique<MetalAllocatorCore>(device, caps);
-        queue = metal_create_command_queue(device);
-        heaps = std::make_unique<MetalHeapPool>(*core);
-        freelist = std::make_unique<MetalFreeList>();
-        staging = std::make_unique<MetalStagingPool>(*core);
-        allocator = std::make_unique<MetalAllocator>(*core, *heaps, *freelist, *staging, caps);
-        const_cache = std::make_unique<MetalConstCache>(*allocator, queue);
-        mgr = std::make_unique<MetalBufferManager>(*core, const_cache.get());
-        MetalBufferManager::set_current_allocator(allocator.get());
-    }
-
-    void TearDown() override {
-        MetalBufferManager::set_current_allocator(nullptr);
-        if (queue) {
-            metal_release_command_queue(queue);
-            queue = nullptr;
-        }
-    }
-};
-
-TEST_F(GfxTensorMapTest, BindInputReusesDeviceBufferSamePort) {
-    ov::Tensor host{ov::element::f32, {1, 4}};
-    std::fill(host.data<float>(), host.data<float>() + host.get_size(), 1.f);
-    auto dev1 = tensor_map.bind_input(0, host, *core);
-    auto dev1b = tensor_map.bind_input(0, host, *core);
-    EXPECT_EQ(dev1.buf.size, dev1b.buf.size);
-    EXPECT_TRUE(tensor_map.has_input_device(0));
-}
-
-TEST_F(GfxTensorMapTest, HostTensorCreatedOnDemand) {
-    mgr->reset_stats();
-    ov::Shape shape{1, 2, 2};
-    auto& dev = tensor_map.ensure_output_device(0, shape, ov::element::f32, *allocator, caps, /*prefer_private=*/false);
-    (void)dev;
-    EXPECT_FALSE(tensor_map.has_host_for_output(0));
-    EXPECT_THROW(tensor_map.get_or_create_host_for_output(0), ov::Exception);
-    EXPECT_FALSE(tensor_map.has_host_for_output(0));
-    EXPECT_EQ(mgr->stats().d2h_bytes, 0u);
-}
-
-TEST_F(GfxTensorMapTest, BindInputDoesNotCopyToCPU) {
+TEST_F(GfxBufferManagerTest, WrapSharedHostInputDoesNotCopyToCPU) {
     mgr->reset_stats();
     ov::Tensor host{ov::element::f32, {2, 2}};
     std::fill(host.data<float>(), host.data<float>() + host.get_size(), 1.f);
-    tensor_map.bind_input(0, host, *core);
+    auto first = mgr->wrap_shared(host.data(), host.get_byte_size(), host.get_element_type());
+    ASSERT_TRUE(first.valid());
+    EXPECT_TRUE(first.host_visible);
+    EXPECT_TRUE(first.external);
+    EXPECT_EQ(first.size, host.get_byte_size());
+    EXPECT_EQ(first.type, host.get_element_type());
     size_t h2d_first = mgr->stats().h2d_bytes;
-    tensor_map.bind_input(0, host, *core);
+    auto second = mgr->wrap_shared(host.data(), host.get_byte_size(), host.get_element_type());
+    ASSERT_TRUE(second.valid());
     size_t h2d_second = mgr->stats().h2d_bytes;
     EXPECT_EQ(h2d_first, 0u);
     EXPECT_EQ(h2d_second, 0u);
 }
 
+TEST_F(GfxBufferManagerTest, OutputStagingHandleReusesAndGrows) {
+    BufferHandle handle;
+    auto small = mgr->allocate_dynamic(512,
+                                       ov::element::f32,
+                                       handle,
+                                       /*persistent=*/false,
+                                       /*storageModePrivate=*/false);
+    ASSERT_TRUE(small.valid());
+    EXPECT_TRUE(small.host_visible);
+    EXPECT_GE(handle.capacity_bytes(), 512u);
+
+    auto smaller = mgr->allocate_dynamic(256,
+                                         ov::element::f32,
+                                         handle,
+                                         /*persistent=*/false,
+                                         /*storageModePrivate=*/false);
+    ASSERT_TRUE(smaller.valid());
+    EXPECT_EQ(smaller.buffer, small.buffer);
+
+    auto large = mgr->allocate_dynamic(4096,
+                                       ov::element::f32,
+                                       handle,
+                                       /*persistent=*/false,
+                                       /*storageModePrivate=*/false);
+    ASSERT_TRUE(large.valid());
+    EXPECT_GE(handle.capacity_bytes(), 4096u);
+}
 
 }  // namespace
 }  // namespace gfx_plugin

@@ -17,7 +17,7 @@
 #include "kernel_ir/metal_kernels/mpsrt_image_bridge_kernels.hpp"
 #include "kernel_ir/metal_kernels/mpsrt_topk_kernels.hpp"
 #include "openvino/core/except.hpp"
-#include "backends/metal/runtime/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp"
+#include "backends/metal/common/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp"
 
 namespace ov {
 namespace gfx_plugin {

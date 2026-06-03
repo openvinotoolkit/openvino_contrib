@@ -18,7 +18,7 @@
 
 #include "backends/opencl/runtime/opencl_program_cache.hpp"
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
-#include "mlir/gfx_stage_runtime_values.hpp"
+#include "runtime/gfx_stage_runtime_values.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/constant.hpp"

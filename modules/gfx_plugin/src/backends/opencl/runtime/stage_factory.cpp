@@ -5,8 +5,8 @@
 #include "backends/opencl/runtime/stage_factory.hpp"
 
 #include "openvino/core/except.hpp"
-#include "plugin/stateful_stage.hpp"
 #include "runtime/execution_dispatcher.hpp"
+#include "runtime/stateful_stage.hpp"
 #include "runtime/view_only_stage.hpp"
 
 namespace ov {
@@ -16,7 +16,7 @@ std::unique_ptr<GpuStage> create_opencl_stage(const std::shared_ptr<const ov::No
                                               const RuntimeStageExecutableDescriptor* descriptor,
                                               void*,
                                               void*) {
-    if (auto stateful = create_stateful_stage(node)) {
+    if (auto stateful = create_stateful_stage(node, descriptor)) {
         return stateful;
     }
     if (auto view = create_view_only_stage(node, descriptor)) {

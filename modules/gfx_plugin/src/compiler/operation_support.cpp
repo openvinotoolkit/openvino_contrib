@@ -12,6 +12,7 @@
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/result.hpp"
 #include "openvino/op/util/assign_base.hpp"
+#include "openvino/op/util/read_value_base.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "transformations/rt_info/decompression.hpp"
 
@@ -53,9 +54,12 @@ bool is_decompression_node(const std::shared_ptr<const ov::Node>& node) {
 OperationSupportResult query_common_operation(const std::shared_ptr<const ov::Node>& node) {
     if (ov::as_type_ptr<const ov::op::v0::Parameter>(node) ||
         ov::as_type_ptr<const ov::op::v0::Constant>(node) ||
-        ov::as_type_ptr<const ov::op::v0::Result>(node) ||
-        ov::as_type_ptr<const ov::op::util::AssignBase>(node)) {
+        ov::as_type_ptr<const ov::op::v0::Result>(node)) {
         return make_supported_operation("common_io", LoweringRouteKind::Common, 1.0);
+    }
+    if (ov::as_type_ptr<const ov::op::util::ReadValueBase>(node) ||
+        ov::as_type_ptr<const ov::op::util::AssignBase>(node)) {
+        return make_supported_operation("stateful_metadata", LoweringRouteKind::Metadata, 1.0);
     }
     if (is_decompression_node(node)) {
         return make_supported_operation("decompression_metadata", LoweringRouteKind::Metadata, 1.0);
@@ -163,47 +167,18 @@ bool PostOpFusionCapabilities::allow_stage_activation_fusion(std::string_view st
     }
 }
 
-PostOpFusionCapabilities make_post_op_fusion_capabilities(GpuBackend backend) {
-    PostOpFusionCapabilities capabilities;
-    switch (backend) {
-        case GpuBackend::OpenCL:
-            capabilities.enable_bias_fusion_for_group_convolution = false;
-            capabilities.enable_batchnorm_fusion_for_group_convolution = false;
-            capabilities.enable_activation_fusion_for_group_convolution = false;
-            capabilities.enable_sigmoid_activation_fusion = false;
-            capabilities.enable_tanh_activation_fusion = false;
-            capabilities.enable_elu_activation_fusion = false;
-            capabilities.enable_prelu_activation_fusion = false;
-            capabilities.enable_gelu_activation_fusion = false;
-            capabilities.enable_hswish_activation_fusion = false;
-            capabilities.enable_hsigmoid_activation_fusion = false;
-            capabilities.enable_abs_activation_fusion = false;
-            capabilities.enable_sign_activation_fusion = false;
-            break;
-        case GpuBackend::Metal:
-            capabilities.enable_elu_activation_fusion = false;
-            capabilities.enable_prelu_activation_fusion = false;
-            capabilities.enable_gelu_activation_fusion = false;
-            capabilities.enable_hswish_activation_fusion = false;
-            capabilities.enable_hsigmoid_activation_fusion = false;
-            capabilities.enable_sign_activation_fusion = false;
-            break;
-        default:
-            break;
-    }
-    return capabilities;
-}
-
 BackendCapabilities::BackendCapabilities(BackendTarget target,
                                          std::shared_ptr<const OperationSupportPolicy> operation_policy,
                                          FusionCapabilities fusion_capabilities,
                                          PostOpFusionCapabilities post_op_fusion_capabilities,
-                                         std::shared_ptr<const StagePlacementPolicy> stage_placement_policy)
+                                         std::shared_ptr<const StagePlacementPolicy> stage_placement_policy,
+                                         BackendExecutionCapabilities execution_capabilities)
     : m_target(std::move(target)),
       m_operation_policy(std::move(operation_policy)),
       m_fusion_capabilities(fusion_capabilities),
       m_post_op_fusion_capabilities(post_op_fusion_capabilities),
-      m_stage_placement_policy(std::move(stage_placement_policy)) {}
+      m_stage_placement_policy(std::move(stage_placement_policy)),
+      m_execution_capabilities(std::move(execution_capabilities)) {}
 
 OperationSupportResult BackendCapabilities::query_operation(const OperationSupportQuery& query) const {
     if (!query.node) {

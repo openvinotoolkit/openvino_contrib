@@ -7,16 +7,21 @@
 #include "backends/opencl/plugin/compiled_model_state.hpp"
 #include "backends/opencl/runtime/memory_api.hpp"
 #include "openvino/core/except.hpp"
-#include "plugin/backend_factory.hpp"
+#include "runtime/backend_runtime_provider.hpp"
 #include "runtime/gfx_remote_context.hpp"
 
 namespace ov {
 namespace gfx_plugin {
+
+void execute_opencl_infer_request(InferRequest& request,
+                                  const std::shared_ptr<const CompiledModel>& compiled_model);
+
 namespace {
 
 const BackendRuntimeProviderRegistration kOpenClRuntimeProviderRegistration({
     GpuBackend::OpenCL,
     create_opencl_backend_state,
+    execute_opencl_infer_request,
     nullptr,
 });
 

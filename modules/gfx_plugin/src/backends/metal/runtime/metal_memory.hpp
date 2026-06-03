@@ -6,14 +6,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <unordered_map>
 #include <vector>
 #include <string>
 
 #include "openvino/core/shape.hpp"
 #include "openvino/core/type/element_type.hpp"
-#include "openvino/core/except.hpp"
-#include "openvino/runtime/tensor.hpp"
 
 #include "runtime/gpu_buffer_manager.hpp"
 #include "runtime/gpu_memory_ops.hpp"
@@ -28,8 +25,6 @@
 
 namespace ov {
 namespace gfx_plugin {
-
-using MetalTensor = GpuTensor;
 
 // Returns true when OV_GFX_SAFE_DEBUG=1 is set in the environment.
 bool metal_safe_debug_enabled();
@@ -58,45 +53,6 @@ void metal_copy_buffer_regions(MetalCommandQueueHandle execution_context,
                                const GpuBufferCopyRegion* regions,
                                size_t region_count);
 void ensure_metal_memory_ops_registered();
-
-class MetalTensorMap {
-public:
-    MetalTensor& bind_input(size_t index, const ov::Tensor& host, MetalAllocatorCore& core);
-    MetalTensor& bind_input_device(size_t index, const MetalTensor& dev);
-
-    MetalTensor& ensure_output_device(size_t index,
-                                      const ov::Shape& shape,
-                                      ov::element::Type type,
-                                      MetalAllocator& alloc,
-                                      const MetalDeviceCaps& caps,
-                                      bool prefer_private);
-
-    bool has_output_device(size_t index) const;
-    const MetalTensor& get_output_device(size_t index) const;
-
-    bool has_host_for_output(size_t index) const;
-    ov::Tensor& get_or_create_host_for_output(size_t index);
-    void bind_host_for_output(size_t index, ov::Tensor host);
-    MetalTensor& bind_output_device(size_t index, const MetalTensor& dev);
-
-    bool has_input_device(size_t index) const;
-    MetalTensor& get_input_device(size_t index);
-    const MetalTensor& get_input_device(size_t index) const;
-    bool has_input_host(size_t index) const;
-    ov::Tensor& get_input_host(size_t index);
-
-    void reset_inference(MetalAllocatorCore* core = nullptr);
-
-private:
-    struct Binding {
-        ov::Tensor host;
-        MetalTensor dev;
-        BufferHandle handle;
-    };
-
-    std::unordered_map<size_t, Binding> m_inputs;
-    std::unordered_map<size_t, Binding> m_outputs;
-};
 
 class MetalBufferManager : public GpuBufferManager {
 public:

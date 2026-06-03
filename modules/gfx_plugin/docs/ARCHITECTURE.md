@@ -17,32 +17,36 @@ notes or deleted backend code as current behavior.
 ## Top-Level Structure
 
 - `src/plugin/`: OpenVINO runtime integration, properties, backend resolution,
-  runtime-provider registration, compiled-model state, infer-request helpers,
-  output resolution, model serialization, and stateful graph handling
-- `src/common/`: backend id and GPU device-family/profile value types shared
-  across compiler, runtime, and backend code
+  compiled-model state, infer-request OpenVINO API glue, output resolution,
+  model serialization, backend-access helpers, and variable-state API objects
+- `src/common/`: backend ids, activation/bias metadata, dispatch and
+  parallelism value types, submit-policy records, constant-evaluation helpers,
+  and GPU device-family/profile value types shared across compiler, runtime,
+  and backend code
 - `src/compiler/`: backend target description, backend module registry,
   backend capability records, operation support policies, backend
   stage-placement contracts, operation legalization, tensor-layout
-  classification, stage compiler policy, lowering plans, pipeline-stage
-  descriptor building, fusion selection, pipeline-stage I/O plans, memory
-  plans, manifest bundles, cache envelopes, executable bundles, and artifact
-  payload routing
+  classification, stage compiler policy, lowering plans, stage policy,
+  pipeline-stage descriptor building, fusion selection, pipeline-stage I/O
+  plans, memory plans, manifest bundles, cache envelopes, executable bundles,
+  backend-module construction, and artifact payload routing
 - `src/runtime/`: backend-neutral stage interfaces, execution dispatcher,
-  backend stage factory interfaces, pipeline-stage descriptors and
-  materializers, descriptor-backed view-only stages, submission windows, target
-  profiles, profiling reports, remote tensor/context helpers, common buffer
-  abstractions, runtime executable descriptors, runtime sessions,
-  fused-output lifetime planning, selected compiler policy handoff, and
-  reusable caches
+  backend runtime/provider interfaces, backend request state, backend stage
+  factory interfaces, infer pipeline/executor/submission helpers,
+  pipeline-stage descriptors and materializers, descriptor-backed view-only
+  stages, stateful runtime helpers, submission windows, target profiles,
+  profiling reports, remote tensor/context helpers, common buffer abstractions,
+  runtime executable descriptors, runtime sessions, fused-output lifetime
+  planning, runtime-value planning, and reusable caches
 - `src/kernel_ir/`: kernel manifests, custom-kernel family registry, dispatch
   metadata, argument helpers, cache keys, embedded helper kernel sources, and
   OpenCL source artifacts
-- `src/mlir/`: support probing, MLIR builders, pass helpers, runtime-value
-  planning, Apple MSL/MPS source planning, and typed MPSRT materialization
-- `src/backends/metal/`: Metal plugin glue, Objective-C++ runtime, MSL compiler,
-  memory allocator, MPSRT request encoding, MPS/MPSGraph vendor primitive
-  execution, and profiling
+- `src/mlir/`: support probing, MLIR builders, pass helpers, backend hooks,
+  MPSRT dialect/metadata helpers, and generic MLIR kernel construction
+- `src/backends/metal/`: Metal plugin glue, backend compiler module, Apple
+  MSL/MPS/MPSRT source planning, shared MPSRT ABI records, Objective-C++
+  runtime, MSL compiler, memory allocator, MPSRT request encoding,
+  MPS/MPSGraph vendor primitive execution, and profiling
 - `src/backends/opencl/`: OpenCL plugin glue, dynamic API loader, buffer manager,
   program cache, memory ops, and generic source-stage executor
 - `src/transforms/`: graph rewrites, fusions, and layout cleanup
@@ -91,11 +95,12 @@ constant output.
 
 `build_op_pipeline()` creates a `compiler::PipelineStageBuildRequest` and
 delegates descriptor construction to `src/compiler/pipeline_stage_builder.*`.
-The builder owns the current stage ordering, node-to-stage mapping, parameter
-index map, fusion planning, absorbed input transforms, residual-add fusion, and
-model-output alias handling. `CompiledModel` stores the returned
-`PipelineStageBuildResult`; it should not accumulate backend-specific stage
-construction logic.
+The builder owns stage ordering, node-to-stage mapping, parameter index map,
+absorbed input transforms, model-output alias handling, and the handoff from
+compiler-owned planning contracts in `src/compiler/pipeline_stage_plan.*` and
+`src/compiler/pipeline_stage_fusion.*`. `CompiledModel` stores the returned
+`compiler::PipelineStageBuildResult`; it should not accumulate
+backend-specific stage construction logic.
 
 `src/runtime/pipeline_stage_materializer.*` passes the matching
 `RuntimeStageExecutableDescriptor` to backend stage creation through
@@ -112,9 +117,33 @@ memory-region ids are checked against the current tensor bindings.
 
 Infer-request logic is split between shared helpers and backend files:
 
-- shared state and binding helpers in `src/plugin/infer_request_state.hpp`,
-  `src/plugin/infer_pipeline.*`, `src/plugin/infer_submission.*`,
-  `src/plugin/infer_io_utils.*`, and `src/plugin/stateful_execution.*`
+- OpenVINO-facing request state and IO helpers in
+  `src/plugin/infer_request_state.hpp`, `src/plugin/infer_io_utils.*`, and
+  `src/plugin/infer_request_variable_state.*`; host input binding refreshes
+  from the current OpenVINO request tensor on every infer, so public
+  port/node-based `set_tensor()` entry points cannot leave stale request-local
+  cached views behind. Public output tensors obtained before `infer()` are
+  pinned as request-owned host outputs when their type and shape match the
+  model output contract; the shared output binder then writes into that same
+  tensor instead of replacing it with a backend-specific view.
+- shared runtime execution helpers in `src/runtime/infer_pipeline.*`,
+  `src/runtime/infer_submission.*`, `src/runtime/infer_executor.*`, and
+  `src/runtime/stateful_execution.*`
+- request-local stateful tensor slots in
+  `src/runtime/stateful_variable_state.hpp`; plugin request state owns the map,
+  but runtime helpers consume only that runtime-level state, not
+  `InferRequestState`. Initial OpenVINO variable state is materialized as a
+  zero-filled host tensor and uploaded on the first `ReadValue` through the same
+  runtime state map used by `set_state()` / `reset()`. `ReadValue` materializes
+  a compiler-planned output snapshot from the persistent GPU state buffer, so
+  downstream consumers observe the pre-`Assign` value even when the state is
+  updated later in the same graph. `Assign` updates the persistent GPU state
+  buffer and marks the request-local host mirror stale;
+  `query_state()` readback is then handled by the shared runtime helper through
+  the same backend memory-copy API used for normal output readback. Direct
+  producer-to-state aliasing for `Assign` is compiler-planned only when that
+  producer output has no non-`Assign` consumers, so state update storage cannot
+  overwrite a value still needed by downstream stages.
 - Metal request implementation under `src/backends/metal/plugin/`
 - OpenCL request implementation under `src/backends/opencl/plugin/`
 
@@ -147,10 +176,14 @@ backend.
 
 The compiler registry and runtime availability share the generated availability
 contract. The default `BackendRegistry` contains only the production backend
-modules available in the current build, while query, lowering, manifest, and
-architecture contract tests reason about that configured backend set.
-`backend_supported()` and `src/plugin/backend_factory.*` decide whether a backend
-can create runtime state in the current build.
+modules available in the current build. `src/compiler/backend_module_provider.*`
+assembles the configured backend modules, including
+`src/backends/metal/compiler/metal_backend_module.*` and
+`src/backends/opencl/compiler/opencl_backend_module.*`. Runtime availability is
+provided separately through `src/runtime/backend_runtime_provider.*`, where each
+backend registers callbacks for backend-state creation, infer execution, and
+profiling trace-sink registration. Query, lowering, manifest, runtime-provider,
+and architecture contract tests reason about that configured backend set.
 
 ## Stage Pipeline
 
@@ -198,7 +231,7 @@ should consume that explicit policy instead of resolving
 
 ## Planning And Scheduling
 
-`src/runtime/gfx_stage_policy.*` selects:
+`src/compiler/stage_policy.*` selects:
 
 - fusion policy for bias, activation, and batchnorm
 - precision handling
@@ -220,7 +253,7 @@ workgroup and partitioning decisions from `GpuExecutionDeviceInfo` reported by
 the active buffer manager. Those helpers are shared; add device-family or
 capability logic there instead of adding per-backend shortcuts.
 
-`src/plugin/infer_submission.*` records stages into submission windows. The
+`src/runtime/infer_submission.*` records stages into submission windows. The
 planner considers stage count, recorded output bytes, MAC estimates,
 producer-consumer dependencies, and boundary stages such as layout, split,
 transpose, softmax, and attention.
@@ -295,8 +328,9 @@ MLIR lives under `src/mlir/` and is shared infrastructure:
 - `mlir_builder_*.cpp` files lower OpenVINO ops to MLIR forms.
 - `gfx_mlir_transform_pipeline.*`, `mlir_passes.*`, and lowering helpers apply
   cleanup and backend-oriented conversion steps.
-- `gfx_stage_runtime_values.*` owns runtime-value payload planning for shape,
-  slice, split, range, tile, gather/scatter, and source-artifact metadata.
+- `src/runtime/gfx_stage_runtime_values.*` owns runtime-value payload planning
+  for shape, slice, split, range, tile, gather/scatter, and source-artifact
+  metadata.
 - `gfx_backend_custom_kernel_adapter.*` converts kernel manifests into backend
   source-binding plans.
 
@@ -327,15 +361,16 @@ Metal Pool2D is intentionally restricted to descriptor-backed MPS-family vendor
 routes; the old generic MSL Pool2D fallback is removed and must not be treated
 as current behavior.
 
-Apple source planning is split by responsibility:
+Apple source planning lives under `src/backends/metal/compiler/` and is split
+by responsibility:
 
 - `msl_codegen_apple_msl_*`: Apple MSL custom-kernel source plans
 - `msl_codegen_apple_mps.*`: Apple MPS/MPSGraph vendor source plans
 - `msl_codegen_matmul_*`: direct Metal and MPSRT MatMul planning
 - `msl_codegen_attention.*`: attention and SDPA source planning
 - `msl_codegen_compressed_matmul.*`: compressed MatMul helpers
-- `gfx_apple_stage_pipeline.*` and `gfx_apple_vendor_descriptors.*`: typed
-  Apple vendor descriptor extraction and materialization
+- `apple_stage_pipeline.*` and `apple_vendor_descriptors.*`: typed Apple
+  vendor descriptor extraction and materialization
 
 ## Kernel Manifests
 
@@ -346,8 +381,8 @@ Kernel contracts are split across the current compiler and kernel IR layers:
   runtime-shape-argument requirements, and memory contracts
 - `src/compiler/pipeline_stage_plan.*`: model-output flags, input links, and
   output-alias metadata used by compiled pipeline descriptors
-- `src/compiler/pipeline_stage_builder.*`: compiled-pipeline descriptor
-  construction and node-to-stage mapping
+- `src/compiler/pipeline_stage_builder.*`: stage descriptor construction and
+  node-to-stage mapping from compiler-owned planning contracts
 - `src/compiler/pipeline_stage_fusion.*`: compiler-owned fusion selection and
   vendor attention planning
 - `src/compiler/memory_plan.*`: compiler-owned memory regions, lifetimes, alias
@@ -394,16 +429,19 @@ The Metal backend is split into:
 - descriptor-backed vendor primitive execution in
   `src/backends/metal/runtime/mpsrt_vendor_primitive_stage.*`
 - MSL compilation in `src/backends/metal/codegen/`
-- MPSRT preparation and request encoding in
+- shared MPSRT ABI and builder-plan records in
+  `src/backends/metal/common/mpsrt/`
+- MPSRT runtime-model construction, preparation, and request encoding in
   `src/backends/metal/runtime/mpsrt/`
 - embedded helper kernels in `src/kernel_ir/metal_kernels/`
 
 Metal stages can use Apple MPS/MPSGraph vendor primitives or Apple MSL custom
 kernels. The shared stage policy selects placement and storage. The compile path
-can materialize a typed MPSRT program and backend-neutral runtime model through
-`src/backends/metal/runtime/mpsrt/gfx_mpsrt_model.*`,
-`gfx_mpsrt_plan.hpp`, `gfx_mpsrt_program.hpp`, and
-`gfx_mpsrt_kernel_manifest_adapter.hpp`.
+can materialize typed MPSRT builder plans and Apple source/vendor descriptors
+through `src/backends/metal/compiler/` and the shared MPSRT contract headers in
+`src/backends/metal/common/mpsrt/`. Runtime model construction and request
+encoding then use `src/backends/metal/runtime/mpsrt/gfx_mpsrt_model.*` and the
+rest of the runtime MPSRT implementation.
 
 Request-time Metal execution validates external-buffer bindings, model-owned
 resources, transient resources, storage bridges, prepared heaps, and
@@ -419,19 +457,19 @@ causal SDPA helper forms, plus embedded MPSRT helper kernels for image bridges
 and TopK post-processing.
 
 Generated Metal activation payloads are produced by
-`src/mlir/msl_codegen_apple_msl_activation.*`. They use compiler-owned binding
-plans; `Swish` with a runtime scalar beta uses an explicit second input role
-instead of request-time argument inference.
+`src/backends/metal/compiler/msl_codegen_apple_msl_activation.*`. They use
+compiler-owned binding plans; `Swish` with a runtime scalar beta uses an
+explicit second input role instead of request-time argument inference.
 
 Generated Metal reduction payloads are produced by
-`src/mlir/msl_codegen_apple_msl_reduction.*` and loaded from embedded helper
-sources in `src/kernel_ir/metal_kernels/reduction_*`. Numeric f32 reductions and
-logical boolean reductions have separate source ids and entry points, but share
-the same explicit role-based binding shape.
+`src/backends/metal/compiler/msl_codegen_apple_msl_reduction.*` and loaded from
+embedded helper sources in `src/kernel_ir/metal_kernels/reduction_*`. Numeric
+f32 reductions and logical boolean reductions have separate source ids and
+entry points, but share the same explicit role-based binding shape.
 
 Generated Metal Softmax payloads are produced by
-`src/mlir/msl_codegen_apple_msl_softmax.*` and loaded from embedded helper
-sources in `src/kernel_ir/metal_kernels/softmax_*` and
+`src/backends/metal/compiler/msl_codegen_apple_msl_softmax.*` and loaded from
+embedded helper sources in `src/kernel_ir/metal_kernels/softmax_*` and
 `src/kernel_ir/metal_kernels/logsoftmax_*`. `Softmax` and `LogSoftmax` have
 separate f32/f16 source ids and entry points. The generated route uses explicit
 runtime-parameter roles instead of request-time buffer-order inference.
@@ -564,14 +602,14 @@ The CMake layout separates shared contracts from backend payload ownership:
 
 - `gfx_plugin_core`: plugin-facing compiler and OpenVINO integration
 - `gfx_runtime_common`: backend-neutral runtime and scheduling helpers
-- `src/compiler/pipeline_stage_builder.*` and
-  `src/compiler/pipeline_stage_fusion.*`: compiler-owned pipeline descriptor
-  construction and fusion selection
+- `src/compiler/pipeline_stage_builder.*`: stage descriptor construction from
+  compiler-owned stage plans
+- `src/compiler/pipeline_stage_fusion.*`: compiler-owned fusion selection
 - `src/runtime/backend_stage_factory.hpp`,
   `src/runtime/pipeline_stage_desc.hpp`, and
   `src/runtime/pipeline_stage_materializer.*`: runtime-facing stage creation
   and materialization contracts
-- `gfx_runtime_mlir`: MLIR lowering/source-planning support
+- `gfx_runtime_mlir`: MLIR lowering, pass, dialect, and backend-hook support
 - `gfx_opencl_kernel_artifacts`: OpenCL source artifacts and embedded OpenCL
   helper source wrappers used by the OpenCL backend resolver
 - `gfx_runtime_opencl`: OpenCL runtime loader, plugin-local runtime-bundle
@@ -601,10 +639,10 @@ Do not move OpenCL source payload materialization back into
 - Keep selected backend compiler policy explicit through `CompiledModel`,
   `GpuStageRuntimeOptions`, and `compiler::StageCompilerPolicy`; do not make
   runtime stages rediscover compiler modules through the default registry.
-- Keep stage descriptor construction and fusion selection in
-  `src/compiler/pipeline_stage_builder.*` and
+- Keep stage descriptor construction in
+  `src/compiler/pipeline_stage_builder.*` and fusion selection in
   `src/compiler/pipeline_stage_fusion.*`; do not rebuild this logic inside
-  `CompiledModel` or a backend runtime.
+  `CompiledModel` or backend-specific request code.
 - Keep descriptor-backed stage creation in
   `src/runtime/pipeline_stage_materializer.*` and backend implementations of
   `BackendStageFactory`.

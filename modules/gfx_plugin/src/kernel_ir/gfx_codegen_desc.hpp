@@ -11,7 +11,7 @@
 #include "openvino/core/type/element_type.hpp"
 #include <string>
 
-#include "runtime/gfx_activation.hpp"
+#include "common/gfx_activation.hpp"
 
 namespace ov {
 namespace gfx_plugin {

@@ -9,7 +9,7 @@
 #include <string>
 
 #include "openvino/op/parameter.hpp"
-#include "plugin/infer_submission.hpp"
+#include "runtime/infer_submission.hpp"
 #include "runtime/gpu_tensor.hpp"
 
 namespace ov {
@@ -196,6 +196,68 @@ private:
     std::vector<bool> m_continue_recording_flags;
     size_t m_finish_count = 0;
 };
+
+std::shared_ptr<RuntimeSession> make_submission_contract_session(
+    size_t stage_count,
+    std::vector<uint32_t> stage_weights = {},
+    std::vector<uint64_t> macs_estimates = {},
+    std::vector<bool> dependency_boundaries = {}) {
+    auto descriptor = std::make_shared<RuntimeExecutableDescriptor>();
+    descriptor->target_fingerprint = "test-submission-target";
+    descriptor->stages.reserve(stage_count);
+    for (size_t i = 0; i < stage_count; ++i) {
+        RuntimeStageExecutableDescriptor stage;
+        stage.stage_index = i;
+        stage.stage_record_key = i + 1u;
+        stage.manifest_ref = "test-manifest-ref-" + std::to_string(i);
+        stage.abi_fingerprint = "test-abi-" + std::to_string(i);
+        stage.artifact_key = "test-artifact-" + std::to_string(i);
+        stage.backend_domain = "test-backend";
+        stage.kernel_id = "test-kernel-" + std::to_string(i);
+        stage.op_family = "test-op";
+        stage.runtime_shape_rule = "static_or_descriptor";
+        stage.submission_stage_weight =
+            i < stage_weights.size() ? stage_weights[i] : 1u;
+        stage.submission_macs_estimate =
+            i < macs_estimates.size() ? macs_estimates[i] : 0u;
+        stage.submission_dependency_boundary =
+            i < dependency_boundaries.size() ? dependency_boundaries[i] : false;
+        descriptor->stages.push_back(std::move(stage));
+    }
+    return std::make_shared<RuntimeSession>(std::move(descriptor));
+}
+
+void attach_submission_contract_session(
+    std::vector<InferStage>& pipeline,
+    const std::shared_ptr<RuntimeSession>& session) {
+    ASSERT_EQ(pipeline.size(), session->stage_count());
+    for (size_t i = 0; i < pipeline.size(); ++i) {
+        pipeline[i].runtime_session = session;
+        pipeline[i].runtime_stage_index = i;
+    }
+}
+
+void apply_opencl_wide_submission_hints(InferSubmissionTuningCaps& caps) {
+    const uint32_t simd = std::max<uint32_t>(
+        1u, std::max(caps.preferred_simd_width, caps.subgroup_size));
+    caps.max_slots_hint = 6u;
+    caps.stages_per_slot_hint = simd >= 64u ? 72u : 56u;
+}
+
+void apply_opencl_constrained_extreme_submission_hints(
+    InferSubmissionTuningCaps& caps) {
+    const uint32_t simd = std::max<uint32_t>(
+        1u, std::max(caps.preferred_simd_width, caps.subgroup_size));
+    const size_t stages_per_slot = simd >= 64u ? 64u : 48u;
+    caps.extremely_deep_source_stage_floor =
+        stages_per_slot + stages_per_slot / 2u;
+    caps.extremely_deep_source_output_floor =
+        (simd >= 64u ? 96u : 64u) * 1024u * 1024u;
+    caps.extremely_deep_source_mac_floor =
+        (simd >= 64u ? 8ull : 4ull) * 1000ull * 1000ull * 1000ull;
+    caps.extremely_deep_dependency_extension_budget_num = 5u;
+    caps.extremely_deep_dependency_extension_budget_den = 4u;
+}
 
 TEST(InferSubmissionTest, IncrementalSubmitNotifiesOnlySubmittedStages) {
     std::vector<InferStage> pipeline;
@@ -441,6 +503,76 @@ TEST(InferSubmissionTest, SubmissionFlushesBeforeRecordingStageThatWouldExceedWi
     EXPECT_EQ(stage1->completion_count, 1u);
 }
 
+TEST(InferSubmissionTest, SubmissionUsesDescriptorOwnedStageWeight) {
+    std::vector<InferStage> pipeline;
+    pipeline.emplace_back();
+    pipeline.emplace_back();
+    auto* stage0 = new FakeStage(GpuStageSubmitPolicy{.weight = 1});
+    auto* stage1 = new FakeStage(GpuStageSubmitPolicy{.weight = 1});
+    pipeline[0].stage.reset(stage0);
+    pipeline[1].stage.reset(stage1);
+    attach_submission_contract_session(
+        pipeline, make_submission_contract_session(
+                      pipeline.size(), /*stage_weights=*/{2u, 2u}));
+
+    FakeSubmissionSession submission(/*incremental_submit=*/true);
+    InferSubmissionConfig config;
+    config.max_stages_per_submit = 3;
+    config.max_output_bytes_per_submit = std::numeric_limits<size_t>::max();
+    config.max_macs_per_submit = std::numeric_limits<uint64_t>::max();
+
+    execute_pipeline_with_submission(
+        pipeline,
+        {},
+        {},
+        [](size_t) -> GpuTensor* {
+            return nullptr;
+        },
+        submission,
+        config);
+
+    EXPECT_EQ(submission.submit_count(), 2u);
+    ASSERT_EQ(submission.continue_recording_flags().size(), 2u);
+    EXPECT_TRUE(submission.continue_recording_flags()[0]);
+    EXPECT_FALSE(submission.continue_recording_flags()[1]);
+}
+
+TEST(InferSubmissionTest, SubmissionUsesDescriptorOwnedMacEstimate) {
+    std::vector<InferStage> pipeline;
+    pipeline.emplace_back();
+    pipeline.emplace_back();
+    auto* stage0 = new FakeStage();
+    auto* stage1 = new FakeStage();
+    pipeline[0].stage.reset(stage0);
+    pipeline[1].stage.reset(stage1);
+    attach_submission_contract_session(
+        pipeline, make_submission_contract_session(
+                      pipeline.size(),
+                      /*stage_weights=*/{},
+                      /*macs_estimates=*/{10u, 10u}));
+
+    FakeSubmissionSession submission(/*incremental_submit=*/true);
+    InferSubmissionConfig config;
+    config.max_stages_per_submit = std::numeric_limits<size_t>::max();
+    config.max_output_bytes_per_submit = std::numeric_limits<size_t>::max();
+    config.max_macs_per_submit = 15u;
+
+    execute_pipeline_with_submission(
+        pipeline,
+        {},
+        {},
+        [](size_t) -> GpuTensor* {
+            return nullptr;
+        },
+        submission,
+        config);
+
+    EXPECT_EQ(submission.submit_count(), 2u);
+    ASSERT_EQ(submission.continue_recording_flags().size(), 2u);
+    EXPECT_TRUE(submission.continue_recording_flags()[0]);
+    EXPECT_FALSE(submission.continue_recording_flags()[1]);
+}
+
 TEST(InferSubmissionTest, SubmissionKeepsDirectProducerConsumerAcrossSoftBudgetBoundary) {
     std::vector<InferStage> pipeline;
     pipeline.emplace_back();
@@ -485,14 +617,20 @@ TEST(InferSubmissionTest, SubmissionDoesNotExtendSoftBudgetAcrossLayoutBoundary)
     pipeline.emplace_back();
     const auto producer = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
     const auto concat = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
-    auto* stage0 = new FakeStage(GpuStageSubmitPolicy{.weight = 2}, "Convolution");
-    auto* stage1 = new FakeStage(GpuStageSubmitPolicy{.weight = 2}, "Concat");
+    auto* stage0 = new FakeStage(GpuStageSubmitPolicy{.weight = 2});
+    auto* stage1 = new FakeStage(GpuStageSubmitPolicy{.weight = 2});
     pipeline[0].node = producer;
     pipeline[0].stage.reset(stage0);
     pipeline[0].outputs.push_back(std::make_unique<GpuTensor>());
     pipeline[1].node = concat;
     pipeline[1].stage.reset(stage1);
     pipeline[1].inputs.push_back(PipelineStageDesc::InputLink{producer, 0});
+    attach_submission_contract_session(
+        pipeline, make_submission_contract_session(
+                      pipeline.size(),
+                      /*stage_weights=*/{2u, 2u},
+                      /*macs_estimates=*/{},
+                      /*dependency_boundaries=*/{false, true}));
 
     FakeSubmissionSession submission(/*incremental_submit=*/true);
     InferSubmissionConfig config;
@@ -567,14 +705,20 @@ TEST(InferSubmissionTest, SubmissionDoesNotHoldBudgetReachedLayoutBoundaryForDir
     pipeline.emplace_back();
     const auto concat = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
     const auto consumer = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
-    auto* stage0 = new FakeStage(GpuStageSubmitPolicy{.weight = 3}, "Concat");
-    auto* stage1 = new FakeStage(GpuStageSubmitPolicy{.weight = 1}, "Convolution");
+    auto* stage0 = new FakeStage(GpuStageSubmitPolicy{.weight = 3});
+    auto* stage1 = new FakeStage(GpuStageSubmitPolicy{.weight = 1});
     pipeline[0].node = concat;
     pipeline[0].stage.reset(stage0);
     pipeline[0].outputs.push_back(std::make_unique<GpuTensor>());
     pipeline[1].node = consumer;
     pipeline[1].stage.reset(stage1);
     pipeline[1].inputs.push_back(PipelineStageDesc::InputLink{concat, 0});
+    attach_submission_contract_session(
+        pipeline, make_submission_contract_session(
+                      pipeline.size(),
+                      /*stage_weights=*/{3u, 1u},
+                      /*macs_estimates=*/{},
+                      /*dependency_boundaries=*/{true, false}));
 
     FakeSubmissionSession submission(/*incremental_submit=*/true);
     InferSubmissionConfig config;
@@ -641,11 +785,11 @@ TEST(InferSubmissionTest, SubmissionDoesNotExtendDirectDependencyPastConfiguredB
 
 TEST(InferSubmissionTest, SubmissionTuningUsesMultipleSlotsForDeepIncrementalPipelines) {
     InferSubmissionTuningCaps caps{};
-    caps.backend = GpuBackend::OpenCL;
     caps.preferred_simd_width = 64u;
     caps.subgroup_size = 64u;
     caps.max_total_threads_per_group = 1024u;
     caps.supports_incremental_submit = true;
+    apply_opencl_wide_submission_hints(caps);
 
     const auto tuning = select_infer_submission_tuning(caps, /*stage_count=*/192u);
 
@@ -655,7 +799,6 @@ TEST(InferSubmissionTest, SubmissionTuningUsesMultipleSlotsForDeepIncrementalPip
 
 TEST(InferSubmissionTest, SubmissionTuningWidensWindowBudgetWhenMultipleSlotsAreAvailable) {
     InferSubmissionTuningCaps caps{};
-    caps.backend = GpuBackend::OpenCL;
     caps.preferred_simd_width = 32u;
     caps.subgroup_size = 32u;
     caps.max_total_threads_per_group = 256u;
@@ -672,11 +815,11 @@ TEST(InferSubmissionTest, SubmissionTuningWidensWindowBudgetWhenMultipleSlotsAre
 
 TEST(InferSubmissionTest, SubmissionTuningKeepsBoundedWindowsForExtremelyDeepOpenClPipelines) {
     InferSubmissionTuningCaps caps{};
-    caps.backend = GpuBackend::OpenCL;
     caps.preferred_simd_width = 64u;
     caps.subgroup_size = 64u;
     caps.max_total_threads_per_group = 1024u;
     caps.supports_incremental_submit = true;
+    apply_opencl_wide_submission_hints(caps);
 
     const auto tuning = select_infer_submission_tuning(caps, /*stage_count=*/390u);
 
@@ -689,11 +832,11 @@ TEST(InferSubmissionTest, SubmissionTuningKeepsBoundedWindowsForExtremelyDeepOpe
 
 TEST(InferSubmissionTest, SubmissionTuningAvoidsTinyWindowsForConstrainedDeepOpenClPipelines) {
     InferSubmissionTuningCaps caps{};
-    caps.backend = GpuBackend::OpenCL;
     caps.preferred_simd_width = 16u;
     caps.subgroup_size = 16u;
     caps.max_total_threads_per_group = 256u;
     caps.supports_incremental_submit = true;
+    apply_opencl_constrained_extreme_submission_hints(caps);
 
     const auto tuning = select_infer_submission_tuning(caps, /*stage_count=*/517u);
 
@@ -709,14 +852,15 @@ TEST(InferSubmissionTest, SubmissionTuningAvoidsTinyWindowsForConstrainedDeepOpe
 
 TEST(InferSubmissionTest, SubmissionTuningDerivesBroadcomBudgetFromCommonConstrainedProfile) {
     InferSubmissionTuningCaps caps{};
-    caps.backend = GpuBackend::OpenCL;
     caps.preferred_simd_width = 16u;
     caps.subgroup_size = 16u;
     caps.max_total_threads_per_group = 256u;
     caps.supports_incremental_submit = true;
+    apply_opencl_constrained_extreme_submission_hints(caps);
 
     const auto generic_tuning = select_infer_submission_tuning(caps, /*stage_count=*/517u);
-    caps.device_family = GpuDeviceFamily::BroadcomV3D;
+    caps.mac_budget_scale_num = 2u;
+    caps.mac_budget_scale_den = 3u;
     const auto broadcom_tuning = select_infer_submission_tuning(caps, /*stage_count=*/517u);
 
     EXPECT_EQ(broadcom_tuning.slot_count, generic_tuning.slot_count);
@@ -732,7 +876,6 @@ TEST(InferSubmissionTest, SubmissionTuningDerivesBroadcomBudgetFromCommonConstra
 
 TEST(InferSubmissionTest, SubmissionTuningKeepsSingleSlotWithoutIncrementalSubmit) {
     InferSubmissionTuningCaps caps{};
-    caps.backend = GpuBackend::Metal;
     caps.preferred_simd_width = 32u;
     caps.subgroup_size = 32u;
     caps.max_total_threads_per_group = 512u;

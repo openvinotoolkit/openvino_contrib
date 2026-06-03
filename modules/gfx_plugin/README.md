@@ -45,34 +45,39 @@ Read these files first:
 ## Source Layout
 
 - `include/openvino/gfx_plugin/`: public plugin headers and property names
-- `src/common/`: backend ids and device-family/profile value types shared by
-  compiler, runtime, and backend code
+- `src/common/`: backend ids, activation/bias metadata, dispatch and
+  parallelism value types, submit-policy records, constant-evaluation helpers,
+  and device-family/profile value types shared by compiler, runtime, and
+  backend code
 - `src/compiler/`: backend target registry, backend capability records,
   operation support policies, backend stage-placement contracts, tensor-layout
   classification, stage compiler policy, lowering-plan construction,
   pipeline-stage descriptor building, fusion selection, pipeline-stage I/O
   planning, memory planning, manifest/cache-envelope building,
-  executable-bundle assembly, and artifact payload routing used by query and
-  compilation
+  executable-bundle assembly, backend-module construction, and artifact payload
+  routing used by query and compilation
 - `src/plugin/`: OpenVINO-facing `Plugin`, `CompiledModel`, infer-request
-  plumbing, properties, model serialization, backend selection, runtime-provider
-  registration, and stateful `ReadValue` / `Assign` handling
+  API glue, properties, model serialization, backend selection, backend-access
+  helpers, and variable-state OpenVINO API objects
 - `src/runtime/`: backend-neutral stage interfaces, submission planning,
   profiling report assembly, runtime executable descriptors, runtime sessions,
-  backend stage factory interfaces, pipeline-stage materialization,
-  fused-output lifetime planning, liveness-aware output workspaces, remote
-  context/tensor helpers, descriptor-backed view-only stages, and target
+  backend runtime/provider interfaces, backend request state, backend stage
+  factory interfaces, infer pipeline/executor/submission helpers, stateful
+  runtime helpers, pipeline-stage materialization, fused-output lifetime
+  planning, liveness-aware output workspaces, remote context/tensor helpers,
+  descriptor-backed view-only stages, runtime-value planning, and target
   profiles
 - `src/kernel_ir/`: backend-neutral kernel manifests, custom-kernel family
   metadata, cache keys, dispatch descriptions, embedded Metal/OpenCL helper
   sources, and OpenCL source artifacts
-- `src/mlir/`: support probing, OpenVINO-node lowering, pass helpers, Apple
-  stage-pipeline materialization, MPSRT dialect/program helpers, Apple MSL/MPS
-  source-plan helpers, and shared runtime-value planning
+- `src/mlir/`: support probing, OpenVINO-node lowering, pass helpers, backend
+  stage hooks, MPSRT dialect/metadata helpers, and generic MLIR kernel
+  construction used by backend compiler routes
 - `src/backends/metal/`: Metal plugin glue, Objective-C++ runtime, memory
-  management, profiling, backend compiler policy, MSL compilation, runtime
-  kernel loading, MPSRT preparation, descriptor-backed vendor primitive stages,
-  and MPS/MPSGraph vendor primitive execution
+  management, profiling, backend compiler module, Apple MSL/MPS/MPSRT source
+  planning, shared MPSRT ABI records, MSL compilation, runtime kernel loading,
+  MPSRT preparation, descriptor-backed vendor primitive stages, and
+  MPS/MPSGraph vendor primitive execution
 - `src/backends/opencl/`: OpenCL plugin glue, dynamic API loader, buffer
   manager, backend compiler policy, backend-owned source-artifact payload
   materialization, program cache, memory ops, runtime kernel loading, and
@@ -96,9 +101,9 @@ The high-level path is:
    available in the current configured build. The module owns the immutable
    `BackendTarget`, backend-owned transform `PipelineOptions`, fusion
    capabilities, post-op fusion capabilities, stage-placement policy, source
-   kernel dispatch policy, and artifact payload resolver. Runtime state
-   creation is still checked through configured backend support and
-   `src/plugin/backend_factory.*`.
+   kernel dispatch policy, and artifact payload resolver. Default backend
+   modules are built by `src/compiler/backend_module_provider.*` and
+   backend-specific `*_backend_module.*` files.
 3. `GfxCompilerService` runs backend-aware transforms, operation support
    checks, lowering-plan creation, memory-plan creation, manifest building,
    executable-bundle assembly, cache-envelope construction, and artifact payload
@@ -115,14 +120,18 @@ The high-level path is:
    `src/runtime/pipeline_stage_desc.hpp`. Fused output lifetimes are derived
    from runtime memory contracts in
    `src/runtime/fused_output_lifetime_plan.*`.
-7. `src/runtime/gfx_stage_policy.*` selects fusion, precision, submit policy,
+7. `src/compiler/stage_policy.*` selects fusion, precision, submit policy,
    and other shared stage traits. The selected backend `StagePlacementPolicy`,
    `PostOpFusionCapabilities`, and source-kernel dispatch policy are passed
    through `GpuStageRuntimeOptions` / `compiler::StageCompilerPolicy`; stages
    must not resolve the global backend registry at request time.
-8. `src/mlir/` lowers supported nodes and materializes backend source plans.
-9. The active backend creates descriptor-backed view-only stages or concrete
-   backend `GpuStage` objects through `BackendStageFactory` / backend state.
+8. `src/mlir/` lowers supported nodes and exposes backend hooks; Metal and
+   OpenCL source/vendor payload planning lives in the matching
+   `src/backends/*/compiler/` directory.
+9. Runtime backend providers in `src/runtime/backend_runtime_provider.*` create
+   the selected `BackendState` and dispatch infer execution to the active
+   backend. The active backend creates descriptor-backed view-only stages or
+   concrete backend `GpuStage` objects through `BackendStageFactory`.
 10. Infer requests create a `RuntimeSession`, bind host or remote tensors against
    descriptor memory-region contracts, prepare kernel executables per request,
    allocate or reuse backend buffers, execute submission windows, and collect
@@ -163,7 +172,10 @@ The Metal backend is the Apple production path. It combines:
 - backend compiler policy, generated MSL artifact payloads, and MPS/MPSGraph
   vendor descriptor payloads under
   `src/backends/metal/compiler/`
-- MPSRT runtime-model records under `src/backends/metal/runtime/mpsrt/gfx_mpsrt_*`
+- shared MPSRT ABI and builder records under
+  `src/backends/metal/common/mpsrt/`
+- MPSRT runtime-model construction and request encoding under
+  `src/backends/metal/runtime/mpsrt/`
 - embedded MPSRT helper kernels under `src/kernel_ir/metal_kernels/`
 - Objective-C++ request-time execution under `src/backends/metal/runtime/`
 
@@ -236,9 +248,15 @@ MLIR is shared infrastructure, not a separate backend object. It is used for:
 - support probing through `mlir_supports_node()`
 - node lowering through `mlir_builder_*.cpp`
 - pass and cleanup utilities
-- Apple MSL/MPS source planning
-- typed MPSRT program materialization
-- runtime-value payload planning for dynamic shapes and source artifacts
+- backend hooks consumed by Metal and OpenCL compiler modules
+- typed MPSRT dialect/metadata helpers shared with the Metal compiler path
+
+Backend-specific source planning is no longer described as generic MLIR
+ownership. Apple MSL/MPS source planning and typed MPSRT builder-plan assembly
+live under `src/backends/metal/compiler/`; OpenCL source-artifact payload
+materialization lives under `src/backends/opencl/compiler/`. Runtime-value
+payload planning for dynamic shapes and source artifacts is shared runtime code
+under `src/runtime/gfx_stage_runtime_values.*`.
 
 Activation lowering keeps OpenCL and Metal source plans on the same operation
 contract. `Swish` beta is represented either as a static scalar payload or as a
@@ -266,7 +284,7 @@ The current compiler service does not serialize a native backend executable
 cache. It constructs an in-memory manifest/executable bundle for the selected
 backend and the runtime consumes that descriptor during stage creation.
 Compiler-owned tensor layout classification lives in
-`src/compiler/tensor_layout.*`; runtime stage policy consumes the resulting
+`src/compiler/tensor_layout.*`; shared stage policy consumes the resulting
 layout contract instead of reclassifying view-only or materialized layout ops.
 
 ## Supported Operation Families
@@ -362,7 +380,7 @@ parity, duplicate registrations, and forbidden `DISABLED_` registrations.
    compiler pipeline-stage I/O plan, runtime stage materializer, compiler
    memory plan, fused-output lifetime plan, runtime executable descriptor,
    runtime-value payloads, OpenCL artifact metadata, or Metal MPSRT/Apple MSL
-   source planning.
+   source planning under the backend compiler directory.
 5. Add backend-specific code only under `src/backends/metal/` or
    `src/backends/opencl/` when the shared path cannot express the behavior.
 6. Add focused unit tests first, then backend or functional coverage when the
@@ -382,8 +400,8 @@ parity, duplicate registrations, and forbidden `DISABLED_` registrations.
 - Do not bypass backend stage-placement policies through one-off MPS/MSL/OpenCL
   selection logic.
 - Do not move pipeline descriptor construction or fusion selection back into
-  `CompiledModel` or backend request code; keep it in
-  `src/compiler/pipeline_stage_builder.*` and
+  `CompiledModel` or backend request code; keep descriptor construction in
+  `src/compiler/pipeline_stage_builder.*` and fusion selection in
   `src/compiler/pipeline_stage_fusion.*`.
 - Do not reintroduce the deleted standalone
   `src/backends/metal/runtime/mps_graph_attention_stage.*`; MPSGraph attention

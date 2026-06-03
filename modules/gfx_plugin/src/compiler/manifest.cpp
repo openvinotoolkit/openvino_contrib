@@ -4,8 +4,17 @@
 
 #include "compiler/manifest.hpp"
 
+#include <limits>
 #include <sstream>
 #include <utility>
+
+#include "compiler/pipeline_stage_plan.hpp"
+#include "openvino/op/concat.hpp"
+#include "openvino/op/convolution.hpp"
+#include "openvino/op/group_conv.hpp"
+#include "openvino/op/matmul.hpp"
+#include "openvino/op/util/assign_base.hpp"
+#include "openvino/op/util/read_value_base.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -14,6 +23,20 @@ namespace compiler {
 namespace {
 
 constexpr uint32_t kManifestSchemaVersion = 2;
+constexpr const char *kStatefulPrebindShapeRuleNone = "none";
+constexpr const char *kStatefulPrebindShapeRuleStaticOutput =
+    "static_output_shape";
+constexpr const char *kStatefulPrebindShapeRuleSumInputsAlongAxis =
+    "sum_inputs_along_axis";
+constexpr const char *kRuntimeShapeRuleStaticOrDescriptor =
+    "static_or_descriptor";
+constexpr const char *kRuntimeShapeRuleConcat = "concat";
+constexpr const char *kRuntimeShapeRuleBroadcast = "broadcast";
+constexpr const char *kRuntimeShapeRuleSelect = "select";
+constexpr const char *kRuntimeShapeRuleShapeOf = "shape_of";
+constexpr const char *kRuntimeShapeRuleSlice = "slice";
+constexpr const char *kRuntimeShapeRuleRange = "range";
+constexpr const char *kRuntimeShapeRuleTile = "tile";
 
 uint64_t stable_hash64(std::string_view value) noexcept {
   uint64_t hash = 14695981039346656037ull;
@@ -24,11 +47,32 @@ uint64_t stable_hash64(std::string_view value) noexcept {
   return hash;
 }
 
+StatefulEffectContract make_stateful_effect_contract(
+    const PlannedOperation &op) {
+  StatefulEffectContract contract;
+  if (auto read =
+          ov::as_type_ptr<const ov::op::util::ReadValueBase>(op.source_node)) {
+    contract.kind = StatefulEffectKind::ReadValue;
+    contract.variable_id = read->get_variable_id();
+    return contract;
+  }
+  if (auto assign =
+          ov::as_type_ptr<const ov::op::util::AssignBase>(op.source_node)) {
+    contract.kind = StatefulEffectKind::Assign;
+    contract.variable_id = assign->get_variable_id();
+    return contract;
+  }
+  return contract;
+}
+
 std::string stage_key_material(const LoweringPlan &plan,
-                               const PlannedOperation &op, size_t stage_id) {
+                               const PlannedOperation &op, size_t stage_id,
+                               const StatefulEffectContract &stateful_effect) {
   std::ostringstream os;
   os << plan.target.fingerprint() << "#" << stage_id << "#" << op.node_name
-     << "#" << op.type_name << "#" << op.kernel_unit.manifest_key();
+     << "#" << op.type_name << "#" << op.kernel_unit.manifest_key() << "#"
+     << stateful_effect_kind_to_string(stateful_effect.kind) << "#"
+     << stateful_effect.variable_id;
   return os.str();
 }
 
@@ -39,6 +83,90 @@ std::string backend_domain(const BackendTarget &target) {
 bool shape_is_dynamic(const std::string &partial_shape) {
   return partial_shape.find('?') != std::string::npos ||
          partial_shape.find("-1") != std::string::npos;
+}
+
+bool stateful_prebind_shape_rule_valid(std::string_view rule) {
+  return rule == kStatefulPrebindShapeRuleNone ||
+         rule == kStatefulPrebindShapeRuleStaticOutput ||
+         rule == kStatefulPrebindShapeRuleSumInputsAlongAxis;
+}
+
+bool runtime_shape_rule_valid(std::string_view rule) {
+  return rule == kRuntimeShapeRuleStaticOrDescriptor ||
+         rule == kRuntimeShapeRuleConcat || rule == kRuntimeShapeRuleBroadcast ||
+         rule == kRuntimeShapeRuleSelect || rule == kRuntimeShapeRuleShapeOf ||
+         rule == kRuntimeShapeRuleSlice || rule == kRuntimeShapeRuleRange ||
+         rule == kRuntimeShapeRuleTile;
+}
+
+std::string runtime_shape_rule_for_op(const PlannedOperation &op) {
+  if (op.type_name == "Concat") {
+    return kRuntimeShapeRuleConcat;
+  }
+  if (op.type_name == "Broadcast") {
+    return kRuntimeShapeRuleBroadcast;
+  }
+  if (op.type_name == "Select") {
+    return kRuntimeShapeRuleSelect;
+  }
+  if (op.type_name == "ShapeOf") {
+    return kRuntimeShapeRuleShapeOf;
+  }
+  if (op.type_name == "Slice" || op.type_name == "StridedSlice") {
+    return kRuntimeShapeRuleSlice;
+  }
+  if (op.type_name == "Range") {
+    return kRuntimeShapeRuleRange;
+  }
+  if (op.type_name == "Tile") {
+    return kRuntimeShapeRuleTile;
+  }
+  return kRuntimeShapeRuleStaticOrDescriptor;
+}
+
+int64_t normalize_axis_for_rank(int64_t axis, size_t rank) {
+  if (axis < 0) {
+    axis += static_cast<int64_t>(rank);
+  }
+  return axis >= 0 && static_cast<size_t>(axis) < rank ? axis : -1;
+}
+
+std::string stateful_prebind_shape_rule(const PlannedOperation &op,
+                                        size_t output_idx,
+                                        int64_t &shape_axis) {
+  shape_axis = -1;
+  if (output_idx >= op.output_shapes.size()) {
+    return kStatefulPrebindShapeRuleNone;
+  }
+  if (!shape_is_dynamic(op.output_shapes[output_idx])) {
+    return kStatefulPrebindShapeRuleStaticOutput;
+  }
+  auto concat = ov::as_type_ptr<const ov::op::v0::Concat>(op.source_node);
+  if (!concat || output_idx >= concat->get_output_size()) {
+    return kStatefulPrebindShapeRuleNone;
+  }
+  const auto rank = concat->get_output_partial_shape(output_idx).rank();
+  if (!rank.is_static()) {
+    return kStatefulPrebindShapeRuleNone;
+  }
+  shape_axis =
+      normalize_axis_for_rank(concat->get_axis(), static_cast<size_t>(rank.get_length()));
+  return shape_axis >= 0 ? kStatefulPrebindShapeRuleSumInputsAlongAxis
+                         : kStatefulPrebindShapeRuleNone;
+}
+
+void annotate_stateful_prebind_contract(const PlannedOperation &op,
+                                        size_t output_idx,
+                                        TensorContract &contract) {
+  const auto variable_id =
+      direct_stateful_assign_variable_id(op.source_node, output_idx);
+  if (variable_id.empty()) {
+    return;
+  }
+  contract.stateful_prebind_variable_id = variable_id;
+  contract.stateful_prebind_shape_rule =
+      stateful_prebind_shape_rule(op, output_idx,
+                                  contract.stateful_prebind_shape_axis);
 }
 
 TensorContract make_tensor_contract(const PlannedOperation &op,
@@ -79,9 +207,10 @@ std::vector<TensorContract> make_output_contracts(const PlannedOperation &op) {
   for (size_t i = 0; i < op.output_element_types.size(); ++i) {
     const std::string shape =
         i < op.output_shapes.size() ? op.output_shapes[i] : std::string{};
-    contracts.push_back(
-        make_tensor_contract(op, TensorContractRole::TensorOutput, i,
-                             op.output_element_types[i], shape));
+    auto contract = make_tensor_contract(op, TensorContractRole::TensorOutput,
+                                         i, op.output_element_types[i], shape);
+    annotate_stateful_prebind_contract(op, i, contract);
+    contracts.push_back(std::move(contract));
   }
   return contracts;
 }
@@ -134,6 +263,116 @@ MemoryContract make_memory_contract(const StageRecord &stage) {
   return contract;
 }
 
+uint64_t mul_saturating(uint64_t lhs, uint64_t rhs) {
+  if (lhs == 0 || rhs == 0) {
+    return 0;
+  }
+  if (lhs > std::numeric_limits<uint64_t>::max() / rhs) {
+    return std::numeric_limits<uint64_t>::max();
+  }
+  return lhs * rhs;
+}
+
+uint64_t safe_shape_size_u64(const ov::Shape &shape) {
+  uint64_t size = 1;
+  for (const auto dim : shape) {
+    size = mul_saturating(size, static_cast<uint64_t>(dim));
+  }
+  return size;
+}
+
+uint64_t convolution_macs_estimate(const ov::op::v1::Convolution &conv) {
+  if (!conv.get_input_partial_shape(1).is_static() ||
+      !conv.get_output_partial_shape(0).is_static()) {
+    return 0;
+  }
+  const auto weights = conv.get_input_shape(1);
+  const auto output = conv.get_output_shape(0);
+  if (weights.size() != 4 || output.size() != 4) {
+    return 0;
+  }
+  const uint64_t reduction =
+      mul_saturating(static_cast<uint64_t>(weights[1]),
+                     mul_saturating(static_cast<uint64_t>(weights[2]),
+                                    static_cast<uint64_t>(weights[3])));
+  return mul_saturating(safe_shape_size_u64(output), reduction);
+}
+
+uint64_t group_convolution_macs_estimate(
+    const ov::op::v1::GroupConvolution &group_conv) {
+  if (!group_conv.get_input_partial_shape(1).is_static() ||
+      !group_conv.get_output_partial_shape(0).is_static()) {
+    return 0;
+  }
+  const auto weights = group_conv.get_input_shape(1);
+  const auto output = group_conv.get_output_shape(0);
+  if (weights.size() != 5 || output.size() != 4) {
+    return 0;
+  }
+  const uint64_t reduction =
+      mul_saturating(static_cast<uint64_t>(weights[2]),
+                     mul_saturating(static_cast<uint64_t>(weights[3]),
+                                    static_cast<uint64_t>(weights[4])));
+  return mul_saturating(safe_shape_size_u64(output), reduction);
+}
+
+uint64_t matmul_macs_estimate(const ov::op::v0::MatMul &matmul) {
+  if (!matmul.get_input_partial_shape(0).is_static() ||
+      !matmul.get_input_partial_shape(1).is_static() ||
+      !matmul.get_output_partial_shape(0).is_static()) {
+    return 0;
+  }
+  const auto a = matmul.get_input_shape(0);
+  const auto b = matmul.get_input_shape(1);
+  const auto output = matmul.get_output_shape(0);
+  if (a.size() < 2 || b.size() < 2 || output.size() < 2) {
+    return 0;
+  }
+  const auto k = matmul.get_transpose_a() ? a[a.size() - 2] : a[a.size() - 1];
+  return mul_saturating(safe_shape_size_u64(output), static_cast<uint64_t>(k));
+}
+
+uint64_t workload_macs_estimate(const PlannedOperation &op) {
+  if (!op.source_node) {
+    return 0;
+  }
+  try {
+    if (auto conv =
+            ov::as_type_ptr<const ov::op::v1::Convolution>(op.source_node)) {
+      return convolution_macs_estimate(*conv);
+    }
+    if (auto group_conv =
+            ov::as_type_ptr<const ov::op::v1::GroupConvolution>(
+                op.source_node)) {
+      return group_convolution_macs_estimate(*group_conv);
+    }
+    if (auto matmul =
+            ov::as_type_ptr<const ov::op::v0::MatMul>(op.source_node)) {
+      return matmul_macs_estimate(*matmul);
+    }
+  } catch (const std::exception &) {
+    return 0;
+  }
+  return 0;
+}
+
+bool dependency_extension_boundary_for_op(std::string_view type_name) {
+  return type_name == "Concat" || type_name == "Split" ||
+         type_name == "VariadicSplit" || type_name == "Transpose" ||
+         type_name == "Reshape" || type_name == "Squeeze" ||
+         type_name == "Unsqueeze" || type_name == "Softmax" ||
+         type_name == "LogSoftmax" || type_name == "FusedAttention";
+}
+
+SubmissionContract make_submission_contract(const PlannedOperation &op) {
+  SubmissionContract contract;
+  contract.stage_weight = 1;
+  contract.macs_estimate = workload_macs_estimate(op);
+  contract.dependency_extension_boundary =
+      dependency_extension_boundary_for_op(op.type_name);
+  return contract;
+}
+
 void verify_tensor_contract(const TensorContract &contract, const char *label,
                             size_t stage_id,
                             ManifestVerificationResult &result) {
@@ -158,6 +397,27 @@ void verify_tensor_contract(const TensorContract &contract, const char *label,
     result.diagnostics.push_back("stage " + std::to_string(stage_id) + " has " +
                                  label + " with incomplete memory contract");
   }
+  if (contract.stateful_prebind_shape_rule.empty() ||
+      !stateful_prebind_shape_rule_valid(
+          contract.stateful_prebind_shape_rule)) {
+    result.diagnostics.push_back("stage " + std::to_string(stage_id) + " has " +
+                                 label +
+                                 " with invalid stateful prebind shape rule");
+  }
+  if (contract.stateful_prebind_variable_id.empty() &&
+      contract.stateful_prebind_shape_rule != kStatefulPrebindShapeRuleNone) {
+    result.diagnostics.push_back("stage " + std::to_string(stage_id) + " has " +
+                                 label +
+                                 " with stateful prebind shape rule but no "
+                                 "variable id");
+  }
+  if (contract.stateful_prebind_shape_rule ==
+          kStatefulPrebindShapeRuleSumInputsAlongAxis &&
+      contract.stateful_prebind_shape_axis < 0) {
+    result.diagnostics.push_back("stage " + std::to_string(stage_id) + " has " +
+                                 label +
+                                 " with stateful prebind axis missing");
+  }
 }
 
 void verify_runtime_param_contract(const RuntimeParamContract &contract,
@@ -181,6 +441,24 @@ void verify_runtime_param_contract(const RuntimeParamContract &contract,
       result.diagnostics.push_back("stage " + std::to_string(stage_id) +
                                    " has runtime param order drift");
     }
+  }
+}
+
+void verify_runtime_shape_contract(const RuntimeShapeContract &contract,
+                                   size_t stage_id,
+                                   ManifestVerificationResult &result) {
+  if (contract.rule.empty() || !runtime_shape_rule_valid(contract.rule)) {
+    result.diagnostics.push_back("stage " + std::to_string(stage_id) +
+                                 " has invalid runtime shape contract");
+  }
+}
+
+void verify_submission_contract(const SubmissionContract &contract,
+                                size_t stage_id,
+                                ManifestVerificationResult &result) {
+  if (contract.stage_weight == 0) {
+    result.diagnostics.push_back("stage " + std::to_string(stage_id) +
+                                 " has zero submission stage weight");
   }
 }
 
@@ -252,6 +530,8 @@ ManifestVerificationResult ManifestBundle::verify() const {
                                    " memory alias group is missing from plan");
     }
     verify_runtime_param_contract(stage.runtime_params, stage.stage_id, result);
+    verify_runtime_shape_contract(stage.runtime_shape, stage.stage_id, result);
+    verify_submission_contract(stage.submission, stage.stage_id, result);
     for (const auto &input : stage.inputs) {
       verify_tensor_contract(input, "input", stage.stage_id, result);
       if (!input.memory_region_id.empty() &&
@@ -294,9 +574,11 @@ ManifestBundle ManifestBuilder::build(const LoweringPlan &plan) const {
   manifest.stages.reserve(plan.operations.size());
   for (size_t i = 0; i < plan.operations.size(); ++i) {
     const auto &op = plan.operations[i];
+    const auto stateful_effect = make_stateful_effect_contract(op);
     StageRecord stage;
     stage.stage_id = i;
-    stage.stable_record_key = stable_hash64(stage_key_material(plan, op, i));
+    stage.stable_record_key =
+        stable_hash64(stage_key_material(plan, op, i, stateful_effect));
     stage.source_node_name = op.node_name;
     stage.normalized_op_family = op.type_name;
     stage.execution_kind = op.kernel_unit.route_kind();
@@ -317,8 +599,11 @@ ManifestBundle ManifestBuilder::build(const LoweringPlan &plan) const {
           "stage_" + std::to_string(i) + ".output_" + std::to_string(output_idx);
     }
     stage.runtime_params = make_runtime_param_contract(stage);
+    stage.runtime_shape.rule = runtime_shape_rule_for_op(op);
+    stage.stateful_effect = std::move(stateful_effect);
     stage.dispatch = make_dispatch_contract(stage);
     stage.memory = make_memory_contract(stage);
+    stage.submission = make_submission_contract(op);
     stage.handwritten_exception = op.kernel_unit.exception_contract();
     stage.profitability_score = op.profitability_score;
     manifest.stages.push_back(std::move(stage));
@@ -345,6 +630,19 @@ std::string_view runtime_param_kind_to_string(RuntimeParamKind kind) noexcept {
     return "shape";
   }
   return "shape";
+}
+
+std::string_view
+stateful_effect_kind_to_string(StatefulEffectKind kind) noexcept {
+  switch (kind) {
+  case StatefulEffectKind::None:
+    return "none";
+  case StatefulEffectKind::ReadValue:
+    return "read_value";
+  case StatefulEffectKind::Assign:
+    return "assign";
+  }
+  return "none";
 }
 
 } // namespace compiler

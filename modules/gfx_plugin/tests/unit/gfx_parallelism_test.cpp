@@ -8,6 +8,8 @@
 #include "gtest/gtest.h"
 
 #include "kernel_ir/gfx_kernel_dispatch.hpp"
+#include "runtime/gpu_buffer_manager.hpp"
+#include "runtime/gpu_device_info.hpp"
 #include "runtime/gfx_parallelism.hpp"
 
 namespace {
@@ -30,21 +32,26 @@ private:
 
 ov::gfx_plugin::GfxParallelismCaps make_caps() {
   ov::gfx_plugin::GfxParallelismCaps caps;
-  caps.backend = ov::gfx_plugin::GpuBackend::OpenCL;
-  caps.device_key = "test:opencl";
+  caps.profile_key = "test:opencl-profile";
   caps.preferred_simd_width = 32;
   caps.subgroup_size = 32;
   caps.max_total_threads_per_group = 64;
   caps.max_threads_per_group = {64, 64, 1};
+  caps.chunk_dispatch = ov::gfx_plugin::make_opencl_chunk_dispatch_profile();
   return caps;
 }
 
 ov::gfx_plugin::GfxParallelismCaps make_broadcom_caps() {
   auto caps = make_caps();
-  caps.device_key = "test:broadcom";
-  caps.device_family = ov::gfx_plugin::GpuDeviceFamily::BroadcomV3D;
+  caps.profile_key = "test:broadcom-v3d-profile";
   caps.preferred_simd_width = 16;
   caps.subgroup_size = 16;
+  caps.enable_skinny_matmul_tiles = true;
+  caps.chunk_dispatch.retune_threads_to_workload = true;
+  caps.scale_conv_threads_for_large_spatial = true;
+  caps.scale_conv_threads_for_dense_reduction = true;
+  caps.scale_conv_threads_for_pointwise_reduction = true;
+  caps.conv_spatial_micro_tile_requires_large_output_area = true;
   return caps;
 }
 
@@ -57,22 +64,22 @@ ov::gfx_plugin::GfxParallelismCaps make_large_broadcom_caps() {
 
 ov::gfx_plugin::GfxParallelismCaps make_broadcom_channel_blocking_caps() {
   auto caps = make_large_broadcom_caps();
-  caps.device_key = "test:broadcom:channel-blocking";
+  caps.profile_key = "test:broadcom-v3d-profile:channel-blocking";
   caps.supports_conv_output_channel_blocking = true;
   return caps;
 }
 
 ov::gfx_plugin::GfxParallelismCaps make_channel_blocking_caps() {
   ov::gfx_plugin::GfxParallelismCaps caps;
-  caps.backend = ov::gfx_plugin::GpuBackend::Metal;
-  caps.device_family = ov::gfx_plugin::GpuDeviceFamily::Apple;
-  caps.device_key = "test:metal:channel-blocking";
+  caps.profile_key = "test:metal-profile:channel-blocking";
   caps.preferred_simd_width = 32;
   caps.subgroup_size = 32;
   caps.max_total_threads_per_group = 256;
   caps.max_threads_per_group = {256, 256, 1};
   caps.supports_conv_output_channel_blocking = true;
   caps.supports_conv_channel_block_spatial_tiling = true;
+  caps.sort_matmul_tiles_by_shape = false;
+  caps.chunk_dispatch = ov::gfx_plugin::make_metal_chunk_dispatch_profile();
   return caps;
 }
 
@@ -98,12 +105,13 @@ TEST(GfxParallelism, QueryParallelismCapsUsesBackendNeutralDeviceInfo) {
   info.max_threads_per_group = {128, 32, 8};
   info.supports_conv_output_channel_blocking = true;
   info.supports_conv_channel_block_spatial_tiling = true;
+  info.parallelism_profile.profile_key = "test-device-parallelism";
+  info.parallelism_profile.enable_skinny_matmul_tiles = true;
 
   TestDeviceInfoBufferManager buffer_manager(info);
   const auto caps = ov::gfx_plugin::query_parallelism_caps(&buffer_manager);
 
-  EXPECT_EQ(caps.backend, ov::gfx_plugin::GpuBackend::OpenCL);
-  EXPECT_EQ(caps.device_key, "test-device");
+  EXPECT_EQ(caps.profile_key, "test-device-parallelism");
   EXPECT_EQ(caps.preferred_simd_width, 16u);
   EXPECT_EQ(caps.subgroup_size, 32u);
   EXPECT_EQ(caps.max_total_threads_per_group, 128u);
@@ -112,6 +120,7 @@ TEST(GfxParallelism, QueryParallelismCapsUsesBackendNeutralDeviceInfo) {
   EXPECT_EQ(caps.max_threads_per_group[2], 8u);
   EXPECT_TRUE(caps.supports_conv_output_channel_blocking);
   EXPECT_TRUE(caps.supports_conv_channel_block_spatial_tiling);
+  EXPECT_TRUE(caps.enable_skinny_matmul_tiles);
 }
 
 TEST(GfxParallelism, SelectMatMulParallelismPrefersWideTilesForWideOutputs) {
@@ -362,8 +371,7 @@ TEST(
     GfxParallelism,
     SelectCapabilityEnabledDenseConvKeepsOneSpatialOutputWithoutMicroTileCapability) {
   auto caps = make_channel_blocking_caps();
-  caps.device_key = "test:opencl:channel-blocking-no-microtile";
-  caps.backend = ov::gfx_plugin::GpuBackend::OpenCL;
+  caps.profile_key = "test:profile:channel-blocking-no-microtile";
   caps.supports_conv_channel_block_spatial_tiling = false;
   const auto plan = ov::gfx_plugin::select_conv_parallelism(
       caps, ov::Shape{1, 256, 80, 80}, 256, 256, 256 * 3 * 3, false, false);

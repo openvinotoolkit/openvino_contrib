@@ -4,8 +4,6 @@
 
 #include "compiler/stage_compiler_policy.hpp"
 
-#include "compiler/backend_registry.hpp"
-
 #include <string_view>
 
 namespace ov {
@@ -22,42 +20,14 @@ bool is_vendor_image_placement(const GfxStagePlacementPlan &placement) {
          placement.uses_vendor_primitive && !placement.uses_custom_kernel;
 }
 
-StageParallelismProfile
-make_stage_parallelism_profile(const BackendTarget &target) {
-  StageParallelismProfile profile{};
-  profile.backend = target.backend();
-  profile.device_key = target.backend_id() + ":default";
-  switch (target.backend()) {
-  case GpuBackend::OpenCL:
-    profile.device_family = GpuDeviceFamily::Generic;
-    profile.preferred_simd_width = 32;
-    profile.subgroup_size = 32;
-    profile.max_total_threads_per_group = 128;
-    profile.max_threads_per_group = {128, 128, 64};
-    break;
-  case GpuBackend::Metal:
-    profile.device_family = GpuDeviceFamily::Apple;
-    profile.preferred_simd_width = 32;
-    profile.subgroup_size = 32;
-    profile.max_total_threads_per_group = 256;
-    profile.max_threads_per_group = {256, 256, 64};
-    profile.supports_conv_output_channel_blocking = true;
-    profile.supports_conv_channel_block_spatial_tiling = true;
-    break;
-  case GpuBackend::Unknown:
-  default:
-    break;
-  }
-  return profile;
-}
-
 } // namespace
 
 StageSourceKernelDispatchPolicy
-make_stage_source_kernel_dispatch_policy(const BackendTarget &target) {
+make_stage_source_kernel_dispatch_policy(
+    const BackendExecutionCapabilities &execution) {
   StageSourceKernelDispatchPolicy policy{};
-  policy.enabled = target.backend() == GpuBackend::OpenCL;
-  policy.fallback_parallelism = make_stage_parallelism_profile(target);
+  policy.enabled = execution.source_kernel_dispatch_enabled;
+  policy.fallback_parallelism = execution.fallback_parallelism;
   return policy;
 }
 
@@ -68,18 +38,8 @@ StageCompilerPolicy make_stage_compiler_policy_from_capabilities(
   policy.placement = capabilities.stage_placement();
   policy.post_ops = &capabilities.post_ops();
   policy.source_kernel_dispatch =
-      make_stage_source_kernel_dispatch_policy(capabilities.target());
+      make_stage_source_kernel_dispatch_policy(capabilities.execution());
   return policy;
-}
-
-StageCompilerPolicy resolve_stage_compiler_policy(GpuBackend backend) {
-  const auto backend_module =
-      BackendRegistry::default_registry().resolve(backend);
-  if (!backend_module) {
-    return {};
-  }
-  return make_stage_compiler_policy_from_capabilities(
-      backend_module->capabilities());
 }
 
 bool allow_precision_sensitive_arithmetic_fusion(

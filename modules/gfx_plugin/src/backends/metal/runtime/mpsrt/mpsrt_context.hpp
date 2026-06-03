@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "backends/metal/runtime/mpsrt/gfx_mpsrt_model.hpp"
-#include "backends/metal/runtime/mpsrt/gfx_mpsrt_storage_bridge.hpp"
+#include "backends/metal/common/mpsrt/gfx_mpsrt_storage_bridge.hpp"
 
 namespace ov {
 namespace gfx_plugin {

@@ -9,9 +9,9 @@
 
 #include "openvino/gfx_plugin/compiled_model.hpp"
 #include "openvino/core/except.hpp"
-#include "plugin/backend_state.hpp"
 #include "plugin/gfx_profiling_utils.hpp"
 #include "plugin/infer_request_state.hpp"
+#include "runtime/backend_runtime.hpp"
 #include "runtime/gfx_profiler.hpp"
 
 namespace ov {
@@ -57,17 +57,17 @@ inline GfxProfiler* prepare_infer_profiler(const CompiledModel& cm,
     if (state.profiler_cfg.level == ProfilingLevel::Off) {
         return nullptr;
     }
-    OPENVINO_ASSERT(state.backend, error_prefix, ": backend infer state is null");
+    OPENVINO_ASSERT(state.runtime.backend, error_prefix, ": backend infer state is null");
     auto* backend_state = cm.backend_state();
     OPENVINO_ASSERT(backend_state, error_prefix, ": backend state is null");
-    if (!state.backend->profiler) {
-        state.backend->profiler = backend_state->create_profiler(state.profiler_cfg);
+    if (!state.runtime.backend->profiler) {
+        state.runtime.backend->profiler = backend_state->create_profiler(state.profiler_cfg);
     }
-    if (!state.backend->profiler) {
+    if (!state.runtime.backend->profiler) {
         return nullptr;
     }
-    state.backend->profiler->set_config(state.profiler_cfg);
-    return state.backend->profiler.get();
+    state.runtime.backend->profiler->set_config(state.profiler_cfg);
+    return state.runtime.backend->profiler.get();
 }
 
 }  // namespace gfx_plugin

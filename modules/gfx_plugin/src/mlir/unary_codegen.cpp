@@ -6,7 +6,7 @@
 
 #include <sstream>
 
-#include "mlir/msl_codegen_apple_msl_common.hpp"
+#include "backends/metal/compiler/msl_codegen_apple_msl_common.hpp"
 
 namespace ov {
 namespace gfx_plugin {

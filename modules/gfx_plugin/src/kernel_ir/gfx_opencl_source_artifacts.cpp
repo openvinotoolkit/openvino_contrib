@@ -117,59 +117,7 @@ namespace ov {
 namespace gfx_plugin {
 namespace {
 
-constexpr const char *kOpenClBaselineSource = R"CLC(
-static inline float gfx_unary_f32(float x, uint op) {
-    switch (op) {
-    case 16u: return fmax(x, 0.0f);
-    case 17u: return 1.0f / (1.0f + exp(-x));
-    case 18u: return tanh(x);
-    case 19u: return fabs(x);
-    case 20u: return -x;
-    case 21u: return exp(x);
-    case 22u: return log(x);
-    case 23u: return sqrt(x);
-    case 24u: return floor(x);
-    case 25u: return ceil(x);
-    default: return x;
-    }
-}
-
-static inline float gfx_binary_f32(float lhs, float rhs, uint op) {
-    switch (op) {
-    case 1u: return lhs + rhs;
-    case 2u: return lhs - rhs;
-    case 3u: return lhs * rhs;
-    case 4u: return lhs / rhs;
-    case 5u: return fmax(lhs, rhs);
-    case 6u: return fmin(lhs, rhs);
-    case 7u: return pow(lhs, rhs);
-    case 8u: {
-        const float diff = lhs - rhs;
-        return diff * diff;
-    }
-    case 9u: {
-        const float rem = fmod(lhs, rhs);
-        return fabs(rem) >= fabs(rhs) ? 0.0f : rem;
-    }
-    case 10u: {
-        const float rem = lhs - floor(lhs / rhs) * rhs;
-        return fabs(rem) >= fabs(rhs) ? 0.0f : rem;
-    }
-    default: return lhs;
-    }
-}
-
-__kernel void gfx_opencl_baseline_unary_f32(__global const float* src,
-                                            __global float* dst,
-                                            uint count,
-                                            uint op) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    dst[gid] = gfx_unary_f32(src[gid], op);
-}
-
+constexpr const char *kOpenClConvertSource = R"CLC(
 __kernel void gfx_opencl_baseline_convert_f32_to_f32(__global const float* src,
                                                      __global float* dst,
                                                      uint count) {
@@ -259,1010 +207,6 @@ __kernel void gfx_opencl_baseline_convert_i64_to_i64(__global const long* src,
     }
     dst[gid] = src[gid];
 }
-
-__kernel void gfx_opencl_baseline_binary_f32(__global const float* lhs,
-                                             __global const float* rhs,
-                                             __global float* dst,
-                                             uint count,
-                                             uint op) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    dst[gid] = gfx_binary_f32(lhs[gid], rhs[gid], op);
-}
-
-__kernel void gfx_opencl_baseline_binary_broadcast_f32(__global const float* lhs,
-                                                       __global const float* rhs,
-                                                       __global float* dst,
-                                                       uint count,
-                                                       uint op,
-                                                       uint rank,
-                                                       uint out_dim0,
-                                                       uint out_dim1,
-                                                       uint out_dim2,
-                                                       uint out_dim3,
-                                                       uint lhs_stride0,
-                                                       uint lhs_stride1,
-                                                       uint lhs_stride2,
-                                                       uint lhs_stride3,
-                                                       uint rhs_stride0,
-                                                       uint rhs_stride1,
-                                                       uint rhs_stride2,
-                                                       uint rhs_stride3) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-
-    uint coord0 = 0u;
-    uint coord1 = 0u;
-    uint coord2 = 0u;
-    uint coord3 = 0u;
-    if (rank == 1u) {
-        coord0 = gid;
-    } else if (rank == 2u) {
-        coord0 = gid / out_dim1;
-        coord1 = gid - coord0 * out_dim1;
-    } else if (rank == 3u) {
-        const uint plane0 = out_dim1 * out_dim2;
-        const uint rem0 = gid - (gid / plane0) * plane0;
-        coord0 = gid / plane0;
-        coord1 = rem0 / out_dim2;
-        coord2 = rem0 - coord1 * out_dim2;
-    } else {
-        const uint plane0 = out_dim1 * out_dim2 * out_dim3;
-        const uint rem0 = gid - (gid / plane0) * plane0;
-        const uint plane1 = out_dim2 * out_dim3;
-        const uint rem1 = rem0 - (rem0 / plane1) * plane1;
-        coord0 = gid / plane0;
-        coord1 = rem0 / plane1;
-        coord2 = rem1 / out_dim3;
-        coord3 = rem1 - coord2 * out_dim3;
-    }
-    const uint lhs_offset = coord0 * lhs_stride0 + coord1 * lhs_stride1 +
-                            coord2 * lhs_stride2 + coord3 * lhs_stride3;
-    const uint rhs_offset = coord0 * rhs_stride0 + coord1 * rhs_stride1 +
-                            coord2 * rhs_stride2 + coord3 * rhs_stride3;
-    dst[gid] = gfx_binary_f32(lhs[lhs_offset], rhs[rhs_offset], op);
-}
-
-__kernel void gfx_opencl_baseline_binary_scalar_f32(__global const float* lhs,
-                                                    __global const float* rhs,
-                                                    __global float* dst,
-                                                    uint count,
-                                                    uint op,
-                                                    uint input_mode) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const float l = input_mode == 2u ? lhs[0] : lhs[gid];
-    const float r = input_mode == 1u ? rhs[0] : rhs[gid];
-    dst[gid] = gfx_binary_f32(l, r, op);
-}
-
-__kernel void gfx_opencl_baseline_binary_const_f32(__global const float* tensor,
-                                                   __global float* dst,
-                                                   uint count,
-                                                   uint op,
-                                                   uint input_mode,
-                                                   float scalar_value) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const float l = input_mode == 4u ? scalar_value : tensor[gid];
-    const float r = input_mode == 3u ? scalar_value : tensor[gid];
-    dst[gid] = gfx_binary_f32(l, r, op);
-}
-
-__kernel void gfx_opencl_generated_transpose_f32(__global const float* src,
-                                                 __global float* dst,
-                                                 uint count,
-                                                 uint rank,
-                                                 uint out_dim0,
-                                                 uint out_dim1,
-                                                 uint out_dim2,
-                                                 uint out_dim3,
-                                                 uint in_stride0,
-                                                 uint in_stride1,
-                                                 uint in_stride2,
-                                                 uint in_stride3,
-                                                 uint perm0,
-                                                 uint perm1,
-                                                 uint perm2,
-                                                 uint perm3) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-
-    const uint out_dim[4] = {out_dim0, out_dim1, out_dim2, out_dim3};
-    const uint in_stride[4] = {in_stride0, in_stride1, in_stride2, in_stride3};
-    const uint perm[4] = {perm0, perm1, perm2, perm3};
-    uint coord[4] = {0u, 0u, 0u, 0u};
-    uint rem = gid;
-    for (uint axis = 0u; axis < rank; ++axis) {
-        uint suffix = 1u;
-        for (uint inner = axis + 1u; inner < rank; ++inner) {
-            suffix *= out_dim[inner];
-        }
-        coord[axis] = suffix == 0u ? 0u : rem / suffix;
-        rem = suffix == 0u ? 0u : rem - coord[axis] * suffix;
-    }
-
-    uint src_offset = 0u;
-    for (uint axis = 0u; axis < rank; ++axis) {
-        src_offset += coord[axis] * in_stride[perm[axis]];
-    }
-    dst[gid] = src[src_offset];
-}
-
-__kernel void gfx_opencl_baseline_slice_f32(__global const float* src,
-                                            __global float* dst,
-                                            uint count,
-                                            uint rank,
-                                            uint out_dim0,
-                                            uint out_dim1,
-                                            uint out_dim2,
-                                            uint out_dim3,
-                                            uint in_stride0,
-                                            uint in_stride1,
-                                            uint in_stride2,
-                                            uint in_stride3,
-                                            uint begin0,
-                                            uint begin1,
-                                            uint begin2,
-                                            uint begin3,
-                                            uint step0,
-                                            uint step1,
-                                            uint step2,
-                                            uint step3) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint out_dim[4] = {out_dim0, out_dim1, out_dim2, out_dim3};
-    const uint in_stride[4] = {in_stride0, in_stride1, in_stride2, in_stride3};
-    const uint begin[4] = {begin0, begin1, begin2, begin3};
-    const uint step[4] = {step0, step1, step2, step3};
-    uint coord[4] = {0u, 0u, 0u, 0u};
-    uint rem = gid;
-    for (uint axis = 0u; axis < rank; ++axis) {
-        uint suffix = 1u;
-        for (uint inner_axis = axis + 1u; inner_axis < rank; ++inner_axis) {
-            suffix *= out_dim[inner_axis];
-        }
-        coord[axis] = suffix == 0u ? 0u : rem / suffix;
-        rem = suffix == 0u ? 0u : rem - coord[axis] * suffix;
-    }
-
-    uint src_offset = 0u;
-    for (uint axis = 0u; axis < rank; ++axis) {
-        src_offset += (begin[axis] + coord[axis] * step[axis]) * in_stride[axis];
-    }
-    dst[gid] = src[src_offset];
-}
-
-__kernel void gfx_opencl_baseline_range_f32(__global const float* start,
-                                            __global const float* stop,
-                                            __global const float* step,
-                                            __global float* dst,
-                                            uint count) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    (void)stop;
-    dst[gid] = start[0] + (float)gid * step[0];
-}
-
-__kernel void gfx_opencl_baseline_range_i32(__global const int* start,
-                                            __global const int* stop,
-                                            __global const int* step,
-                                            __global int* dst,
-                                            uint count) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    (void)stop;
-    dst[gid] = start[0] + (int)gid * step[0];
-}
-
-__kernel void gfx_opencl_baseline_range_i64(__global const long* start,
-                                            __global const long* stop,
-                                            __global const long* step,
-                                            __global long* dst,
-                                            uint count) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    (void)stop;
-    dst[gid] = start[0] + (long)gid * step[0];
-}
-
-__kernel void gfx_opencl_baseline_gather_i32_f32(__global const float* data,
-                                                 __global const int* indices,
-                                                 __global float* dst,
-                                                 uint count,
-                                                 uint outer,
-                                                 uint inner,
-                                                 uint axis_dim,
-                                                 uint indices_count) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    uint tmp = gid;
-    const uint inner_idx = tmp % inner;
-    tmp /= inner;
-    const uint idx_idx = tmp % indices_count;
-    tmp /= indices_count;
-    const uint outer_idx = tmp;
-
-    int index = indices[idx_idx];
-    if (index < 0) {
-        index += (int)axis_dim;
-    }
-    if (index < 0) {
-        index = 0;
-    }
-    if (index >= (int)axis_dim) {
-        index = (int)axis_dim - 1;
-    }
-    const uint src_idx = ((outer_idx * axis_dim + (uint)index) * inner) + inner_idx;
-    dst[gid] = data[src_idx];
-}
-
-__kernel void gfx_opencl_baseline_gather_i64_f32(__global const float* data,
-                                                 __global const long* indices,
-                                                 __global float* dst,
-                                                 uint count,
-                                                 uint outer,
-                                                 uint inner,
-                                                 uint axis_dim,
-                                                 uint indices_count) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    uint tmp = gid;
-    const uint inner_idx = tmp % inner;
-    tmp /= inner;
-    const uint idx_idx = tmp % indices_count;
-    tmp /= indices_count;
-    const uint outer_idx = tmp;
-
-    long index = indices[idx_idx];
-    if (index < 0) {
-        index += (long)axis_dim;
-    }
-    if (index < 0) {
-        index = 0;
-    }
-    if (index >= (long)axis_dim) {
-        index = (long)axis_dim - 1;
-    }
-    const uint src_idx = ((outer_idx * axis_dim + (uint)index) * inner) + inner_idx;
-    dst[gid] = data[src_idx];
-}
-
-__kernel void gfx_opencl_baseline_gather_elements_i32_f32(__global const float* data,
-                                                          __global const int* indices,
-                                                          __global float* dst,
-                                                          uint count,
-                                                          uint rank,
-                                                          uint axis,
-                                                          uint out_dim0,
-                                                          uint out_dim1,
-                                                          uint out_dim2,
-                                                          uint out_dim3,
-                                                          uint out_stride0,
-                                                          uint out_stride1,
-                                                          uint out_stride2,
-                                                          uint out_stride3,
-                                                          uint data_dim0,
-                                                          uint data_dim1,
-                                                          uint data_dim2,
-                                                          uint data_dim3,
-                                                          uint data_stride0,
-                                                          uint data_stride1,
-                                                          uint data_stride2,
-                                                          uint data_stride3) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint out_dim[4] = {out_dim0, out_dim1, out_dim2, out_dim3};
-    const uint out_stride[4] = {out_stride0, out_stride1, out_stride2, out_stride3};
-    const uint data_dim[4] = {data_dim0, data_dim1, data_dim2, data_dim3};
-    const uint data_stride[4] = {data_stride0, data_stride1, data_stride2, data_stride3};
-    uint coord[4] = {0u, 0u, 0u, 0u};
-    for (uint i = 0u; i < rank; ++i) {
-        const uint stride = out_stride[i];
-        coord[i] = stride == 0u ? 0u : (gid / stride) % out_dim[i];
-    }
-
-    int index = indices[gid];
-    const int axis_dim = (int)data_dim[axis];
-    if (index < 0) {
-        index += axis_dim;
-    }
-    if (index < 0) {
-        index = 0;
-    }
-    if (index >= axis_dim) {
-        index = axis_dim - 1;
-    }
-
-    uint src_idx = 0u;
-    for (uint i = 0u; i < rank; ++i) {
-        const uint c = i == axis ? (uint)index : coord[i];
-        src_idx += c * data_stride[i];
-    }
-    dst[gid] = data[src_idx];
-}
-
-__kernel void gfx_opencl_baseline_gather_elements_i64_f32(__global const float* data,
-                                                          __global const long* indices,
-                                                          __global float* dst,
-                                                          uint count,
-                                                          uint rank,
-                                                          uint axis,
-                                                          uint out_dim0,
-                                                          uint out_dim1,
-                                                          uint out_dim2,
-                                                          uint out_dim3,
-                                                          uint out_stride0,
-                                                          uint out_stride1,
-                                                          uint out_stride2,
-                                                          uint out_stride3,
-                                                          uint data_dim0,
-                                                          uint data_dim1,
-                                                          uint data_dim2,
-                                                          uint data_dim3,
-                                                          uint data_stride0,
-                                                          uint data_stride1,
-                                                          uint data_stride2,
-                                                          uint data_stride3) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint out_dim[4] = {out_dim0, out_dim1, out_dim2, out_dim3};
-    const uint out_stride[4] = {out_stride0, out_stride1, out_stride2, out_stride3};
-    const uint data_dim[4] = {data_dim0, data_dim1, data_dim2, data_dim3};
-    const uint data_stride[4] = {data_stride0, data_stride1, data_stride2, data_stride3};
-    uint coord[4] = {0u, 0u, 0u, 0u};
-    for (uint i = 0u; i < rank; ++i) {
-        const uint stride = out_stride[i];
-        coord[i] = stride == 0u ? 0u : (gid / stride) % out_dim[i];
-    }
-
-    long index = indices[gid];
-    const long axis_dim = (long)data_dim[axis];
-    if (index < 0) {
-        index += axis_dim;
-    }
-    if (index < 0) {
-        index = 0;
-    }
-    if (index >= axis_dim) {
-        index = axis_dim - 1;
-    }
-
-    uint src_idx = 0u;
-    for (uint i = 0u; i < rank; ++i) {
-        const uint c = i == axis ? (uint)index : coord[i];
-        src_idx += c * data_stride[i];
-    }
-    dst[gid] = data[src_idx];
-}
-
-__kernel void gfx_opencl_baseline_gather_nd_i32_f32(__global const float* data,
-                                                    __global const int* indices,
-                                                    __global float* dst,
-                                                    uint count,
-                                                    uint index_depth,
-                                                    uint slice_rank,
-                                                    uint slice_size,
-                                                    uint data_dim0,
-                                                    uint data_dim1,
-                                                    uint data_dim2,
-                                                    uint data_dim3,
-                                                    uint data_stride0,
-                                                    uint data_stride1,
-                                                    uint data_stride2,
-                                                    uint data_stride3) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint data_dim[4] = {data_dim0, data_dim1, data_dim2, data_dim3};
-    const uint data_stride[4] = {data_stride0, data_stride1, data_stride2, data_stride3};
-    const uint tuple_idx = slice_size == 0u ? 0u : gid / slice_size;
-    const uint slice_gid = slice_size == 0u ? 0u : gid - tuple_idx * slice_size;
-
-    uint src_idx = 0u;
-    for (uint i = 0u; i < index_depth; ++i) {
-        int index = indices[tuple_idx * index_depth + i];
-        const int dim = (int)data_dim[i];
-        if (index < 0) {
-            index += dim;
-        }
-        if (index < 0) {
-            index = 0;
-        }
-        if (index >= dim) {
-            index = dim - 1;
-        }
-        src_idx += (uint)index * data_stride[i];
-    }
-
-    for (uint i = 0u; i < slice_rank; ++i) {
-        const uint axis = index_depth + i;
-        const uint stride = data_stride[axis];
-        const uint coord = stride == 0u ? 0u : (slice_gid / stride) % data_dim[axis];
-        src_idx += coord * stride;
-    }
-    dst[gid] = data[src_idx];
-}
-
-__kernel void gfx_opencl_baseline_gather_nd_i64_f32(__global const float* data,
-                                                    __global const long* indices,
-                                                    __global float* dst,
-                                                    uint count,
-                                                    uint index_depth,
-                                                    uint slice_rank,
-                                                    uint slice_size,
-                                                    uint data_dim0,
-                                                    uint data_dim1,
-                                                    uint data_dim2,
-                                                    uint data_dim3,
-                                                    uint data_stride0,
-                                                    uint data_stride1,
-                                                    uint data_stride2,
-                                                    uint data_stride3) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint data_dim[4] = {data_dim0, data_dim1, data_dim2, data_dim3};
-    const uint data_stride[4] = {data_stride0, data_stride1, data_stride2, data_stride3};
-    const uint tuple_idx = slice_size == 0u ? 0u : gid / slice_size;
-    const uint slice_gid = slice_size == 0u ? 0u : gid - tuple_idx * slice_size;
-
-    uint src_idx = 0u;
-    for (uint i = 0u; i < index_depth; ++i) {
-        long index = indices[tuple_idx * index_depth + i];
-        const long dim = (long)data_dim[i];
-        if (index < 0) {
-            index += dim;
-        }
-        if (index < 0) {
-            index = 0;
-        }
-        if (index >= dim) {
-            index = dim - 1;
-        }
-        src_idx += (uint)index * data_stride[i];
-    }
-
-    for (uint i = 0u; i < slice_rank; ++i) {
-        const uint axis = index_depth + i;
-        const uint stride = data_stride[axis];
-        const uint coord = stride == 0u ? 0u : (slice_gid / stride) % data_dim[axis];
-        src_idx += coord * stride;
-    }
-    dst[gid] = data[src_idx];
-}
-
-__kernel void gfx_opencl_baseline_scatter_update_i32_f32(__global const float* data,
-                                                         __global const int* indices,
-                                                         __global const float* updates,
-                                                         __global float* dst,
-                                                         uint count,
-                                                         uint data_rank,
-                                                         uint idx_rank,
-                                                         uint update_rank,
-                                                         uint axis,
-                                                         uint idx_total,
-                                                         uint data_dim0,
-                                                         uint data_dim1,
-                                                         uint data_dim2,
-                                                         uint data_dim3,
-                                                         uint data_stride0,
-                                                         uint data_stride1,
-                                                         uint data_stride2,
-                                                         uint data_stride3,
-                                                         uint idx_dim0,
-                                                         uint idx_dim1,
-                                                         uint idx_dim2,
-                                                         uint idx_dim3,
-                                                         uint idx_stride0,
-                                                         uint idx_stride1,
-                                                         uint idx_stride2,
-                                                         uint idx_stride3,
-                                                         uint update_stride0,
-                                                         uint update_stride1,
-                                                         uint update_stride2,
-                                                         uint update_stride3,
-                                                         uint update_stride4,
-                                                         uint update_stride5,
-                                                         uint update_stride6) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint data_dim[4] = {data_dim0, data_dim1, data_dim2, data_dim3};
-    const uint data_stride[4] = {data_stride0, data_stride1, data_stride2, data_stride3};
-    const uint idx_dim[4] = {idx_dim0, idx_dim1, idx_dim2, idx_dim3};
-    const uint idx_stride[4] = {idx_stride0, idx_stride1, idx_stride2, idx_stride3};
-    const uint update_stride[7] = {
-        update_stride0, update_stride1, update_stride2, update_stride3,
-        update_stride4, update_stride5, update_stride6};
-    uint coord[4] = {0u, 0u, 0u, 0u};
-    uint rem = gid;
-    for (uint d = 0u; d < data_rank; ++d) {
-        const uint stride = data_stride[d];
-        coord[d] = stride == 0u ? 0u : rem / stride;
-        rem = stride == 0u ? 0u : rem - coord[d] * stride;
-    }
-
-    float value = data[gid];
-    for (uint linear = 0u; linear < idx_total; ++linear) {
-        uint idx_coord[4] = {0u, 0u, 0u, 0u};
-        for (uint d = 0u; d < idx_rank; ++d) {
-            const uint stride = idx_stride[d];
-            idx_coord[d] = stride == 0u ? 0u : (linear / stride) % idx_dim[d];
-        }
-        int index = indices[linear];
-        const int axis_dim = (int)data_dim[axis];
-        if (index < 0) {
-            index += axis_dim;
-        }
-        if (index < 0) {
-            index = 0;
-        }
-        if (index >= axis_dim) {
-            index = axis_dim - 1;
-        }
-        if ((uint)index != coord[axis]) {
-            continue;
-        }
-        uint update_offset = 0u;
-        uint update_dim = 0u;
-        for (uint d = 0u; d < axis; ++d) {
-            update_offset += coord[d] * update_stride[update_dim++];
-        }
-        for (uint d = 0u; d < idx_rank; ++d) {
-            update_offset += idx_coord[d] * update_stride[update_dim++];
-        }
-        for (uint d = axis + 1u; d < data_rank; ++d) {
-            update_offset += coord[d] * update_stride[update_dim++];
-        }
-        (void)update_rank;
-        value = updates[update_offset];
-    }
-    dst[gid] = value;
-}
-
-__kernel void gfx_opencl_baseline_scatter_update_i64_f32(__global const float* data,
-                                                         __global const long* indices,
-                                                         __global const float* updates,
-                                                         __global float* dst,
-                                                         uint count,
-                                                         uint data_rank,
-                                                         uint idx_rank,
-                                                         uint update_rank,
-                                                         uint axis,
-                                                         uint idx_total,
-                                                         uint data_dim0,
-                                                         uint data_dim1,
-                                                         uint data_dim2,
-                                                         uint data_dim3,
-                                                         uint data_stride0,
-                                                         uint data_stride1,
-                                                         uint data_stride2,
-                                                         uint data_stride3,
-                                                         uint idx_dim0,
-                                                         uint idx_dim1,
-                                                         uint idx_dim2,
-                                                         uint idx_dim3,
-                                                         uint idx_stride0,
-                                                         uint idx_stride1,
-                                                         uint idx_stride2,
-                                                         uint idx_stride3,
-                                                         uint update_stride0,
-                                                         uint update_stride1,
-                                                         uint update_stride2,
-                                                         uint update_stride3,
-                                                         uint update_stride4,
-                                                         uint update_stride5,
-                                                         uint update_stride6) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint data_dim[4] = {data_dim0, data_dim1, data_dim2, data_dim3};
-    const uint data_stride[4] = {data_stride0, data_stride1, data_stride2, data_stride3};
-    const uint idx_dim[4] = {idx_dim0, idx_dim1, idx_dim2, idx_dim3};
-    const uint idx_stride[4] = {idx_stride0, idx_stride1, idx_stride2, idx_stride3};
-    const uint update_stride[7] = {
-        update_stride0, update_stride1, update_stride2, update_stride3,
-        update_stride4, update_stride5, update_stride6};
-    uint coord[4] = {0u, 0u, 0u, 0u};
-    uint rem = gid;
-    for (uint d = 0u; d < data_rank; ++d) {
-        const uint stride = data_stride[d];
-        coord[d] = stride == 0u ? 0u : rem / stride;
-        rem = stride == 0u ? 0u : rem - coord[d] * stride;
-    }
-
-    float value = data[gid];
-    for (uint linear = 0u; linear < idx_total; ++linear) {
-        uint idx_coord[4] = {0u, 0u, 0u, 0u};
-        for (uint d = 0u; d < idx_rank; ++d) {
-            const uint stride = idx_stride[d];
-            idx_coord[d] = stride == 0u ? 0u : (linear / stride) % idx_dim[d];
-        }
-        long index = indices[linear];
-        const long axis_dim = (long)data_dim[axis];
-        if (index < 0) {
-            index += axis_dim;
-        }
-        if (index < 0) {
-            index = 0;
-        }
-        if (index >= axis_dim) {
-            index = axis_dim - 1;
-        }
-        if ((uint)index != coord[axis]) {
-            continue;
-        }
-        uint update_offset = 0u;
-        uint update_dim = 0u;
-        for (uint d = 0u; d < axis; ++d) {
-            update_offset += coord[d] * update_stride[update_dim++];
-        }
-        for (uint d = 0u; d < idx_rank; ++d) {
-            update_offset += idx_coord[d] * update_stride[update_dim++];
-        }
-        for (uint d = axis + 1u; d < data_rank; ++d) {
-            update_offset += coord[d] * update_stride[update_dim++];
-        }
-        (void)update_rank;
-        value = updates[update_offset];
-    }
-    dst[gid] = value;
-}
-
-__kernel void gfx_opencl_baseline_scatter_elements_i32_f32(__global const float* data,
-                                                           __global const int* indices,
-                                                           __global const float* updates,
-                                                           __global float* dst,
-                                                           uint count,
-                                                           uint rank,
-                                                           uint axis,
-                                                           uint update_count,
-                                                           uint update_dim0,
-                                                           uint update_dim1,
-                                                           uint update_dim2,
-                                                           uint update_dim3,
-                                                           uint update_stride0,
-                                                           uint update_stride1,
-                                                           uint update_stride2,
-                                                           uint update_stride3,
-                                                           uint data_dim0,
-                                                           uint data_dim1,
-                                                           uint data_dim2,
-                                                           uint data_dim3,
-                                                           uint data_stride0,
-                                                           uint data_stride1,
-                                                           uint data_stride2,
-                                                           uint data_stride3) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint update_dim[4] = {update_dim0, update_dim1, update_dim2, update_dim3};
-    const uint update_stride[4] = {update_stride0, update_stride1, update_stride2, update_stride3};
-    const uint data_dim[4] = {data_dim0, data_dim1, data_dim2, data_dim3};
-    const uint data_stride[4] = {data_stride0, data_stride1, data_stride2, data_stride3};
-    float value = data[gid];
-    for (uint linear = 0u; linear < update_count; ++linear) {
-        uint coord[4] = {0u, 0u, 0u, 0u};
-        for (uint i = 0u; i < rank; ++i) {
-            const uint stride = update_stride[i];
-            coord[i] = stride == 0u ? 0u : (linear / stride) % update_dim[i];
-        }
-        int index = indices[linear];
-        const int axis_dim = (int)data_dim[axis];
-        if (index < 0) {
-            index += axis_dim;
-        }
-        if (index < 0) {
-            index = 0;
-        }
-        if (index >= axis_dim) {
-            index = axis_dim - 1;
-        }
-        uint out_idx = 0u;
-        for (uint i = 0u; i < rank; ++i) {
-            const uint c = i == axis ? (uint)index : coord[i];
-            out_idx += c * data_stride[i];
-        }
-        if (out_idx == gid) {
-            value = updates[linear];
-        }
-    }
-    dst[gid] = value;
-}
-
-__kernel void gfx_opencl_baseline_scatter_elements_i64_f32(__global const float* data,
-                                                           __global const long* indices,
-                                                           __global const float* updates,
-                                                           __global float* dst,
-                                                           uint count,
-                                                           uint rank,
-                                                           uint axis,
-                                                           uint update_count,
-                                                           uint update_dim0,
-                                                           uint update_dim1,
-                                                           uint update_dim2,
-                                                           uint update_dim3,
-                                                           uint update_stride0,
-                                                           uint update_stride1,
-                                                           uint update_stride2,
-                                                           uint update_stride3,
-                                                           uint data_dim0,
-                                                           uint data_dim1,
-                                                           uint data_dim2,
-                                                           uint data_dim3,
-                                                           uint data_stride0,
-                                                           uint data_stride1,
-                                                           uint data_stride2,
-                                                           uint data_stride3) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint update_dim[4] = {update_dim0, update_dim1, update_dim2, update_dim3};
-    const uint update_stride[4] = {update_stride0, update_stride1, update_stride2, update_stride3};
-    const uint data_dim[4] = {data_dim0, data_dim1, data_dim2, data_dim3};
-    const uint data_stride[4] = {data_stride0, data_stride1, data_stride2, data_stride3};
-    float value = data[gid];
-    for (uint linear = 0u; linear < update_count; ++linear) {
-        uint coord[4] = {0u, 0u, 0u, 0u};
-        for (uint i = 0u; i < rank; ++i) {
-            const uint stride = update_stride[i];
-            coord[i] = stride == 0u ? 0u : (linear / stride) % update_dim[i];
-        }
-        long index = indices[linear];
-        const long axis_dim = (long)data_dim[axis];
-        if (index < 0) {
-            index += axis_dim;
-        }
-        if (index < 0) {
-            index = 0;
-        }
-        if (index >= axis_dim) {
-            index = axis_dim - 1;
-        }
-        uint out_idx = 0u;
-        for (uint i = 0u; i < rank; ++i) {
-            const uint c = i == axis ? (uint)index : coord[i];
-            out_idx += c * data_stride[i];
-        }
-        if (out_idx == gid) {
-            value = updates[linear];
-        }
-    }
-    dst[gid] = value;
-}
-
-__kernel void gfx_opencl_baseline_scatter_nd_i32_f32(__global const float* data,
-                                                     __global const int* indices,
-                                                     __global const float* updates,
-                                                     __global float* dst,
-                                                     uint count,
-                                                     uint index_depth,
-                                                     uint slice_size,
-                                                     uint tuple_count,
-                                                     uint data_dim0,
-                                                     uint data_dim1,
-                                                     uint data_dim2,
-                                                     uint data_dim3,
-                                                     uint data_stride0,
-                                                     uint data_stride1,
-                                                     uint data_stride2,
-                                                     uint data_stride3) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint data_dim[4] = {data_dim0, data_dim1, data_dim2, data_dim3};
-    const uint data_stride[4] = {data_stride0, data_stride1, data_stride2, data_stride3};
-    float value = data[gid];
-    for (uint tuple_idx = 0u; tuple_idx < tuple_count; ++tuple_idx) {
-        uint base = 0u;
-        for (uint i = 0u; i < index_depth; ++i) {
-            int index = indices[tuple_idx * index_depth + i];
-            const int dim = (int)data_dim[i];
-            if (index < 0) {
-                index += dim;
-            }
-            if (index < 0) {
-                index = 0;
-            }
-            if (index >= dim) {
-                index = dim - 1;
-            }
-            base += (uint)index * data_stride[i];
-        }
-        if (gid >= base && gid < base + slice_size) {
-            value = updates[tuple_idx * slice_size + (gid - base)];
-        }
-    }
-    dst[gid] = value;
-}
-
-__kernel void gfx_opencl_baseline_scatter_nd_i64_f32(__global const float* data,
-                                                     __global const long* indices,
-                                                     __global const float* updates,
-                                                     __global float* dst,
-                                                     uint count,
-                                                     uint index_depth,
-                                                     uint slice_size,
-                                                     uint tuple_count,
-                                                     uint data_dim0,
-                                                     uint data_dim1,
-                                                     uint data_dim2,
-                                                     uint data_dim3,
-                                                     uint data_stride0,
-                                                     uint data_stride1,
-                                                     uint data_stride2,
-                                                     uint data_stride3) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint data_dim[4] = {data_dim0, data_dim1, data_dim2, data_dim3};
-    const uint data_stride[4] = {data_stride0, data_stride1, data_stride2, data_stride3};
-    float value = data[gid];
-    for (uint tuple_idx = 0u; tuple_idx < tuple_count; ++tuple_idx) {
-        uint base = 0u;
-        for (uint i = 0u; i < index_depth; ++i) {
-            long index = indices[tuple_idx * index_depth + i];
-            const long dim = (long)data_dim[i];
-            if (index < 0) {
-                index += dim;
-            }
-            if (index < 0) {
-                index = 0;
-            }
-            if (index >= dim) {
-                index = dim - 1;
-            }
-            base += (uint)index * data_stride[i];
-        }
-        if (gid >= base && gid < base + slice_size) {
-            value = updates[tuple_idx * slice_size + (gid - base)];
-        }
-    }
-    dst[gid] = value;
-}
-
-static inline uint gfx_concat_load_f32(__global const float* src,
-                                       __private float* value,
-                                       uint axis_idx,
-                                       uint outer_idx,
-                                       uint inner_idx,
-                                       uint inner,
-                                       uint axis_offset,
-                                       uint axis_len) {
-    if (axis_idx < axis_offset || axis_idx >= axis_offset + axis_len) {
-        return 0u;
-    }
-    const uint src_axis_idx = axis_idx - axis_offset;
-    const uint src_idx = (outer_idx * axis_len + src_axis_idx) * inner + inner_idx;
-    *value = src[src_idx];
-    return 1u;
-}
-
-__kernel void gfx_opencl_generated_concat2_f32(__global const float* src0,
-                                              __global const float* src1,
-                                              __global float* dst,
-                                              uint count,
-                                              uint out_axis,
-                                              uint inner,
-                                              uint src0_axis_offset,
-                                              uint src0_axis_len,
-                                              uint src1_axis_offset,
-                                              uint src1_axis_len) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint inner_idx = gid % inner;
-    const uint axis_idx = (gid / inner) % out_axis;
-    const uint outer_idx = gid / (out_axis * inner);
-    float value = 0.0f;
-    (void)(gfx_concat_load_f32(src0, &value, axis_idx, outer_idx, inner_idx, inner,
-                              src0_axis_offset, src0_axis_len) ||
-           gfx_concat_load_f32(src1, &value, axis_idx, outer_idx, inner_idx, inner,
-                              src1_axis_offset, src1_axis_len));
-    dst[gid] = value;
-}
-
-__kernel void gfx_opencl_generated_concat3_f32(__global const float* src0,
-                                              __global const float* src1,
-                                              __global const float* src2,
-                                              __global float* dst,
-                                              uint count,
-                                              uint out_axis,
-                                              uint inner,
-                                              uint src0_axis_offset,
-                                              uint src0_axis_len,
-                                              uint src1_axis_offset,
-                                              uint src1_axis_len,
-                                              uint src2_axis_offset,
-                                              uint src2_axis_len) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint inner_idx = gid % inner;
-    const uint axis_idx = (gid / inner) % out_axis;
-    const uint outer_idx = gid / (out_axis * inner);
-    float value = 0.0f;
-    (void)(gfx_concat_load_f32(src0, &value, axis_idx, outer_idx, inner_idx, inner,
-                              src0_axis_offset, src0_axis_len) ||
-           gfx_concat_load_f32(src1, &value, axis_idx, outer_idx, inner_idx, inner,
-                              src1_axis_offset, src1_axis_len) ||
-           gfx_concat_load_f32(src2, &value, axis_idx, outer_idx, inner_idx, inner,
-                              src2_axis_offset, src2_axis_len));
-    dst[gid] = value;
-}
-
-__kernel void gfx_opencl_generated_concat4_f32(__global const float* src0,
-                                              __global const float* src1,
-                                              __global const float* src2,
-                                              __global const float* src3,
-                                              __global float* dst,
-                                              uint count,
-                                              uint out_axis,
-                                              uint inner,
-                                              uint src0_axis_offset,
-                                              uint src0_axis_len,
-                                              uint src1_axis_offset,
-                                              uint src1_axis_len,
-                                              uint src2_axis_offset,
-                                              uint src2_axis_len,
-                                              uint src3_axis_offset,
-                                              uint src3_axis_len) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint inner_idx = gid % inner;
-    const uint axis_idx = (gid / inner) % out_axis;
-    const uint outer_idx = gid / (out_axis * inner);
-    float value = 0.0f;
-    (void)(gfx_concat_load_f32(src0, &value, axis_idx, outer_idx, inner_idx, inner,
-                              src0_axis_offset, src0_axis_len) ||
-           gfx_concat_load_f32(src1, &value, axis_idx, outer_idx, inner_idx, inner,
-                              src1_axis_offset, src1_axis_len) ||
-           gfx_concat_load_f32(src2, &value, axis_idx, outer_idx, inner_idx, inner,
-                              src2_axis_offset, src2_axis_len) ||
-           gfx_concat_load_f32(src3, &value, axis_idx, outer_idx, inner_idx, inner,
-                              src3_axis_offset, src3_axis_len));
-    dst[gid] = value;
-}
-
 )CLC";
 
 constexpr const char *kOpenClTransposeF32Source = R"CLC(
@@ -1369,6 +313,21 @@ __kernel void gfx_opencl_baseline_range_f32(__global const float* start,
     }
     (void)stop;
     dst[gid] = start[0] + (float)gid * step[0];
+}
+)CLC";
+
+constexpr const char *kOpenClRangeI64Source = R"CLC(
+__kernel void gfx_opencl_baseline_range_i64(__global const long* start,
+                                            __global const long* stop,
+                                            __global const long* step,
+                                            __global long* dst,
+                                            uint count) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    (void)stop;
+    dst[gid] = start[0] + (long)gid * step[0];
 }
 )CLC";
 
@@ -1833,6 +792,206 @@ __kernel void gfx_opencl_baseline_scatter_nd_i32_f32(__global const float* data,
         for (uint i = 0u; i < index_depth; ++i) {
             int index = indices[tuple_idx * index_depth + i];
             const int dim = (int)data_dim[i];
+            if (index < 0) {
+                index += dim;
+            }
+            if (index < 0) {
+                index = 0;
+            }
+            if (index >= dim) {
+                index = dim - 1;
+            }
+            base += (uint)index * data_stride[i];
+        }
+        if (gid >= base && gid < base + slice_size) {
+            value = updates[tuple_idx * slice_size + (gid - base)];
+        }
+    }
+    dst[gid] = value;
+}
+)CLC";
+
+constexpr const char *kOpenClScatterF32I64Source = R"CLC(
+__kernel void gfx_opencl_baseline_scatter_update_i64_f32(__global const float* data,
+                                                         __global const long* indices,
+                                                         __global const float* updates,
+                                                         __global float* dst,
+                                                         uint count,
+                                                         uint data_rank,
+                                                         uint idx_rank,
+                                                         uint update_rank,
+                                                         uint axis,
+                                                         uint idx_total,
+                                                         uint data_dim0,
+                                                         uint data_dim1,
+                                                         uint data_dim2,
+                                                         uint data_dim3,
+                                                         uint data_stride0,
+                                                         uint data_stride1,
+                                                         uint data_stride2,
+                                                         uint data_stride3,
+                                                         uint idx_dim0,
+                                                         uint idx_dim1,
+                                                         uint idx_dim2,
+                                                         uint idx_dim3,
+                                                         uint idx_stride0,
+                                                         uint idx_stride1,
+                                                         uint idx_stride2,
+                                                         uint idx_stride3,
+                                                         uint update_stride0,
+                                                         uint update_stride1,
+                                                         uint update_stride2,
+                                                         uint update_stride3,
+                                                         uint update_stride4,
+                                                         uint update_stride5,
+                                                         uint update_stride6) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    const uint data_dim[4] = {data_dim0, data_dim1, data_dim2, data_dim3};
+    const uint data_stride[4] = {data_stride0, data_stride1, data_stride2, data_stride3};
+    const uint idx_dim[4] = {idx_dim0, idx_dim1, idx_dim2, idx_dim3};
+    const uint idx_stride[4] = {idx_stride0, idx_stride1, idx_stride2, idx_stride3};
+    const uint update_stride[7] = {
+        update_stride0, update_stride1, update_stride2, update_stride3,
+        update_stride4, update_stride5, update_stride6};
+    uint coord[4] = {0u, 0u, 0u, 0u};
+    uint rem = gid;
+    for (uint d = 0u; d < data_rank; ++d) {
+        const uint stride = data_stride[d];
+        coord[d] = stride == 0u ? 0u : rem / stride;
+        rem = stride == 0u ? 0u : rem - coord[d] * stride;
+    }
+
+    float value = data[gid];
+    for (uint linear = 0u; linear < idx_total; ++linear) {
+        uint idx_coord[4] = {0u, 0u, 0u, 0u};
+        for (uint d = 0u; d < idx_rank; ++d) {
+            const uint stride = idx_stride[d];
+            idx_coord[d] = stride == 0u ? 0u : (linear / stride) % idx_dim[d];
+        }
+        long index = indices[linear];
+        const long axis_dim = (long)data_dim[axis];
+        if (index < 0) {
+            index += axis_dim;
+        }
+        if (index < 0) {
+            index = 0;
+        }
+        if (index >= axis_dim) {
+            index = axis_dim - 1;
+        }
+        if ((uint)index != coord[axis]) {
+            continue;
+        }
+        uint update_offset = 0u;
+        uint update_dim = 0u;
+        for (uint d = 0u; d < axis; ++d) {
+            update_offset += coord[d] * update_stride[update_dim++];
+        }
+        for (uint d = 0u; d < idx_rank; ++d) {
+            update_offset += idx_coord[d] * update_stride[update_dim++];
+        }
+        for (uint d = axis + 1u; d < data_rank; ++d) {
+            update_offset += coord[d] * update_stride[update_dim++];
+        }
+        (void)update_rank;
+        value = updates[update_offset];
+    }
+    dst[gid] = value;
+}
+
+__kernel void gfx_opencl_baseline_scatter_elements_i64_f32(__global const float* data,
+                                                           __global const long* indices,
+                                                           __global const float* updates,
+                                                           __global float* dst,
+                                                           uint count,
+                                                           uint rank,
+                                                           uint axis,
+                                                           uint update_count,
+                                                           uint update_dim0,
+                                                           uint update_dim1,
+                                                           uint update_dim2,
+                                                           uint update_dim3,
+                                                           uint update_stride0,
+                                                           uint update_stride1,
+                                                           uint update_stride2,
+                                                           uint update_stride3,
+                                                           uint data_dim0,
+                                                           uint data_dim1,
+                                                           uint data_dim2,
+                                                           uint data_dim3,
+                                                           uint data_stride0,
+                                                           uint data_stride1,
+                                                           uint data_stride2,
+                                                           uint data_stride3) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    const uint update_dim[4] = {update_dim0, update_dim1, update_dim2, update_dim3};
+    const uint update_stride[4] = {update_stride0, update_stride1, update_stride2, update_stride3};
+    const uint data_dim[4] = {data_dim0, data_dim1, data_dim2, data_dim3};
+    const uint data_stride[4] = {data_stride0, data_stride1, data_stride2, data_stride3};
+    float value = data[gid];
+    for (uint linear = 0u; linear < update_count; ++linear) {
+        uint coord[4] = {0u, 0u, 0u, 0u};
+        for (uint i = 0u; i < rank; ++i) {
+            const uint stride = update_stride[i];
+            coord[i] = stride == 0u ? 0u : (linear / stride) % update_dim[i];
+        }
+        long index = indices[linear];
+        const long axis_dim = (long)data_dim[axis];
+        if (index < 0) {
+            index += axis_dim;
+        }
+        if (index < 0) {
+            index = 0;
+        }
+        if (index >= axis_dim) {
+            index = axis_dim - 1;
+        }
+        uint out_idx = 0u;
+        for (uint i = 0u; i < rank; ++i) {
+            const uint c = i == axis ? (uint)index : coord[i];
+            out_idx += c * data_stride[i];
+        }
+        if (out_idx == gid) {
+            value = updates[linear];
+        }
+    }
+    dst[gid] = value;
+}
+
+__kernel void gfx_opencl_baseline_scatter_nd_i64_f32(__global const float* data,
+                                                     __global const long* indices,
+                                                     __global const float* updates,
+                                                     __global float* dst,
+                                                     uint count,
+                                                     uint index_depth,
+                                                     uint slice_size,
+                                                     uint tuple_count,
+                                                     uint data_dim0,
+                                                     uint data_dim1,
+                                                     uint data_dim2,
+                                                     uint data_dim3,
+                                                     uint data_stride0,
+                                                     uint data_stride1,
+                                                     uint data_stride2,
+                                                     uint data_stride3) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    const uint data_dim[4] = {data_dim0, data_dim1, data_dim2, data_dim3};
+    const uint data_stride[4] = {data_stride0, data_stride1, data_stride2, data_stride3};
+    float value = data[gid];
+    for (uint tuple_idx = 0u; tuple_idx < tuple_count; ++tuple_idx) {
+        uint base = 0u;
+        for (uint i = 0u; i < index_depth; ++i) {
+            long index = indices[tuple_idx * index_depth + i];
+            const long dim = (long)data_dim[i];
             if (index < 0) {
                 index += dim;
             }
@@ -6581,6 +5740,11 @@ GfxOpenClSourceArtifact make_opencl_source_artifact(
                                 .size()) ==
              std::string_view("gfx_opencl_generated_activation_")) {
     artifact.source = opencl_generated_activation_kernel_source().source;
+  } else if (std::string_view(artifact.artifact_ref.entry_point)
+                 .substr(0, std::string_view("gfx_opencl_baseline_convert_")
+                                .size()) ==
+             std::string_view("gfx_opencl_baseline_convert_")) {
+    artifact.source = kOpenClConvertSource;
   } else if (artifact.artifact_ref.entry_point ==
              "gfx_opencl_generated_matmul_f32") {
     artifact.source = opencl_generated_matmul_f32_kernel_source().source;
@@ -6664,6 +5828,9 @@ GfxOpenClSourceArtifact make_opencl_source_artifact(
              "gfx_opencl_baseline_range_f32") {
     artifact.source = kOpenClRangeF32Source;
   } else if (artifact.artifact_ref.entry_point ==
+             "gfx_opencl_baseline_range_i64") {
+    artifact.source = kOpenClRangeI64Source;
+  } else if (artifact.artifact_ref.entry_point ==
                  "gfx_opencl_baseline_gather_i32_f32" ||
              artifact.artifact_ref.entry_point ==
                  "gfx_opencl_baseline_gather_elements_i32_f32" ||
@@ -6684,6 +5851,13 @@ GfxOpenClSourceArtifact make_opencl_source_artifact(
              artifact.artifact_ref.entry_point ==
                  "gfx_opencl_baseline_scatter_nd_i32_f32") {
     artifact.source = kOpenClScatterF32I32Source;
+  } else if (artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_scatter_update_i64_f32" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_scatter_elements_i64_f32" ||
+             artifact.artifact_ref.entry_point ==
+                 "gfx_opencl_baseline_scatter_nd_i64_f32") {
+    artifact.source = kOpenClScatterF32I64Source;
   } else if (artifact.artifact_ref.entry_point ==
                  "gfx_opencl_generated_concat2_f32" ||
              artifact.artifact_ref.entry_point ==
@@ -6714,8 +5888,6 @@ GfxOpenClSourceArtifact make_opencl_source_artifact(
   } else if (artifact.artifact_ref.entry_point ==
              "gfx_opencl_generated_reduction_bool") {
     artifact.source = opencl_generated_reduction_bool_kernel_source().source;
-  } else {
-    artifact.source = kOpenClBaselineSource;
   }
   if (source_inlines_static_u32_scalars) {
     artifact.source_static_u32_scalars = static_u32_scalars;

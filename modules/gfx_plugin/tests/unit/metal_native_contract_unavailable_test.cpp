@@ -35,15 +35,11 @@ TEST(GfxBufferManagerTest, ConstCacheContextIsSharedAcrossCacheInstances) {
     expect_metal_native_contract_unavailable();
 }
 
-TEST(GfxTensorMapTest, BindInputReusesDeviceBufferSamePort) {
+TEST(GfxBufferManagerTest, WrapSharedHostInputDoesNotCopyToCPU) {
     expect_metal_native_contract_unavailable();
 }
 
-TEST(GfxTensorMapTest, HostTensorCreatedOnDemand) {
-    expect_metal_native_contract_unavailable();
-}
-
-TEST(GfxTensorMapTest, BindInputDoesNotCopyToCPU) {
+TEST(GfxBufferManagerTest, OutputStagingHandleReusesAndGrows) {
     expect_metal_native_contract_unavailable();
 }
 

@@ -6,8 +6,8 @@
 
 #include "backends/metal/runtime/metal_executor.hpp"
 #include "backends/metal/runtime/mpsrt_vendor_primitive_stage.hpp"
-#include "plugin/stateful_stage.hpp"
 #include "runtime/execution_dispatcher.hpp"
+#include "runtime/stateful_stage.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -16,7 +16,7 @@ std::unique_ptr<GpuStage>
 create_metal_stage(const std::shared_ptr<const ov::Node> &node,
                    const RuntimeStageExecutableDescriptor *descriptor,
                    void *device, void *queue) {
-  if (auto stateful = create_stateful_stage(node)) {
+  if (auto stateful = create_stateful_stage(node, descriptor)) {
     return stateful;
   }
   if (descriptor && is_metal_mpsrt_vendor_primitive_descriptor(*descriptor)) {

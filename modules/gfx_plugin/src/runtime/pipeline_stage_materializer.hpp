@@ -10,21 +10,31 @@
 #include <unordered_map>
 #include <vector>
 
-#include "compiler/pipeline_stage_fusion.hpp"
+#include "compiler/pipeline_stage_builder.hpp"
 #include "openvino/core/node.hpp"
 #include "runtime/backend_stage_factory.hpp"
 #include "runtime/executable_descriptor.hpp"
 #include "runtime/gpu_stage.hpp"
 #include "runtime/output_lifetime.hpp"
+#include "runtime/pipeline_stage_desc.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 
+class GfxProfilingTrace;
+
 struct MaterializedFusedSequenceStage {
-  compiler::PipelineStageIoPlan io_plan;
   std::unique_ptr<GpuStage> stage;
   std::vector<RuntimeOutputLifetime> output_lifetimes;
   size_t materialized_stage_count = 0;
+};
+
+struct PipelineStageRuntimeMaterializationRequest {
+  const BackendStageFactory *stage_factory = nullptr;
+  const RuntimeExecutableDescriptor *runtime_descriptor = nullptr;
+  const compiler::PipelineStageBuildResult *build_result = nullptr;
+  GpuStageRuntimeOptions runtime_options;
+  GfxProfilingTrace *compile_trace = nullptr;
 };
 
 class PipelineStageMaterializer final {
@@ -33,9 +43,7 @@ public:
       const BackendStageFactory &stage_factory,
       const std::vector<std::shared_ptr<ov::Node>> &ordered_ops,
       const RuntimeExecutableDescriptor &runtime_descriptor,
-      GpuStageRuntimeOptions runtime_options,
-      compiler::PipelineVendorAttentionArtifactResolver
-          vendor_attention_artifact_resolver = {});
+      GpuStageRuntimeOptions runtime_options);
 
   const RuntimeStageExecutableDescriptor *
   descriptor_for(const std::shared_ptr<const ov::Node> &node) const noexcept;
@@ -50,13 +58,12 @@ public:
 
   std::unique_ptr<GpuStage> create_vendor_attention_stage(
       const compiler::PipelineVendorAttentionPlan &plan,
+      const compiler::PipelineVendorAttentionArtifact &artifact,
       const std::shared_ptr<const ov::Node> &final_node) const;
 
   std::optional<MaterializedFusedSequenceStage> create_attention_sequence_stage(
-      const FusionGroup &group,
-      const std::vector<std::shared_ptr<ov::Node>> &ordered_ops,
-      const compiler::PipelineStagePlanBuilder &stage_plan_builder,
-      const compiler::PipelineOutputAliasMap &output_aliases) const;
+      const compiler::PipelineStageMaterializationPlan &plan,
+      const std::vector<std::shared_ptr<ov::Node>> &ordered_ops) const;
 
   void configure_stage(const std::unique_ptr<GpuStage> &stage) const;
 
@@ -64,11 +71,12 @@ private:
   const BackendStageFactory &m_stage_factory;
   const RuntimeExecutableDescriptor &m_runtime_descriptor;
   GpuStageRuntimeOptions m_runtime_options;
-  compiler::PipelineVendorAttentionArtifactResolver
-      m_vendor_attention_artifact_resolver;
   std::unordered_map<const ov::Node *, const RuntimeStageExecutableDescriptor *>
       m_descriptors_by_node;
 };
+
+std::vector<PipelineStageDesc> materialize_pipeline_stage_descriptors(
+    const PipelineStageRuntimeMaterializationRequest &request);
 
 } // namespace gfx_plugin
 } // namespace ov

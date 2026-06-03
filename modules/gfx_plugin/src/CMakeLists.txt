@@ -262,9 +262,7 @@ set_target_properties(gfx_runtime_common PROPERTIES POSITION_INDEPENDENT_CODE ON
 add_library(gfx_runtime_mlir STATIC)
 target_sources(gfx_runtime_mlir PRIVATE
     ${GFX_RUNTIME_MLIR_HEADERS}
-    ${GFX_RUNTIME_MLIR_SOURCES}
-    ${GFX_RUNTIME_METAL_MSL_HEADERS}
-    ${GFX_RUNTIME_METAL_MSL_SOURCES})
+    ${GFX_RUNTIME_MLIR_SOURCES})
 target_link_libraries(gfx_runtime_mlir PRIVATE
     gfx_plugin_build_settings
     gfx_plugin_public_headers
@@ -275,6 +273,39 @@ set_target_properties(gfx_runtime_mlir PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(DEFINED GFX_LLVM_EXTERNAL_TARGET)
     add_dependencies(gfx_runtime_mlir ${GFX_LLVM_EXTERNAL_TARGET})
 endif()
+target_link_libraries(gfx_runtime_common PRIVATE gfx_runtime_mlir)
+
+add_library(gfx_metal_msl_compiler STATIC)
+target_sources(gfx_metal_msl_compiler PRIVATE
+    ${GFX_METAL_MSL_COMPILER_HEADERS}
+    ${GFX_METAL_MSL_COMPILER_SOURCES})
+target_link_libraries(gfx_metal_msl_compiler PRIVATE
+    gfx_plugin_build_settings
+    gfx_plugin_public_headers
+    gfx_plugin_private_headers
+    openvino::runtime
+    openvino::runtime::dev)
+set_target_properties(gfx_metal_msl_compiler PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(DEFINED GFX_LLVM_EXTERNAL_TARGET)
+    add_dependencies(gfx_metal_msl_compiler ${GFX_LLVM_EXTERNAL_TARGET})
+endif()
+
+add_library(gfx_compiler_common STATIC)
+target_sources(gfx_compiler_common PRIVATE
+    ${GFX_COMPILER_COMMON_HEADERS}
+    ${GFX_COMPILER_COMMON_SOURCES})
+target_link_libraries(gfx_compiler_common PRIVATE
+    gfx_plugin_build_settings
+    gfx_plugin_public_headers
+    gfx_plugin_private_headers
+    openvino::runtime
+    openvino::runtime::dev)
+target_compile_definitions(gfx_compiler_common PRIVATE IMPLEMENT_OPENVINO_RUNTIME_PLUGIN)
+set_target_properties(gfx_compiler_common PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(DEFINED GFX_LLVM_EXTERNAL_TARGET)
+    add_dependencies(gfx_compiler_common ${GFX_LLVM_EXTERNAL_TARGET})
+endif()
+target_link_libraries(gfx_metal_msl_compiler PRIVATE gfx_compiler_common)
 
 # Build common plugin sources as a separate static library (core target).
 add_library(gfx_plugin_core STATIC)
@@ -285,11 +316,61 @@ target_link_libraries(gfx_plugin_core PRIVATE
     gfx_plugin_build_settings
     gfx_plugin_public_headers
     gfx_plugin_private_headers
-    gfx_opencl_kernel_artifacts
+    gfx_compiler_common
     openvino::runtime
     openvino::runtime::dev)
 target_compile_definitions(gfx_plugin_core PRIVATE IMPLEMENT_OPENVINO_RUNTIME_PLUGIN)
 set_target_properties(gfx_plugin_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+add_library(gfx_metal_backend_compiler STATIC)
+target_sources(gfx_metal_backend_compiler PRIVATE
+    ${GFX_METAL_BACKEND_COMPILER_HEADERS}
+    ${GFX_METAL_BACKEND_COMPILER_SOURCES})
+target_link_libraries(gfx_metal_backend_compiler PRIVATE
+    gfx_plugin_build_settings
+    gfx_plugin_public_headers
+    gfx_plugin_private_headers
+    gfx_compiler_common
+    gfx_runtime_mlir
+    gfx_metal_msl_compiler
+    gfx_metal_mpsrt_contract
+    openvino::runtime
+    openvino::runtime::dev)
+set_target_properties(gfx_metal_backend_compiler PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(DEFINED GFX_LLVM_EXTERNAL_TARGET)
+    add_dependencies(gfx_metal_backend_compiler ${GFX_LLVM_EXTERNAL_TARGET})
+endif()
+
+add_library(gfx_opencl_backend_compiler STATIC)
+target_sources(gfx_opencl_backend_compiler PRIVATE
+    ${GFX_OPENCL_BACKEND_COMPILER_HEADERS}
+    ${GFX_OPENCL_BACKEND_COMPILER_SOURCES})
+target_link_libraries(gfx_opencl_backend_compiler PRIVATE
+    gfx_plugin_build_settings
+    gfx_plugin_public_headers
+    gfx_plugin_private_headers
+    gfx_compiler_common
+    gfx_opencl_kernel_artifacts
+    openvino::runtime
+    openvino::runtime::dev)
+set_target_properties(gfx_opencl_backend_compiler PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+add_library(gfx_backend_module_provider STATIC)
+target_sources(gfx_backend_module_provider PRIVATE
+    ${GFX_BACKEND_MODULE_PROVIDER_HEADERS}
+    ${GFX_BACKEND_MODULE_PROVIDER_SOURCES})
+target_link_libraries(gfx_backend_module_provider
+    PRIVATE
+        gfx_plugin_build_settings
+        gfx_plugin_public_headers
+        gfx_plugin_private_headers
+        gfx_compiler_common
+        openvino::runtime
+        openvino::runtime::dev
+    PUBLIC
+        gfx_metal_backend_compiler
+        gfx_opencl_backend_compiler)
+set_target_properties(gfx_backend_module_provider PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # Build backend plugin sources as separate static libraries.
 add_library(gfx_plugin_metal STATIC)
@@ -326,9 +407,10 @@ target_link_libraries(${TARGET_NAME}
     PRIVATE gfx_plugin_private_headers
     PUBLIC gfx_plugin_public_headers)
 target_link_libraries(${TARGET_NAME} PRIVATE
-    gfx_plugin_core
-    gfx_plugin_metal
-    gfx_plugin_opencl)
+    gfx_plugin_core)
+target_link_libraries(${TARGET_NAME} PRIVATE
+    "$<LINK_LIBRARY:WHOLE_ARCHIVE,gfx_plugin_metal>"
+    "$<LINK_LIBRARY:WHOLE_ARCHIVE,gfx_plugin_opencl>")
 
 # On macOS, force ".so" suffix so OpenVINO loader picks the plugin consistently.
 if(APPLE)
@@ -394,7 +476,8 @@ endif()
 
 target_link_libraries(${TARGET_NAME} PRIVATE
     gfx_runtime_common
-    gfx_runtime_mlir)
+    gfx_runtime_mlir
+    gfx_backend_module_provider)
 
 ov_mark_target_as_cc(${TARGET_NAME})
 ov_abi_free_target(${TARGET_NAME})

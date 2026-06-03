@@ -30,6 +30,7 @@ Then inspect the relevant code path:
 - compiler contracts: `src/compiler/`
 - common backend/device value types: `src/common/`
 - stage-placement contracts: `src/compiler/stage_placement.*`
+- shared stage policy: `src/compiler/stage_policy.*`
 - stage compiler policy: `src/compiler/stage_compiler_policy.*`
 - pipeline-stage descriptor builder: `src/compiler/pipeline_stage_builder.*`
 - pipeline-stage fusion selection: `src/compiler/pipeline_stage_fusion.*`
@@ -38,12 +39,16 @@ Then inspect the relevant code path:
   `src/compiler/cache_envelope.*`
 - tensor-layout contracts: `src/compiler/tensor_layout.*`
 - backend-neutral runtime: `src/runtime/`
+- backend runtime/provider interfaces:
+  `src/runtime/backend_runtime.*`,
+  `src/runtime/backend_runtime_provider.*`, and
+  `src/runtime/backend_request_state.hpp`
 - backend stage factory and pipeline materialization:
   `src/runtime/backend_stage_factory.hpp`,
   `src/runtime/pipeline_stage_desc.hpp`, and
   `src/runtime/pipeline_stage_materializer.*`
 - kernel manifests and source artifacts: `src/kernel_ir/`
-- MLIR builders and source planning: `src/mlir/`
+- MLIR builders and backend hooks: `src/mlir/`
 - graph rewrites: `src/transforms/`
 - Metal backend: `src/backends/metal/`
 - OpenCL backend: `src/backends/opencl/`
@@ -118,25 +123,27 @@ For Metal placement, MPSRT, or MSL source changes, keep these aligned:
 - `src/runtime/runtime_session.*`
 - `src/backends/metal/compiler/`
 - `src/backends/metal/compiler/metal_stage_placement.*`
-- `src/runtime/gfx_stage_policy.*`
+- `src/compiler/stage_policy.*`
 - `src/runtime/view_only_stage.*`
 - `src/kernel_ir/gfx_kernel_manifest.hpp`
 - `src/kernel_ir/gfx_custom_kernel_families.*`
-- `src/backends/metal/runtime/mpsrt/gfx_mpsrt_abi.hpp`
+- `src/backends/metal/common/mpsrt/gfx_mpsrt_abi.hpp`
+- `src/backends/metal/common/mpsrt/gfx_mpsrt_builder_plan.hpp`
+- `src/backends/metal/common/mpsrt/gfx_mpsrt_plan.hpp`
+- `src/backends/metal/common/mpsrt/gfx_mpsrt_program.hpp`
+- `src/backends/metal/common/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp`
 - `src/backends/metal/runtime/mpsrt/gfx_mpsrt_model.*`
-- `src/backends/metal/runtime/mpsrt/gfx_mpsrt_plan.hpp`
-- `src/backends/metal/runtime/mpsrt/gfx_mpsrt_program.hpp`
-- `src/backends/metal/runtime/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp`
-- `src/mlir/gfx_apple_stage_pipeline.*`
-- `src/mlir/gfx_apple_vendor_descriptors.*`
+- `src/backends/metal/compiler/apple_mlir_stage_hooks.*`
+- `src/backends/metal/compiler/apple_stage_pipeline.*`
+- `src/backends/metal/compiler/apple_vendor_descriptors.*`
 - `src/mlir/gfx_mpsrt_dialect.*`
 - `src/mlir/gfx_mpsrt_ops.*`
-- `src/mlir/gfx_mpsrt_source_plan.hpp`
-- `src/mlir/msl_codegen_apple_msl*.{cpp,hpp}`
-- `src/mlir/msl_codegen_apple_mps.*`
-- `src/mlir/msl_codegen_matmul_*`
-- `src/mlir/msl_codegen_attention.*`
-- `src/mlir/msl_codegen_compressed_matmul.*`
+- `src/backends/metal/compiler/apple_mpsrt_source_plan.hpp`
+- `src/backends/metal/compiler/msl_codegen_apple_msl*.{cpp,hpp}`
+- `src/backends/metal/compiler/msl_codegen_apple_mps.*`
+- `src/backends/metal/compiler/msl_codegen_matmul_*`
+- `src/backends/metal/compiler/msl_codegen_attention.*`
+- `src/backends/metal/compiler/msl_codegen_compressed_matmul.*`
 - `src/backends/metal/runtime/metal_runtime_kernel_loader.*`
 - `src/backends/metal/runtime/mpsrt_vendor_primitive_stage.*`
 - `src/backends/metal/runtime/mpsrt/`
@@ -149,17 +156,17 @@ MPS/MPSGraph vendor primitive routes must flow through the compiler
 vendor descriptors from request-time node checks.
 Generated activation and elementwise MSL routes must stay aligned across the
 Metal operation policy, kernel registry, artifact materialization, and
-`src/mlir/msl_codegen_apple_msl_activation.*` /
-`src/mlir/msl_codegen_apple_msl_eltwise.*`. For `Swish`, keep static-beta and
-runtime scalar-beta binding roles aligned with `src/mlir/mlir_builder_unary.cpp`
-and the OpenCL artifact ABI.
+`src/backends/metal/compiler/msl_codegen_apple_msl_activation.*` /
+`src/backends/metal/compiler/msl_codegen_apple_msl_eltwise.*`. For `Swish`,
+keep static-beta and runtime scalar-beta binding roles aligned with
+`src/mlir/mlir_builder_unary.cpp` and the OpenCL artifact ABI.
 Generated reduction MSL routes must stay aligned across
-`src/mlir/msl_codegen_apple_msl_reduction.*`, embedded sources under
-`src/kernel_ir/metal_kernels/reduction_*`, `metal_kernel_registry.cpp`, and
-`metal_kernel_artifacts.cpp`.
+`src/backends/metal/compiler/msl_codegen_apple_msl_reduction.*`, embedded
+sources under `src/kernel_ir/metal_kernels/reduction_*`,
+`metal_kernel_registry.cpp`, and `metal_kernel_artifacts.cpp`.
 Generated Softmax/LogSoftmax MSL routes must stay aligned across
-`src/mlir/msl_codegen_apple_msl_softmax.*`, embedded sources under
-`src/kernel_ir/metal_kernels/softmax_*` and
+`src/backends/metal/compiler/msl_codegen_apple_msl_softmax.*`, embedded sources
+under `src/kernel_ir/metal_kernels/softmax_*` and
 `src/kernel_ir/metal_kernels/logsoftmax_*`, `metal_kernel_registry.cpp`, and
 `metal_kernel_artifacts.cpp`. Metal Pool2D must use the descriptor-backed MPS
 vendor route; do not reintroduce the removed generic MSL Pool2D fallback.
@@ -215,8 +222,8 @@ artifacts, runtime binding, and tests.
 1. Update support probing in `src/mlir/`.
 2. Update compiler operation support, kernel registry, and artifact routing in
    `src/compiler/` or `src/backends/*/compiler/`.
-3. Add lowering/source planning in `src/mlir/` or a transform in
-   `src/transforms/`.
+3. Add lowering in `src/mlir/`, backend source planning under the matching
+   `src/backends/*/compiler/` directory, or a transform in `src/transforms/`.
 4. Express the shared contract through compiler manifest/executable records,
    backend stage placement, shared stage policy, kernel manifests,
    runtime-value payloads, OpenCL artifacts, or MPSRT/Apple MSL plans.
@@ -234,8 +241,8 @@ artifacts, runtime binding, and tests.
 ### Runtime Or Scheduling Change
 
 1. Inspect `src/compiler/stage_placement.*`, backend
-   `*_stage_placement.*`, `gfx_stage_policy.*`, `gfx_parallelism.*`, and
-   `gfx_partitioning.*`.
+   `*_stage_placement.*`, `src/compiler/stage_policy.*`,
+   `src/runtime/gfx_parallelism.*`, and `src/runtime/gfx_partitioning.*`.
 2. Check infer submission, immutable const caches, prepared binding reuse, and
    workspace allocation.
 3. Add or update `tests/unit/gfx_stage_policy_test.cpp`,

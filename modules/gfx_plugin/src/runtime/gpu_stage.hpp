@@ -7,9 +7,10 @@
 #include <string>
 #include <vector>
 
-#include "runtime/gfx_activation.hpp"
+#include "common/gpu_stage_submit_policy.hpp"
+#include "common/gfx_activation.hpp"
 #include "runtime/gfx_batchnorm.hpp"
-#include "runtime/gfx_bias.hpp"
+#include "common/gfx_bias.hpp"
 #include "runtime/gfx_input_transform.hpp"
 #include "runtime/gpu_types.hpp"
 
@@ -20,11 +21,6 @@ namespace compiler {
 class StagePlacementPolicy;
 struct PostOpFusionCapabilities;
 } // namespace compiler
-
-struct GpuStageSubmitPolicy {
-  size_t weight = 1;
-  bool isolate = false;
-};
 
 struct GpuStageRuntimeOptions {
   bool diagnostic_f32_vendor_image = false;

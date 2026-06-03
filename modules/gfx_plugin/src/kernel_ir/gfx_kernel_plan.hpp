@@ -21,6 +21,8 @@ uint32_t infer_kernel_arg_count(mlir::ModuleOp module,
 
 class KernelPlan {
 public:
+    static constexpr size_t kDefaultLinearThreadsPerGroup = 64;
+
     KernelPlan(mlir::ModuleOp module,
                std::string entry_point,
                uint32_t arg_count)
@@ -60,14 +62,13 @@ public:
                                                m_entry_point);
     }
 
-    static KernelDispatch make_default_dispatch(const ov::Shape& shape,
-                                                const ICompiledKernel& kernel) {
+    static KernelDispatch make_default_dispatch(
+        const ov::Shape& shape,
+        size_t threads_per_group = kDefaultLinearThreadsPerGroup) {
         // Linear kernels are indexed by the global invocation id, so using
         // a reasonable workgroup size reduces dispatch group counts without
         // changing semantics on mobile GPUs.
-        constexpr size_t kDefaultLinearThreadsPerGroup = 64;
-        return gfx_plugin::make_default_dispatch(shape,
-                                                 kernel.clamp_threadgroup_size(kDefaultLinearThreadsPerGroup));
+        return gfx_plugin::make_default_dispatch(shape, threads_per_group);
     }
 
 private:

@@ -13,9 +13,9 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/msl_codegen_apple_msl_common.hpp"
+#include "backends/metal/compiler/msl_codegen_apple_msl_common.hpp"
 #include "openvino/core/except.hpp"
-#include "runtime/gfx_activation.hpp"
+#include "common/gfx_activation.hpp"
 
 namespace ov {
 namespace gfx_plugin {

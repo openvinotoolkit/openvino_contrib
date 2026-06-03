@@ -78,7 +78,12 @@ TensorLayoutPlan tensor_layout_plan_from_contract(std::string_view layout_contra
 TensorLayoutPlan select_tensor_layout_plan(const std::string& stage_type,
                                            const std::shared_ptr<const ov::Node>& node) {
     TensorLayoutPlan plan{};
-    if (stage_type == "ReadValue" || stage_type == "Reshape" || stage_type == "Squeeze" ||
+    if (stage_type == "ReadValue") {
+        plan.kind = TensorLayoutKind::Materialized;
+        plan.view_only = false;
+        return plan;
+    }
+    if (stage_type == "Reshape" || stage_type == "Squeeze" ||
         stage_type == "Unsqueeze") {
         plan.kind = TensorLayoutKind::ViewOnly;
         plan.view_only = true;
