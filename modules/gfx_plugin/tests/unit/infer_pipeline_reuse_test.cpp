@@ -76,7 +76,7 @@ public:
         ++s_init_count;
     }
 
-    void compile(GpuBufferManager*) override {
+    void prepare_runtime_handle(GpuBufferManager*) override {
         ++s_compile_count;
     }
     void execute(GpuCommandBufferHandle) override {}
@@ -107,7 +107,7 @@ private:
 class TrackingStage final : public GpuStage {
 public:
     void init(GpuBufferManager*) override {}
-    void compile(GpuBufferManager*) override {}
+    void prepare_runtime_handle(GpuBufferManager*) override {}
     void execute(GpuCommandBufferHandle) override {}
     void prewarm_runtime_state() override {
         ++prewarm_count;
@@ -151,7 +151,7 @@ public:
         : m_type_name(std::move(type_name)) {}
 
     void init(GpuBufferManager*) override {}
-    void compile(GpuBufferManager*) override {}
+    void prepare_runtime_handle(GpuBufferManager*) override {}
     void execute(GpuCommandBufferHandle) override {}
     void set_inputs(const std::vector<GpuTensor*>&) override {}
     void set_output(GpuTensor*) override {}
@@ -193,8 +193,8 @@ make_test_runtime_descriptor(size_t stage_count,
         stage.backend_domain = "test";
         stage.kernel_id = "test/kernel/" + std::to_string(i);
         stage.op_family = "test";
-        stage.origin = compiler::KernelArtifactOrigin::Metadata;
-        stage.payload_kind = compiler::KernelArtifactPayloadKind::None;
+        stage.origin = KernelArtifactOrigin::Metadata;
+        stage.payload_kind = KernelArtifactPayloadKind::None;
         RuntimeTensorBindingContract output_binding;
         output_binding.logical_name = "test.stage." + std::to_string(i) + ".output0";
         output_binding.memory_region_id =

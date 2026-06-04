@@ -34,8 +34,8 @@ const compiler::GfxMetalVendorPrimitiveArtifactPayload*
 vendor_payload_from_descriptor(
     const RuntimeStageExecutableDescriptor& descriptor) noexcept {
   if (descriptor.payload_kind !=
-          compiler::KernelArtifactPayloadKind::VendorDescriptor ||
-      descriptor.origin != compiler::KernelArtifactOrigin::VendorPrimitive ||
+          KernelArtifactPayloadKind::VendorDescriptor ||
+      descriptor.origin != KernelArtifactOrigin::VendorPrimitive ||
       descriptor.backend_domain != "metal" || !descriptor.payload) {
     return nullptr;
   }
@@ -478,7 +478,7 @@ public:
     m_buffer_manager = buffer_manager;
   }
 
-  void compile(GpuBufferManager* buffer_manager) override {
+  void prepare_runtime_handle(GpuBufferManager* buffer_manager) override {
     if (buffer_manager) {
       m_buffer_manager = buffer_manager;
     }
@@ -500,7 +500,7 @@ public:
 
   void execute(GpuCommandBufferHandle command_buffer) override {
     OPENVINO_ASSERT(m_context && m_prepared,
-                    "GFX Metal MPSRT: vendor primitive stage is not compiled");
+                    "GFX Metal MPSRT: vendor primitive stage is not prepared");
     auto outputs = active_outputs(m_outputs, m_output);
     OPENVINO_ASSERT(outputs.size() == m_contract.output_descs.size(),
                     "GFX Metal MPSRT: output binding count mismatch for ",

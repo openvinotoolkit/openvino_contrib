@@ -27,10 +27,10 @@ void FusedSequenceStage::init(GpuBufferManager* buffer_manager) {
     }
 }
 
-void FusedSequenceStage::compile(GpuBufferManager* buffer_manager) {
+void FusedSequenceStage::prepare_runtime_handle(GpuBufferManager* buffer_manager) {
     for (auto& info : m_stages) {
         if (info.stage) {
-            info.stage->compile(buffer_manager);
+            info.stage->prepare_runtime_handle(buffer_manager);
         }
     }
 }

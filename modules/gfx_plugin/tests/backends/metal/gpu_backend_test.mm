@@ -3814,7 +3814,8 @@ kernel void gfx_mpsrt_conv_texture_swish_epilogue(
   epilogue_desc.kernel_name = "gfx_mpsrt_conv_texture_swish_epilogue";
   const auto epilogue_binding = make_backend_custom_kernel_roles_binding_plan(
       "ConvTextureSwishEpilogue", "gfx_mpsrt_conv_texture_swish_epilogue",
-      {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput});
+      {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput},
+      GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(epilogue_binding.valid);
   ASSERT_TRUE(epilogue_binding.stage_manifest.valid);
   epilogue_desc.stage_manifest = epilogue_binding.stage_manifest;
@@ -4755,7 +4756,8 @@ kernel void eltwise_fused_buffer(device const float* gemm [[buffer(0)]],
   const auto epilogue_binding = make_backend_custom_kernel_roles_binding_plan(
       "MatMulEpilogue", "eltwise_fused_buffer",
       {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorInput,
-       GfxKernelBufferRole::TensorOutput});
+       GfxKernelBufferRole::TensorOutput},
+      GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(epilogue_binding.valid);
   ASSERT_TRUE(epilogue_binding.stage_manifest.valid);
   epilogue_desc.stage_manifest = epilogue_binding.stage_manifest;

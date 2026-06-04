@@ -56,6 +56,23 @@ GfxKernelExternalBufferAbiSpec make_gfx_kernel_binary_eltwise_abi() {
        GfxKernelBufferRole::RuntimeParams, GfxKernelBufferRole::RuntimeParams});
 }
 
+std::string default_custom_kernel_specialization_prefix(
+    GfxKernelBackendDomain backend_domain, GfxKernelStorageKind storage) {
+  if (storage != GfxKernelStorageKind::Buffer) {
+    return {};
+  }
+  switch (backend_domain) {
+  case GfxKernelBackendDomain::AppleMsl:
+    return "apple_msl:buffer:";
+  case GfxKernelBackendDomain::OpenCl:
+    return "opencl:buffer:";
+  case GfxKernelBackendDomain::AppleMps:
+  case GfxKernelBackendDomain::Unknown:
+  default:
+    return {};
+  }
+}
+
 } // namespace
 
 const char *gfx_kernel_family_name(GfxKernelFamily family) {
@@ -625,7 +642,15 @@ GfxCustomKernelStagePlan make_gfx_custom_kernel_stage_plan(
   auto kernel_manifest = make_gfx_custom_kernel_manifest(
       family_name, abi_kernel_family, required_entry_point, external_buffer_abi,
       dispatch_policy);
-  std::string specialization_key(specialization_prefix);
+  const auto resolved_specialization_prefix =
+      specialization_prefix.empty()
+          ? default_custom_kernel_specialization_prefix(backend_domain, storage)
+          : std::string(specialization_prefix);
+  if (resolved_specialization_prefix.empty()) {
+    plan.valid = false;
+    return plan;
+  }
+  std::string specialization_key(resolved_specialization_prefix);
   specialization_key += stage_type;
   auto stage_family = gfx_kernel_stage_family_from_kernel_family(plan.family);
   if (plan.family == GfxKernelFamily::EltwiseFusedBuffer &&

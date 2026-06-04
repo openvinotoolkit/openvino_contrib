@@ -76,7 +76,7 @@ bool ResourceBindingTable::compatible_with(
       descriptor.abi_fingerprint.empty() || descriptor.artifact_key.empty()) {
     return false;
   }
-  if (descriptor.payload_kind != compiler::KernelArtifactPayloadKind::None &&
+  if (descriptor.payload_kind != KernelArtifactPayloadKind::None &&
       !descriptor.payload) {
     return false;
   }
@@ -125,7 +125,7 @@ void PreparedKernelExecutable::prepare(GpuStage &stage,
                   m_descriptor->kernel_id);
 
   stage.set_inputs(bindings.inputs());
-  stage.compile(buffer_manager);
+  stage.prepare_runtime_handle(buffer_manager);
   m_bindings = std::move(bindings);
   m_prepared = true;
 }

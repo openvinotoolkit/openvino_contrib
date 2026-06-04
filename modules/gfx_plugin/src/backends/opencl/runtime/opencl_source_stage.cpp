@@ -19,6 +19,7 @@
 #include "backends/opencl/runtime/opencl_program_cache.hpp"
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
 #include "runtime/gfx_stage_runtime_values.hpp"
+#include "runtime/kernel_launch_plan.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/constant.hpp"
@@ -143,7 +144,7 @@ public:
           m_artifact(std::move(artifact)) {
         OPENVINO_ASSERT(m_node, "GFX OpenCL: source stage requires a node");
         OPENVINO_ASSERT(m_context, "GFX OpenCL: source stage requires a runtime context");
-        OPENVINO_ASSERT(m_descriptor.payload_kind == compiler::KernelArtifactPayloadKind::OpenClSource,
+        OPENVINO_ASSERT(m_descriptor.payload_kind == KernelArtifactPayloadKind::OpenClSource,
                         "GFX OpenCL: source stage requires OpenCL source runtime descriptor");
         OPENVINO_ASSERT(m_descriptor.backend_domain == "opencl",
                         "GFX OpenCL: source stage descriptor backend domain drift");
@@ -158,7 +159,7 @@ public:
         m_buffer_manager = buffer_manager;
     }
 
-    void compile(GpuBufferManager* buffer_manager) override {
+    void prepare_runtime_handle(GpuBufferManager* buffer_manager) override {
         if (buffer_manager) {
             m_buffer_manager = buffer_manager;
         }
@@ -182,10 +183,20 @@ public:
     }
 
     void execute(GpuCommandBufferHandle command_buffer) override {
-        if (!m_kernel &&
-            !should_execute_chunked_static_concat() &&
-            !should_execute_chunked_static_split()) {
-            compile(m_buffer_manager);
+        const bool chunked_concat = should_execute_chunked_static_concat();
+        const bool chunked_split = should_execute_chunked_static_split();
+        if (chunked_concat) {
+            OPENVINO_ASSERT(planned_chunk_kernels_ready(m_concat_chunk_kernels),
+                            "GFX OpenCL: chunked Concat runtime handle is not prepared for ",
+                            m_name);
+        } else if (chunked_split) {
+            OPENVINO_ASSERT(planned_chunk_kernels_ready(m_split_chunk_kernels),
+                            "GFX OpenCL: chunked Split runtime handle is not prepared for ",
+                            m_name);
+        } else {
+            OPENVINO_ASSERT(m_kernel,
+                            "GFX OpenCL: runtime handle is not prepared for ",
+                            m_name);
         }
         const auto outputs = resolve_outputs();
         OPENVINO_ASSERT(outputs.size() == m_artifact.direct_output_count,
@@ -239,93 +250,50 @@ public:
                         "GFX OpenCL: source artifact direct input index metadata is inconsistent for ",
                         m_name);
 
-        std::vector<KernelArg> args;
-        args.reserve(roles.size());
-        m_scalar_storage.clear();
-        m_scalar_storage.reserve(m_artifact.scalar_args.size());
         std::vector<ov::Shape> input_shapes;
         input_shapes.reserve(std::min<size_t>(m_node ? m_node->get_input_size() : 0, 4));
         for (size_t idx = 0; m_node && idx < m_node->get_input_size() && idx < 4; ++idx) {
             input_shapes.push_back(resolve_input_shape(idx));
         }
         const ov::Shape output0_shape = resolve_output_shape(*outputs.front(), 0);
-        size_t input_idx = 0;
-        size_t output_idx = 0;
-        size_t scalar_idx = 0;
         size_t static_u32_idx = 0;
         size_t static_f32_idx = 0;
-        for (size_t arg_idx = 0; arg_idx < roles.size(); ++arg_idx) {
-            switch (roles[arg_idx]) {
-                case GfxKernelBufferRole::TensorInput: {
-                    OPENVINO_ASSERT(input_idx < m_artifact.direct_input_indices.size(),
-                                    "GFX OpenCL: tensor ABI has no input slot mapping for ",
-                                    m_name);
-                    const size_t node_input_idx = m_artifact.direct_input_indices[input_idx];
-                    GpuTensor* input = resolve_tensor_input(node_input_idx);
-                    OPENVINO_ASSERT(input && input->buf.valid(),
-                                    "GFX OpenCL: input slot ",
-                                    node_input_idx,
-                                    " is not materialized for ",
-                                    m_name);
-                    args.push_back(make_buffer_arg(static_cast<uint32_t>(arg_idx),
-                                                   input->buf));
-                    ++input_idx;
-                    break;
-                }
-                case GfxKernelBufferRole::TensorOutput: {
-                    OPENVINO_ASSERT(output_idx < outputs.size(),
-                                    "GFX OpenCL: tensor ABI has no output slot mapping for ",
-                                    m_name);
-                    args.push_back(make_buffer_arg(static_cast<uint32_t>(arg_idx),
-                                                   outputs[output_idx]->buf));
-                    ++output_idx;
-                    break;
-                }
-                case GfxKernelBufferRole::ScalarParam: {
-                    OPENVINO_ASSERT(scalar_idx < m_artifact.scalar_args.size(),
-                                    "GFX OpenCL: scalar ABI has no value mapping for ",
-                                    m_name);
-                    m_scalar_storage.push_back(scalar_value_for_opencl_source_arg(
-                        m_artifact.scalar_args[scalar_idx],
-                        count,
-                        m_artifact.op,
-                        m_artifact.input_mode,
-                        m_artifact.scalar_constant_f32,
-                        input_shapes,
-                        output0_shape,
-                        m_artifact.static_u32_scalars,
-                        m_artifact.static_f32_scalars,
-                        static_u32_idx,
-                        static_f32_idx));
-                    args.push_back(make_bytes_arg(static_cast<uint32_t>(arg_idx),
-                                                  &m_scalar_storage.back(),
-                                                  sizeof(m_scalar_storage.back())));
-                    ++scalar_idx;
-                    break;
-                }
-                case GfxKernelBufferRole::ConstTensor:
-                case GfxKernelBufferRole::RuntimeParams:
-                case GfxKernelBufferRole::Unknown:
-                default:
-                    OPENVINO_THROW("GFX OpenCL: unsupported role in source artifact ABI for ",
-                                   m_name);
-            }
+        std::vector<uint32_t> scalar_values;
+        scalar_values.reserve(m_artifact.scalar_args.size());
+        for (const auto scalar : m_artifact.scalar_args) {
+            scalar_values.push_back(scalar_value_for_opencl_source_arg(
+                scalar,
+                count,
+                m_artifact.op,
+                m_artifact.input_mode,
+                m_artifact.scalar_constant_f32,
+                input_shapes,
+                output0_shape,
+                m_artifact.static_u32_scalars,
+                m_artifact.static_f32_scalars,
+                static_u32_idx,
+                static_f32_idx));
         }
-        OPENVINO_ASSERT(input_idx == m_artifact.direct_input_count,
-                        "GFX OpenCL: role ABI input count does not match artifact input count for ",
-                        m_name);
-        OPENVINO_ASSERT(output_idx == m_artifact.direct_output_count,
-                        "GFX OpenCL: role ABI output count does not match artifact output count for ",
-                        m_name);
-        OPENVINO_ASSERT(scalar_idx == m_artifact.scalar_args.size(),
-                        "GFX OpenCL: not all source scalar args were consumed for ",
-                        m_name);
         OPENVINO_ASSERT(static_u32_idx == m_artifact.static_u32_scalars.size(),
                         "GFX OpenCL: not all source static u32 scalars were consumed for ",
                         m_name);
         OPENVINO_ASSERT(static_f32_idx == m_artifact.static_f32_scalars.size(),
                         "GFX OpenCL: not all source static f32 scalars were consumed for ",
                         m_name);
+
+        const auto const_tensor_args = materialize_const_tensor_args(static_cast<size_t>(
+            std::count(roles.begin(), roles.end(), GfxKernelBufferRole::ConstTensor)));
+        m_kernel_extra_inputs.clear();
+        auto launch_plan = build_role_ordered_kernel_launch_plan<uint32_t>(
+            roles,
+            m_artifact.direct_input_indices,
+            scalar_values,
+            outputs,
+            const_tensor_args,
+            m_kernel_extra_inputs,
+            [&](size_t node_input_idx) { return resolve_tensor_input(node_input_idx); },
+            m_name);
+        m_scalar_storage = launch_plan.scalar_storage;
 
         if (gfx_log_debug_enabled()) {
             std::ostringstream oss;
@@ -370,7 +338,7 @@ public:
         dispatch.threads_per_group[0] = local;
         dispatch.threads_per_group[1] = 1;
         dispatch.threads_per_group[2] = 1;
-        m_kernel->execute(command_buffer, dispatch, args);
+        m_kernel->execute(command_buffer, dispatch, launch_plan.args);
     }
 
     void set_inputs(const std::vector<GpuTensor*>& inputs) override {
@@ -484,8 +452,8 @@ private:
                             m_name);
             const uint32_t chunk_count = static_cast<uint32_t>(chunk_count64);
 
-            auto& kernel =
-                prepare_planned_chunk_kernel(m_concat_chunk_kernels, chunk_slot, chunk_artifact);
+            auto& kernel = prepared_planned_chunk_kernel(
+                m_concat_chunk_kernels, chunk_slot, chunk_artifact);
 
             std::vector<KernelArg> args;
             args.reserve(2 + chunk_inputs);
@@ -571,8 +539,8 @@ private:
             const auto& chunk_artifact = *planned_chunk.artifact;
             const uint32_t output_begin = planned_chunk.binding_begin;
             const uint32_t chunk_outputs = planned_chunk.binding_count;
-            auto& kernel =
-                prepare_planned_chunk_kernel(m_split_chunk_kernels, chunk_slot, chunk_artifact);
+            auto& kernel = prepared_planned_chunk_kernel(
+                m_split_chunk_kernels, chunk_slot, chunk_artifact);
 
             std::vector<KernelArg> args;
             args.reserve(2 + chunk_outputs);
@@ -629,6 +597,31 @@ private:
             kernel->set_args_count(chunk_artifact.arg_count);
         }
         return kernel;
+    }
+
+    std::shared_ptr<ICompiledKernel>& prepared_planned_chunk_kernel(
+        std::vector<std::shared_ptr<ICompiledKernel>>& kernels,
+        size_t chunk_slot,
+        const GfxOpenClSourceArtifact& chunk_artifact) {
+        OPENVINO_ASSERT(chunk_slot < kernels.size() && kernels[chunk_slot],
+                        "GFX OpenCL: runtime handle is not prepared for planned chunk ",
+                        chunk_artifact.artifact_ref.entry_point,
+                        " in ",
+                        m_name);
+        return kernels[chunk_slot];
+    }
+
+    bool planned_chunk_kernels_ready(
+        const std::vector<std::shared_ptr<ICompiledKernel>>& kernels) const {
+        if (kernels.size() != m_artifact.planned_chunks.size()) {
+            return false;
+        }
+        for (const auto& kernel : kernels) {
+            if (!kernel) {
+                return false;
+            }
+        }
+        return true;
     }
 
     void prepare_planned_chunk_kernels(
@@ -738,6 +731,29 @@ private:
         return cached.get();
     }
 
+    std::vector<GpuTensor*> materialize_const_tensor_args(size_t expected_count) {
+        std::vector<GpuTensor*> tensors;
+        if (expected_count == 0) {
+            return tensors;
+        }
+        OPENVINO_ASSERT(m_node,
+                        "GFX OpenCL: ConstTensor ABI requires a source node for ",
+                        m_name);
+        tensors.reserve(expected_count);
+        for (size_t input_idx = 0;
+             input_idx < m_node->get_input_size() && tensors.size() < expected_count;
+             ++input_idx) {
+            GpuTensor* tensor = materialize_constant_input(input_idx);
+            if (tensor && tensor->buf.valid()) {
+                tensors.push_back(tensor);
+            }
+        }
+        OPENVINO_ASSERT(tensors.size() == expected_count,
+                        "GFX OpenCL: ConstTensor ABI count does not match materialized constants for ",
+                        m_name);
+        return tensors;
+    }
+
     ov::Shape resolve_element_count_shape(const std::vector<GpuTensor*>& outputs) const {
         switch (m_artifact.element_count_source) {
             case GfxOpenClSourceElementCountSource::Output0:
@@ -843,6 +859,7 @@ private:
     std::vector<GpuTensor*> m_inputs;
     std::vector<GpuTensor*> m_outputs;
     std::vector<std::unique_ptr<GpuTensor>> m_const_inputs;
+    std::vector<GpuTensor> m_kernel_extra_inputs;
     GpuTensor* m_output = nullptr;
     std::string m_name;
     std::string m_type;

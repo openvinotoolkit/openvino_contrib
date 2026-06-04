@@ -15,7 +15,7 @@
 #include "openvino/core/node.hpp"
 #include "openvino/core/type/float16.hpp"
 #include "common/gfx_activation.hpp"
-#include "runtime/gfx_backend_utils.hpp"
+#include "common/gfx_backend_utils.hpp"
 #include "runtime/gfx_batchnorm.hpp"
 #include "common/gfx_bias.hpp"
 #include "compiler/stage_policy.hpp"
@@ -32,13 +32,12 @@ struct RuntimeStageExecutableDescriptor;
 
 class MlirStage : public GpuStage {
 public:
-  explicit MlirStage(const std::shared_ptr<const ov::Node> &node);
   MlirStage(const std::shared_ptr<const ov::Node> &node,
             const RuntimeStageExecutableDescriptor *descriptor);
   ~MlirStage() override = default;
 
   void init(GpuBufferManager *buffer_manager) override;
-  void compile(GpuBufferManager *buffer_manager) override;
+  void prepare_runtime_handle(GpuBufferManager *buffer_manager) override;
   void execute(GpuCommandBufferHandle command_buffer) override;
   void prewarm_runtime_state() override;
   void enable_profiling(bool enable) override;

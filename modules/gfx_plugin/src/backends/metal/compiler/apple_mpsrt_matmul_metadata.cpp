@@ -83,7 +83,8 @@ GfxMpsrtStageDesc make_msl_gemm_epilogue_stage_desc(bool has_bias) {
                                                GfxKernelBufferRole::TensorInput,
                                                GfxKernelBufferRole::TensorOutput}
             : std::vector<GfxKernelBufferRole>{GfxKernelBufferRole::TensorInput,
-                                               GfxKernelBufferRole::TensorOutput});
+                                               GfxKernelBufferRole::TensorOutput},
+        GfxKernelBackendDomain::AppleMsl);
 
     GfxMpsrtStageDesc stage{};
     stage.kind = GfxMpsrtStageKind::MSLDispatch;

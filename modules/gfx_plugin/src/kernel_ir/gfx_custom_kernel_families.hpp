@@ -56,10 +56,10 @@ GfxKernelFamily
 classify_gfx_custom_kernel_family(std::string_view stage_type,
                                   std::string_view entry_point = {});
 GfxCustomKernelStagePlan make_gfx_custom_kernel_stage_plan(
-    std::string_view stage_type, std::string_view entry_point = {},
-    GfxKernelBackendDomain backend_domain = GfxKernelBackendDomain::AppleMsl,
+    std::string_view stage_type, std::string_view entry_point,
+    GfxKernelBackendDomain backend_domain,
     GfxKernelStorageKind storage = GfxKernelStorageKind::Buffer,
-    std::string_view specialization_prefix = "apple_msl:buffer:");
+    std::string_view specialization_prefix = {});
 
 } // namespace gfx_plugin
 } // namespace ov

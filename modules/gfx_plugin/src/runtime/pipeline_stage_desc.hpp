@@ -6,21 +6,21 @@
 #include <memory>
 #include <vector>
 
-#include "compiler/pipeline_stage_plan.hpp"
 #include "runtime/gpu_stage.hpp"
 #include "runtime/output_lifetime.hpp"
+#include "runtime/pipeline_stage_plan.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 
-using OutputDesc = compiler::PipelineStageOutputDesc;
+using OutputDesc = PipelineStageOutputDesc;
 
-struct PipelineStageDesc : compiler::PipelineStageIoPlan {
-  static constexpr size_t npos = compiler::PipelineStageIoPlan::npos;
+struct PipelineStageDesc : PipelineStageIoPlan {
+  static constexpr size_t npos = PipelineStageIoPlan::npos;
 
   std::unique_ptr<GpuStage> stage; // runtime prototype; prepared per request
-  using InputLink = compiler::PipelineStageInputLink;
-  using OutputAlias = compiler::PipelineStageOutputAlias;
+  using InputLink = PipelineStageInputLink;
+  using OutputAlias = PipelineStageOutputAlias;
   using OutputLifetime = RuntimeOutputLifetime;
   std::vector<OutputLifetime> output_lifetimes;
 };

@@ -48,7 +48,7 @@ inline GpuTensor make_kernel_i32_param_tensor(
       make_kernel_param_key(stage_name, suffix), values.data(),
       values.size() * sizeof(int32_t), ov::element::i32);
   OPENVINO_ASSERT(buf.valid(),
-                  "GFX MLIR: failed to wrap i32 kernel metadata for stage ",
+                  "GFX runtime: failed to wrap i32 kernel metadata for stage ",
                   stage_name);
   buf.owned = false;
   GpuTensor tensor;
@@ -65,7 +65,7 @@ inline GpuTensor make_kernel_u32_param_tensor(
       make_kernel_param_key(stage_name, suffix), values.data(),
       values.size() * sizeof(uint32_t), ov::element::u32);
   OPENVINO_ASSERT(buf.valid(),
-                  "GFX MLIR: failed to wrap u32 kernel metadata for stage ",
+                  "GFX runtime: failed to wrap u32 kernel metadata for stage ",
                   stage_name);
   buf.owned = false;
   GpuTensor tensor;
@@ -82,7 +82,7 @@ inline GpuTensor make_kernel_bytes_param_tensor(
   GpuBuffer buf = buffer_manager.wrap_const(
       make_kernel_param_key(stage_name, suffix), data, bytes, type);
   OPENVINO_ASSERT(buf.valid(),
-                  "GFX MLIR: failed to wrap kernel metadata for stage ",
+                  "GFX runtime: failed to wrap kernel metadata for stage ",
                   stage_name);
   buf.owned = false;
   GpuTensor tensor;
@@ -107,7 +107,7 @@ inline GpuTensor make_hashed_kernel_bytes_param_tensor(
     std::string_view suffix_prefix, const void *data, size_t bytes,
     const ov::element::Type &type, ov::Shape shape) {
   OPENVINO_ASSERT(data && bytes > 0,
-                  "GFX MLIR: kernel metadata payload is empty for stage ",
+                  "GFX runtime: kernel metadata payload is empty for stage ",
                   stage_name);
   std::ostringstream suffix;
   suffix << suffix_prefix << "/" << type.get_type_name() << "/" << bytes << "/"
@@ -161,7 +161,7 @@ template <typename DimsLike>
 inline uint32_t gfx_dim_u32_at(const DimsLike &values, size_t index,
                                std::string_view stage_name,
                                std::string_view name) {
-  OPENVINO_ASSERT(index < values.size(), "GFX MLIR: missing ", name,
+  OPENVINO_ASSERT(index < values.size(), "GFX runtime: missing ", name,
                   " dimension ", index, " for stage ", stage_name);
   return static_cast<uint32_t>(values.at(index));
 }
@@ -175,7 +175,7 @@ inline GfxKernelRuntimeParamPayload make_pool_runtime_param_payload(
     const PadsLike &pads_begin, const PadsLike &pads_end,
     const DilationsLike &dilations, bool is_avg, bool exclude_pad) {
   OPENVINO_ASSERT(input_shape.size() == 4 && output_shape.size() == 4,
-                  "GFX MLIR: pool expects NCHW shapes for stage ", stage_name);
+                  "GFX runtime: pool expects NCHW shapes for stage ", stage_name);
   struct PoolParams {
     uint32_t N = 0;
     uint32_t C = 0;
@@ -244,7 +244,7 @@ inline GfxKernelRuntimeParamPayload make_conv3d_runtime_param_payload(
     const PadsLike &pads_end) {
   OPENVINO_ASSERT(input_shape.size() == 5 && output_shape.size() == 5 &&
                       weight_shape.size() == 5,
-                  "GFX MLIR: Conv3D expects NCDHW/OIDHW shapes for stage ",
+                  "GFX runtime: Conv3D expects NCDHW/OIDHW shapes for stage ",
                   stage_name);
   struct GfxConv3DRuntimeParams {
     uint32_t N = 0;
@@ -384,7 +384,7 @@ make_batchnorm_scale_bias_runtime_param_payload(
   const size_t channels = gamma.size();
   OPENVINO_ASSERT(beta.size() == channels && mean.size() == channels &&
                       variance.size() == channels,
-                  "GFX MLIR: BatchNorm parameter channel mismatch for stage ",
+                  "GFX runtime: BatchNorm parameter channel mismatch for stage ",
                   stage_name);
   ov::element::Type bn_type = output_element_type == ov::element::dynamic
                                   ? ov::element::f32
@@ -422,7 +422,7 @@ inline GfxKernelRuntimeParamPayload make_conv2d_runtime_param_payload(
     const std::vector<float> &gamma, const std::vector<float> &beta,
     const std::vector<float> &mean, const std::vector<float> &variance) {
   OPENVINO_ASSERT(input_shape.size() == 4 && output_shape.size() == 4,
-                  "GFX MLIR: Conv expects NCHW shapes for stage ", stage_name);
+                  "GFX runtime: Conv expects NCHW shapes for stage ", stage_name);
   const size_t channels = static_cast<size_t>(c_out);
   GfxKernelRuntimeParamPayload payload;
   payload.extra_inputs.push_back(make_kernel_float_vector_param_tensor(
@@ -505,7 +505,7 @@ inline GfxKernelRuntimeParamPayload make_shapeof_runtime_param_payload(
     const ov::Shape &runtime_shape, const ov::element::Type &output_type) {
   OPENVINO_ASSERT(output_type == ov::element::i32 ||
                       output_type == ov::element::i64,
-                  "GFX MLIR: ShapeOf output must be i32/i64");
+                  "GFX runtime: ShapeOf output must be i32/i64");
   std::ostringstream suffix;
   suffix << "shapeof_dims/";
   GfxKernelRuntimeParamPayload payload;
@@ -559,10 +559,10 @@ inline GfxKernelRuntimeParamPayload make_gather_elements_runtime_param_payload(
     const ov::Shape &data_shape, const ov::Shape &output_shape, uint32_t axis) {
   OPENVINO_ASSERT(
       data_shape.size() == output_shape.size(),
-      "GFX MLIR: GatherElements data/output rank mismatch for stage ",
+      "GFX runtime: GatherElements data/output rank mismatch for stage ",
       stage_name);
   OPENVINO_ASSERT(output_shape.size() <= GatherElementsCodegenDesc::kMaxDims,
-                  "GFX MLIR: GatherElements rank exceeds kernel metadata "
+                  "GFX runtime: GatherElements rank exceeds kernel metadata "
                   "capacity for stage ",
                   stage_name);
   std::vector<uint32_t> params(GatherElementsCodegenDesc::kParamU32Count, 0);
@@ -595,7 +595,7 @@ inline GfxKernelRuntimeParamPayload make_gather_runtime_param_payload(
     const ov::Shape &data_shape, const ov::Shape &indices_shape,
     uint32_t axis) {
   OPENVINO_ASSERT(axis < data_shape.size(),
-                  "GFX MLIR: Gather axis out of range for stage ", stage_name);
+                  "GFX runtime: Gather axis out of range for stage ", stage_name);
   struct GatherParams {
     uint32_t outer = 0;
     uint32_t inner = 0;
@@ -624,15 +624,15 @@ inline GfxKernelRuntimeParamPayload make_gather_nd_runtime_param_payload(
     const ov::Shape &output_shape) {
   OPENVINO_ASSERT(
       !data_shape.empty(),
-      "GFX MLIR: GatherND data rank must be static and non-zero for stage ",
+      "GFX runtime: GatherND data rank must be static and non-zero for stage ",
       stage_name);
   OPENVINO_ASSERT(
       !indices_shape.empty(),
-      "GFX MLIR: GatherND indices rank must be static and non-zero for stage ",
+      "GFX runtime: GatherND indices rank must be static and non-zero for stage ",
       stage_name);
   OPENVINO_ASSERT(
       data_shape.size() <= GatherNDCodegenDesc::kMaxDims,
-      "GFX MLIR: GatherND rank exceeds kernel metadata capacity for stage ",
+      "GFX runtime: GatherND rank exceeds kernel metadata capacity for stage ",
       stage_name);
   struct GatherNDParams {
     uint32_t inner = 0;
@@ -645,7 +645,7 @@ inline GfxKernelRuntimeParamPayload make_gather_nd_runtime_param_payload(
 
   params.k = static_cast<uint32_t>(indices_shape.back());
   OPENVINO_ASSERT(params.k >= 1 && params.k <= data_shape.size(),
-                  "GFX MLIR: GatherND invalid index depth for stage ",
+                  "GFX runtime: GatherND invalid index depth for stage ",
                   stage_name);
   params.inner = static_cast<uint32_t>(
       shape_product(data_shape, params.k, data_shape.size()));
@@ -653,7 +653,7 @@ inline GfxKernelRuntimeParamPayload make_gather_nd_runtime_param_payload(
       static_cast<uint32_t>(ov::shape_size(indices_shape) / params.k);
   params.total = static_cast<uint32_t>(ov::shape_size(output_shape));
   OPENVINO_ASSERT(params.total == params.num_indices * params.inner,
-                  "GFX MLIR: GatherND output shape does not match index/inner "
+                  "GFX runtime: GatherND output shape does not match index/inner "
                   "contract for stage ",
                   stage_name);
 
@@ -679,12 +679,12 @@ inline GfxKernelRuntimeParamPayload make_transpose_runtime_param_payload(
     const std::vector<int64_t> &permutation) {
   OPENVINO_ASSERT(input_shape.size() == output_shape.size() &&
                       input_shape.size() == permutation.size(),
-                  "GFX MLIR: Transpose rank mismatch for stage ", stage_name);
+                  "GFX runtime: Transpose rank mismatch for stage ", stage_name);
   std::vector<uint32_t> perm_u32(permutation.size(), 0);
   for (size_t i = 0; i < permutation.size(); ++i) {
     const int64_t axis = permutation[i];
     OPENVINO_ASSERT(axis >= 0 && static_cast<size_t>(axis) < input_shape.size(),
-                    "GFX MLIR: Transpose perm out of range for stage ",
+                    "GFX runtime: Transpose perm out of range for stage ",
                     stage_name);
     perm_u32[i] = static_cast<uint32_t>(axis);
   }
@@ -714,7 +714,7 @@ inline GfxKernelRuntimeParamPayload make_slice_runtime_param_payload(
   const size_t rank = input_shape.size();
   OPENVINO_ASSERT(rank == output_shape.size() && rank == starts.size() &&
                       rank == steps.size(),
-                  "GFX MLIR: Slice runtime metadata rank mismatch for stage ",
+                  "GFX runtime: Slice runtime metadata rank mismatch for stage ",
                   stage_name);
   GfxKernelRuntimeParamPayload payload;
   payload.extra_inputs.push_back(make_kernel_u32_param_tensor(
@@ -741,7 +741,7 @@ inline GfxKernelRuntimeParamPayload make_scatter_update_runtime_param_payload(
     const ov::Shape &updates_shape, uint32_t axis) {
   OPENVINO_ASSERT(data_shape.size() <= 8 && indices_shape.size() <= 8 &&
                       updates_shape.size() <= 16,
-                  "GFX MLIR: ScatterUpdate rank exceeds kernel metadata "
+                  "GFX runtime: ScatterUpdate rank exceeds kernel metadata "
                   "capacity for stage ",
                   stage_name);
   struct ScatterUpdateParams {
@@ -795,7 +795,7 @@ make_scatter_elements_update_runtime_param_payload(
     const ov::Shape &data_shape, const ov::Shape &indices_shape,
     uint32_t axis) {
   OPENVINO_ASSERT(data_shape.size() <= 8 && indices_shape.size() <= 8,
-                  "GFX MLIR: ScatterElementsUpdate rank exceeds kernel "
+                  "GFX runtime: ScatterElementsUpdate rank exceeds kernel "
                   "metadata capacity for stage ",
                   stage_name);
   struct ScatterElementsParams {
@@ -841,21 +841,21 @@ make_scatter_nd_update_runtime_param_payload(GpuBufferManager &buffer_manager,
                                              const ov::Shape &indices_shape,
                                              const ov::Shape &updates_shape) {
   OPENVINO_ASSERT(data_shape.size() <= 8,
-                  "GFX MLIR: ScatterNDUpdate rank exceeds kernel metadata "
+                  "GFX runtime: ScatterNDUpdate rank exceeds kernel metadata "
                   "capacity for stage ",
                   stage_name);
   OPENVINO_ASSERT(
       !indices_shape.empty(),
-      "GFX MLIR: ScatterNDUpdate indices rank must be positive for stage ",
+      "GFX runtime: ScatterNDUpdate indices rank must be positive for stage ",
       stage_name);
   const auto k = static_cast<uint32_t>(indices_shape.back());
   OPENVINO_ASSERT(
       k > 0,
-      "GFX MLIR: ScatterNDUpdate index depth must be positive for stage ",
+      "GFX runtime: ScatterNDUpdate index depth must be positive for stage ",
       stage_name);
   OPENVINO_ASSERT(
       k <= data_shape.size(),
-      "GFX MLIR: ScatterNDUpdate index depth exceeds data rank for stage ",
+      "GFX runtime: ScatterNDUpdate index depth exceeds data rank for stage ",
       stage_name);
   struct ScatterNDParams {
     uint32_t inner = 0;
@@ -900,7 +900,7 @@ inline GfxKernelRuntimeParamPayload make_binary_broadcast_runtime_param_payload(
   OPENVINO_ASSERT(
       lhs_strides.size() == meta_shape.size() &&
           rhs_strides.size() == meta_shape.size(),
-      "GFX MLIR: binary broadcast metadata rank mismatch for stage ",
+      "GFX runtime: binary broadcast metadata rank mismatch for stage ",
       stage_name);
 
   GfxKernelRuntimeParamPayload payload;
@@ -947,7 +947,7 @@ inline GfxKernelRuntimeParamPayload make_reduce_runtime_param_payload(
   const size_t rank = input_shape.size();
   OPENVINO_ASSERT(
       rank <= 8,
-      "GFX MLIR: Reduce rank exceeds kernel metadata capacity for stage ",
+      "GFX runtime: Reduce rank exceeds kernel metadata capacity for stage ",
       stage_name);
   std::vector<int32_t> out_dims(rank, 1);
   std::vector<int32_t> in_dims = gfx_shape_to_i32_vector(input_shape);
@@ -993,11 +993,11 @@ inline GfxKernelRuntimeParamPayload make_broadcast_runtime_param_payload(
   const size_t in_rank = input_shape.size();
   OPENVINO_ASSERT(
       out_rank <= 8,
-      "GFX MLIR: Broadcast rank exceeds kernel metadata capacity for stage ",
+      "GFX runtime: Broadcast rank exceeds kernel metadata capacity for stage ",
       stage_name);
   OPENVINO_ASSERT(
       in_rank <= out_rank,
-      "GFX MLIR: Broadcast input rank exceeds output rank for stage ",
+      "GFX runtime: Broadcast input rank exceeds output rank for stage ",
       stage_name);
   std::vector<int32_t> axes(std::max<size_t>(in_rank, 1), 0);
   for (size_t i = 0; i < in_rank; ++i) {
@@ -1027,7 +1027,7 @@ inline GfxKernelRuntimeParamPayload make_interpolate_runtime_param_payload(
     const ov::Shape &input_shape, const ov::Shape &output_shape,
     bool align_corners, bool use_half_pixel, uint32_t nearest_mode) {
   OPENVINO_ASSERT(input_shape.size() == 4 && output_shape.size() == 4,
-                  "GFX MLIR: Interpolate expects NCHW rank4 for stage ",
+                  "GFX runtime: Interpolate expects NCHW rank4 for stage ",
                   stage_name);
   struct GfxInterpolateRuntimeParams {
     uint32_t N = 0;

@@ -30,16 +30,16 @@ std::string_view backend_custom_kernel_specialization_prefix(
 
 GfxKernelRuntimeBindingPlan make_backend_custom_kernel_binding_plan(
     std::string_view stage_type, std::string_view entry_point,
-    GfxKernelBackendDomain backend_domain = GfxKernelBackendDomain::AppleMsl,
+    GfxKernelBackendDomain backend_domain,
     GfxKernelStorageKind storage = GfxKernelStorageKind::Buffer,
-    std::string_view specialization_prefix = "apple_msl:buffer:");
+    std::string_view specialization_prefix = {});
 
 GfxKernelRuntimeBindingPlan make_backend_custom_kernel_binding_plan(
     std::string_view stage_type, std::string_view entry_point,
     std::vector<int32_t> scalar_args,
-    GfxKernelBackendDomain backend_domain = GfxKernelBackendDomain::AppleMsl,
+    GfxKernelBackendDomain backend_domain,
     GfxKernelStorageKind storage = GfxKernelStorageKind::Buffer,
-    std::string_view specialization_prefix = "apple_msl:buffer:");
+    std::string_view specialization_prefix = {});
 
 GfxKernelRuntimeBindingPlan make_backend_custom_kernel_binding_plan(
     GfxKernelBackendDomain backend_domain, std::string_view stage_type,
@@ -55,23 +55,23 @@ GfxCustomKernelStagePlan make_backend_custom_kernel_stage_plan_view(
 GfxKernelRuntimeBindingPlan make_backend_custom_kernel_direct_io_binding_plan(
     std::string_view stage_type, std::string_view entry_point,
     size_t tensor_input_count, size_t output_count,
-    GfxKernelBackendDomain backend_domain = GfxKernelBackendDomain::AppleMsl,
+    GfxKernelBackendDomain backend_domain,
     GfxKernelStorageKind storage = GfxKernelStorageKind::Buffer,
-    std::string_view specialization_prefix = "apple_msl:buffer:");
+    std::string_view specialization_prefix = {});
 
 GfxKernelRuntimeBindingPlan make_backend_custom_kernel_roles_binding_plan(
     std::string_view stage_type, std::string_view entry_point,
     std::vector<GfxKernelBufferRole> roles,
-    GfxKernelBackendDomain backend_domain = GfxKernelBackendDomain::AppleMsl,
+    GfxKernelBackendDomain backend_domain,
     GfxKernelStorageKind storage = GfxKernelStorageKind::Buffer,
-    std::string_view specialization_prefix = "apple_msl:buffer:");
+    std::string_view specialization_prefix = {});
 
 GfxKernelRuntimeBindingPlan make_backend_custom_kernel_binding_plan_from_module_or_request(
     mlir::ModuleOp module, std::string_view stage_type,
-    std::string_view entry_point, std::vector<int32_t> scalar_args = {},
-    GfxKernelBackendDomain backend_domain = GfxKernelBackendDomain::AppleMsl,
+    std::string_view entry_point, std::vector<int32_t> scalar_args,
+    GfxKernelBackendDomain backend_domain,
     GfxKernelStorageKind storage = GfxKernelStorageKind::Buffer,
-    std::string_view specialization_prefix = "apple_msl:buffer:");
+    std::string_view specialization_prefix = {});
 
 GfxKernelRuntimeBindingPlan make_backend_custom_kernel_source_binding_plan(
     const KernelSource &source, GfxKernelBackendDomain backend_domain,

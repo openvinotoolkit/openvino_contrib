@@ -155,7 +155,6 @@ struct RuntimeInterpolatePlan {
   bool align_corners = false;
   bool use_half_pixel = true;
   uint32_t nearest_mode = 0;
-  bool use_runtime_params = false;
   bool available = false;
 
   bool valid() const { return available; }
@@ -217,6 +216,9 @@ plan_reduce_runtime_values(const RuntimeInputResolver &inputs,
                            const RuntimeReduceInfo &reduce_info,
                            std::string_view stage_name);
 
+std::optional<RuntimeReduceInfo>
+get_runtime_reduce_info(const std::shared_ptr<const ov::Node> &node);
+
 RuntimeTilePlan
 plan_tile_runtime_values(const RuntimeInputResolver &inputs,
                          const std::vector<GpuTensor *> &outputs,
@@ -253,8 +255,7 @@ plan_transpose_runtime_values(const RuntimeInputResolver &inputs,
 
 RuntimeInterpolatePlan plan_interpolate_runtime_values(
     const RuntimeInputResolver &inputs, const std::vector<GpuTensor *> &outputs,
-    const ov::Node &node, GfxKernelBackendDomain backend_domain,
-    std::string_view stage_name);
+    const ov::Node &node, std::string_view stage_name);
 
 RuntimeSoftmaxPlan
 plan_softmax_runtime_values(const RuntimeInputResolver &inputs,

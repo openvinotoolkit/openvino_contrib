@@ -15,6 +15,7 @@
 #include "backends/opencl/compiler/opencl_kernel_artifacts.hpp"
 #include "backends/opencl/compiler/opencl_operation_support.hpp"
 #include "compiler/executable_bundle.hpp"
+#include "compiler/runtime_executable_descriptor_builder.hpp"
 #include "compiler/kernel_registry.hpp"
 #include "compiler/manifest.hpp"
 #include "compiler/operation_legalizer.hpp"
@@ -213,8 +214,11 @@ private:
         const std::shared_ptr<const compiler::KernelArtifactPayload>& payload)
         const {
         const auto runtime_descriptor =
-            RuntimeExecutableDescriptorBuilder{}.build(executable);
-        ASSERT_TRUE(runtime_descriptor.verify(executable).valid());
+            compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
+        ASSERT_TRUE(
+            compiler::verify_runtime_executable_descriptor(runtime_descriptor,
+                                                           executable)
+                .valid());
         const auto stage_it = std::find_if(
             runtime_descriptor.stages.begin(),
             runtime_descriptor.stages.end(),

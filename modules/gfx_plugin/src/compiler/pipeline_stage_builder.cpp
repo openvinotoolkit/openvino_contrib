@@ -104,6 +104,241 @@ PipelineStageFusionContract fusion_contract_for_node(
   return contract;
 }
 
+RuntimeStageExecutableDescriptor make_runtime_vendor_attention_descriptor(
+    const RuntimeStageExecutableDescriptor &base_descriptor,
+    const KernelArtifactDescriptor &artifact,
+    std::shared_ptr<const KernelArtifactPayload> payload) {
+  RuntimeStageExecutableDescriptor descriptor = base_descriptor;
+  descriptor.manifest_ref = artifact.manifest_ref;
+  descriptor.abi_fingerprint = artifact.abi_fingerprint;
+  descriptor.artifact_key = artifact.artifact_key;
+  descriptor.backend_domain = artifact.kernel.backend_domain;
+  descriptor.kernel_id = artifact.kernel.kernel_id;
+  descriptor.op_family = artifact.kernel.op_family;
+  descriptor.origin = artifact.kernel.origin;
+  descriptor.payload_kind = artifact.payload_kind;
+  descriptor.entry_point = artifact.entry_point;
+  descriptor.compile_options_key = artifact.compile_options_key;
+  descriptor.abi_arg_count = artifact.abi_arg_count;
+  descriptor.abi_output_arg_count = artifact.abi_output_arg_count;
+  descriptor.dispatch_contract = artifact.kernel.dispatch_contract;
+  descriptor.layout_contract = artifact.kernel.layout_contract;
+  descriptor.runtime_shape_rule = artifact.kernel.runtime_shape_rule;
+  descriptor.requires_runtime_shape_args =
+      artifact.kernel.requires_runtime_shape_args;
+  descriptor.tensor_view_only = false;
+  descriptor.tensor_roles = artifact.kernel.tensor_roles;
+  descriptor.scalar_roles = artifact.kernel.scalar_roles;
+  descriptor.exception_ticket.clear();
+  descriptor.exception_reason.clear();
+  descriptor.exception_removal_condition.clear();
+  descriptor.optional_cache_payload_allowed =
+      artifact.optional_cache_payload_allowed;
+  descriptor.payload = std::move(payload);
+  return descriptor;
+}
+
+::ov::gfx_plugin::PipelineStageInputLink
+make_runtime_input_link(const PipelineStageInputLink &link) {
+  return {link.node, link.port};
+}
+
+::ov::gfx_plugin::PipelineStageOutputAlias
+make_runtime_output_alias(const PipelineStageOutputAlias &alias) {
+  return {alias.node, alias.source_port, alias.output_port};
+}
+
+::ov::gfx_plugin::PipelineStageOutputDesc
+make_runtime_output_desc(const PipelineStageOutputDesc &output) {
+  ::ov::gfx_plugin::PipelineStageOutputDesc result;
+  result.shape = output.shape;
+  result.type = output.type;
+  result.is_model_output = output.is_model_output;
+  result.source_node = output.source_node;
+  result.source_port = output.source_port;
+  result.direct_stateful_assign_variable_id =
+      output.direct_stateful_assign_variable_id;
+  return result;
+}
+
+::ov::gfx_plugin::PipelineStageIoPlan
+make_runtime_io_plan(const PipelineStageIoPlan &plan) {
+  ::ov::gfx_plugin::PipelineStageIoPlan result;
+  result.node = plan.node;
+  result.runtime_stage_index = plan.runtime_stage_index;
+  result.outputs.reserve(plan.outputs.size());
+  for (const auto &output : plan.outputs) {
+    result.outputs.push_back(make_runtime_output_desc(output));
+  }
+  result.inputs.reserve(plan.inputs.size());
+  for (const auto &input : plan.inputs) {
+    result.inputs.push_back(make_runtime_input_link(input));
+  }
+  result.output_aliases.reserve(plan.output_aliases.size());
+  for (const auto &alias : plan.output_aliases) {
+    result.output_aliases.push_back(make_runtime_output_alias(alias));
+  }
+  return result;
+}
+
+::ov::gfx_plugin::PipelineStageInputTransformPlan
+make_runtime_input_transform(const PipelineInputTransformPlan &transform) {
+  ::ov::gfx_plugin::PipelineStageInputTransformPlan result;
+  result.source_shape = transform.source_shape;
+  result.transpose_permutation = transform.transpose_permutation;
+  return result;
+}
+
+::ov::gfx_plugin::PipelineStageInputTransformBinding
+make_runtime_input_transform_binding(
+    const PipelineStageInputTransformBinding &binding) {
+  ::ov::gfx_plugin::PipelineStageInputTransformBinding result;
+  result.input_idx = binding.input_idx;
+  result.transform = make_runtime_input_transform(binding.transform);
+  return result;
+}
+
+::ov::gfx_plugin::PipelineFusedInputPlan::Kind
+make_runtime_fused_input_kind(PipelineFusedInputPlan::Kind kind) {
+  switch (kind) {
+  case PipelineFusedInputPlan::Kind::External:
+    return ::ov::gfx_plugin::PipelineFusedInputPlan::Kind::External;
+  case PipelineFusedInputPlan::Kind::Output:
+    return ::ov::gfx_plugin::PipelineFusedInputPlan::Kind::Output;
+  case PipelineFusedInputPlan::Kind::None:
+  default:
+    return ::ov::gfx_plugin::PipelineFusedInputPlan::Kind::None;
+  }
+}
+
+::ov::gfx_plugin::PipelineFusedInnerStagePlan
+make_runtime_fused_inner_stage_plan(
+    const PipelineFusedInnerStagePlan &inner_stage) {
+  ::ov::gfx_plugin::PipelineFusedInnerStagePlan result;
+  result.output_indices = inner_stage.output_indices;
+  result.inputs.reserve(inner_stage.inputs.size());
+  for (const auto &input : inner_stage.inputs) {
+    ::ov::gfx_plugin::PipelineFusedInputPlan runtime_input;
+    runtime_input.kind = make_runtime_fused_input_kind(input.kind);
+    runtime_input.index = input.index;
+    result.inputs.push_back(runtime_input);
+  }
+  return result;
+}
+
+::ov::gfx_plugin::PipelineStagePostOpFusionPlan
+make_runtime_post_op_plan(const PipelineStagePostOpFusionPlan &post_ops) {
+  ::ov::gfx_plugin::PipelineStagePostOpFusionPlan result;
+  if (post_ops.input_activation) {
+    const auto &input_activation = *post_ops.input_activation;
+    result.input_activation =
+        ::ov::gfx_plugin::PipelineStageInputActivationFusionPlan{
+            input_activation.input_idx, input_activation.kind,
+            input_activation.alpha};
+  }
+  result.batchnorm = post_ops.batchnorm;
+  result.bias = post_ops.bias;
+  result.activation = post_ops.activation;
+  result.activation_alpha = post_ops.activation_alpha;
+  return result;
+}
+
+::ov::gfx_plugin::PipelineStageMaterializationKind
+make_runtime_materialization_kind(PipelineStageMaterializationKind kind) {
+  switch (kind) {
+  case PipelineStageMaterializationKind::VendorAttention:
+    return ::ov::gfx_plugin::PipelineStageMaterializationKind::VendorAttention;
+  case PipelineStageMaterializationKind::FusedAttentionSequence:
+    return ::ov::gfx_plugin::PipelineStageMaterializationKind::
+        FusedAttentionSequence;
+  case PipelineStageMaterializationKind::SingleStage:
+  default:
+    return ::ov::gfx_plugin::PipelineStageMaterializationKind::SingleStage;
+  }
+}
+
+::ov::gfx_plugin::PipelineVendorAttentionStagePlan
+make_runtime_vendor_attention_plan(
+    const PipelineStageMaterializationPlan &plan,
+    const RuntimeStageDescriptorMap &descriptors) {
+  ::ov::gfx_plugin::PipelineVendorAttentionStagePlan result;
+  result.name = plan.vendor_attention.name;
+  if (plan.kind != PipelineStageMaterializationKind::VendorAttention) {
+    return result;
+  }
+
+  const auto *base_descriptor =
+      descriptor_for_node(descriptors, plan.io_plan.node);
+  OPENVINO_ASSERT(base_descriptor,
+                  "GFX: missing compiler-owned runtime executable descriptor "
+                  "for vendor attention stage ",
+                  plan.vendor_attention.name);
+  OPENVINO_ASSERT(plan.vendor_attention_artifact.valid(),
+                  "GFX: compiler did not provide vendor attention artifact "
+                  "for runtime plan ",
+                  plan.vendor_attention.name);
+  OPENVINO_ASSERT(
+      plan.vendor_attention_artifact.descriptor.stage_record_key ==
+          base_descriptor->stage_record_key,
+      "GFX: vendor attention artifact stage key drift for ",
+      plan.vendor_attention.name);
+  result.descriptor = make_runtime_vendor_attention_descriptor(
+      *base_descriptor, plan.vendor_attention_artifact.descriptor,
+      plan.vendor_attention_artifact.payload);
+  return result;
+}
+
+::ov::gfx_plugin::PipelineStageMaterializationPlan
+make_runtime_materialization_plan(
+    const PipelineStageMaterializationPlan &plan,
+    const RuntimeStageDescriptorMap &descriptors) {
+  ::ov::gfx_plugin::PipelineStageMaterializationPlan result;
+  result.kind = make_runtime_materialization_kind(plan.kind);
+  result.io_plan = make_runtime_io_plan(plan.io_plan);
+  result.vendor_attention = make_runtime_vendor_attention_plan(plan, descriptors);
+  result.fused_node_indices = plan.fusion_group.node_indices;
+  result.fused_inner_stages.reserve(plan.fused_inner_stages.size());
+  for (const auto &inner_stage : plan.fused_inner_stages) {
+    result.fused_inner_stages.push_back(
+        make_runtime_fused_inner_stage_plan(inner_stage));
+  }
+  result.input_transforms.reserve(plan.input_transforms.size());
+  for (const auto &input_transform : plan.input_transforms) {
+    result.input_transforms.push_back(
+        make_runtime_input_transform_binding(input_transform));
+  }
+  if (plan.residual_add) {
+    result.residual_add =
+        ::ov::gfx_plugin::PipelineStageResidualAddFusionPlan{
+            plan.residual_add->add_node};
+  }
+  result.post_ops = make_runtime_post_op_plan(plan.post_ops);
+  return result;
+}
+
+::ov::gfx_plugin::PipelineStageRuntimePlan make_pipeline_stage_runtime_plan(
+    const std::vector<std::shared_ptr<ov::Node>> &ordered_ops,
+    const std::vector<PipelineStageMaterializationPlan> &stage_plans,
+    const RuntimeStageDescriptorMap &descriptors,
+    const StageCompilerPolicy &stage_compiler_policy,
+    const std::unordered_map<const ov::Node *, size_t> &node_to_stage,
+    const std::unordered_map<const ov::Node *, size_t> &param_index) {
+  ::ov::gfx_plugin::PipelineStageRuntimePlan result;
+  result.ordered_ops = ordered_ops;
+  result.stage_plans.reserve(stage_plans.size());
+  for (const auto &stage_plan : stage_plans) {
+    result.stage_plans.push_back(
+        make_runtime_materialization_plan(stage_plan, descriptors));
+  }
+  result.runtime_options.source_kernel_dispatch_enabled =
+      stage_compiler_policy.source_kernel_dispatch.enabled;
+  result.runtime_options.source_kernel_fallback_parallelism =
+      stage_compiler_policy.source_kernel_dispatch.fallback_parallelism;
+  result.node_to_stage = node_to_stage;
+  result.param_index = param_index;
+  return result;
+}
+
 struct AttentionSequenceStagePlan {
   PipelineStageIoPlan io_plan;
   std::vector<PipelineFusedInnerStagePlan> inner_stages;
@@ -695,6 +930,9 @@ build_pipeline_stage_plan(const PipelineStageBuildRequest &request) {
   gfx_log_info("StagePlan")
       << "Planned GFX " << request.backend_name << " pipeline with "
       << result.stage_plans.size() << " stages";
+  result.runtime_plan = make_pipeline_stage_runtime_plan(
+      result.ordered_ops, result.stage_plans, descriptors,
+      result.stage_compiler_policy, result.node_to_stage, result.param_index);
   return result;
 }
 

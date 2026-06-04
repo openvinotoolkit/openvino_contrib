@@ -6,7 +6,6 @@
 
 #include "runtime/gfx_stage_runtime_values.hpp"
 #include "openvino/op/constant.hpp"
-#include "compiler/stage_policy.hpp"
 
 #include <limits>
 #include <string_view>

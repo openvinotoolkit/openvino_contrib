@@ -74,7 +74,8 @@ GfxMslGeneratedKernelSourcePlan make_direct_concat_msl_kernel_source_plan(
   }
 
   auto binding = make_backend_custom_kernel_direct_io_binding_plan(
-      "Concat", "concat_kernel", desc.input_axis_lengths.size(), 1);
+      "Concat", "concat_kernel", desc.input_axis_lengths.size(), 1,
+      GfxKernelBackendDomain::AppleMsl);
   if (!binding.valid) {
     return {};
   }
@@ -96,7 +97,8 @@ GfxMslGeneratedKernelSourcePlan make_concat_msl_kernel_source_plan(
   }
   const auto desc = make_concat_msl_codegen_desc(concat);
   auto binding = make_backend_custom_kernel_direct_io_binding_plan(
-      "Concat", "concat_kernel", desc.input_axis_lengths.size(), 1);
+      "Concat", "concat_kernel", desc.input_axis_lengths.size(), 1,
+      GfxKernelBackendDomain::AppleMsl);
   if (!binding.valid) {
     return {};
   }
@@ -121,7 +123,8 @@ GfxMslGeneratedKernelSourcePlan make_direct_split_msl_kernel_source_plan(
   }
 
   const auto binding = make_backend_custom_kernel_direct_io_binding_plan(
-      stage_type, "split_kernel", 1, split_sizes.size());
+      stage_type, "split_kernel", 1, split_sizes.size(),
+      GfxKernelBackendDomain::AppleMsl);
   if (!binding.valid) {
     return {};
   }
@@ -132,6 +135,11 @@ GfxMslGeneratedKernelSourcePlan make_direct_split_msl_kernel_source_plan(
   }
 
   const auto total_elems = ov::shape_size(input_shape);
+  const auto output0_elems =
+      split_sizes.empty() ? uint64_t{0}
+                          : (total_elems / axis_len) *
+                                static_cast<uint64_t>(split_sizes.front());
+  const auto dispatch_span = output0_elems == 0 ? uint64_t{1} : output0_elems;
   const auto scalar = msl_type_from_element(element_type);
   std::ostringstream msl;
   msl << "#include <metal_stdlib>\nusing namespace metal;\n";
@@ -145,6 +153,8 @@ GfxMslGeneratedKernelSourcePlan make_direct_split_msl_kernel_source_plan(
   msl << "constant uint AXIS_DIM = " << axis_len << ";\n";
   msl << "constant uint STRIDE_AFTER = " << inner_stride << ";\n";
   msl << "constant uint OUTER_STRIDE = AXIS_DIM * STRIDE_AFTER;\n";
+  msl << "constant uint DISPATCH_SPAN = "
+      << static_cast<uint32_t>(dispatch_span) << ";\n";
   msl << "kernel void split_kernel(\n";
   msl << "  device const " << scalar << "* input [[buffer(0)]],\n";
   for (size_t oi = 0; oi < split_sizes.size(); ++oi) {
@@ -153,23 +163,25 @@ GfxMslGeneratedKernelSourcePlan make_direct_split_msl_kernel_source_plan(
   }
   msl << "  uint gid [[thread_position_in_grid]]) {\n";
   msl << "    uint total = " << static_cast<uint32_t>(total_elems) << ";\n";
-  msl << "    if (gid >= total) return;\n";
-  msl << "    uint axis_idx = (gid / STRIDE_AFTER) % AXIS_DIM;\n";
-  msl << "    uint outer = gid / OUTER_STRIDE;\n";
-  msl << "    uint inner = gid % STRIDE_AFTER;\n";
-  msl << "    uint o = 0;\n";
-  msl << "    while (o + 1 < " << (split_sizes.size() + 1)
+  msl << "    for (uint linear = gid; linear < total; linear += "
+         "DISPATCH_SPAN) {\n";
+  msl << "      uint axis_idx = (linear / STRIDE_AFTER) % AXIS_DIM;\n";
+  msl << "      uint outer = linear / OUTER_STRIDE;\n";
+  msl << "      uint inner = linear % STRIDE_AFTER;\n";
+  msl << "      uint o = 0;\n";
+  msl << "      while (o + 1 < " << (split_sizes.size() + 1)
       << " && axis_idx >= OFFSETS[o + 1]) ++o;\n";
-  msl << "    uint local_axis = axis_idx - OFFSETS[o];\n";
-  msl << "    uint dst_axis_extent = OFFSETS[o + 1] - OFFSETS[o];\n";
-  msl << "    uint dst_idx = (outer * dst_axis_extent + local_axis) * "
+  msl << "      uint local_axis = axis_idx - OFFSETS[o];\n";
+  msl << "      uint dst_axis_extent = OFFSETS[o + 1] - OFFSETS[o];\n";
+  msl << "      uint dst_idx = (outer * dst_axis_extent + local_axis) * "
          "STRIDE_AFTER + inner;\n";
-  msl << "    switch (o) {\n";
+  msl << "      switch (o) {\n";
   for (size_t oi = 0; oi < split_sizes.size(); ++oi) {
-    msl << "      case " << oi << ": out" << oi
-        << "[dst_idx] = input[gid]; break;\n";
+    msl << "        case " << oi << ": out" << oi
+        << "[dst_idx] = input[linear]; break;\n";
   }
-  msl << "      default: break;\n";
+  msl << "        default: break;\n";
+  msl << "      }\n";
   msl << "    }\n";
   msl << "}\n";
 

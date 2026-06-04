@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "openvino/runtime/properties.hpp"
-#include "runtime/gfx_backend_utils.hpp"
+#include "common/gfx_backend_utils.hpp"
 
 namespace ov {
 namespace gfx_plugin {

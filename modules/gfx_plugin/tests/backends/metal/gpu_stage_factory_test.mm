@@ -5,8 +5,10 @@
 #include <gtest/gtest.h>
 
 #include "openvino/op/add.hpp"
+#include "openvino/op/constant.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/relu.hpp"
+#include "openvino/op/reshape.hpp"
 #include "backends/metal/runtime/mpsrt/mpsrt_msl_kernel_loader.hpp"
 #include "backends/metal/runtime/metal_runtime_kernel_loader.hpp"
 #include "backends/metal/runtime/stage_factory.hpp"
@@ -32,8 +34,8 @@ RuntimeStageExecutableDescriptor make_metal_test_descriptor(
     descriptor.kernel_id =
         std::string("metal/generated/") + (node ? node->get_type_name() : "null");
     descriptor.op_family = node ? node->get_type_name() : "null";
-    descriptor.origin = compiler::KernelArtifactOrigin::Generated;
-    descriptor.payload_kind = compiler::KernelArtifactPayloadKind::None;
+    descriptor.origin = KernelArtifactOrigin::Generated;
+    descriptor.payload_kind = KernelArtifactPayloadKind::None;
     descriptor.entry_point = descriptor.kernel_id;
     descriptor.dispatch_contract = "manifest";
     return descriptor;
@@ -65,6 +67,36 @@ TEST(GpuStageFactory, ReturnsNullForUnsupportedParameter) {
     EXPECT_EQ(stage->type(), std::string("Parameter"));
 }
 
+TEST(GpuStageFactory, MetalFactoryUsesSharedViewOnlyStageForMetadataDescriptor) {
+    ensure_metal_stage_factory_registered();
+    auto p = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                     ov::Shape{2, 3});
+    auto shape = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{1},
+                                             {6});
+    auto reshape = std::make_shared<ov::op::v1::Reshape>(p, shape, false);
+
+    RuntimeStageExecutableDescriptor descriptor;
+    descriptor.stage_index = 0;
+    descriptor.stage_record_key = 1;
+    descriptor.artifact_descriptor_index = 0;
+    descriptor.manifest_ref = "test/view_manifest";
+    descriptor.abi_fingerprint = "test/view_abi";
+    descriptor.artifact_key = "test/view_artifact";
+    descriptor.backend_domain = "metal";
+    descriptor.kernel_id = "metadata";
+    descriptor.op_family = reshape->get_type_name();
+    descriptor.origin = KernelArtifactOrigin::Metadata;
+    descriptor.payload_kind = KernelArtifactPayloadKind::None;
+    descriptor.layout_contract = "view_only";
+    descriptor.tensor_view_only = true;
+
+    auto stage = GpuStageFactory::create(reshape, &descriptor, default_backend_kind());
+
+    ASSERT_NE(stage, nullptr);
+    EXPECT_EQ(stage->type(), std::string("Reshape"));
+    EXPECT_EQ(stage->name(), reshape->get_friendly_name());
+}
+
 TEST(GpuStageFactory, MpsrtMslKernelLoaderBuildsStageFromKernelSourceDescriptor) {
     const auto& source = mpsrt_image_bridge_kernel_source(
         MpsrtImageBridgeKernelKind::BufferToImageF32);
@@ -89,8 +121,8 @@ TEST(GpuStageFactory, MetalRuntimeKernelLoaderUsesDescriptorAbiForMslPayload) {
     descriptor.artifact_key = "test_artifact";
     descriptor.backend_domain = source.backend_domain;
     descriptor.kernel_id = source.kernel_id;
-    descriptor.origin = compiler::KernelArtifactOrigin::HandwrittenException;
-    descriptor.payload_kind = compiler::KernelArtifactPayloadKind::MslSource;
+    descriptor.origin = KernelArtifactOrigin::HandwrittenException;
+    descriptor.payload_kind = KernelArtifactPayloadKind::MslSource;
     descriptor.entry_point = source.entry_point;
     descriptor.abi_arg_count = 2;
     descriptor.abi_output_arg_count = 1;

@@ -21,8 +21,11 @@ struct StaticBackendModuleConfig {
   PostOpFusionCapabilities post_op_fusion_capabilities = {};
   std::shared_ptr<const StagePlacementPolicy> stage_placement_policy = {};
   BackendExecutionCapabilities execution_capabilities = {};
+  PrecisionCapabilities precision_capabilities = {};
+  ArtifactFormatCapabilities artifact_format_capabilities = {};
   KernelArtifactPayloadResolver artifact_payload_resolver = {};
-  PipelineVendorAttentionArtifactResolver vendor_attention_artifact_resolver = {};
+  PipelineVendorAttentionArtifactResolver vendor_attention_artifact_resolver =
+      {};
 };
 
 std::shared_ptr<const BackendModule>

@@ -55,6 +55,10 @@ TEST(GpuStageFactory, ReturnsNullForUnsupportedParameter) {
     expect_metal_native_contract_unavailable();
 }
 
+TEST(GpuStageFactory, MetalFactoryUsesSharedViewOnlyStageForMetadataDescriptor) {
+    expect_metal_native_contract_unavailable();
+}
+
 TEST(GpuStageFactory, MpsrtMslKernelLoaderBuildsStageFromKernelSourceDescriptor) {
     expect_metal_native_contract_unavailable();
 }

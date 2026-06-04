@@ -209,7 +209,8 @@ std::vector<int64_t> shape_to_i64_vector(const ov::Shape &shape) {
 GfxMpsrtStageDesc make_conv_texture_swish_epilogue_stage_desc() {
   const auto binding = make_backend_custom_kernel_roles_binding_plan(
       "ConvTextureSwishEpilogue", "gfx_mpsrt_conv_texture_swish_epilogue",
-      {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput});
+      {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput},
+      GfxKernelBackendDomain::AppleMsl);
 
   GfxMpsrtStageDesc stage{};
   stage.kind = GfxMpsrtStageKind::MSLDispatch;

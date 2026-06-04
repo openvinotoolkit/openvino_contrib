@@ -1,10 +1,10 @@
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "runtime/gfx_backend_utils.hpp"
+#include "common/gfx_backend_utils.hpp"
 
-#include "compiler/backend_config.hpp"
+#include "common/backend_config.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/util/common_util.hpp"
 
@@ -19,7 +19,9 @@ GpuBackend parse_backend_kind(const std::string& value) {
     if (backend == kBackendOpenCL) {
         return GpuBackend::OpenCL;
     }
-    OPENVINO_THROW("Unsupported GFX_BACKEND value: ", value, ". Expected 'metal' or 'opencl'.");
+    OPENVINO_THROW("Unsupported GFX_BACKEND value: ",
+                   value,
+                   ". Expected 'metal' or 'opencl'.");
 }
 
 GpuBackend default_backend_kind() {

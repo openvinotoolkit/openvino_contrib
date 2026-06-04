@@ -95,7 +95,8 @@ GfxMslGeneratedKernelSourcePlan make_eltwise_msl_kernel_source_plan(
         "Eltwise",
         "eltwise_kernel",
         {static_cast<int32_t>(desc.num_elements),
-         static_cast<int32_t>(std::max<size_t>(out_shape.size(), 1))});
+         static_cast<int32_t>(std::max<size_t>(out_shape.size(), 1))},
+        GfxKernelBackendDomain::AppleMsl);
     if (!binding.valid) {
         return {};
     }

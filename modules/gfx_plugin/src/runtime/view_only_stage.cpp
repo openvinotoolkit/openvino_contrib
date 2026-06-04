@@ -8,10 +8,8 @@
 #include <utility>
 #include <vector>
 
-#include "compiler/executable_bundle.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
-#include "compiler/stage_policy.hpp"
 #include "runtime/gpu_tensor.hpp"
 
 namespace ov {
@@ -21,8 +19,8 @@ namespace {
 bool is_compiler_owned_view_descriptor(
     const RuntimeStageExecutableDescriptor* descriptor) {
     return descriptor &&
-           descriptor->origin == compiler::KernelArtifactOrigin::Metadata &&
-           descriptor->payload_kind == compiler::KernelArtifactPayloadKind::None &&
+           descriptor->origin == KernelArtifactOrigin::Metadata &&
+           descriptor->payload_kind == KernelArtifactPayloadKind::None &&
            descriptor->kernel_id == "metadata" &&
            descriptor->tensor_view_only;
 }
@@ -42,7 +40,7 @@ public:
 
     void init(GpuBufferManager*) override {}
 
-    void compile(GpuBufferManager*) override {}
+    void prepare_runtime_handle(GpuBufferManager*) override {}
 
     void execute(GpuCommandBufferHandle) override {
         OPENVINO_ASSERT(!m_inputs.empty() && m_inputs.front() &&

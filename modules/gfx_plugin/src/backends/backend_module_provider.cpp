@@ -6,7 +6,7 @@
 
 #include "backends/metal/compiler/metal_backend_module.hpp"
 #include "backends/opencl/compiler/opencl_backend_module.hpp"
-#include "compiler/backend_config.hpp"
+#include "common/backend_config.hpp"
 #include "compiler/stage_compiler_policy.hpp"
 
 namespace ov {

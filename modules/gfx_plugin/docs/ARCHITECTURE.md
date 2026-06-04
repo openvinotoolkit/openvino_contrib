@@ -19,7 +19,8 @@ notes or deleted backend code as current behavior.
 - `src/plugin/`: OpenVINO runtime integration, properties, backend resolution,
   compiled-model state, infer-request OpenVINO API glue, output resolution,
   model serialization, backend-access helpers, and variable-state API objects
-- `src/common/`: backend ids, activation/bias metadata, dispatch and
+- `src/common/`: backend ids, configured-backend availability values,
+  artifact-payload interfaces, activation/bias metadata, dispatch and
   parallelism value types, submit-policy records, constant-evaluation helpers,
   and GPU device-family/profile value types shared across compiler, runtime,
   and backend code
@@ -27,8 +28,9 @@ notes or deleted backend code as current behavior.
   backend capability records, operation support policies, backend
   stage-placement contracts, operation legalization, tensor-layout
   classification, stage compiler policy, lowering plans, stage policy,
-  pipeline-stage descriptor building, fusion selection, pipeline-stage I/O
-  plans, memory plans, manifest bundles, cache envelopes, executable bundles,
+  pipeline-stage descriptor building, fusion selection, compiler-side
+  pipeline-stage I/O plans, memory plans, manifest bundles, cache envelopes,
+  executable bundles, runtime executable descriptor build/verification,
   backend-module construction, and artifact payload routing
 - `src/runtime/`: backend-neutral stage interfaces, execution dispatcher,
   backend runtime/provider interfaces, backend request state, backend stage
@@ -36,8 +38,9 @@ notes or deleted backend code as current behavior.
   pipeline-stage descriptors and materializers, descriptor-backed view-only
   stages, stateful runtime helpers, submission windows, target profiles,
   profiling reports, remote tensor/context helpers, common buffer abstractions,
-  runtime executable descriptors, runtime sessions, fused-output lifetime
-  planning, runtime-value planning, and reusable caches
+  runtime executable descriptor records, runtime pipeline-stage plans, runtime
+  sessions, fused-output lifetime planning, runtime-value and kernel-launch
+  planning, and reusable caches
 - `src/kernel_ir/`: kernel manifests, custom-kernel family registry, dispatch
   metadata, argument helpers, cache keys, embedded helper kernel sources, and
   OpenCL source artifacts
@@ -82,7 +85,9 @@ parallel support tables.
 
 - transformed OpenVINO model
 - selected backend state from `create_backend_state()`
-- runtime executable descriptor derived from the compiler executable bundle
+- runtime executable descriptor produced by
+  `src/compiler/runtime_executable_descriptor_builder.*` from the compiler
+  executable bundle
 - runtime descriptor ownership exposed to infer-request construction
 - `build_op_pipeline()` delegation to the compiler stage builder
 - compiled-model properties
@@ -93,13 +98,15 @@ backend-specific `GpuStage` instances. One stage may represent one OpenVINO node
 a fused sequence, a stateful helper, a view-style alias, or a materialized
 constant output.
 
-`build_op_pipeline()` creates a `compiler::PipelineStageBuildRequest` and
-delegates descriptor construction to `src/compiler/pipeline_stage_builder.*`.
-The builder owns stage ordering, node-to-stage mapping, parameter index map,
-absorbed input transforms, model-output alias handling, and the handoff from
-compiler-owned planning contracts in `src/compiler/pipeline_stage_plan.*` and
-`src/compiler/pipeline_stage_fusion.*`. `CompiledModel` stores the returned
-`compiler::PipelineStageBuildResult`; it should not accumulate
+`build_op_pipeline()` consumes the descriptor-owned
+`PipelineStageRuntimePlan` and delegates concrete stage materialization to
+`src/runtime/pipeline_stage_materializer.*`. The runtime plan is emitted by
+`src/compiler/pipeline_stage_builder.*` while building the runtime executable
+descriptor. The builder owns stage ordering, node-to-stage mapping, parameter
+index map, absorbed input transforms, model-output alias handling, and the
+handoff from compiler-owned planning contracts in
+`src/compiler/pipeline_stage_plan.*` and
+`src/compiler/pipeline_stage_fusion.*`. `CompiledModel` should not accumulate
 backend-specific stage construction logic.
 
 `src/runtime/pipeline_stage_materializer.*` passes the matching
@@ -168,11 +175,12 @@ Runtime selection is requested with:
 
 On macOS, CMake disables OpenCL and uses Metal. On non-Apple builds, OpenCL is
 the source-kernel backend when enabled and available. Backend support checks are
-compiled into `compiler/backend_config.hpp` from
-`src/compiler/backend_config.hpp.in`. Explicit `GFX_DEFAULT_BACKEND=metal` or
-`GFX_DEFAULT_BACKEND=opencl` is a hard configure-time request: CMake fails if the
-requested backend is unavailable instead of silently falling back to a different
-backend.
+compiled into `common/backend_config.hpp` from
+`src/common/backend_config.hpp.in`; `compiler/backend_config.hpp` is a wrapper
+include for existing compiler-path users. Explicit `GFX_DEFAULT_BACKEND=metal`
+or `GFX_DEFAULT_BACKEND=opencl` is a hard configure-time request: CMake fails if
+the requested backend is unavailable instead of silently falling back to a
+different backend.
 
 The compiler registry and runtime availability share the generated availability
 contract. The default `BackendRegistry` contains only the production backend
@@ -379,8 +387,9 @@ Kernel contracts are split across the current compiler and kernel IR layers:
 - `src/compiler/manifest.*`: normalized stage records, tensor contracts,
   memory-region ids, runtime-parameter contracts, dispatch contracts,
   runtime-shape-argument requirements, and memory contracts
-- `src/compiler/pipeline_stage_plan.*`: model-output flags, input links, and
-  output-alias metadata used by compiled pipeline descriptors
+- `src/compiler/pipeline_stage_plan.*`: compiler-side model-output flags,
+  input links, and output-alias metadata used while planning compiled pipeline
+  descriptors
 - `src/compiler/pipeline_stage_builder.*`: stage descriptor construction and
   node-to-stage mapping from compiler-owned planning contracts
 - `src/compiler/pipeline_stage_fusion.*`: compiler-owned fusion selection and
@@ -392,8 +401,13 @@ Kernel contracts are split across the current compiler and kernel IR layers:
 - `src/compiler/executable_bundle.*`: artifact descriptors, ABI fingerprints,
   payload kind, manifest references, memory plan, and runtime-facing stage
   records
+- `src/compiler/runtime_executable_descriptor_builder.*`: conversion and
+  verification from compiler executable bundles into runtime executable
+  descriptors, including the attached runtime stage plan
 - `src/runtime/executable_descriptor.*`: backend-neutral runtime descriptor
-  consumed by stage factories and `RuntimeSession`
+  records consumed by stage factories and `RuntimeSession`
+- `src/runtime/pipeline_stage_plan.hpp`: runtime-facing stage materialization
+  plan emitted by the compiler builder and consumed by the materializer
 - `src/runtime/backend_stage_factory.hpp`: backend-facing stage creation
   interface implemented by backend state
 - `src/runtime/pipeline_stage_desc.hpp`: runtime pipeline descriptor record
@@ -609,7 +623,8 @@ The CMake layout separates shared contracts from backend payload ownership:
   `src/runtime/pipeline_stage_desc.hpp`, and
   `src/runtime/pipeline_stage_materializer.*`: runtime-facing stage creation
   and materialization contracts
-- `gfx_runtime_mlir`: MLIR lowering, pass, dialect, and backend-hook support
+- `gfx_mlir_stage_support`: MLIR lowering, pass, dialect, and backend-hook
+  support
 - `gfx_opencl_kernel_artifacts`: OpenCL source artifacts and embedded OpenCL
   helper source wrappers used by the OpenCL backend resolver
 - `gfx_runtime_opencl`: OpenCL runtime loader, plugin-local runtime-bundle
@@ -646,9 +661,11 @@ Do not move OpenCL source payload materialization back into
 - Keep descriptor-backed stage creation in
   `src/runtime/pipeline_stage_materializer.*` and backend implementations of
   `BackendStageFactory`.
-- Keep memory-region ids, alias groups, and transient arenas in
-  `src/compiler/memory_plan.*` and `src/runtime/executable_descriptor.*`; do not
-  infer resource identity from tensor position in request code.
+- Keep memory-region ids, alias groups, transient arenas, and descriptor
+  verification in `src/compiler/memory_plan.*`,
+  `src/compiler/runtime_executable_descriptor_builder.*`, and
+  `src/runtime/executable_descriptor.*`; do not infer resource identity from
+  tensor position in request code.
 - Keep Metal MPSRT records, MSL source plans, and runtime binding on the
   compiler manifest/MPSRT contract.
 - Do not reintroduce the deleted standalone

@@ -41,7 +41,7 @@ public:
                        std::string type = "FusedSequence");
 
     void init(GpuBufferManager* buffer_manager) override;
-    void compile(GpuBufferManager* buffer_manager) override;
+    void prepare_runtime_handle(GpuBufferManager* buffer_manager) override;
     void execute(GpuCommandBufferHandle command_buffer) override;
     void prewarm_runtime_state() override;
 

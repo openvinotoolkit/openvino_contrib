@@ -22,12 +22,12 @@ void verify_opencl_source_descriptor(const RuntimeStageExecutableDescriptor& des
                     "GFX OpenCL: runtime loader received non-OpenCL source artifact");
     OPENVINO_ASSERT(artifact.artifact_ref.backend_domain == GfxKernelBackendDomain::OpenCl,
                     "GFX OpenCL: runtime loader received non-OpenCL artifact domain");
-    OPENVINO_ASSERT(descriptor.payload_kind == compiler::KernelArtifactPayloadKind::OpenClSource,
+    OPENVINO_ASSERT(descriptor.payload_kind == KernelArtifactPayloadKind::OpenClSource,
                     "GFX OpenCL: runtime descriptor payload is not OpenCL source");
     OPENVINO_ASSERT(descriptor.backend_domain == "opencl",
                     "GFX OpenCL: runtime descriptor backend domain must be opencl");
-    OPENVINO_ASSERT(descriptor.origin == compiler::KernelArtifactOrigin::Generated ||
-                        descriptor.origin == compiler::KernelArtifactOrigin::HandwrittenException,
+    OPENVINO_ASSERT(descriptor.origin == KernelArtifactOrigin::Generated ||
+                        descriptor.origin == KernelArtifactOrigin::HandwrittenException,
                     "GFX OpenCL: source runtime descriptor must be generated or handwritten exception");
     OPENVINO_ASSERT(descriptor.entry_point == artifact.artifact_ref.entry_point,
                     "GFX OpenCL: runtime descriptor entry point drift for ",

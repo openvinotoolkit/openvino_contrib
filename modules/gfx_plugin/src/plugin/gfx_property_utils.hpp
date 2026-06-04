@@ -11,7 +11,7 @@
 #include "openvino/gfx_plugin/properties.hpp"
 #include "openvino/gfx_plugin/profiling.hpp"
 #include "runtime/gfx_logger.hpp"
-#include "runtime/gfx_backend_utils.hpp"
+#include "common/gfx_backend_utils.hpp"
 
 namespace ov {
 namespace gfx_plugin {

@@ -17,7 +17,7 @@
 #include "plugin/infer_io_utils.hpp"
 #include "runtime/backend_runtime.hpp"
 #include "runtime/backend_runtime_provider.hpp"
-#include "runtime/gfx_backend_utils.hpp"
+#include "common/gfx_backend_utils.hpp"
 #include "runtime/gfx_remote_context.hpp"
 #include "runtime/infer_pipeline.hpp"
 

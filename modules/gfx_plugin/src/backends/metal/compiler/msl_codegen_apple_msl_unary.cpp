@@ -123,7 +123,8 @@ std::optional<KernelSource> make_apple_metal_unary_kernel_source(
         {GfxKernelBufferRole::TensorInput,
          GfxKernelBufferRole::TensorInput,
          GfxKernelBufferRole::TensorOutput,
-         GfxKernelBufferRole::ScalarParam});
+         GfxKernelBufferRole::ScalarParam},
+        GfxKernelBackendDomain::AppleMsl);
     if (!binding.valid || binding.scalar_arg_count != 1) {
       return std::nullopt;
     }

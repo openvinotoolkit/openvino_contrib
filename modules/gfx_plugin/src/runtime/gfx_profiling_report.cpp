@@ -14,7 +14,7 @@
 #include <sstream>
 #include <thread>
 
-#include "runtime/gfx_backend_utils.hpp"
+#include "common/gfx_backend_utils.hpp"
 #include "runtime/gfx_profiling_trace_sink.hpp"
 
 namespace ov {

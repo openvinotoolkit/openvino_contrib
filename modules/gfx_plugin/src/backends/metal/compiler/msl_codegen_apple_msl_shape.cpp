@@ -102,7 +102,8 @@ KernelSource make_range_msl_kernel_source(
 GfxMslGeneratedKernelSourcePlan make_shapeof_msl_kernel_source_plan(
     const std::shared_ptr<const ov::Node> &node, mlir::ModuleOp module) {
   auto binding = make_backend_custom_kernel_binding_plan(
-      "ShapeOf", "shapeof_kernel", make_shapeof_msl_scalar_args(node));
+      "ShapeOf", "shapeof_kernel", make_shapeof_msl_scalar_args(node),
+      GfxKernelBackendDomain::AppleMsl);
   if (!binding.valid) {
     return {};
   }
@@ -118,7 +119,8 @@ GfxMslGeneratedKernelSourcePlan make_shapeof_msl_kernel_source_plan(
 GfxMslGeneratedKernelSourcePlan make_tile_msl_kernel_source_plan(
     const std::shared_ptr<const ov::Node> &node, mlir::ModuleOp module) {
   auto binding = make_backend_custom_kernel_binding_plan(
-      "Tile", "tile_kernel", make_tile_msl_scalar_args(node));
+      "Tile", "tile_kernel", make_tile_msl_scalar_args(node),
+      GfxKernelBackendDomain::AppleMsl);
   if (!binding.valid) {
     return {};
   }
@@ -134,7 +136,8 @@ GfxMslGeneratedKernelSourcePlan make_tile_msl_kernel_source_plan(
 GfxMslGeneratedKernelSourcePlan make_range_msl_kernel_source_plan(
     const std::shared_ptr<const ov::Node> &node, mlir::ModuleOp module) {
   auto binding = make_backend_custom_kernel_binding_plan(
-      "Range", "range_kernel", make_range_msl_scalar_args(node));
+      "Range", "range_kernel", make_range_msl_scalar_args(node),
+      GfxKernelBackendDomain::AppleMsl);
   if (!binding.valid) {
     return {};
   }
@@ -213,10 +216,11 @@ std::optional<KernelSource> make_apple_metal_shape_kernel_source(
            GfxKernelBufferRole::ScalarParam,
            GfxKernelBufferRole::ScalarParam,
            GfxKernelBufferRole::ScalarParam,
-           GfxKernelBufferRole::RuntimeParams,
-           GfxKernelBufferRole::RuntimeParams,
-           GfxKernelBufferRole::RuntimeParams,
-           GfxKernelBufferRole::RuntimeParams});
+          GfxKernelBufferRole::RuntimeParams,
+          GfxKernelBufferRole::RuntimeParams,
+          GfxKernelBufferRole::RuntimeParams,
+          GfxKernelBufferRole::RuntimeParams},
+          GfxKernelBackendDomain::AppleMsl);
       OPENVINO_ASSERT(configure_backend_custom_kernel_source_from_binding_plan(
                           source, plan),
                       "GFX Metal Broadcast: failed to configure dynamic "

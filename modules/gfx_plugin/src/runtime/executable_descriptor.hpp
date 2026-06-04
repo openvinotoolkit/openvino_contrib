@@ -9,10 +9,12 @@
 #include <string_view>
 #include <vector>
 
-#include "compiler/executable_bundle.hpp"
+#include "common/artifact_payload.hpp"
 
 namespace ov {
 namespace gfx_plugin {
+
+struct PipelineStageRuntimePlan;
 
 struct RuntimeTensorBindingContract {
   std::string logical_name;
@@ -41,10 +43,8 @@ struct RuntimeStageExecutableDescriptor {
   std::string backend_domain;
   std::string kernel_id;
   std::string op_family;
-  compiler::KernelArtifactOrigin origin =
-      compiler::KernelArtifactOrigin::Unknown;
-  compiler::KernelArtifactPayloadKind payload_kind =
-      compiler::KernelArtifactPayloadKind::None;
+  KernelArtifactOrigin origin = KernelArtifactOrigin::Unknown;
+  KernelArtifactPayloadKind payload_kind = KernelArtifactPayloadKind::None;
   std::string entry_point;
   std::string compile_options_key;
   uint32_t abi_arg_count = 0;
@@ -65,7 +65,7 @@ struct RuntimeStageExecutableDescriptor {
   std::string exception_reason;
   std::string exception_removal_condition;
   bool optional_cache_payload_allowed = true;
-  std::shared_ptr<const compiler::KernelArtifactPayload> payload;
+  std::shared_ptr<const KernelArtifactPayload> payload;
   std::vector<RuntimeTensorBindingContract> input_bindings;
   std::vector<RuntimeTensorBindingContract> output_bindings;
 };
@@ -120,16 +120,7 @@ struct RuntimeExecutableDescriptor {
   std::string target_fingerprint;
   RuntimeMemoryPlanDescriptor memory_plan;
   std::vector<RuntimeStageExecutableDescriptor> stages;
-
-  RuntimeExecutableDescriptorVerificationResult
-  verify(const compiler::ExecutableBundle &executable) const;
-  bool valid(const compiler::ExecutableBundle &executable) const;
-};
-
-class RuntimeExecutableDescriptorBuilder final {
-public:
-  RuntimeExecutableDescriptor
-  build(const compiler::ExecutableBundle &executable) const;
+  std::shared_ptr<const PipelineStageRuntimePlan> stage_plan;
 };
 
 } // namespace gfx_plugin

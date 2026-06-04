@@ -1872,7 +1872,8 @@ TEST(GfxMlir, AppleMpsrtProgramPlanMaterializesExplicitMixedValueEdges) {
       ov::gfx_plugin::make_backend_custom_kernel_roles_binding_plan(
           "MatMulEpilogue", "eltwise_fused_buffer",
           {ov::gfx_plugin::GfxKernelBufferRole::TensorInput,
-           ov::gfx_plugin::GfxKernelBufferRole::TensorOutput});
+           ov::gfx_plugin::GfxKernelBufferRole::TensorOutput},
+          ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(epilogue_binding.valid);
   ASSERT_TRUE(epilogue_binding.stage_manifest.valid);
   epilogue_stage.stage_manifest = epilogue_binding.stage_manifest;
@@ -2421,7 +2422,8 @@ TEST(GfxMlir, AddMslMetadataUsesRequiredMpsrtKernelFamily) {
 
   const auto custom_kernel_plan =
       ov::gfx_plugin::make_gfx_custom_kernel_stage_plan("Add",
-                                                        "eltwise_kernel");
+                                                        "eltwise_kernel",
+                                                        ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(custom_kernel_plan.valid);
   ASSERT_EQ(custom_kernel_plan.family,
             ov::gfx_plugin::GfxKernelFamily::EltwiseFusedBuffer);
@@ -3198,7 +3200,8 @@ TEST(GfxMlir, TypedProgramExternalBufferAbiWinsOverStaleModuleManifest) {
           "Softmax", "softmax_kernel",
           {ov::gfx_plugin::GfxKernelBufferRole::TensorInput,
            ov::gfx_plugin::GfxKernelBufferRole::TensorOutput,
-           ov::gfx_plugin::GfxKernelBufferRole::RuntimeParams});
+           ov::gfx_plugin::GfxKernelBufferRole::RuntimeParams},
+          ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(stale_module_binding.valid);
   ASSERT_TRUE(
       ov::gfx_plugin::annotate_backend_custom_kernel_module_with_binding_plan(
@@ -3253,7 +3256,8 @@ TEST(GfxMlir,
           "Softmax", "softmax_kernel",
           {ov::gfx_plugin::GfxKernelBufferRole::TensorInput,
            ov::gfx_plugin::GfxKernelBufferRole::TensorOutput,
-           ov::gfx_plugin::GfxKernelBufferRole::RuntimeParams});
+           ov::gfx_plugin::GfxKernelBufferRole::RuntimeParams},
+          ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(stale_module_binding.valid);
   ASSERT_TRUE(
       ov::gfx_plugin::annotate_backend_custom_kernel_module_with_binding_plan(
@@ -3589,7 +3593,8 @@ TEST(GfxMlir, AppleMslArgCountCanUseStageManifestWithoutMlirEntryMatch) {
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
   const auto binding = ov::gfx_plugin::make_backend_custom_kernel_binding_plan(
-      "Slice", "slice_kernel");
+      ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl, "Slice",
+      "slice_kernel");
   ASSERT_TRUE(binding.valid);
   ASSERT_TRUE(
       ov::gfx_plugin::annotate_backend_custom_kernel_module_with_binding_plan(
@@ -3913,7 +3918,8 @@ TEST(GfxMlir, TypedMslStageManifestSuppliesRuntimeMetadataOverExternalAbi) {
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
   const auto binding = ov::gfx_plugin::make_backend_custom_kernel_binding_plan(
-      "Tile", "tile_kernel", {16, 4});
+      ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl, "Tile", "tile_kernel",
+      {16, 4});
   ASSERT_TRUE(binding.valid);
   ASSERT_EQ(binding.runtime_binding.operand_kinds,
             std::vector<int32_t>({1, 1, 0, 0, 1, 1, 1, 1}));
@@ -3981,11 +3987,13 @@ TEST(GfxMlir,
 
   const auto typed_binding =
       ov::gfx_plugin::make_backend_custom_kernel_binding_plan(
-          "Tile", "tile_kernel", {16, 4});
+          ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl, "Tile",
+          "tile_kernel", {16, 4});
   ASSERT_TRUE(typed_binding.valid);
   const auto stale_binding =
-      ov::gfx_plugin::make_backend_custom_kernel_binding_plan("Softmax",
-                                                              "softmax_kernel");
+      ov::gfx_plugin::make_backend_custom_kernel_binding_plan(
+          ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl, "Softmax",
+          "softmax_kernel");
   ASSERT_TRUE(stale_binding.valid);
 
   auto input = ov::gfx_plugin::gfx_mpsrt_make_tensor_desc(
@@ -4126,7 +4134,8 @@ TEST(GfxMlir, BackendCustomKernelBindingPlanDoesNotWriteLegacyOperandAttrs) {
                   builder.getArrayAttr({builder.getI32IntegerAttr(7)}));
 
   const auto plan = ov::gfx_plugin::make_backend_custom_kernel_binding_plan(
-      "Add", "eltwise_kernel");
+      ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl, "Add",
+      "eltwise_kernel");
   ASSERT_TRUE(plan.valid);
   ASSERT_TRUE(
       ov::gfx_plugin::annotate_backend_custom_kernel_module_with_binding_plan(
@@ -4187,7 +4196,8 @@ TEST(GfxMlir, MslScalarRuntimeArgsAreStoredOnStageManifest) {
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
   const auto plan = ov::gfx_plugin::make_backend_custom_kernel_binding_plan(
-      "Tile", "tile_kernel", {16, 4});
+      ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl, "Tile", "tile_kernel",
+      {16, 4});
   ASSERT_TRUE(plan.valid);
   ASSERT_TRUE(
       ov::gfx_plugin::annotate_backend_custom_kernel_module_with_binding_plan(
@@ -4216,7 +4226,8 @@ TEST(GfxMlir, MslSliceManifestKeepsOnlyDataInputAsKernelInput) {
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
   const auto plan = ov::gfx_plugin::make_backend_custom_kernel_binding_plan(
-      "Slice", "slice_kernel");
+      ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl, "Slice",
+      "slice_kernel");
   ASSERT_TRUE(plan.valid);
   ASSERT_TRUE(
       ov::gfx_plugin::annotate_backend_custom_kernel_module_with_binding_plan(
@@ -4460,7 +4471,8 @@ TEST(GfxMlir,
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
   const auto binding = ov::gfx_plugin::make_backend_custom_kernel_binding_plan(
-      "Tile", "tile_kernel", {16, 4});
+      ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl, "Tile", "tile_kernel",
+      {16, 4});
   ASSERT_TRUE(binding.valid);
   ASSERT_TRUE(
       ov::gfx_plugin::annotate_backend_custom_kernel_module_with_binding_plan(
@@ -4803,7 +4815,8 @@ TEST(GfxMlir, MslSourcePlanKeepsSourceBindingWhenLegacySignatureIsWider) {
 
   const auto factory_binding =
       ov::gfx_plugin::make_backend_custom_kernel_binding_plan(
-          "Add", source.entry_point);
+          ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl, "Add",
+          source.entry_point);
   ASSERT_TRUE(factory_binding.valid);
   const auto source_binding =
       ov::gfx_plugin::make_backend_custom_kernel_source_binding_plan(
@@ -5050,7 +5063,8 @@ TEST(GfxMlir, AppleMslStructuralArgCountsComeFromStageManifest) {
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
     mlir::OpBuilder builder(&ctx);
     auto plan = ov::gfx_plugin::make_backend_custom_kernel_binding_plan(
-        c.stage_type, c.entry_point, c.scalar_args);
+        ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl, c.stage_type,
+        c.entry_point, c.scalar_args);
     ASSERT_TRUE(plan.valid) << c.stage_type;
     ASSERT_TRUE(
         ov::gfx_plugin::annotate_backend_custom_kernel_module_with_binding_plan(
@@ -5102,7 +5116,8 @@ TEST(GfxMlir, MslKernelSourceSignatureCanBeConfiguredFromModuleManifest) {
     mlir::MLIRContext ctx;
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
     auto plan = ov::gfx_plugin::make_backend_custom_kernel_binding_plan(
-        c.stage_type, c.entry_point, c.scalar_args);
+        ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl, c.stage_type,
+        c.entry_point, c.scalar_args);
     ASSERT_TRUE(plan.valid) << c.stage_type;
     ASSERT_TRUE(
         ov::gfx_plugin::annotate_backend_custom_kernel_module_with_binding_plan(
@@ -5177,7 +5192,8 @@ TEST(GfxMlir, MslKernelSourceConfigurationPreservesExistingExactManifestRoles) {
       {ov::gfx_plugin::GfxKernelBufferRole::TensorInput,
        ov::gfx_plugin::GfxKernelBufferRole::RuntimeParams,
        ov::gfx_plugin::GfxKernelBufferRole::TensorOutput,
-       ov::gfx_plugin::GfxKernelBufferRole::RuntimeParams});
+       ov::gfx_plugin::GfxKernelBufferRole::RuntimeParams},
+      ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(binding.valid);
   ASSERT_TRUE(
       ov::gfx_plugin::annotate_backend_custom_kernel_module_with_binding_plan(
@@ -5223,7 +5239,8 @@ TEST(GfxMlir, MslKernelSourceConfigurationDoesNotWidenExactManifestRoles) {
       "GatherElements", "gather_elements_kernel",
       {ov::gfx_plugin::GfxKernelBufferRole::TensorInput,
        ov::gfx_plugin::GfxKernelBufferRole::TensorOutput,
-       ov::gfx_plugin::GfxKernelBufferRole::RuntimeParams});
+       ov::gfx_plugin::GfxKernelBufferRole::RuntimeParams},
+      ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(binding.valid);
   ASSERT_TRUE(
       ov::gfx_plugin::annotate_backend_custom_kernel_module_with_binding_plan(

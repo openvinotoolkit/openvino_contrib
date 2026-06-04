@@ -47,13 +47,14 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
 2. Identify whether the change affects:
    - backend availability or default backend resolution
    - configured backend availability generated from
-     `src/compiler/backend_config.hpp.in`
+     `src/common/backend_config.hpp.in`
    - compiler service, backend registry, lowering-plan, manifest, executable
      bundle, pipeline-stage builder, pipeline-stage fusion selection,
-     pipeline-stage I/O plan, memory plan, cache envelope, stage-placement
-     policy, stage compiler policy, fused-output lifetime plan, runtime
-     pipeline-stage materializer, runtime session, or runtime descriptor
-     behavior
+     compiler-side pipeline-stage I/O plan, runtime pipeline-stage plan,
+     memory plan, cache envelope, runtime executable descriptor builder,
+     stage-placement policy, stage compiler policy, fused-output lifetime plan,
+     runtime pipeline-stage materializer, runtime session, or runtime
+     descriptor behavior
    - compiler-owned tensor-layout classification
    - public properties
    - `query_model()` or compile behavior

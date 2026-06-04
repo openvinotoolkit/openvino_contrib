@@ -23,6 +23,7 @@ set(GFX_COMPILER_COMMON_SOURCES
     ${_gfx_src_dir}/compiler/pipeline_stage_builder.cpp
     ${_gfx_src_dir}/compiler/pipeline_stage_fusion.cpp
     ${_gfx_src_dir}/compiler/pipeline_stage_plan.cpp
+    ${_gfx_src_dir}/compiler/runtime_executable_descriptor_builder.cpp
     ${_gfx_src_dir}/compiler/stage_compiler_policy.cpp
     ${_gfx_src_dir}/compiler/stage_placement.cpp
     ${_gfx_src_dir}/compiler/stage_policy.cpp
@@ -30,9 +31,12 @@ set(GFX_COMPILER_COMMON_SOURCES
 )
 
 set(GFX_COMPILER_COMMON_HEADERS
+    ${_gfx_src_dir}/common/artifact_payload.hpp
+    ${_gfx_src_dir}/common/backend_config.hpp.in
     ${_gfx_src_dir}/common/constant_tensor_evaluator.hpp
     ${_gfx_src_dir}/common/gfx_activation.hpp
     ${_gfx_src_dir}/common/gfx_bias.hpp
+    ${_gfx_src_dir}/common/gfx_backend_utils.hpp
     ${_gfx_src_dir}/common/gpu_backend.hpp
     ${_gfx_src_dir}/common/gpu_device_profile.hpp
     ${_gfx_src_dir}/common/gpu_dispatch_config.hpp
@@ -54,6 +58,7 @@ set(GFX_COMPILER_COMMON_HEADERS
     ${_gfx_src_dir}/compiler/pipeline_stage_builder.hpp
     ${_gfx_src_dir}/compiler/pipeline_stage_fusion.hpp
     ${_gfx_src_dir}/compiler/pipeline_stage_plan.hpp
+    ${_gfx_src_dir}/compiler/runtime_executable_descriptor_builder.hpp
     ${_gfx_src_dir}/compiler/stage_compiler_policy.hpp
     ${_gfx_src_dir}/compiler/stage_placement.hpp
     ${_gfx_src_dir}/compiler/stage_policy.hpp
@@ -62,6 +67,7 @@ set(GFX_COMPILER_COMMON_HEADERS
 )
 
 set(GFX_PLUGIN_SOURCES
+    ${_gfx_src_dir}/common/gfx_backend_utils.cpp
     ${_gfx_src_dir}/plugin/compiled_model.cpp
     ${_gfx_src_dir}/plugin/compiled_model_backend_resources.cpp
     ${_gfx_src_dir}/plugin/gfx_device_info.cpp
@@ -82,6 +88,7 @@ set(GFX_PLUGIN_SOURCES
 set(GFX_PLUGIN_HEADERS
     ${_gfx_src_dir}/common/gfx_activation.hpp
     ${_gfx_src_dir}/common/gfx_bias.hpp
+    ${_gfx_src_dir}/common/gfx_backend_utils.hpp
     ${_gfx_src_dir}/common/gpu_backend.hpp
     ${_gfx_src_dir}/common/gpu_device_profile.hpp
     ${_gfx_src_dir}/common/gpu_dispatch_config.hpp
@@ -165,8 +172,6 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/fused_output_lifetime_plan.hpp
     ${_gfx_src_dir}/runtime/gfx_activation.hpp
     ${_gfx_src_dir}/runtime/gfx_batchnorm.hpp
-    ${_gfx_src_dir}/runtime/gfx_backend_caps.hpp
-    ${_gfx_src_dir}/runtime/gfx_backend_utils.hpp
     ${_gfx_src_dir}/runtime/fused_sequence_stage.hpp
     ${_gfx_src_dir}/runtime/view_only_stage.hpp
     ${_gfx_src_dir}/runtime/gpu_memory_ops.hpp
@@ -177,6 +182,8 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_inputs.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_signature.hpp
+    ${_gfx_src_dir}/runtime/gfx_kernel_runtime_params.hpp
+    ${_gfx_src_dir}/runtime/kernel_launch_plan.hpp
     ${_gfx_src_dir}/runtime/gfx_profiler.hpp
     ${_gfx_src_dir}/runtime/gfx_profiling_report.hpp
     ${_gfx_src_dir}/runtime/gfx_profiling_trace_sink.hpp
@@ -197,6 +204,7 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/output_lifetime.hpp
     ${_gfx_src_dir}/runtime/pipeline_stage_desc.hpp
     ${_gfx_src_dir}/runtime/pipeline_stage_materializer.hpp
+    ${_gfx_src_dir}/runtime/pipeline_stage_plan.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_codegen_backend.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_dispatch.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_manifest.hpp
@@ -216,8 +224,6 @@ set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/runtime/executable_descriptor.cpp
     ${_gfx_src_dir}/runtime/runtime_session.cpp
     ${_gfx_src_dir}/runtime/fused_output_lifetime_plan.cpp
-    ${_gfx_src_dir}/runtime/gfx_backend_caps.cpp
-    ${_gfx_src_dir}/runtime/gfx_backend_utils.cpp
     ${_gfx_src_dir}/runtime/fused_sequence_stage.cpp
     ${_gfx_src_dir}/runtime/view_only_stage.cpp
     ${_gfx_src_dir}/runtime/gpu_memory_ops.cpp
@@ -319,7 +325,7 @@ set(GFX_METAL_MPSRT_CONTRACT_SOURCES
     ${_gfx_src_dir}/backends/metal/runtime/mpsrt/gfx_mpsrt_model.cpp
 )
 
-set(GFX_RUNTIME_MLIR_HEADERS
+set(GFX_MLIR_STAGE_SUPPORT_HEADERS
     ${_gfx_src_dir}/mlir/gfx_backend_custom_kernel_adapter.hpp
     ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.hpp
     ${_gfx_src_dir}/mlir/gfx_mlir_kernel_metadata.hpp
@@ -335,7 +341,7 @@ set(GFX_RUNTIME_MLIR_HEADERS
     ${_gfx_src_dir}/mlir/mlir_support.hpp
 )
 
-set(GFX_RUNTIME_MLIR_SOURCES
+set(GFX_MLIR_STAGE_SUPPORT_SOURCES
     ${_gfx_src_dir}/mlir/gfx_backend_custom_kernel_adapter.cpp
     ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.cpp
     ${_gfx_src_dir}/mlir/mlir_stage_backend_hooks.cpp

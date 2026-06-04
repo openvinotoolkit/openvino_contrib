@@ -13,6 +13,7 @@
 #include "openvino/core/model.hpp"
 #include "compiler/pipeline_stage_fusion.hpp"
 #include "compiler/pipeline_stage_plan.hpp"
+#include "runtime/pipeline_stage_plan.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -96,6 +97,7 @@ struct PipelineStageMaterializationPlan {
 struct PipelineStageBuildResult {
   std::vector<std::shared_ptr<ov::Node>> ordered_ops;
   std::vector<PipelineStageMaterializationPlan> stage_plans;
+  PipelineStageRuntimePlan runtime_plan;
   StageCompilerPolicy stage_compiler_policy;
   std::unordered_map<const ov::Node *, size_t> node_to_stage;
   std::unordered_map<const ov::Node *, size_t> param_index;

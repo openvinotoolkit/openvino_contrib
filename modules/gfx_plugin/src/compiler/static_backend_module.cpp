@@ -15,11 +15,12 @@ class StaticBackendModule final : public BackendModule {
 public:
   explicit StaticBackendModule(StaticBackendModuleConfig config)
       : m_id(config.target.backend_id()), m_target(std::move(config.target)),
-        m_capabilities(m_target, std::move(config.operation_policy),
-                       config.fusion_capabilities,
-                       config.post_op_fusion_capabilities,
-                       std::move(config.stage_placement_policy),
-                       std::move(config.execution_capabilities)),
+        m_capabilities(
+            m_target, std::move(config.operation_policy),
+            config.fusion_capabilities, config.post_op_fusion_capabilities,
+            std::move(config.stage_placement_policy),
+            std::move(config.execution_capabilities),
+            config.precision_capabilities, config.artifact_format_capabilities),
         m_legalizer(m_capabilities),
         m_kernel_registry(std::move(config.kernel_registry)),
         m_lowering_planner(m_target, m_kernel_registry),

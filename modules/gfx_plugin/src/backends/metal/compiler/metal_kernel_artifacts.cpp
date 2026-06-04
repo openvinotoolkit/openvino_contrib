@@ -78,6 +78,17 @@ uint32_t vendor_abi_output_arg_count(
   return static_cast<uint32_t>(contract.output_descs.size());
 }
 
+GfxKernelSourceRuntimeBinding
+make_source_runtime_binding(const KernelRuntimeBindingState &binding) {
+  GfxKernelSourceRuntimeBinding payload_binding{};
+  payload_binding.inputs = binding.inputs;
+  payload_binding.input_arg_count = binding.input_arg_count;
+  payload_binding.operand_kinds = binding.operand_kinds;
+  payload_binding.operand_arg_indices = binding.operand_arg_indices;
+  payload_binding.scalar_args = binding.scalar_args;
+  return payload_binding;
+}
+
 std::shared_ptr<const KernelArtifactPayload>
 materialize_generated_msl_payload(KernelArtifactDescriptor &descriptor,
                                   GfxMslGeneratedKernelSourcePlan source_plan) {
@@ -92,7 +103,9 @@ materialize_generated_msl_payload(KernelArtifactDescriptor &descriptor,
   return std::make_shared<GfxKernelSourcePayload>(
       descriptor.kernel.kernel_id, descriptor.kernel.backend_domain,
       descriptor.entry_point, GfxKernelSourceLanguage::MetalShadingLanguage,
-      std::move(source_plan.source.msl_source));
+      std::move(source_plan.source.msl_source),
+      source_plan.binding.stage_manifest,
+      make_source_runtime_binding(source_plan.binding.runtime_binding));
 }
 
 std::shared_ptr<const KernelArtifactPayload>

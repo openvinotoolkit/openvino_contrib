@@ -121,7 +121,7 @@ GfxMslGeneratedKernelSourcePlan make_reduction_msl_kernel_source_plan(
 
   auto binding = make_backend_custom_kernel_roles_binding_plan(
       node->get_type_name(), reduction_msl_kernel_entry_point(*kind),
-      reduction_msl_roles());
+      reduction_msl_roles(), GfxKernelBackendDomain::AppleMsl);
   if (!binding.valid || binding.scalar_arg_count != scalar_args.size()) {
     return {};
   }

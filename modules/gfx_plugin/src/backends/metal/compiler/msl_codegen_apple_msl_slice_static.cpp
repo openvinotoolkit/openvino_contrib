@@ -225,7 +225,8 @@ GfxMslGeneratedKernelSourcePlan make_direct_static_slice_msl_kernel_source_plan(
     const std::shared_ptr<const ov::Node> &node,
     const ov::element::Type &storage_type, mlir::ModuleOp module) {
   auto binding = make_backend_custom_kernel_direct_io_binding_plan(
-      "Slice", "slice_kernel", /*tensor_input_count=*/1, /*output_count=*/1);
+      "Slice", "slice_kernel", /*tensor_input_count=*/1, /*output_count=*/1,
+      GfxKernelBackendDomain::AppleMsl);
   if (!binding.valid) {
     return {};
   }

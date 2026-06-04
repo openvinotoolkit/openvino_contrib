@@ -19,6 +19,15 @@
 #include "openvino/op/gather.hpp"
 #include "openvino/op/interpolate.hpp"
 #include "openvino/op/log_softmax.hpp"
+#include "openvino/op/reduce_l1.hpp"
+#include "openvino/op/reduce_l2.hpp"
+#include "openvino/op/reduce_logical_and.hpp"
+#include "openvino/op/reduce_logical_or.hpp"
+#include "openvino/op/reduce_max.hpp"
+#include "openvino/op/reduce_mean.hpp"
+#include "openvino/op/reduce_min.hpp"
+#include "openvino/op/reduce_prod.hpp"
+#include "openvino/op/reduce_sum.hpp"
 #include "openvino/op/reshape.hpp"
 #include "openvino/op/scatter_update.hpp"
 #include "openvino/op/slice.hpp"
@@ -957,6 +966,66 @@ plan_reduce_runtime_values(const RuntimeInputResolver &inputs,
   return plan;
 }
 
+std::optional<RuntimeReduceInfo>
+get_runtime_reduce_info(const std::shared_ptr<const ov::Node> &node) {
+  if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceSum>(node)) {
+    OPENVINO_ASSERT(reduce->reduction_axes_constant(),
+                    "GFX runtime: ReduceSum axes must be constant");
+    return RuntimeReduceInfo{reduce->get_reduction_axes(),
+                             reduce->get_keep_dims()};
+  }
+  if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceMean>(node)) {
+    OPENVINO_ASSERT(reduce->reduction_axes_constant(),
+                    "GFX runtime: ReduceMean axes must be constant");
+    return RuntimeReduceInfo{reduce->get_reduction_axes(),
+                             reduce->get_keep_dims()};
+  }
+  if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceMax>(node)) {
+    OPENVINO_ASSERT(reduce->reduction_axes_constant(),
+                    "GFX runtime: ReduceMax axes must be constant");
+    return RuntimeReduceInfo{reduce->get_reduction_axes(),
+                             reduce->get_keep_dims()};
+  }
+  if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceMin>(node)) {
+    OPENVINO_ASSERT(reduce->reduction_axes_constant(),
+                    "GFX runtime: ReduceMin axes must be constant");
+    return RuntimeReduceInfo{reduce->get_reduction_axes(),
+                             reduce->get_keep_dims()};
+  }
+  if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceProd>(node)) {
+    OPENVINO_ASSERT(reduce->reduction_axes_constant(),
+                    "GFX runtime: ReduceProd axes must be constant");
+    return RuntimeReduceInfo{reduce->get_reduction_axes(),
+                             reduce->get_keep_dims()};
+  }
+  if (auto reduce = ov::as_type_ptr<const ov::op::v4::ReduceL1>(node)) {
+    OPENVINO_ASSERT(reduce->reduction_axes_constant(),
+                    "GFX runtime: ReduceL1 axes must be constant");
+    return RuntimeReduceInfo{reduce->get_reduction_axes(),
+                             reduce->get_keep_dims()};
+  }
+  if (auto reduce = ov::as_type_ptr<const ov::op::v4::ReduceL2>(node)) {
+    OPENVINO_ASSERT(reduce->reduction_axes_constant(),
+                    "GFX runtime: ReduceL2 axes must be constant");
+    return RuntimeReduceInfo{reduce->get_reduction_axes(),
+                             reduce->get_keep_dims()};
+  }
+  if (auto reduce =
+          ov::as_type_ptr<const ov::op::v1::ReduceLogicalAnd>(node)) {
+    OPENVINO_ASSERT(reduce->reduction_axes_constant(),
+                    "GFX runtime: ReduceLogicalAnd axes must be constant");
+    return RuntimeReduceInfo{reduce->get_reduction_axes(),
+                             reduce->get_keep_dims()};
+  }
+  if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceLogicalOr>(node)) {
+    OPENVINO_ASSERT(reduce->reduction_axes_constant(),
+                    "GFX runtime: ReduceLogicalOr axes must be constant");
+    return RuntimeReduceInfo{reduce->get_reduction_axes(),
+                             reduce->get_keep_dims()};
+  }
+  return std::nullopt;
+}
+
 RuntimeTilePlan
 plan_tile_runtime_values(const RuntimeInputResolver &inputs,
                          const std::vector<GpuTensor *> &outputs,
@@ -1414,8 +1483,7 @@ plan_transpose_runtime_values(const RuntimeInputResolver &inputs,
 
 RuntimeInterpolatePlan plan_interpolate_runtime_values(
     const RuntimeInputResolver &inputs, const std::vector<GpuTensor *> &outputs,
-    const ov::Node &node, GfxKernelBackendDomain backend_domain,
-    std::string_view stage_name) {
+    const ov::Node &node, std::string_view stage_name) {
   RuntimeInterpolatePlan plan;
   plan.input_shape = inputs.shape(0);
   if (plan.input_shape.empty()) {
@@ -1480,7 +1548,6 @@ RuntimeInterpolatePlan plan_interpolate_runtime_values(
   plan.values.value_shape = plan.values.output_shape;
   plan.values.output_type = node.get_output_element_type(0);
   plan.values.force_output_type = true;
-  plan.use_runtime_params = backend_domain != GfxKernelBackendDomain::OpenCl;
   plan.available = true;
   return plan;
 }

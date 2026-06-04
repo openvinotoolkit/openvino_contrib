@@ -13,11 +13,11 @@
 #include "plugin/gfx_property_lists.hpp"
 #include "plugin/gfx_property_utils.hpp"
 #include "plugin/model_serialization.hpp"
-#include "compiler/pipeline_stage_builder.hpp"
+#include "compiler/runtime_executable_descriptor_builder.hpp"
 #include "runtime/executable_descriptor.hpp"
 #include "runtime/backend_runtime.hpp"
 #include "runtime/backend_runtime_provider.hpp"
-#include "runtime/gfx_backend_utils.hpp"
+#include "common/gfx_backend_utils.hpp"
 #include "runtime/gfx_compile_profiling.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "runtime/gfx_precision.hpp"
@@ -45,13 +45,6 @@ CompiledModel::CompiledModel(
     const ov::AnyMap &properties, const ov::SoPtr<ov::IRemoteContext> &context)
     : ov::ICompiledModel(model, plugin, context), m_runtime_model(model),
       m_original_model(original_model ? original_model : model) {
-  auto runtime_descriptor = std::make_shared<RuntimeExecutableDescriptor>(
-      RuntimeExecutableDescriptorBuilder{}.build(executable));
-  OPENVINO_ASSERT(
-      runtime_descriptor->valid(executable),
-      "GFX: compiler executable bundle does not match runtime descriptor");
-  m_runtime_descriptor = std::move(runtime_descriptor);
-
   // GFX exposes f16 as the performance preference, while codegen preserves
   // f32 arithmetic for declared f32 and fp32-sensitive stages.
   if (auto it = properties.find(ov::hint::inference_precision.name());
@@ -125,6 +118,24 @@ CompiledModel::CompiledModel(
     compile_trace_ptr->set_counter("loaded_from_cache",
                                    m_loaded_from_cache ? 1 : 0);
   }
+
+  compiler::RuntimeExecutableDescriptorBuildRequest descriptor_request;
+  descriptor_request.executable = &executable;
+  descriptor_request.runtime_model = m_runtime_model;
+  descriptor_request.backend = m_backend;
+  descriptor_request.backend_name = m_backend_name;
+  descriptor_request.enable_fusion = m_enable_fusion;
+  descriptor_request.compile_trace = compile_trace_ptr;
+  auto runtime_descriptor = std::make_shared<RuntimeExecutableDescriptor>(
+      compiler::RuntimeExecutableDescriptorBuilder{}.build(
+          descriptor_request));
+  OPENVINO_ASSERT(
+      compiler::runtime_executable_descriptor_valid(*runtime_descriptor,
+                                                    executable),
+      "GFX: compiler executable bundle does not match runtime descriptor");
+  OPENVINO_ASSERT(runtime_descriptor->stage_plan,
+                  "GFX: compiler runtime descriptor has no stage plan");
+  m_runtime_descriptor = std::move(runtime_descriptor);
 
   // Preserve user properties; store inference_precision as ov::element::Type.
   for (const auto &kv : resolved_props) {
@@ -326,34 +337,28 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
   OPENVINO_ASSERT(m_runtime_descriptor,
                   "GFX: compiled model is missing compiler-owned runtime "
                   "executable descriptor");
-  compiler::PipelineStageBuildRequest request;
-  request.runtime_model = m_runtime_model;
-  request.runtime_descriptor = m_runtime_descriptor.get();
-  request.backend = m_backend;
-  request.backend_name = m_backend_name;
-  request.enable_fusion = m_enable_fusion;
-  request.compile_trace = compile_trace;
-
-  auto result = compiler::build_pipeline_stage_plan(request);
+  OPENVINO_ASSERT(m_runtime_descriptor->stage_plan,
+                  "GFX: compiler-owned runtime descriptor has no stage plan");
+  const auto &runtime_plan = *m_runtime_descriptor->stage_plan;
 
   GpuStageRuntimeOptions stage_runtime_options{};
   stage_runtime_options.diagnostic_f32_vendor_image =
       m_diagnostic_f32_vendor_image;
-  stage_runtime_options.stage_placement_policy =
-      result.stage_compiler_policy.placement;
-  stage_runtime_options.post_op_fusion_capabilities =
-      result.stage_compiler_policy.post_ops;
+  stage_runtime_options.source_kernel_dispatch_enabled =
+      runtime_plan.runtime_options.source_kernel_dispatch_enabled;
+  stage_runtime_options.source_kernel_fallback_parallelism =
+      runtime_plan.runtime_options.source_kernel_fallback_parallelism;
 
   PipelineStageRuntimeMaterializationRequest materialization_request;
   materialization_request.stage_factory = backend_state;
   materialization_request.runtime_descriptor = m_runtime_descriptor.get();
-  materialization_request.build_result = &result;
+  materialization_request.runtime_plan = &runtime_plan;
   materialization_request.runtime_options = stage_runtime_options;
   materialization_request.compile_trace = compile_trace;
 
   m_pipeline = materialize_pipeline_stage_descriptors(materialization_request);
-  m_node_to_stage = std::move(result.node_to_stage);
-  m_param_index = std::move(result.param_index);
+  m_node_to_stage = runtime_plan.node_to_stage;
+  m_param_index = runtime_plan.param_index;
   m_pipeline_built = true;
 }
 

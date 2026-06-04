@@ -4,6 +4,8 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -14,6 +16,7 @@
 #include <utility>
 #include <vector>
 
+#include "backends/metal/compiler/apple_vendor_descriptors.hpp"
 #include "backends/metal/compiler/metal_operation_support.hpp"
 #include "backends/opencl/compiler/opencl_kernel_artifacts.hpp"
 #include "backends/opencl/compiler/opencl_operation_support.hpp"
@@ -25,8 +28,8 @@
 #include "compiler/pipeline_stage_builder.hpp"
 #include "compiler/pipeline_stage_fusion.hpp"
 #include "compiler/pipeline_stage_plan.hpp"
+#include "compiler/runtime_executable_descriptor_builder.hpp"
 #include "compiler/tensor_layout.hpp"
-#include "backends/metal/compiler/apple_vendor_descriptors.hpp"
 #include "openvino/op/add.hpp"
 #include "openvino/op/assign.hpp"
 #include "openvino/op/concat.hpp"
@@ -39,11 +42,12 @@
 #include "runtime/backend_request_state.hpp"
 #include "runtime/backend_runtime.hpp"
 #include "runtime/backend_runtime_provider.hpp"
+#include "runtime/backend_stage_factory.hpp"
 #include "runtime/executable_descriptor.hpp"
 #include "runtime/execution_dispatcher.hpp"
 #include "runtime/gpu_buffer.hpp"
 #include "runtime/gpu_memory_ops.hpp"
-#include "runtime/backend_stage_factory.hpp"
+#include "runtime/kernel_launch_plan.hpp"
 #include "runtime/pipeline_stage_materializer.hpp"
 #include "runtime/runtime_session.hpp"
 #include "transforms/pipeline.hpp"
@@ -103,26 +107,22 @@ static_assert(
     "indices without fallback repair");
 
 static_assert(
-    std::is_same_v<
-        decltype(&PipelineStageMaterializer::fusion_contract_for),
-        compiler::PipelineStageFusionContract (PipelineStageMaterializer::*)(
-            const std::shared_ptr<const ov::Node> &) const>,
-    "PipelineStageMaterializer must expose compiler-owned fusion contracts "
-    "without probing runtime stages");
+    std::is_same_v<decltype(PipelineStageRuntimeMaterializationRequest::
+                                runtime_plan),
+                   const PipelineStageRuntimePlan *>,
+    "Runtime materializer must consume a runtime-facing stage plan instead of "
+    "the compiler build result");
+
+static_assert(std::is_same_v<decltype(&compiler::build_pipeline_stage_plan),
+                             compiler::PipelineStageBuildResult (*)(
+                                 const compiler::PipelineStageBuildRequest &)>,
+              "Compiler pipeline stage builder must own stage planning outside "
+              "CompiledModel without materializing runtime stages");
 
 static_assert(
-    std::is_same_v<
-        decltype(&compiler::build_pipeline_stage_plan),
-        compiler::PipelineStageBuildResult (*)(
-            const compiler::PipelineStageBuildRequest &)>,
-    "Compiler pipeline stage builder must own stage planning outside "
-    "CompiledModel without materializing runtime stages");
-
-static_assert(
-    std::is_same_v<
-        decltype(&materialize_pipeline_stage_descriptors),
-        std::vector<PipelineStageDesc> (*)(
-            const PipelineStageRuntimeMaterializationRequest &)>,
+    std::is_same_v<decltype(&materialize_pipeline_stage_descriptors),
+                   std::vector<PipelineStageDesc> (*)(
+                       const PipelineStageRuntimeMaterializationRequest &)>,
     "Runtime materializer must be the only shared path that turns compiler "
     "stage plans into runtime PipelineStageDesc objects");
 
@@ -140,11 +140,25 @@ static_assert(
     "Common graph pipeline must not accept GpuBackend directly");
 
 static_assert(
-    std::is_same_v<
-        decltype(BackendRuntimeProvider::execute_infer),
-        void (*)(InferRequest &, const std::shared_ptr<const CompiledModel> &)>,
+    std::is_same_v<decltype(BackendRuntimeProvider::execute_infer),
+                   void (*)(InferRequest &,
+                            const std::shared_ptr<const CompiledModel> &)>,
     "BackendRuntimeProvider must expose one narrow infer execution callback "
     "instead of requiring common InferRequest backend switches");
+
+static_assert(
+    std::is_same_v<decltype(&compiler::BackendCapabilities::precision),
+                   const compiler::PrecisionCapabilities &(
+                       compiler::BackendCapabilities::*)() const noexcept>,
+    "Public precision capabilities must be owned by immutable "
+    "compiler backend capabilities, not by runtime helpers");
+
+static_assert(
+    std::is_same_v<decltype(&compiler::BackendCapabilities::artifact_formats),
+                   const compiler::ArtifactFormatCapabilities &(
+                       compiler::BackendCapabilities::*)() const noexcept>,
+    "Public artifact capabilities must be owned by immutable "
+    "compiler backend capabilities, not by runtime helpers");
 
 bool has_diagnostic_containing(const std::vector<std::string> &diagnostics,
                                std::string_view needle) {
@@ -156,6 +170,17 @@ bool has_diagnostic_containing(const std::vector<std::string> &diagnostics,
   return false;
 }
 
+GpuTensor make_test_launch_plan_tensor(uint64_t allocation_uid) {
+  GpuTensor tensor;
+  tensor.buf.buffer = reinterpret_cast<GpuBufferHandle>(
+      static_cast<uintptr_t>(0x1000u + allocation_uid));
+  tensor.buf.size = 64;
+  tensor.buf.allocation_uid = allocation_uid;
+  tensor.shape = ov::Shape{16};
+  tensor.expected_type = ov::element::f32;
+  return tensor;
+}
+
 std::string read_text_file(const std::filesystem::path &path) {
   std::ifstream stream(path);
   if (!stream.good()) {
@@ -164,6 +189,22 @@ std::string read_text_file(const std::filesystem::path &path) {
   std::ostringstream contents;
   contents << stream.rdbuf();
   return contents.str();
+}
+
+std::vector<std::string> find_cmake_call_blocks(std::string_view source,
+                                                std::string_view call_prefix) {
+  std::vector<std::string> blocks;
+  size_t pos = 0;
+  while ((pos = source.find(call_prefix, pos)) != std::string_view::npos) {
+    const auto end = source.find(')', pos);
+    if (end == std::string_view::npos) {
+      blocks.emplace_back(source.substr(pos));
+      break;
+    }
+    blocks.emplace_back(source.substr(pos, end - pos + 1));
+    pos = end + 1;
+  }
+  return blocks;
 }
 
 std::filesystem::path find_gfx_module_root_for_source_contract() {
@@ -184,12 +225,141 @@ std::filesystem::path find_gfx_module_root_for_source_contract() {
 
   const auto cwd = std::filesystem::current_path();
   for (const auto &candidate : {cwd, cwd / "modules/gfx_plugin"}) {
-    if (std::filesystem::exists(candidate /
-                                "src/compiler/stage_policy.cpp")) {
+    if (std::filesystem::exists(candidate / "src/compiler/stage_policy.cpp")) {
       return candidate;
     }
   }
   throw std::runtime_error("GFX test: failed to locate gfx_plugin module root");
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       KernelLaunchPlanBindsManifestRolesForConstAndRuntimeParams) {
+  const std::vector<GfxKernelBufferRole> roles = {
+      GfxKernelBufferRole::TensorInput,
+      GfxKernelBufferRole::ConstTensor,
+      GfxKernelBufferRole::TensorOutput,
+      GfxKernelBufferRole::ScalarParam,
+      GfxKernelBufferRole::RuntimeParams,
+      GfxKernelBufferRole::RuntimeParams,
+  };
+
+  auto input = make_test_launch_plan_tensor(1);
+  auto const_tensor = make_test_launch_plan_tensor(2);
+  auto output = make_test_launch_plan_tensor(3);
+  auto runtime0 = make_test_launch_plan_tensor(4);
+  auto runtime1 = make_test_launch_plan_tensor(5);
+
+  const std::vector<size_t> direct_input_indices = {2};
+  const std::vector<uint32_t> scalar_values = {42u};
+  std::vector<GpuTensor *> outputs = {&output};
+  std::vector<GpuTensor *> const_tensors = {&const_tensor};
+  std::vector<GpuTensor> runtime_params = {runtime0, runtime1};
+
+  size_t resolved_input_index = 0;
+  auto plan = build_role_ordered_kernel_launch_plan<uint32_t>(
+      roles, direct_input_indices, scalar_values, outputs, const_tensors,
+      runtime_params,
+      [&](size_t input_idx) -> GpuTensor * {
+        resolved_input_index = input_idx;
+        return &input;
+      },
+      "unit_launch_plan");
+
+  ASSERT_EQ(plan.args.size(), roles.size());
+  EXPECT_TRUE(kernel_args_dense(plan.args));
+  EXPECT_EQ(resolved_input_index, 2u);
+
+  EXPECT_EQ(plan.args[0].kind, KernelArg::Kind::Buffer);
+  EXPECT_EQ(plan.args[0].index, 0u);
+  EXPECT_EQ(plan.args[0].buffer.allocation_uid, 1u);
+  EXPECT_EQ(plan.args[1].buffer.allocation_uid, 2u);
+  EXPECT_EQ(plan.args[2].buffer.allocation_uid, 3u);
+  EXPECT_EQ(plan.args[3].kind, KernelArg::Kind::Bytes);
+  EXPECT_EQ(plan.args[3].index, 3u);
+  ASSERT_EQ(plan.args[3].byte_size, sizeof(uint32_t));
+  uint32_t scalar_value = 0;
+  std::memcpy(&scalar_value, plan.args[3].bytes, sizeof(scalar_value));
+  EXPECT_EQ(scalar_value, 42u);
+  EXPECT_EQ(plan.args[4].buffer.allocation_uid, 4u);
+  EXPECT_EQ(plan.args[5].buffer.allocation_uid, 5u);
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       KernelLaunchPlanRejectsUnconsumedConstAndRuntimeParamBuffers) {
+  const std::vector<GfxKernelBufferRole> roles = {
+      GfxKernelBufferRole::TensorInput,
+      GfxKernelBufferRole::TensorOutput,
+  };
+
+  auto input = make_test_launch_plan_tensor(1);
+  auto output = make_test_launch_plan_tensor(2);
+  auto extra_const = make_test_launch_plan_tensor(3);
+  auto extra_runtime = make_test_launch_plan_tensor(4);
+
+  const std::vector<size_t> direct_input_indices = {0};
+  const std::vector<uint32_t> scalar_values;
+  std::vector<GpuTensor *> outputs = {&output};
+  std::vector<GpuTensor *> const_tensors = {&extra_const};
+  std::vector<GpuTensor> runtime_params = {extra_runtime};
+
+  EXPECT_THROW(
+      (void)build_role_ordered_kernel_launch_plan<uint32_t>(
+          roles, direct_input_indices, scalar_values, outputs, const_tensors,
+          {}, [&](size_t) -> GpuTensor * { return &input; },
+          "unit_extra_const"),
+      ov::Exception);
+  EXPECT_THROW(
+      (void)build_role_ordered_kernel_launch_plan<uint32_t>(
+          roles, direct_input_indices, scalar_values, outputs, {}, runtime_params,
+          [&](size_t) -> GpuTensor * { return &input; },
+          "unit_extra_runtime"),
+      ov::Exception);
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       RuntimeLaunchPlanOwnsRoleOrderedSourceArtifactBinding) {
+  const auto module_root = find_gfx_module_root_for_source_contract();
+  const auto cmake_sources =
+      read_text_file(module_root / "cmake/GfxSources.cmake");
+  const auto launch_plan_header =
+      read_text_file(module_root / "src/runtime/kernel_launch_plan.hpp");
+  const auto opencl_source_stage = read_text_file(
+      module_root / "src/backends/opencl/runtime/opencl_source_stage.cpp");
+  const auto metal_executor = read_text_file(
+      module_root / "src/backends/metal/runtime/metal_executor.cpp");
+
+  EXPECT_NE(cmake_sources.find("runtime/kernel_launch_plan.hpp"),
+            std::string::npos);
+  EXPECT_NE(launch_plan_header.find("struct KernelLaunchPlan"),
+            std::string::npos);
+  EXPECT_NE(launch_plan_header.find("GfxKernelBufferRole::ConstTensor"),
+            std::string::npos);
+  EXPECT_NE(launch_plan_header.find("GfxKernelBufferRole::RuntimeParams"),
+            std::string::npos);
+  EXPECT_NE(launch_plan_header.find("const tensor count mismatch"),
+            std::string::npos);
+  EXPECT_NE(launch_plan_header.find("runtime-parameter count mismatch"),
+            std::string::npos);
+  EXPECT_EQ(launch_plan_header.find("backends/opencl"), std::string::npos);
+  EXPECT_EQ(launch_plan_header.find("backends/metal"), std::string::npos);
+
+  EXPECT_NE(opencl_source_stage.find("runtime/kernel_launch_plan.hpp"),
+            std::string::npos);
+  EXPECT_NE(opencl_source_stage.find(
+                "build_role_ordered_kernel_launch_plan<uint32_t>"),
+            std::string::npos);
+  EXPECT_EQ(opencl_source_stage.find(
+                "unsupported role in source artifact ABI"),
+            std::string::npos);
+
+  EXPECT_NE(metal_executor.find("runtime/kernel_launch_plan.hpp"),
+            std::string::npos);
+  EXPECT_NE(metal_executor.find(
+                "build_role_ordered_kernel_launch_plan<int32_t>"),
+            std::string::npos);
+  EXPECT_EQ(metal_executor.find(
+                "descriptor-only source stage cannot materialize"),
+            std::string::npos);
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
@@ -213,6 +383,165 @@ TEST_F(GfxBackendArchitectureContractTest,
       const auto source = read_text_file(path);
       EXPECT_EQ(source.find(old_mpsrt_include_prefix), std::string::npos)
           << path;
+    }
+  }
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       MlirStageSupportTargetIsNotRuntimeNamed) {
+  const auto module_root = find_gfx_module_root_for_source_contract();
+  const auto gfx_sources =
+      read_text_file(module_root / "cmake/GfxSources.cmake");
+  const auto src_cmake = read_text_file(module_root / "src/CMakeLists.txt");
+  const auto tests_cmake = read_text_file(module_root / "tests/CMakeLists.txt");
+  const auto architecture_doc =
+      read_text_file(module_root / "docs/ARCHITECTURE.md");
+  const auto development_doc =
+      read_text_file(module_root / "docs/DEVELOPMENT.md");
+
+  EXPECT_EQ(gfx_sources.find("GFX_RUNTIME_MLIR"), std::string::npos);
+  EXPECT_EQ(src_cmake.find("gfx_runtime_mlir"), std::string::npos);
+  EXPECT_EQ(tests_cmake.find("gfx_runtime_mlir"), std::string::npos);
+  EXPECT_EQ(architecture_doc.find("gfx_runtime_mlir"), std::string::npos);
+  EXPECT_EQ(development_doc.find("gfx_runtime_mlir"), std::string::npos);
+  EXPECT_NE(gfx_sources.find("GFX_MLIR_STAGE_SUPPORT_HEADERS"),
+            std::string::npos);
+  EXPECT_NE(gfx_sources.find("GFX_MLIR_STAGE_SUPPORT_SOURCES"),
+            std::string::npos);
+  EXPECT_NE(src_cmake.find("add_library(gfx_mlir_stage_support STATIC)"),
+            std::string::npos);
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       RuntimeDoesNotOwnBackendCapabilitySurface) {
+  const auto module_root = find_gfx_module_root_for_source_contract();
+  const auto gfx_sources =
+      read_text_file(module_root / "cmake/GfxSources.cmake");
+  const auto device_info_source =
+      read_text_file(module_root / "src/plugin/gfx_device_info.cpp");
+  const auto operation_support_header =
+      read_text_file(module_root / "src/compiler/operation_support.hpp");
+
+  EXPECT_EQ(gfx_sources.find("runtime/gfx_backend_caps"), std::string::npos);
+  EXPECT_EQ(device_info_source.find("runtime/gfx_backend_caps"),
+            std::string::npos);
+  EXPECT_NE(device_info_source.find("compiler/backend_registry.hpp"),
+            std::string::npos);
+  EXPECT_NE(device_info_source.find("BackendRegistry::default_registry()"),
+            std::string::npos);
+  EXPECT_NE(operation_support_header.find("struct PrecisionCapabilities"),
+            std::string::npos);
+  EXPECT_NE(operation_support_header.find("struct ArtifactFormatCapabilities"),
+            std::string::npos);
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       RuntimeDoesNotOwnBackendIdentityConfig) {
+  const auto module_root = find_gfx_module_root_for_source_contract();
+  const auto gfx_sources =
+      read_text_file(module_root / "cmake/GfxSources.cmake");
+  const auto common_backend_config =
+      read_text_file(module_root / "src/common/backend_config.hpp.in");
+  const auto common_backend_utils_header =
+      read_text_file(module_root / "src/common/gfx_backend_utils.hpp");
+  const auto common_backend_utils_source =
+      read_text_file(module_root / "src/common/gfx_backend_utils.cpp");
+  const auto compiler_backend_config =
+      read_text_file(module_root / "src/compiler/backend_config.hpp.in");
+  const auto runtime_backend_utils =
+      read_text_file(module_root / "src/runtime/gfx_backend_utils.hpp");
+  const auto infer_pipeline_source =
+      read_text_file(module_root / "src/runtime/infer_pipeline.cpp");
+
+  EXPECT_NE(gfx_sources.find("common/backend_config.hpp.in"),
+            std::string::npos);
+  EXPECT_NE(gfx_sources.find("common/gfx_backend_utils.hpp"),
+            std::string::npos);
+  EXPECT_NE(gfx_sources.find("common/gfx_backend_utils.cpp"),
+            std::string::npos);
+  EXPECT_EQ(gfx_sources.find("runtime/gfx_backend_utils.cpp"),
+            std::string::npos);
+  EXPECT_EQ(gfx_sources.find("runtime/gfx_backend_utils.hpp"),
+            std::string::npos);
+
+  EXPECT_NE(common_backend_config.find("kGfxDefaultBackend"),
+            std::string::npos);
+  EXPECT_EQ(common_backend_config.find("compiler/"), std::string::npos);
+  EXPECT_EQ(common_backend_config.find("runtime/"), std::string::npos);
+  EXPECT_EQ(common_backend_utils_header.find("compiler/"), std::string::npos);
+  EXPECT_EQ(common_backend_utils_header.find("runtime/"), std::string::npos);
+  EXPECT_EQ(common_backend_utils_source.find("compiler/"), std::string::npos);
+  EXPECT_EQ(common_backend_utils_source.find("runtime/"), std::string::npos);
+
+  EXPECT_NE(compiler_backend_config.find("common/backend_config.hpp"),
+            std::string::npos);
+  EXPECT_NE(runtime_backend_utils.find("common/gfx_backend_utils.hpp"),
+            std::string::npos);
+  EXPECT_EQ(runtime_backend_utils.find("compiler/"), std::string::npos);
+  EXPECT_EQ(runtime_backend_utils.find("compiler/backend_config.hpp"),
+            std::string::npos);
+
+  EXPECT_EQ(infer_pipeline_source.find("compiler/"), std::string::npos);
+  EXPECT_EQ(infer_pipeline_source.find("stage_policy"), std::string::npos);
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       CommonRuntimeTargetDoesNotLinkMlirStageSupportTarget) {
+  const auto module_root = find_gfx_module_root_for_source_contract();
+  const auto src_cmake = read_text_file(module_root / "src/CMakeLists.txt");
+
+  const auto runtime_common_target_begin =
+      src_cmake.find("add_library(gfx_runtime_common STATIC)");
+  const auto mlir_stage_support_target_begin =
+      src_cmake.find("add_library(gfx_mlir_stage_support STATIC)");
+  ASSERT_NE(runtime_common_target_begin, std::string::npos);
+  ASSERT_NE(mlir_stage_support_target_begin, std::string::npos);
+  ASSERT_LT(runtime_common_target_begin, mlir_stage_support_target_begin);
+
+  const auto runtime_common_target_block = src_cmake.substr(
+      runtime_common_target_begin,
+      mlir_stage_support_target_begin - runtime_common_target_begin);
+  EXPECT_EQ(runtime_common_target_block.find("GFX_MLIR_STAGE_SUPPORT"),
+            std::string::npos);
+  EXPECT_EQ(runtime_common_target_block.find("gfx_mlir_stage_support"),
+            std::string::npos);
+
+  const auto runtime_common_link_blocks = find_cmake_call_blocks(
+      src_cmake, "target_link_libraries(gfx_runtime_common");
+  ASSERT_FALSE(runtime_common_link_blocks.empty());
+  for (const auto &block : runtime_common_link_blocks) {
+    EXPECT_EQ(block.find("gfx_mlir_stage_support"), std::string::npos) << block;
+  }
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       BackendRuntimeTargetsDoNotLinkMlirStageSupportTarget) {
+  const auto module_root = find_gfx_module_root_for_source_contract();
+  const auto src_cmake = read_text_file(module_root / "src/CMakeLists.txt");
+
+  const std::vector<std::string> runtime_targets = {
+      "gfx_runtime_metal",
+      "gfx_runtime_opencl",
+  };
+  for (const auto &target : runtime_targets) {
+    const auto add_target =
+        std::string("add_library(") + target + " STATIC)";
+    const auto target_begin = src_cmake.find(add_target);
+    ASSERT_NE(target_begin, std::string::npos) << target;
+
+    const auto source_blocks =
+        find_cmake_call_blocks(src_cmake, "target_sources(" + target);
+    ASSERT_FALSE(source_blocks.empty()) << target;
+    for (const auto &block : source_blocks) {
+      EXPECT_EQ(block.find("GFX_MLIR_STAGE_SUPPORT"), std::string::npos)
+          << block;
+    }
+    const auto link_blocks =
+        find_cmake_call_blocks(src_cmake,
+                               "target_link_libraries(" + target);
+    for (const auto &block : link_blocks) {
+      EXPECT_EQ(block.find("gfx_mlir_stage_support"), std::string::npos)
+          << block;
     }
   }
 }
@@ -252,13 +581,14 @@ TEST_F(GfxBackendArchitectureContractTest,
   for (const auto &contract : moved_contracts) {
     EXPECT_FALSE(std::filesystem::exists(module_root / contract.old_mlir_path))
         << contract.old_mlir_path;
-    EXPECT_TRUE(std::filesystem::exists(module_root / contract.new_backend_path))
+    EXPECT_TRUE(
+        std::filesystem::exists(module_root / contract.new_backend_path))
         << contract.new_backend_path;
 
     const auto old_cmake_ref =
         std::string(contract.old_mlir_path).substr(std::string("src/").size());
-    const auto new_cmake_ref =
-        std::string(contract.new_backend_path).substr(std::string("src/").size());
+    const auto new_cmake_ref = std::string(contract.new_backend_path)
+                                   .substr(std::string("src/").size());
     EXPECT_EQ(cmake_sources.find(old_cmake_ref), std::string::npos)
         << old_cmake_ref;
     EXPECT_NE(cmake_sources.find(new_cmake_ref), std::string::npos)
@@ -270,8 +600,7 @@ TEST_F(GfxBackendArchitectureContractTest,
        CommonMlirDoesNotOwnAppleMslCodegenFiles) {
   const auto module_root = find_gfx_module_root_for_source_contract();
   const auto mlir_root = module_root / "src/mlir";
-  const auto metal_compiler_root =
-      module_root / "src/backends/metal/compiler";
+  const auto metal_compiler_root = module_root / "src/backends/metal/compiler";
   const auto cmake_sources =
       read_text_file(module_root / "cmake/GfxSources.cmake");
 
@@ -300,10 +629,8 @@ TEST_F(GfxBackendArchitectureContractTest,
   for (const auto &relative_path : backend_owned_codegen) {
     EXPECT_TRUE(std::filesystem::exists(module_root / relative_path))
         << relative_path;
-    const auto cmake_ref =
-        relative_path.substr(std::string("src/").size());
-    EXPECT_NE(cmake_sources.find(cmake_ref), std::string::npos)
-        << cmake_ref;
+    const auto cmake_ref = relative_path.substr(std::string("src/").size());
+    EXPECT_NE(cmake_sources.find(cmake_ref), std::string::npos) << cmake_ref;
   }
 }
 
@@ -326,14 +653,15 @@ TEST_F(GfxBackendArchitectureContractTest,
   const auto cmake_sources =
       read_text_file(module_root / "cmake/GfxSources.cmake");
 
-  EXPECT_EQ(metadata_header.find("backends/metal/runtime"),
-            std::string::npos);
+  EXPECT_EQ(metadata_header.find("backends/metal/runtime"), std::string::npos);
   EXPECT_EQ(metadata_header.find("runtime/mpsrt/gfx_mpsrt_"),
             std::string::npos);
-  EXPECT_EQ(cmake_sources.find("backends/metal/runtime/mpsrt/gfx_mpsrt_abi.hpp"),
-            std::string::npos);
-  EXPECT_EQ(cmake_sources.find("backends/metal/runtime/mpsrt/gfx_mpsrt_program.hpp"),
-            std::string::npos);
+  EXPECT_EQ(
+      cmake_sources.find("backends/metal/runtime/mpsrt/gfx_mpsrt_abi.hpp"),
+      std::string::npos);
+  EXPECT_EQ(
+      cmake_sources.find("backends/metal/runtime/mpsrt/gfx_mpsrt_program.hpp"),
+      std::string::npos);
 
   for (std::string_view required : {
            "backends/metal/common/mpsrt/gfx_mpsrt_abi.hpp",
@@ -392,16 +720,15 @@ TEST_F(GfxBackendArchitectureContractTest,
             std::string::npos);
 
   const auto mlir_target_begin =
-      src_cmake.find("add_library(gfx_runtime_mlir STATIC)");
+      src_cmake.find("add_library(gfx_mlir_stage_support STATIC)");
   const auto metal_msl_target_begin =
       src_cmake.find("add_library(gfx_metal_msl_compiler STATIC)");
   ASSERT_NE(mlir_target_begin, std::string::npos);
   ASSERT_NE(metal_msl_target_begin, std::string::npos);
   ASSERT_LT(mlir_target_begin, metal_msl_target_begin);
 
-  const auto mlir_target_block =
-      src_cmake.substr(mlir_target_begin,
-                       metal_msl_target_begin - mlir_target_begin);
+  const auto mlir_target_block = src_cmake.substr(
+      mlir_target_begin, metal_msl_target_begin - mlir_target_begin);
   EXPECT_EQ(mlir_target_block.find("GFX_METAL_MSL_COMPILER"),
             std::string::npos);
   EXPECT_EQ(mlir_target_block.find("msl_codegen"), std::string::npos);
@@ -418,18 +745,15 @@ TEST_F(GfxBackendArchitectureContractTest,
   const auto module_root = find_gfx_module_root_for_source_contract();
   const auto common_mlir_stage =
       read_text_file(module_root / "src/mlir/mlir_stage.cpp");
-  const auto metal_hook =
-      read_text_file(module_root /
-                     "src/backends/metal/compiler/apple_mlir_stage_hooks.cpp");
-  const auto metal_executor =
-      read_text_file(module_root /
-                     "src/backends/metal/runtime/metal_executor.cpp");
+  const auto metal_hook = read_text_file(
+      module_root / "src/backends/metal/compiler/apple_mlir_stage_hooks.cpp");
+  const auto metal_executor = read_text_file(
+      module_root / "src/backends/metal/runtime/metal_executor.cpp");
 
-  EXPECT_EQ(common_mlir_stage.find(
-                "backends/metal/compiler/apple_stage_pipeline"),
-            std::string::npos);
-  EXPECT_EQ(common_mlir_stage.find(
-                "backends/metal/compiler/apple_mpsrt_"),
+  EXPECT_EQ(
+      common_mlir_stage.find("backends/metal/compiler/apple_stage_pipeline"),
+      std::string::npos);
+  EXPECT_EQ(common_mlir_stage.find("backends/metal/compiler/apple_mpsrt_"),
             std::string::npos);
   EXPECT_EQ(common_mlir_stage.find("run_gfx_apple_stage_pipeline"),
             std::string::npos);
@@ -460,8 +784,7 @@ TEST_F(GfxBackendArchitectureContractTest,
   EXPECT_NE(common_mlir_stage.find("mlir_stage_backend_hooks_for"),
             std::string::npos);
 
-  EXPECT_NE(metal_hook.find("run_gfx_apple_stage_pipeline"),
-            std::string::npos);
+  EXPECT_NE(metal_hook.find("run_gfx_apple_stage_pipeline"), std::string::npos);
   EXPECT_NE(metal_hook.find("annotate_module_with_conv_mpsrt_plan"),
             std::string::npos);
   EXPECT_NE(metal_hook.find("make_shapeof_msl_kernel_source_plan"),
@@ -470,9 +793,9 @@ TEST_F(GfxBackendArchitectureContractTest,
             std::string::npos);
   EXPECT_NE(metal_hook.find("make_sdpa_msl_runtime_params_plan"),
             std::string::npos);
-  EXPECT_EQ(metal_executor.find(
-                "backends/metal/compiler/apple_mlir_stage_hooks"),
-            std::string::npos);
+  EXPECT_EQ(
+      metal_executor.find("backends/metal/compiler/apple_mlir_stage_hooks"),
+      std::string::npos);
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
@@ -502,10 +825,10 @@ TEST_F(GfxBackendArchitectureContractTest,
 TEST_F(GfxBackendArchitectureContractTest,
        RuntimeDoesNotOwnStagePolicyPlanner) {
   const auto module_root = find_gfx_module_root_for_source_contract();
-  EXPECT_FALSE(
-      std::filesystem::exists(module_root / "src/runtime/gfx_stage_policy.cpp"));
-  EXPECT_FALSE(
-      std::filesystem::exists(module_root / "src/runtime/gfx_stage_policy.hpp"));
+  EXPECT_FALSE(std::filesystem::exists(module_root /
+                                       "src/runtime/gfx_stage_policy.cpp"));
+  EXPECT_FALSE(std::filesystem::exists(module_root /
+                                       "src/runtime/gfx_stage_policy.hpp"));
 
   const auto stage_policy_source =
       read_text_file(module_root / "src/compiler/stage_policy.cpp");
@@ -519,11 +842,33 @@ TEST_F(GfxBackendArchitectureContractTest,
             std::string::npos);
   EXPECT_EQ(stage_compiler_policy_source.find("switch (target.backend())"),
             std::string::npos);
-  EXPECT_EQ(stage_compiler_policy_source.find("make_opencl_chunk_dispatch_profile"),
-            std::string::npos);
-  EXPECT_EQ(stage_compiler_policy_source.find("make_metal_chunk_dispatch_profile"),
-            std::string::npos);
+  EXPECT_EQ(
+      stage_compiler_policy_source.find("make_opencl_chunk_dispatch_profile"),
+      std::string::npos);
+  EXPECT_EQ(
+      stage_compiler_policy_source.find("make_metal_chunk_dispatch_profile"),
+      std::string::npos);
   EXPECT_NE(stage_compiler_policy_source.find("capabilities.execution()"),
+            std::string::npos);
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       RuntimeGpuStageApiDoesNotExposeCompilerPolicyPointers) {
+  const auto module_root = find_gfx_module_root_for_source_contract();
+  const auto gpu_stage_header =
+      read_text_file(module_root / "src/runtime/gpu_stage.hpp");
+  const auto compiled_model_source =
+      read_text_file(module_root / "src/plugin/compiled_model.cpp");
+
+  EXPECT_EQ(gpu_stage_header.find("compiler::"), std::string::npos);
+  EXPECT_EQ(gpu_stage_header.find("StagePlacementPolicy"), std::string::npos);
+  EXPECT_EQ(gpu_stage_header.find("PostOpFusionCapabilities"),
+            std::string::npos);
+  EXPECT_EQ(compiled_model_source.find("stage_placement_policy"),
+            std::string::npos);
+  EXPECT_EQ(compiled_model_source.find("post_op_fusion_capabilities"),
+            std::string::npos);
+  EXPECT_NE(compiled_model_source.find("source_kernel_dispatch"),
             std::string::npos);
 }
 
@@ -592,6 +937,7 @@ TEST_F(GfxBackendArchitectureContractTest,
     EXPECT_EQ(source.find("specialization_prefix_from_selector"),
               std::string::npos)
         << path;
+    EXPECT_EQ(source.find("can_override_manifest"), std::string::npos) << path;
   }
 
   const auto adapter_header = read_text_file(
@@ -600,6 +946,19 @@ TEST_F(GfxBackendArchitectureContractTest,
             std::string::npos);
   EXPECT_NE(adapter_header.find("backend_custom_kernel_specialization_prefix"),
             std::string::npos);
+  EXPECT_EQ(adapter_header.find("GfxKernelBackendDomain::AppleMsl"),
+            std::string::npos);
+  EXPECT_EQ(adapter_header.find("\"apple_msl:buffer:\""), std::string::npos);
+  EXPECT_EQ(adapter_header.find(
+                "std::vector<int32_t> scalar_args = {},\n"
+                "    GfxKernelBackendDomain backend_domain"),
+            std::string::npos);
+
+  const auto family_header = read_text_file(
+      module_root / "src/kernel_ir/gfx_custom_kernel_families.hpp");
+  EXPECT_EQ(family_header.find("GfxKernelBackendDomain::AppleMsl"),
+            std::string::npos);
+  EXPECT_EQ(family_header.find("\"apple_msl:buffer:\""), std::string::npos);
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
@@ -638,6 +997,45 @@ TEST_F(GfxBackendArchitectureContractTest,
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
+       RuntimeParamMaterializerIsOwnedByRuntimeNotKernelIrOrMlir) {
+  const auto module_root = find_gfx_module_root_for_source_contract();
+  const auto cmake_sources =
+      read_text_file(module_root / "cmake/GfxSources.cmake");
+  const auto runtime_params_path =
+      module_root / "src/runtime/gfx_kernel_runtime_params.hpp";
+  const std::vector<std::filesystem::path> old_paths = {
+      module_root / "src/kernel_ir/gfx_kernel_runtime_params.hpp",
+      module_root / "src/mlir/gfx_kernel_runtime_params.hpp",
+  };
+
+  ASSERT_TRUE(std::filesystem::exists(runtime_params_path))
+      << runtime_params_path;
+  for (const auto &path : old_paths) {
+    EXPECT_FALSE(std::filesystem::exists(path)) << path;
+  }
+
+  const auto runtime_params = read_text_file(runtime_params_path);
+  EXPECT_NE(runtime_params.find("runtime/gpu_buffer_manager.hpp"),
+            std::string::npos);
+  EXPECT_NE(runtime_params.find("runtime/gpu_tensor.hpp"), std::string::npos);
+  EXPECT_EQ(cmake_sources.find("kernel_ir/gfx_kernel_runtime_params.hpp"),
+            std::string::npos);
+  EXPECT_EQ(cmake_sources.find("mlir/gfx_kernel_runtime_params.hpp"),
+            std::string::npos);
+  EXPECT_NE(cmake_sources.find("runtime/gfx_kernel_runtime_params.hpp"),
+            std::string::npos);
+
+  const auto mlir_stage_source =
+      read_text_file(module_root / "src/mlir/mlir_stage.cpp");
+  const auto metal_executor_source = read_text_file(
+      module_root / "src/backends/metal/runtime/metal_executor.cpp");
+  EXPECT_NE(mlir_stage_source.find("runtime/gfx_kernel_runtime_params.hpp"),
+            std::string::npos);
+  EXPECT_NE(metal_executor_source.find("runtime/gfx_kernel_runtime_params.hpp"),
+            std::string::npos);
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
        SharedMlirStageRoutingDoesNotCarryConstantTemporaryBranches) {
   const auto module_root = find_gfx_module_root_for_source_contract();
   const auto mlir_stage_source =
@@ -655,6 +1053,41 @@ TEST_F(GfxBackendArchitectureContractTest,
   for (const auto &pattern : forbidden_patterns) {
     EXPECT_EQ(mlir_stage_source.find(pattern), std::string::npos) << pattern;
   }
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       MlirRuntimeStagesRequireCompilerOwnedDescriptor) {
+  const auto module_root = find_gfx_module_root_for_source_contract();
+  const auto mlir_stage_header =
+      read_text_file(module_root / "src/mlir/mlir_stage.hpp");
+  const auto mlir_stage_source =
+      read_text_file(module_root / "src/mlir/mlir_stage.cpp");
+  const auto metal_executor_header = read_text_file(
+      module_root / "src/backends/metal/runtime/metal_executor.hpp");
+  const auto metal_stage_factory_source = read_text_file(
+      module_root / "src/backends/metal/runtime/stage_factory.cpp");
+  const auto opencl_stage_factory_source = read_text_file(
+      module_root / "src/backends/opencl/runtime/stage_factory.cpp");
+
+  EXPECT_EQ(mlir_stage_header.find("explicit MlirStage("), std::string::npos);
+  EXPECT_EQ(mlir_stage_source.find("MlirStage(node, nullptr)"),
+            std::string::npos);
+  EXPECT_EQ(
+      mlir_stage_source.find(
+          ": compiler::select_tensor_layout_plan(m_type, m_node).view_only"),
+      std::string::npos);
+  EXPECT_NE(
+      mlir_stage_source.find(
+          "GFX MLIR stage requires a compiler-owned runtime executable"),
+      std::string::npos);
+  EXPECT_EQ(metal_executor_header.find("descriptor = nullptr"),
+            std::string::npos);
+  EXPECT_NE(metal_stage_factory_source.find("infer MLIR layout"),
+            std::string::npos);
+  EXPECT_NE(metal_stage_factory_source.find("create_view_only_stage"),
+            std::string::npos);
+  EXPECT_NE(opencl_stage_factory_source.find("create_view_only_stage"),
+            std::string::npos);
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
@@ -727,10 +1160,14 @@ TEST_F(GfxBackendArchitectureContractTest,
       read_text_file(module_root / "src/compiler/pipeline_stage_plan.hpp");
   const auto planner_source =
       read_text_file(module_root / "src/compiler/pipeline_stage_plan.cpp");
+  const auto runtime_plan_header =
+      read_text_file(module_root / "src/runtime/pipeline_stage_plan.hpp");
+  const auto runtime_desc_header =
+      read_text_file(module_root / "src/runtime/pipeline_stage_desc.hpp");
 
   EXPECT_EQ(compiled_model_source.find("compiler/pipeline_stage_plan.hpp"),
             std::string::npos);
-  EXPECT_NE(compiled_model_source.find("compiler/pipeline_stage_builder.hpp"),
+  EXPECT_EQ(compiled_model_source.find("compiler/pipeline_stage_builder.hpp"),
             std::string::npos);
   EXPECT_EQ(compiled_model_source.find("runtime/pipeline_stage_builder.hpp"),
             std::string::npos);
@@ -744,7 +1181,11 @@ TEST_F(GfxBackendArchitectureContractTest,
             std::string::npos);
   EXPECT_EQ(builder_header.find("runtime/backend_stage_factory.hpp"),
             std::string::npos);
+  EXPECT_NE(builder_header.find("runtime/pipeline_stage_plan.hpp"),
+            std::string::npos);
   EXPECT_NE(builder_header.find("PipelineStageMaterializationPlan"),
+            std::string::npos);
+  EXPECT_NE(builder_header.find("PipelineStageRuntimePlan"),
             std::string::npos);
   EXPECT_EQ(compiled_model_source.find("plugin/pipeline_stage_builder.hpp"),
             std::string::npos);
@@ -760,8 +1201,7 @@ TEST_F(GfxBackendArchitectureContractTest,
 
   EXPECT_NE(builder_header.find("PipelineStageBuildRequest"),
             std::string::npos);
-  EXPECT_NE(builder_header.find("PipelineStageBuildResult"),
-            std::string::npos);
+  EXPECT_NE(builder_header.find("PipelineStageBuildResult"), std::string::npos);
   EXPECT_NE(builder_source.find("PipelineStagePlanBuilder"), std::string::npos);
   EXPECT_NE(builder_source.find("collect_model_output_ports"),
             std::string::npos);
@@ -773,6 +1213,18 @@ TEST_F(GfxBackendArchitectureContractTest,
   EXPECT_EQ(planner_header.find("runtime/gpu_stage"), std::string::npos);
   EXPECT_EQ(planner_header.find("runtime/executable_descriptor"),
             std::string::npos);
+  EXPECT_NE(runtime_plan_header.find("PipelineStageRuntimePlan"),
+            std::string::npos);
+  EXPECT_NE(runtime_plan_header.find("PipelineStageMaterializationPlan"),
+            std::string::npos);
+  EXPECT_NE(runtime_plan_header.find("PipelineStageRuntimeOptionsPlan"),
+            std::string::npos);
+  EXPECT_NE(runtime_plan_header.find("node_to_stage"), std::string::npos);
+  EXPECT_NE(runtime_plan_header.find("param_index"), std::string::npos);
+  EXPECT_EQ(runtime_plan_header.find("compiler/"), std::string::npos);
+  EXPECT_EQ(runtime_plan_header.find("compiler::"), std::string::npos);
+  EXPECT_EQ(runtime_desc_header.find("compiler/"), std::string::npos);
+  EXPECT_EQ(runtime_desc_header.find("compiler::"), std::string::npos);
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
@@ -789,7 +1241,7 @@ TEST_F(GfxBackendArchitectureContractTest,
   const auto materializer_source = read_text_file(
       module_root / "src/runtime/pipeline_stage_materializer.cpp");
 
-  EXPECT_NE(compiled_model_source.find("compiler/pipeline_stage_builder.hpp"),
+  EXPECT_EQ(compiled_model_source.find("compiler/pipeline_stage_builder.hpp"),
             std::string::npos);
   EXPECT_EQ(compiled_model_source.find("runtime/pipeline_stage_builder.hpp"),
             std::string::npos);
@@ -806,6 +1258,16 @@ TEST_F(GfxBackendArchitectureContractTest,
   EXPECT_NE(
       compiled_model_source.find("materialize_pipeline_stage_descriptors"),
       std::string::npos);
+  EXPECT_EQ(compiled_model_source.find("runtime_plan = &result.runtime_plan"),
+            std::string::npos);
+  EXPECT_NE(compiled_model_source.find("runtime_plan = &runtime_plan"),
+            std::string::npos);
+  EXPECT_NE(compiled_model_source.find("m_runtime_descriptor->stage_plan"),
+            std::string::npos);
+  EXPECT_EQ(compiled_model_source.find("build_result = &result"),
+            std::string::npos);
+  EXPECT_EQ(compiled_model_source.find("build_pipeline_stage_plan("),
+            std::string::npos);
   EXPECT_EQ(compiled_model_source.find("PipelineStagePlanBuilder"),
             std::string::npos);
   EXPECT_EQ(compiled_model_source.find("get_ordered_ops()"), std::string::npos);
@@ -819,7 +1281,20 @@ TEST_F(GfxBackendArchitectureContractTest,
   EXPECT_EQ(builder_source.find("fuse_bias("), std::string::npos);
   EXPECT_NE(builder_source.find("PipelineStageMaterializationPlan"),
             std::string::npos);
+  EXPECT_NE(builder_source.find("make_pipeline_stage_runtime_plan"),
+            std::string::npos);
   EXPECT_NE(builder_source.find("PipelineStagePlanBuilder"), std::string::npos);
+  const auto descriptor_builder_header = read_text_file(
+      module_root / "src/compiler/runtime_executable_descriptor_builder.hpp");
+  const auto descriptor_builder_source = read_text_file(
+      module_root / "src/compiler/runtime_executable_descriptor_builder.cpp");
+  EXPECT_NE(descriptor_builder_header.find(
+                "RuntimeExecutableDescriptorBuildRequest"),
+            std::string::npos);
+  EXPECT_NE(descriptor_builder_source.find("build_pipeline_stage_plan("),
+            std::string::npos);
+  EXPECT_NE(descriptor_builder_source.find("descriptor.stage_plan"),
+            std::string::npos);
   EXPECT_EQ(compiled_model_source.find("runtime_stage_descriptors"),
             std::string::npos);
   EXPECT_EQ(compiled_model_source.find("auto runtime_descriptor_for_node"),
@@ -831,7 +1306,21 @@ TEST_F(GfxBackendArchitectureContractTest,
   EXPECT_NE(
       materializer_header.find("PipelineStageRuntimeMaterializationRequest"),
       std::string::npos);
+  EXPECT_NE(materializer_header.find("PipelineStageRuntimePlan"),
+            std::string::npos);
   EXPECT_NE(materializer_header.find("materialize_pipeline_stage_descriptors"),
+            std::string::npos);
+  EXPECT_EQ(materializer_header.find("compiler/"), std::string::npos);
+  EXPECT_EQ(materializer_header.find("compiler::"), std::string::npos);
+  EXPECT_EQ(materializer_header.find("PipelineStageBuildResult"),
+            std::string::npos);
+  EXPECT_EQ(materializer_header.find("PipelineVendorAttentionArtifact"),
+            std::string::npos);
+  EXPECT_EQ(materializer_source.find("compiler/"), std::string::npos);
+  EXPECT_EQ(materializer_source.find("compiler::"), std::string::npos);
+  EXPECT_EQ(materializer_source.find("PipelineStageBuildResult"),
+            std::string::npos);
+  EXPECT_EQ(materializer_source.find("PipelineVendorAttentionArtifact"),
             std::string::npos);
   EXPECT_NE(materializer_source.find("m_descriptors_by_node"),
             std::string::npos);
@@ -839,7 +1328,8 @@ TEST_F(GfxBackendArchitectureContractTest,
             std::string::npos);
   EXPECT_NE(materializer_header.find("BackendStageFactory"), std::string::npos);
   EXPECT_NE(materializer_source.find("m_stage_factory"), std::string::npos);
-  EXPECT_EQ(materializer_header.find("plugin/backend_state"), std::string::npos);
+  EXPECT_EQ(materializer_header.find("plugin/backend_state"),
+            std::string::npos);
   EXPECT_EQ(materializer_source.find("BackendState"), std::string::npos);
   EXPECT_NE(materializer_header.find("stage_index_for"), std::string::npos);
   EXPECT_EQ(materializer_header.find("stage_index_or"), std::string::npos);
@@ -899,6 +1389,14 @@ TEST_F(GfxBackendArchitectureContractTest,
       read_text_file(module_root / "src/plugin/infer_io_utils.cpp");
   const auto runtime_descriptor_header =
       read_text_file(module_root / "src/runtime/executable_descriptor.hpp");
+  const auto runtime_descriptor_source =
+      read_text_file(module_root / "src/runtime/executable_descriptor.cpp");
+  const auto compiler_runtime_descriptor_builder_header = read_text_file(
+      module_root / "src/compiler/runtime_executable_descriptor_builder.hpp");
+  const auto compiler_runtime_descriptor_builder_source = read_text_file(
+      module_root / "src/compiler/runtime_executable_descriptor_builder.cpp");
+  const auto common_artifact_payload_header =
+      read_text_file(module_root / "src/common/artifact_payload.hpp");
   const auto manifest_header =
       read_text_file(module_root / "src/compiler/manifest.hpp");
   const auto manifest_source =
@@ -913,8 +1411,8 @@ TEST_F(GfxBackendArchitectureContractTest,
       read_text_file(module_root / "src/runtime/stateful_execution.cpp");
   const auto stateful_variable_state_header =
       read_text_file(module_root / "src/runtime/stateful_variable_state.hpp");
-  const auto metal_infer_source =
-      read_text_file(module_root / "src/backends/metal/plugin/infer_request.mm");
+  const auto metal_infer_source = read_text_file(
+      module_root / "src/backends/metal/plugin/infer_request.mm");
   const auto opencl_infer_source = read_text_file(
       module_root / "src/backends/opencl/plugin/infer_request.cpp");
   const auto metal_state_header = read_text_file(
@@ -923,16 +1421,15 @@ TEST_F(GfxBackendArchitectureContractTest,
       module_root / "src/backends/metal/runtime/stage_factory.cpp");
   const auto opencl_stage_factory_source = read_text_file(
       module_root / "src/backends/opencl/runtime/stage_factory.cpp");
-  const auto infer_request_header =
-      read_text_file(module_root / "include/openvino/gfx_plugin/infer_request.hpp");
+  const auto infer_request_header = read_text_file(
+      module_root / "include/openvino/gfx_plugin/infer_request.hpp");
   const auto infer_request_common_source =
       read_text_file(module_root / "src/plugin/infer_request_common.cpp");
-  const auto variable_state_source =
-      read_text_file(module_root / "src/plugin/infer_request_variable_state.cpp");
+  const auto variable_state_source = read_text_file(
+      module_root / "src/plugin/infer_request_variable_state.cpp");
   const auto cmake_sources =
       read_text_file(module_root / "cmake/GfxSources.cmake");
-  const auto src_cmake =
-      read_text_file(module_root / "src/CMakeLists.txt");
+  const auto src_cmake = read_text_file(module_root / "src/CMakeLists.txt");
   const auto backend_registry_header =
       read_text_file(module_root / "src/compiler/backend_registry.hpp");
   const auto backend_registry_source =
@@ -943,12 +1440,10 @@ TEST_F(GfxBackendArchitectureContractTest,
       module_root / "src/backends/metal/compiler/metal_kernel_artifacts.hpp");
   const auto metal_artifacts_source = read_text_file(
       module_root / "src/backends/metal/compiler/metal_kernel_artifacts.cpp");
-  const auto apple_vendor_descriptors_header =
-      read_text_file(module_root /
-                     "src/backends/metal/compiler/apple_vendor_descriptors.hpp");
-  const auto apple_vendor_descriptors_source =
-      read_text_file(module_root /
-                     "src/backends/metal/compiler/apple_vendor_descriptors.cpp");
+  const auto apple_vendor_descriptors_header = read_text_file(
+      module_root / "src/backends/metal/compiler/apple_vendor_descriptors.hpp");
+  const auto apple_vendor_descriptors_source = read_text_file(
+      module_root / "src/backends/metal/compiler/apple_vendor_descriptors.cpp");
   const auto mps_graph_attention_header =
       module_root / "src/backends/metal/runtime/mps_graph_attention_stage.hpp";
   const auto mps_graph_attention_source =
@@ -998,40 +1493,44 @@ TEST_F(GfxBackendArchitectureContractTest,
                 "backend_state->create_vendor_attention_stage"),
             std::string::npos);
   EXPECT_FALSE(std::filesystem::exists(backend_state_header_path));
-  EXPECT_FALSE(std::filesystem::exists(module_root /
-                                       "src/plugin/backend_factory.hpp"));
-  EXPECT_FALSE(std::filesystem::exists(module_root /
-                                       "src/plugin/backend_factory.cpp"));
-  EXPECT_FALSE(std::filesystem::exists(module_root /
-                                       "src/plugin/stateful_stage.hpp"));
-  EXPECT_FALSE(std::filesystem::exists(module_root /
-                                       "src/plugin/stateful_stage.cpp"));
+  EXPECT_FALSE(
+      std::filesystem::exists(module_root / "src/plugin/backend_factory.hpp"));
+  EXPECT_FALSE(
+      std::filesystem::exists(module_root / "src/plugin/backend_factory.cpp"));
+  EXPECT_FALSE(
+      std::filesystem::exists(module_root / "src/plugin/stateful_stage.hpp"));
+  EXPECT_FALSE(
+      std::filesystem::exists(module_root / "src/plugin/stateful_stage.cpp"));
   EXPECT_FALSE(std::filesystem::exists(module_root /
                                        "src/plugin/stateful_execution.hpp"));
   EXPECT_FALSE(std::filesystem::exists(module_root /
                                        "src/plugin/stateful_execution.cpp"));
-  EXPECT_NE(backend_runtime_header.find("struct BackendState : BackendStageFactory"),
-            std::string::npos);
+  EXPECT_NE(
+      backend_runtime_header.find("struct BackendState : BackendStageFactory"),
+      std::string::npos);
   EXPECT_NE(backend_runtime_header.find("BackendRequestState&"),
             std::string::npos);
-  EXPECT_EQ(backend_runtime_header.find("InferRequestState"), std::string::npos);
+  EXPECT_EQ(backend_runtime_header.find("InferRequestState"),
+            std::string::npos);
   EXPECT_NE(backend_request_state_header.find("struct BackendInferState"),
             std::string::npos);
   EXPECT_NE(backend_request_state_header.find("struct BackendRequestState"),
             std::string::npos);
   EXPECT_EQ(backend_request_state_header.find("plugin/"), std::string::npos);
   EXPECT_EQ(infer_pipeline_state_header.find("plugin/"), std::string::npos);
-  EXPECT_NE(infer_pipeline_state_header.find(
-                "direct_stateful_assign_variable_ids"),
-            std::string::npos);
+  EXPECT_NE(
+      infer_pipeline_state_header.find("direct_stateful_assign_variable_ids"),
+      std::string::npos);
   EXPECT_NE(infer_request_state_header.find("BackendRequestState runtime"),
             std::string::npos);
-  EXPECT_NE(infer_request_state_header.find("StatefulVariableStateMap variable_states"),
+  EXPECT_NE(infer_request_state_header.find(
+                "StatefulVariableStateMap variable_states"),
             std::string::npos);
   EXPECT_EQ(infer_request_state_header.find("struct VariableTensorState"),
             std::string::npos);
-  EXPECT_EQ(infer_request_state_header.find("std::unique_ptr<BackendInferState>"),
-            std::string::npos);
+  EXPECT_EQ(
+      infer_request_state_header.find("std::unique_ptr<BackendInferState>"),
+      std::string::npos);
   EXPECT_EQ(infer_request_state_header.find("struct BackendInferState"),
             std::string::npos);
   EXPECT_NE(backend_runtime_provider_header.find("BackendRuntimeProvider"),
@@ -1074,6 +1573,22 @@ TEST_F(GfxBackendArchitectureContractTest,
             std::string::npos);
   EXPECT_NE(cmake_sources.find("runtime/infer_submission.hpp"),
             std::string::npos);
+  EXPECT_NE(cmake_sources.find("common/artifact_payload.hpp"),
+            std::string::npos);
+  EXPECT_EQ(cmake_sources.find("runtime/artifact_payload.hpp"),
+            std::string::npos);
+  const auto artifact_compiler_headers_begin =
+      cmake_sources.find("set(GFX_COMPILER_COMMON_HEADERS");
+  const auto artifact_plugin_sources_begin =
+      cmake_sources.find("set(GFX_PLUGIN_SOURCES");
+  ASSERT_NE(artifact_compiler_headers_begin, std::string::npos);
+  ASSERT_NE(artifact_plugin_sources_begin, std::string::npos);
+  const auto artifact_compiler_headers_block =
+      cmake_sources.substr(artifact_compiler_headers_begin,
+                           artifact_plugin_sources_begin -
+                               artifact_compiler_headers_begin);
+  EXPECT_NE(artifact_compiler_headers_block.find("common/artifact_payload.hpp"),
+            std::string::npos);
   EXPECT_EQ(cmake_sources.find("plugin/infer_pipeline"), std::string::npos);
   EXPECT_EQ(cmake_sources.find("plugin/infer_submission"), std::string::npos);
   EXPECT_NE(cmake_sources.find("runtime/stateful_stage.cpp"),
@@ -1093,10 +1608,8 @@ TEST_F(GfxBackendArchitectureContractTest,
   EXPECT_EQ(cmake_sources.find("plugin/backend_factory"), std::string::npos);
   EXPECT_EQ(cmake_sources.find("plugin/stateful_stage"), std::string::npos);
   EXPECT_EQ(cmake_sources.find("plugin/stateful_execution"), std::string::npos);
-  EXPECT_NE(manifest_header.find("StatefulEffectContract"),
-            std::string::npos);
-  EXPECT_NE(manifest_header.find("stateful_effect"),
-            std::string::npos);
+  EXPECT_NE(manifest_header.find("StatefulEffectContract"), std::string::npos);
+  EXPECT_NE(manifest_header.find("stateful_effect"), std::string::npos);
   EXPECT_NE(manifest_header.find("stateful_prebind_variable_id"),
             std::string::npos);
   EXPECT_NE(manifest_header.find("stateful_prebind_shape_rule"),
@@ -1105,8 +1618,7 @@ TEST_F(GfxBackendArchitectureContractTest,
             std::string::npos);
   EXPECT_NE(manifest_source.find("make_stateful_effect_contract"),
             std::string::npos);
-  EXPECT_NE(manifest_source.find("sum_inputs_along_axis"),
-            std::string::npos);
+  EXPECT_NE(manifest_source.find("sum_inputs_along_axis"), std::string::npos);
   EXPECT_NE(runtime_descriptor_header.find("stateful_effect"),
             std::string::npos);
   EXPECT_NE(runtime_descriptor_header.find("stateful_variable_id"),
@@ -1115,11 +1627,36 @@ TEST_F(GfxBackendArchitectureContractTest,
             std::string::npos);
   EXPECT_NE(runtime_descriptor_header.find("stateful_prebind_shape_rule"),
             std::string::npos);
+  EXPECT_NE(runtime_descriptor_header.find("common/artifact_payload.hpp"),
+            std::string::npos);
+  EXPECT_EQ(runtime_descriptor_header.find("compiler/executable_bundle.hpp"),
+            std::string::npos);
+  EXPECT_EQ(runtime_descriptor_header.find("compiler::KernelArtifact"),
+            std::string::npos);
+  EXPECT_EQ(runtime_descriptor_source.find("compiler/"), std::string::npos);
+  EXPECT_EQ(runtime_descriptor_source.find("ExecutableBundle"),
+            std::string::npos);
+  EXPECT_NE(compiler_runtime_descriptor_builder_header.find(
+                "compiler/executable_bundle.hpp"),
+            std::string::npos);
+  EXPECT_NE(compiler_runtime_descriptor_builder_header.find(
+                "runtime/executable_descriptor.hpp"),
+            std::string::npos);
+  EXPECT_NE(compiler_runtime_descriptor_builder_source.find(
+                "verify_runtime_executable_descriptor"),
+            std::string::npos);
+  EXPECT_NE(common_artifact_payload_header.find("KernelArtifactPayloadKind"),
+            std::string::npos);
+  EXPECT_NE(common_artifact_payload_header.find("class KernelArtifactPayload"),
+            std::string::npos);
+  EXPECT_EQ(common_artifact_payload_header.find("compiler/"),
+            std::string::npos);
   EXPECT_NE(stateful_stage_header.find(
                 "const RuntimeStageExecutableDescriptor* descriptor"),
             std::string::npos);
-  EXPECT_NE(stateful_stage_source.find("descriptor->stateful_effect == \"assign\""),
-            std::string::npos);
+  EXPECT_NE(
+      stateful_stage_source.find("descriptor->stateful_effect == \"assign\""),
+      std::string::npos);
   EXPECT_EQ(stateful_stage_source.find("AssignBase"), std::string::npos);
   EXPECT_EQ(stateful_stage_source.find("as_type_ptr"), std::string::npos);
   EXPECT_NE(stateful_execution_source.find(
@@ -1128,18 +1665,19 @@ TEST_F(GfxBackendArchitectureContractTest,
   EXPECT_NE(stateful_execution_source.find(
                 "descriptor->stateful_effect == \"assign\""),
             std::string::npos);
-  EXPECT_NE(stateful_execution_source.find(
-                "!slot.host_dirty && slot.initialized && slot.tensor.buf.valid()"),
-            std::string::npos);
+  EXPECT_NE(
+      stateful_execution_source.find(
+          "!slot.host_dirty && slot.initialized && slot.tensor.buf.valid()"),
+      std::string::npos);
   EXPECT_NE(stateful_execution_header.find("sync_stateful_variable_host"),
             std::string::npos);
   EXPECT_NE(stateful_execution_source.find("stateful_variable_readback"),
             std::string::npos);
   EXPECT_NE(stateful_execution_source.find("slot.host_stale = true"),
             std::string::npos);
-  EXPECT_NE(stateful_execution_source.find(
-                "direct_stateful_assign_variable_ids"),
-            std::string::npos);
+  EXPECT_NE(
+      stateful_execution_source.find("direct_stateful_assign_variable_ids"),
+      std::string::npos);
   EXPECT_NE(stateful_execution_source.find(
                 "stateful_prebind_shape_rule == \"sum_inputs_along_axis\""),
             std::string::npos);
@@ -1155,8 +1693,10 @@ TEST_F(GfxBackendArchitectureContractTest,
             std::string::npos);
   EXPECT_EQ(stateful_execution_header.find("plugin/"), std::string::npos);
   EXPECT_EQ(stateful_execution_source.find("plugin/"), std::string::npos);
-  EXPECT_EQ(stateful_execution_header.find("InferRequestState"), std::string::npos);
-  EXPECT_EQ(stateful_execution_source.find("InferRequestState"), std::string::npos);
+  EXPECT_EQ(stateful_execution_header.find("InferRequestState"),
+            std::string::npos);
+  EXPECT_EQ(stateful_execution_source.find("InferRequestState"),
+            std::string::npos);
   EXPECT_NE(stateful_variable_state_header.find("StatefulVariableTensorState"),
             std::string::npos);
   EXPECT_NE(stateful_variable_state_header.find("StatefulVariableStateMap"),
@@ -1174,17 +1714,15 @@ TEST_F(GfxBackendArchitectureContractTest,
   EXPECT_NE(stateful_execution_source.find(
                 "execute_infer_stage_with_stateful_contract"),
             std::string::npos);
-  EXPECT_NE(metal_infer_source.find(
-                "execute_infer_stage_with_stateful_contract"),
+  EXPECT_NE(
+      metal_infer_source.find("execute_infer_stage_with_stateful_contract"),
+      std::string::npos);
+  EXPECT_NE(
+      opencl_infer_source.find("execute_infer_stage_with_stateful_contract"),
+      std::string::npos);
+  EXPECT_EQ(metal_infer_source.find("try_bind_direct_stateful_assign_output"),
             std::string::npos);
-  EXPECT_NE(opencl_infer_source.find(
-                "execute_infer_stage_with_stateful_contract"),
-            std::string::npos);
-  EXPECT_EQ(metal_infer_source.find(
-                "try_bind_direct_stateful_assign_output"),
-            std::string::npos);
-  EXPECT_EQ(opencl_infer_source.find(
-                "try_bind_direct_stateful_assign_output"),
+  EXPECT_EQ(opencl_infer_source.find("try_bind_direct_stateful_assign_output"),
             std::string::npos);
   EXPECT_EQ(metal_infer_source.find("execute_stateful_stage"),
             std::string::npos);
@@ -1204,22 +1742,22 @@ TEST_F(GfxBackendArchitectureContractTest,
             std::string::npos);
   EXPECT_NE(opencl_infer_source.find("lookup_runtime_input_tensor"),
             std::string::npos);
-  EXPECT_EQ(metal_infer_source.find("get_input_device"),
-            std::string::npos);
-  EXPECT_EQ(metal_infer_source.find("has_input_device"),
-            std::string::npos);
-  EXPECT_EQ(metal_infer_source.find("bind_input_device"),
-            std::string::npos);
-  EXPECT_NE(infer_executor_header.find("prepare_reusable_infer_runtime_pipeline"),
-            std::string::npos);
-  EXPECT_NE(infer_executor_source.find("prepare_reusable_infer_runtime_pipeline"),
-            std::string::npos);
+  EXPECT_EQ(metal_infer_source.find("get_input_device"), std::string::npos);
+  EXPECT_EQ(metal_infer_source.find("has_input_device"), std::string::npos);
+  EXPECT_EQ(metal_infer_source.find("bind_input_device"), std::string::npos);
+  EXPECT_NE(
+      infer_executor_header.find("prepare_reusable_infer_runtime_pipeline"),
+      std::string::npos);
+  EXPECT_NE(
+      infer_executor_source.find("prepare_reusable_infer_runtime_pipeline"),
+      std::string::npos);
   EXPECT_NE(infer_executor_source.find("assign_runtime_stage_output_shapes"),
             std::string::npos);
   EXPECT_NE(infer_executor_source.find("execute_pipeline_with_submission"),
             std::string::npos);
-  EXPECT_EQ(infer_io_utils_header.find("prepare_reusable_pipeline_with_outputs"),
-            std::string::npos);
+  EXPECT_EQ(
+      infer_io_utils_header.find("prepare_reusable_pipeline_with_outputs"),
+      std::string::npos);
   EXPECT_EQ(infer_io_utils_header.find("build_pipeline_with_outputs"),
             std::string::npos);
   EXPECT_EQ(infer_io_utils_source.find("reset_reusable_pipeline_outputs"),
@@ -1242,20 +1780,19 @@ TEST_F(GfxBackendArchitectureContractTest,
             std::string::npos);
   EXPECT_EQ(opencl_infer_source.find("record_infer_submission_tuning_counters"),
             std::string::npos);
-  EXPECT_NE(infer_executor_source.find("record_infer_submission_tuning_counters"),
-            std::string::npos);
-  EXPECT_EQ(opencl_infer_source.find("execute_pipeline(\n"),
-            std::string::npos);
+  EXPECT_NE(
+      infer_executor_source.find("record_infer_submission_tuning_counters"),
+      std::string::npos);
+  EXPECT_EQ(opencl_infer_source.find("execute_pipeline(\n"), std::string::npos);
   EXPECT_EQ(opencl_infer_source.find("backend->context->finish();"),
             std::string::npos);
   EXPECT_NE(infer_request_header.find("query_state() const override;"),
             std::string::npos);
-  EXPECT_EQ(infer_request_header.find("query_state() const override { return {}; }"),
-            std::string::npos);
-  EXPECT_EQ(infer_request_header.find("infer_metal_impl"),
-            std::string::npos);
-  EXPECT_EQ(infer_request_header.find("infer_opencl_impl"),
-            std::string::npos);
+  EXPECT_EQ(
+      infer_request_header.find("query_state() const override { return {}; }"),
+      std::string::npos);
+  EXPECT_EQ(infer_request_header.find("infer_metal_impl"), std::string::npos);
+  EXPECT_EQ(infer_request_header.find("infer_opencl_impl"), std::string::npos);
   EXPECT_EQ(infer_request_common_source.find("switch (cm->backend())"),
             std::string::npos);
   EXPECT_NE(infer_request_common_source.find("execute_backend_infer"),
@@ -1285,20 +1822,16 @@ TEST_F(GfxBackendArchitectureContractTest,
             std::string::npos);
   EXPECT_EQ(opencl_infer_source.find("bind_inputs_for_infer"),
             std::string::npos);
-  EXPECT_EQ(metal_infer_source.find("ensure_input_handles"),
-            std::string::npos);
+  EXPECT_EQ(metal_infer_source.find("ensure_input_handles"), std::string::npos);
   EXPECT_EQ(opencl_infer_source.find("ensure_input_handles"),
             std::string::npos);
-  EXPECT_EQ(metal_infer_source.find("\"upload\""),
-            std::string::npos);
-  EXPECT_EQ(opencl_infer_source.find("\"upload\""),
-            std::string::npos);
+  EXPECT_EQ(metal_infer_source.find("\"upload\""), std::string::npos);
+  EXPECT_EQ(opencl_infer_source.find("\"upload\""), std::string::npos);
   EXPECT_NE(infer_request_common_source.find("bind_outputs_after_infer"),
             std::string::npos);
   EXPECT_NE(infer_request_common_source.find("bind_outputs_for_infer"),
             std::string::npos);
-  EXPECT_NE(infer_request_common_source.find(
-                "host_output_matches_public_port"),
+  EXPECT_NE(infer_request_common_source.find("host_output_matches_public_port"),
             std::string::npos);
   EXPECT_NE(infer_request_common_source.find(
                 "state.bound_output_hosts[idx] = host_output"),
@@ -1318,16 +1851,11 @@ TEST_F(GfxBackendArchitectureContractTest,
             std::string::npos);
   EXPECT_NE(infer_request_common_source.find("output_tensors"),
             std::string::npos);
-  EXPECT_NE(metal_infer_source.find("output_tensors"),
-            std::string::npos);
-  EXPECT_EQ(metal_infer_source.find("has_output_device"),
-            std::string::npos);
-  EXPECT_EQ(metal_infer_source.find("get_output_device"),
-            std::string::npos);
-  EXPECT_EQ(metal_infer_source.find("bind_output_device"),
-            std::string::npos);
-  EXPECT_EQ(metal_infer_source.find("MetalTensorMap"),
-            std::string::npos);
+  EXPECT_NE(metal_infer_source.find("output_tensors"), std::string::npos);
+  EXPECT_EQ(metal_infer_source.find("has_output_device"), std::string::npos);
+  EXPECT_EQ(metal_infer_source.find("get_output_device"), std::string::npos);
+  EXPECT_EQ(metal_infer_source.find("bind_output_device"), std::string::npos);
+  EXPECT_EQ(metal_infer_source.find("MetalTensorMap"), std::string::npos);
   EXPECT_EQ(metal_infer_source.find("reusable_host_output_plan"),
             std::string::npos);
   EXPECT_EQ(opencl_infer_source.find("reusable_host_output_plan"),
@@ -1357,7 +1885,8 @@ TEST_F(GfxBackendArchitectureContractTest,
             std::string::npos);
   EXPECT_EQ(fusion_header.find("plugin/backend_state"), std::string::npos);
   EXPECT_EQ(fusion_source.find("plugin/backend_state"), std::string::npos);
-  EXPECT_NE(materializer_header.find("fusion_contract_for"), std::string::npos);
+  EXPECT_NE(builder_source.find("fusion_contract_for_node"), std::string::npos);
+  EXPECT_EQ(materializer_header.find("fusion_contract_for"), std::string::npos);
   EXPECT_NE(materializer_header.find("create_vendor_attention_stage"),
             std::string::npos);
   EXPECT_NE(materializer_source.find("create_vendor_attention_stage"),
@@ -1387,8 +1916,9 @@ TEST_F(GfxBackendArchitectureContractTest,
             std::string::npos);
   EXPECT_EQ(materializer_source.find("m_vendor_attention_artifact_resolver"),
             std::string::npos);
-  EXPECT_NE(materializer_source.find(
-                "compiler did not provide a valid vendor attention"),
+  EXPECT_NE(materializer_source.find("valid runtime vendor"),
+            std::string::npos);
+  EXPECT_NE(materializer_source.find("attention stage plan"),
             std::string::npos);
   EXPECT_EQ(materializer_source.find("RuntimeVendorAttentionDescriptor"),
             std::string::npos);
@@ -1415,6 +1945,8 @@ TEST_F(GfxBackendArchitectureContractTest,
   EXPECT_NE(cmake_sources.find("compiler/pipeline_stage_builder.cpp"),
             std::string::npos);
   EXPECT_NE(cmake_sources.find("compiler/pipeline_stage_builder.hpp"),
+            std::string::npos);
+  EXPECT_NE(cmake_sources.find("runtime/pipeline_stage_plan.hpp"),
             std::string::npos);
   EXPECT_EQ(cmake_sources.find("runtime/pipeline_stage_builder.cpp"),
             std::string::npos);
@@ -1550,10 +2082,9 @@ TEST_F(GfxBackendArchitectureContractTest,
   auto add = std::make_shared<ov::op::v1::Add>(parameter, parameter);
   auto assign = std::make_shared<ov::op::v6::Assign>(add, variable);
   auto unrelated_result = std::make_shared<ov::op::v0::Result>(parameter);
-  ov::Model assign_only_model(ov::ResultVector{unrelated_result},
-                              ov::SinkVector{assign},
-                              ov::ParameterVector{parameter},
-                              "stateful_assign_direct_alias_safe");
+  ov::Model assign_only_model(
+      ov::ResultVector{unrelated_result}, ov::SinkVector{assign},
+      ov::ParameterVector{parameter}, "stateful_assign_direct_alias_safe");
 
   const auto assign_only_outputs =
       compiler::collect_model_output_ports(assign_only_model);
@@ -1582,7 +2113,8 @@ TEST_F(GfxBackendArchitectureContractTest,
   compiler::PipelineStagePlanBuilder shared_builder(shared_outputs);
   const auto shared_plan = shared_builder.make_stage_plan(shared_add, 0);
   ASSERT_EQ(shared_plan.outputs.size(), 1u);
-  EXPECT_TRUE(shared_plan.outputs[0].direct_stateful_assign_variable_id.empty());
+  EXPECT_TRUE(
+      shared_plan.outputs[0].direct_stateful_assign_variable_id.empty());
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
@@ -1591,13 +2123,11 @@ TEST_F(GfxBackendArchitectureContractTest,
       ov::element::f32, ov::PartialShape{ov::Dimension::dynamic(), 2});
   auto rhs = std::make_shared<ov::op::v0::Parameter>(
       ov::element::f32, ov::PartialShape{ov::Dimension::dynamic(), 2});
-  auto concat =
-      std::make_shared<ov::op::v0::Concat>(
-          ov::OutputVector{lhs->output(0), rhs->output(0)}, 0);
+  auto concat = std::make_shared<ov::op::v0::Concat>(
+      ov::OutputVector{lhs->output(0), rhs->output(0)}, 0);
   auto variable = std::make_shared<ov::op::util::Variable>(
-      ov::op::util::VariableInfo{
-          ov::PartialShape{ov::Dimension::dynamic(), 2}, ov::element::f32,
-          "variable0"});
+      ov::op::util::VariableInfo{ov::PartialShape{ov::Dimension::dynamic(), 2},
+                                 ov::element::f32, "variable0"});
   auto assign = std::make_shared<ov::op::v6::Assign>(concat, variable);
   ASSERT_NE(assign, nullptr);
   ASSERT_EQ(concat->output(0).get_target_inputs().size(), 1u);
@@ -1632,7 +2162,7 @@ TEST_F(GfxBackendArchitectureContractTest,
   const auto executable = compiler::ExecutableBundleBuilder{}.build(manifest);
   ASSERT_TRUE(executable.valid());
   const auto runtime_descriptor =
-      RuntimeExecutableDescriptorBuilder{}.build(executable);
+      compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
   ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
   ASSERT_EQ(runtime_descriptor.stages.front().output_bindings.size(), 1u);
   const auto &runtime_output =
@@ -1641,14 +2171,16 @@ TEST_F(GfxBackendArchitectureContractTest,
   EXPECT_EQ(runtime_output.stateful_prebind_shape_rule,
             "sum_inputs_along_axis");
   EXPECT_EQ(runtime_output.stateful_prebind_shape_axis, 0);
-  EXPECT_TRUE(runtime_descriptor.valid(executable));
+  EXPECT_TRUE(compiler::runtime_executable_descriptor_valid(runtime_descriptor,
+                                                            executable));
 
   auto stale_runtime_descriptor = runtime_descriptor;
   stale_runtime_descriptor.stages.front()
       .output_bindings.front()
       .stateful_prebind_shape_rule = "stale_runtime_rule";
   const auto stale_verification =
-      stale_runtime_descriptor.verify(executable);
+      compiler::verify_runtime_executable_descriptor(stale_runtime_descriptor,
+                                                     executable);
   EXPECT_FALSE(stale_verification.valid());
   EXPECT_TRUE(has_diagnostic_containing(stale_verification.diagnostics,
                                         "output binding drift"));
@@ -1752,9 +2284,8 @@ TEST_F(GfxBackendArchitectureContractTest,
             std::string::npos);
   EXPECT_EQ(policy_source.find("BackendRegistry::default_registry()"),
             std::string::npos);
-  EXPECT_NE(
-      policy_source.find("make_stage_compiler_policy_from_capabilities("),
-      std::string::npos);
+  EXPECT_NE(policy_source.find("make_stage_compiler_policy_from_capabilities("),
+            std::string::npos);
   EXPECT_NE(provider_source.find("compiler/stage_compiler_policy.hpp"),
             std::string::npos);
   EXPECT_NE(provider_source.find("BackendRegistry::default_registry()"),
@@ -1982,7 +2513,7 @@ make_runtime_descriptor_for_layout(const std::shared_ptr<const ov::Node> &node,
   const auto manifest = compiler::ManifestBuilder{}.build(plan);
   const auto executable = compiler::ExecutableBundleBuilder{}.build(manifest);
   const auto runtime_descriptor =
-      RuntimeExecutableDescriptorBuilder{}.build(executable);
+      compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
   EXPECT_EQ(runtime_descriptor.stages.size(), 1u);
   return runtime_descriptor.stages.front();
 }
@@ -2068,8 +2599,9 @@ TEST_F(GfxBackendArchitectureContractTest,
 
   EXPECT_NE(backend_module_provider_source.find("make_default_backend_modules"),
             std::string::npos);
-  EXPECT_NE(backend_module_provider_source.find("BackendRegistry::default_registry"),
-            std::string::npos);
+  EXPECT_NE(
+      backend_module_provider_source.find("BackendRegistry::default_registry"),
+      std::string::npos);
   EXPECT_NE(backend_module_provider_source.find("make_metal_backend_module"),
             std::string::npos);
   EXPECT_NE(backend_module_provider_source.find("make_opencl_backend_module"),
@@ -2097,10 +2629,8 @@ TEST_F(GfxBackendArchitectureContractTest,
       gfx_sources.find("set(GFX_COMPILER_COMMON_SOURCES");
   const auto compiler_headers_begin =
       gfx_sources.find("set(GFX_COMPILER_COMMON_HEADERS");
-  const auto plugin_sources_begin =
-      gfx_sources.find("set(GFX_PLUGIN_SOURCES");
-  const auto plugin_headers_begin =
-      gfx_sources.find("set(GFX_PLUGIN_HEADERS");
+  const auto plugin_sources_begin = gfx_sources.find("set(GFX_PLUGIN_SOURCES");
+  const auto plugin_headers_begin = gfx_sources.find("set(GFX_PLUGIN_HEADERS");
   const auto provider_headers_begin =
       gfx_sources.find("set(GFX_BACKEND_MODULE_PROVIDER_HEADERS");
   ASSERT_NE(compiler_sources_begin, std::string::npos);
@@ -2208,8 +2738,9 @@ TEST_F(GfxBackendArchitectureContractTest,
   ASSERT_LT(opencl_backend_target_begin, provider_target_begin);
   ASSERT_LT(provider_target_begin, backend_plugin_target_begin);
 
-  const auto compiler_common_target_block = src_cmake.substr(
-      compiler_common_target_begin, core_target_begin - compiler_common_target_begin);
+  const auto compiler_common_target_block =
+      src_cmake.substr(compiler_common_target_begin,
+                       core_target_begin - compiler_common_target_begin);
   EXPECT_NE(compiler_common_target_block.find("GFX_COMPILER_COMMON_HEADERS"),
             std::string::npos);
   EXPECT_NE(compiler_common_target_block.find("GFX_COMPILER_COMMON_SOURCES"),
@@ -2240,17 +2771,17 @@ TEST_F(GfxBackendArchitectureContractTest,
   EXPECT_EQ(metal_backend_target_block.find("gfx_plugin_core"),
             std::string::npos);
 
-  const auto opencl_backend_target_block = src_cmake.substr(
-      opencl_backend_target_begin,
-      provider_target_begin - opencl_backend_target_begin);
+  const auto opencl_backend_target_block =
+      src_cmake.substr(opencl_backend_target_begin,
+                       provider_target_begin - opencl_backend_target_begin);
   EXPECT_NE(opencl_backend_target_block.find("gfx_compiler_common"),
             std::string::npos);
   EXPECT_EQ(opencl_backend_target_block.find("gfx_plugin_core"),
             std::string::npos);
 
-  const auto provider_target_block = src_cmake.substr(
-      provider_target_begin,
-      backend_plugin_target_begin - provider_target_begin);
+  const auto provider_target_block =
+      src_cmake.substr(provider_target_begin,
+                       backend_plugin_target_begin - provider_target_begin);
   EXPECT_NE(provider_target_block.find("GFX_BACKEND_MODULE_PROVIDER_HEADERS"),
             std::string::npos);
   EXPECT_NE(provider_target_block.find("GFX_BACKEND_MODULE_PROVIDER_SOURCES"),
@@ -2261,19 +2792,21 @@ TEST_F(GfxBackendArchitectureContractTest,
             std::string::npos);
   EXPECT_NE(provider_target_block.find("gfx_opencl_backend_compiler"),
             std::string::npos);
-  EXPECT_NE(src_cmake.find("gfx_backend_module_provider)"),
-            std::string::npos);
+  EXPECT_NE(src_cmake.find("gfx_backend_module_provider)"), std::string::npos);
 
   EXPECT_EQ(backend_registry_source.find("backend_module_provider"),
             std::string::npos);
   EXPECT_EQ(backend_registry_source.find("make_default_backend_modules"),
             std::string::npos);
-  EXPECT_EQ(stage_compiler_policy_source.find("BackendRegistry::default_registry"),
-            std::string::npos);
-  EXPECT_NE(backend_module_provider_source.find("BackendRegistry::default_registry"),
-            std::string::npos);
-  EXPECT_NE(backend_module_provider_source.find("resolve_stage_compiler_policy"),
-            std::string::npos);
+  EXPECT_EQ(
+      stage_compiler_policy_source.find("BackendRegistry::default_registry"),
+      std::string::npos);
+  EXPECT_NE(
+      backend_module_provider_source.find("BackendRegistry::default_registry"),
+      std::string::npos);
+  EXPECT_NE(
+      backend_module_provider_source.find("resolve_stage_compiler_policy"),
+      std::string::npos);
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
@@ -2431,8 +2964,10 @@ TEST_F(GfxBackendArchitectureContractTest,
     ASSERT_FALSE(executable.memory_plan.transient_arenas.empty());
 
     const auto runtime_descriptor =
-        RuntimeExecutableDescriptorBuilder{}.build(executable);
-    const auto verification = runtime_descriptor.verify(executable);
+        compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
+    const auto verification =
+        compiler::verify_runtime_executable_descriptor(runtime_descriptor,
+                                                       executable);
     ASSERT_TRUE(verification.valid())
         << (verification.diagnostics.empty()
                 ? std::string{}
@@ -2489,7 +3024,8 @@ TEST_F(GfxBackendArchitectureContractTest,
     stale_region_descriptor.memory_plan.regions.front().layout =
         "stale_runtime_layout";
     const auto stale_region_verification =
-        stale_region_descriptor.verify(executable);
+        compiler::verify_runtime_executable_descriptor(stale_region_descriptor,
+                                                       executable);
     EXPECT_FALSE(stale_region_verification.valid());
     EXPECT_TRUE(has_diagnostic_containing(stale_region_verification.diagnostics,
                                           "memory region drift"));
@@ -2498,7 +3034,8 @@ TEST_F(GfxBackendArchitectureContractTest,
     stale_fingerprint_descriptor.memory_plan.fingerprint =
         "stale-runtime-memory-plan";
     const auto stale_fingerprint_verification =
-        stale_fingerprint_descriptor.verify(executable);
+        compiler::verify_runtime_executable_descriptor(
+            stale_fingerprint_descriptor, executable);
     EXPECT_FALSE(stale_fingerprint_verification.valid());
     EXPECT_TRUE(
         has_diagnostic_containing(stale_fingerprint_verification.diagnostics,
@@ -2509,7 +3046,8 @@ TEST_F(GfxBackendArchitectureContractTest,
         .input_bindings.front()
         .memory_region_id = "stale-runtime-input-region";
     const auto stale_binding_verification =
-        stale_binding_descriptor.verify(executable);
+        compiler::verify_runtime_executable_descriptor(stale_binding_descriptor,
+                                                       executable);
     EXPECT_FALSE(stale_binding_verification.valid());
     EXPECT_TRUE(has_diagnostic_containing(
         stale_binding_verification.diagnostics, "input binding drift"));
@@ -2538,7 +3076,15 @@ TEST_F(GfxBackendArchitectureContractTest,
       read_text_file(root / "src/runtime/runtime_session.cpp");
   EXPECT_NE(runtime_session_source.find("PreparedKernelExecutable::prepare"),
             std::string::npos);
-  EXPECT_NE(runtime_session_source.find("stage.compile("), std::string::npos);
+  EXPECT_EQ(runtime_session_source.find("stage.compile("), std::string::npos);
+  EXPECT_NE(runtime_session_source.find("stage.prepare_runtime_handle("),
+            std::string::npos);
+
+  const auto gpu_stage_header =
+      read_text_file(root / "src/runtime/gpu_stage.hpp");
+  EXPECT_EQ(gpu_stage_header.find("virtual void compile("), std::string::npos);
+  EXPECT_NE(gpu_stage_header.find("virtual void prepare_runtime_handle("),
+            std::string::npos);
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
@@ -2598,8 +3144,9 @@ TEST_F(GfxBackendArchitectureContractTest,
               test_case.requires_runtime_shape_args);
 
     const auto runtime_descriptor =
-        RuntimeExecutableDescriptorBuilder{}.build(executable);
-    ASSERT_TRUE(runtime_descriptor.valid(executable));
+        compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
+    ASSERT_TRUE(compiler::runtime_executable_descriptor_valid(
+        runtime_descriptor, executable));
     ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
     EXPECT_EQ(runtime_descriptor.stages.front().requires_runtime_shape_args,
               test_case.requires_runtime_shape_args);
@@ -2607,7 +3154,9 @@ TEST_F(GfxBackendArchitectureContractTest,
     auto stale_descriptor = runtime_descriptor;
     stale_descriptor.stages.front().requires_runtime_shape_args =
         !test_case.requires_runtime_shape_args;
-    const auto stale_result = stale_descriptor.verify(executable);
+    const auto stale_result =
+        compiler::verify_runtime_executable_descriptor(stale_descriptor,
+                                                       executable);
     EXPECT_FALSE(stale_result.valid());
     EXPECT_TRUE(
         has_diagnostic_containing(stale_result.diagnostics, "artifact drift"));
@@ -2617,19 +3166,15 @@ TEST_F(GfxBackendArchitectureContractTest,
 TEST_F(GfxBackendArchitectureContractTest,
        RuntimeShapeRuleComesFromCompilerManifestAndDescriptor) {
   struct Case {
-    const char* op_type;
-    const char* expected_rule;
+    const char *op_type;
+    const char *expected_rule;
   };
 
   for (const auto test_case :
-       {Case{"Concat", "concat"},
-        Case{"Broadcast", "broadcast"},
-        Case{"Select", "select"},
-        Case{"ShapeOf", "shape_of"},
-        Case{"Slice", "slice"},
-        Case{"StridedSlice", "slice"},
-        Case{"Range", "range"},
-        Case{"Tile", "tile"},
+       {Case{"Concat", "concat"}, Case{"Broadcast", "broadcast"},
+        Case{"Select", "select"}, Case{"ShapeOf", "shape_of"},
+        Case{"Slice", "slice"}, Case{"StridedSlice", "slice"},
+        Case{"Range", "range"}, Case{"Tile", "tile"},
         Case{"Relu", "static_or_descriptor"}}) {
     SCOPED_TRACE(test_case.op_type);
     compiler::LoweringPlan plan;
@@ -2661,15 +3206,18 @@ TEST_F(GfxBackendArchitectureContractTest,
               test_case.expected_rule);
 
     const auto runtime_descriptor =
-        RuntimeExecutableDescriptorBuilder{}.build(executable);
-    ASSERT_TRUE(runtime_descriptor.valid(executable));
+        compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
+    ASSERT_TRUE(compiler::runtime_executable_descriptor_valid(
+        runtime_descriptor, executable));
     ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
     EXPECT_EQ(runtime_descriptor.stages.front().runtime_shape_rule,
               test_case.expected_rule);
 
     auto stale_descriptor = runtime_descriptor;
     stale_descriptor.stages.front().runtime_shape_rule = "stale_runtime_rule";
-    const auto stale_result = stale_descriptor.verify(executable);
+    const auto stale_result =
+        compiler::verify_runtime_executable_descriptor(stale_descriptor,
+                                                       executable);
     EXPECT_FALSE(stale_result.valid());
     EXPECT_TRUE(
         has_diagnostic_containing(stale_result.diagnostics, "artifact drift"));
@@ -2684,9 +3232,7 @@ TEST_F(GfxBackendArchitectureContractTest,
   };
 
   for (const auto test_case :
-       {Case{"Concat", true},
-        Case{"Softmax", true},
-        Case{"Relu", false}}) {
+       {Case{"Concat", true}, Case{"Softmax", true}, Case{"Relu", false}}) {
     SCOPED_TRACE(test_case.op_type);
     compiler::LoweringPlan plan;
     plan.target = compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
@@ -2711,13 +3257,13 @@ TEST_F(GfxBackendArchitectureContractTest,
     EXPECT_EQ(manifest.stages.front().submission.dependency_extension_boundary,
               test_case.expected_dependency_boundary);
 
-    const auto executable =
-        compiler::ExecutableBundleBuilder{}.build(manifest);
+    const auto executable = compiler::ExecutableBundleBuilder{}.build(manifest);
     ASSERT_TRUE(executable.valid());
 
     const auto runtime_descriptor =
-        RuntimeExecutableDescriptorBuilder{}.build(executable);
-    ASSERT_TRUE(runtime_descriptor.valid(executable));
+        compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
+    ASSERT_TRUE(compiler::runtime_executable_descriptor_valid(
+        runtime_descriptor, executable));
     ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
     EXPECT_EQ(runtime_descriptor.stages.front().submission_stage_weight,
               manifest.stages.front().submission.stage_weight);
@@ -2729,7 +3275,9 @@ TEST_F(GfxBackendArchitectureContractTest,
     auto stale_descriptor = runtime_descriptor;
     stale_descriptor.stages.front().submission_dependency_boundary =
         !test_case.expected_dependency_boundary;
-    const auto stale_result = stale_descriptor.verify(executable);
+    const auto stale_result =
+        compiler::verify_runtime_executable_descriptor(stale_descriptor,
+                                                       executable);
     EXPECT_FALSE(stale_result.valid());
     EXPECT_TRUE(
         has_diagnostic_containing(stale_result.diagnostics, "artifact drift"));
@@ -2830,32 +3378,32 @@ TEST_F(GfxBackendArchitectureContractTest,
             std::string::npos);
   EXPECT_EQ(infer_pipeline_source.find("openvino/op/concat"),
             std::string::npos);
-  EXPECT_EQ(infer_pipeline_source.find("openvino/op/range"),
-            std::string::npos);
+  EXPECT_EQ(infer_pipeline_source.find("openvino/op/range"), std::string::npos);
   EXPECT_EQ(infer_pipeline_source.find("openvino/op/select"),
             std::string::npos);
   EXPECT_EQ(infer_pipeline_source.find("openvino/op/shape_of"),
             std::string::npos);
-  EXPECT_EQ(infer_pipeline_source.find("openvino/op/slice"),
-            std::string::npos);
+  EXPECT_EQ(infer_pipeline_source.find("openvino/op/slice"), std::string::npos);
   EXPECT_EQ(infer_pipeline_source.find("openvino/op/strided_slice"),
             std::string::npos);
-  EXPECT_EQ(infer_pipeline_source.find("openvino/op/tile"),
-            std::string::npos);
+  EXPECT_EQ(infer_pipeline_source.find("openvino/op/tile"), std::string::npos);
   EXPECT_EQ(infer_pipeline_source.find("as_type_ptr<const ov::op::v0::Concat"),
             std::string::npos);
-  EXPECT_EQ(infer_pipeline_source.find("as_type_ptr<const ov::op::v1::Broadcast"),
-            std::string::npos);
-  EXPECT_EQ(infer_pipeline_source.find("as_type_ptr<const ov::op::v3::Broadcast"),
-            std::string::npos);
+  EXPECT_EQ(
+      infer_pipeline_source.find("as_type_ptr<const ov::op::v1::Broadcast"),
+      std::string::npos);
+  EXPECT_EQ(
+      infer_pipeline_source.find("as_type_ptr<const ov::op::v3::Broadcast"),
+      std::string::npos);
   EXPECT_EQ(infer_pipeline_source.find("as_type_ptr<const ov::op::v1::Select"),
             std::string::npos);
   EXPECT_EQ(infer_pipeline_source.find("as_type_ptr<const ov::op::v3::ShapeOf"),
             std::string::npos);
   EXPECT_EQ(infer_pipeline_source.find("as_type_ptr<const ov::op::v8::Slice"),
             std::string::npos);
-  EXPECT_EQ(infer_pipeline_source.find("as_type_ptr<const ov::op::v1::StridedSlice"),
-            std::string::npos);
+  EXPECT_EQ(
+      infer_pipeline_source.find("as_type_ptr<const ov::op::v1::StridedSlice"),
+      std::string::npos);
   EXPECT_EQ(infer_pipeline_source.find("as_type_ptr<const ov::op::v4::Range"),
             std::string::npos);
   EXPECT_EQ(infer_pipeline_source.find("as_type_ptr<const ov::op::v0::Tile"),
@@ -3161,8 +3709,10 @@ TEST_F(GfxBackendArchitectureContractTest,
         << route.kernel_unit_id;
 
     const auto runtime_descriptor =
-        RuntimeExecutableDescriptorBuilder{}.build(executable);
-    const auto runtime_result = runtime_descriptor.verify(executable);
+        compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
+    const auto runtime_result =
+        compiler::verify_runtime_executable_descriptor(runtime_descriptor,
+                                                       executable);
     EXPECT_FALSE(runtime_result.valid()) << route.kernel_unit_id;
     EXPECT_TRUE(has_diagnostic_containing(runtime_result.diagnostics,
                                           "requires a materialized payload"))

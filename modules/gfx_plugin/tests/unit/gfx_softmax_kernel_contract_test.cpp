@@ -333,7 +333,7 @@ INSTANTIATE_TEST_SUITE_P(Softmax, SoftmaxMslArtifactContractTest,
 TEST(SoftmaxRuntimeBindingContractTest,
      LegacySoftmaxKernelUsesManifestRuntimeParamsBuffer) {
   const auto binding =
-      make_backend_custom_kernel_binding_plan("Softmax", "softmax_kernel");
+      make_backend_custom_kernel_binding_plan(GfxKernelBackendDomain::AppleMsl, "Softmax", "softmax_kernel");
   ASSERT_TRUE(binding.valid);
   EXPECT_EQ(binding.stage_manifest.stage_family, GfxKernelStageFamily::Softmax);
   EXPECT_EQ(binding.scalar_arg_count, 0u);
@@ -365,7 +365,8 @@ TEST(SoftmaxRuntimeBindingContractTest,
   const auto binding = make_backend_custom_kernel_roles_binding_plan(
       "Softmax", "softmax_kernel",
       {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
-       GfxKernelBufferRole::RuntimeParams});
+       GfxKernelBufferRole::RuntimeParams},
+      GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(binding.valid);
   ASSERT_TRUE(
       annotate_backend_custom_kernel_module_with_binding_plan(module, binding));

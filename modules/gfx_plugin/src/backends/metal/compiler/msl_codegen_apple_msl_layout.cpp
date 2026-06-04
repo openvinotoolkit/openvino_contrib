@@ -93,7 +93,8 @@ KernelSource make_transpose_msl_kernel_source(
 GfxMslGeneratedKernelSourcePlan make_transpose_msl_kernel_source_plan(
     const std::shared_ptr<const ov::Node> &node, mlir::ModuleOp module) {
   auto binding =
-      make_backend_custom_kernel_binding_plan("Transpose", "transpose_kernel");
+      make_backend_custom_kernel_binding_plan(
+          "Transpose", "transpose_kernel", GfxKernelBackendDomain::AppleMsl);
   if (!binding.valid || !make_static_transpose_desc(node)) {
     return {};
   }

@@ -8,7 +8,7 @@
 #include "openvino/core/except.hpp"
 #include "plugin/gfx_property_utils.hpp"
 #include "runtime/gfx_remote_context.hpp"
-#include "runtime/gfx_backend_utils.hpp"
+#include "common/gfx_backend_utils.hpp"
 
 namespace ov {
 namespace gfx_plugin {

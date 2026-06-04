@@ -61,8 +61,8 @@ void append_parallelism_profile(std::ostringstream &os,
   append_bool(os, profile.conv_spatial_micro_tile_requires_large_output_area);
   append_field(
       os, std::to_string(profile.chunk_dispatch.small_total_elems_threshold));
-  append_field(os, std::to_string(
-                       profile.chunk_dispatch.small_min_elems_per_dispatch));
+  append_field(
+      os, std::to_string(profile.chunk_dispatch.small_min_elems_per_dispatch));
   append_parallelism_band(os, profile.chunk_dispatch.light);
   append_parallelism_band(os, profile.chunk_dispatch.medium);
   append_parallelism_band(os, profile.chunk_dispatch.heavy);
@@ -104,12 +104,11 @@ std::string make_cache_key_stable_key(const CacheKey &key) {
 
 bool has_artifact_key(const ExecutableBundle &executable,
                       std::string_view artifact_key) {
-  return std::any_of(
-      executable.artifact_descriptors.begin(),
-      executable.artifact_descriptors.end(),
-      [&](const KernelArtifactDescriptor &descriptor) {
-        return descriptor.artifact_key == artifact_key;
-      });
+  return std::any_of(executable.artifact_descriptors.begin(),
+                     executable.artifact_descriptors.end(),
+                     [&](const KernelArtifactDescriptor &descriptor) {
+                       return descriptor.artifact_key == artifact_key;
+                     });
 }
 
 const KernelArtifactDescriptor *
@@ -132,16 +131,15 @@ make_cache_payload_record(const ExecutableBundle &executable,
       find_artifact_descriptor(executable, payload_record.artifact_key);
   if (descriptor) {
     record.backend_domain = descriptor->kernel.backend_domain;
-    record.payload_kind =
-        std::string(kernel_artifact_payload_kind_to_string(descriptor->payload_kind));
+    record.payload_kind = std::string(
+        kernel_artifact_payload_kind_to_string(descriptor->payload_kind));
   }
   if (payload_record.payload) {
     record.source_id = std::string(payload_record.payload->source_id());
     record.entry_point = std::string(payload_record.payload->entry_point());
     std::ostringstream identity;
-    append_field(identity,
-                 kernel_artifact_payload_kind_to_string(
-                     payload_record.payload->payload_kind()));
+    append_field(identity, kernel_artifact_payload_kind_to_string(
+                               payload_record.payload->payload_kind()));
     append_field(identity, payload_record.payload->backend_domain());
     append_field(identity, payload_record.payload->source_id());
     append_field(identity, payload_record.payload->entry_point());
@@ -152,8 +150,7 @@ make_cache_payload_record(const ExecutableBundle &executable,
 }
 
 void require_nonempty(CacheEnvelopeVerificationResult &result,
-                      std::string_view value,
-                      std::string diagnostic) {
+                      std::string_view value, std::string diagnostic) {
   if (value.empty()) {
     result.diagnostics.push_back(std::move(diagnostic));
   }
@@ -183,7 +180,8 @@ std::string make_model_cache_fingerprint(const ov::Model &model) {
     }
     for (size_t i = 0; i < node->get_output_size(); ++i) {
       append_field(material, node->get_output_element_type(i).get_type_name());
-      append_field(material, shape_to_string(node->get_output_partial_shape(i)));
+      append_field(material,
+                   shape_to_string(node->get_output_partial_shape(i)));
     }
   }
   return hash_material(material.str());
@@ -236,8 +234,8 @@ std::string make_manifest_cache_hash(const ManifestBundle &manifest) {
   return hash_material(material.str());
 }
 
-std::string make_executable_compile_options_hash(
-    const ExecutableBundle &executable) {
+std::string
+make_executable_compile_options_hash(const ExecutableBundle &executable) {
   std::ostringstream material;
   append_field(material, executable.target_fingerprint);
   for (const auto &descriptor : executable.artifact_descriptors) {
@@ -260,18 +258,24 @@ make_kernel_unit_cache_versions(const ExecutableBundle &executable) {
     append_field(version, descriptor.kernel.backend_domain);
     append_field(version,
                  kernel_artifact_origin_to_string(descriptor.kernel.origin));
-    append_field(version,
-                 kernel_artifact_payload_kind_to_string(descriptor.payload_kind));
+    append_field(version, kernel_artifact_payload_kind_to_string(
+                              descriptor.payload_kind));
     append_field(version, descriptor.abi_fingerprint);
     versions.push_back(hash_material(version.str()));
   }
   return versions;
 }
 
-std::string make_backend_capabilities_fingerprint(
-    const BackendCapabilities &capabilities) {
+std::string
+make_backend_capabilities_fingerprint(const BackendCapabilities &capabilities) {
   std::ostringstream material;
   append_field(material, capabilities.target().fingerprint());
+  const auto &precision = capabilities.precision();
+  append_bool(material, precision.supports_fp32);
+  append_bool(material, precision.supports_fp16);
+  append_bool(material, precision.supports_int8);
+  const auto &artifact_formats = capabilities.artifact_formats();
+  append_bool(material, artifact_formats.supports_compiled_model_export_import);
   const auto &fusion = capabilities.fusion();
   append_bool(material, fusion.enable_generic_attention_fusion);
   append_bool(material, fusion.supports_vendor_attention_stage);
@@ -283,7 +287,8 @@ std::string make_backend_capabilities_fingerprint(
   append_bool(material, post_ops.enable_batchnorm_fusion_for_convolution);
   append_bool(material, post_ops.enable_batchnorm_fusion_for_group_convolution);
   append_bool(material, post_ops.enable_activation_fusion_for_convolution);
-  append_bool(material, post_ops.enable_activation_fusion_for_group_convolution);
+  append_bool(material,
+              post_ops.enable_activation_fusion_for_group_convolution);
   append_bool(material, post_ops.enable_relu_activation_fusion);
   append_bool(material, post_ops.enable_sigmoid_activation_fusion);
   append_bool(material, post_ops.enable_tanh_activation_fusion);
@@ -369,8 +374,8 @@ CacheEnvelope::verify(const ExecutableBundle &executable) const {
     const auto *descriptor =
         find_artifact_descriptor(executable, payload.artifact_key);
     if (!descriptor) {
-      result.diagnostics.push_back("cache backend payload has unknown artifact at " +
-                                   std::to_string(i));
+      result.diagnostics.push_back(
+          "cache backend payload has unknown artifact at " + std::to_string(i));
       continue;
     }
     if (!has_artifact_key(executable, payload.artifact_key) ||
@@ -390,9 +395,9 @@ bool CacheEnvelope::valid(const ExecutableBundle &executable) const {
   return verify(executable).valid();
 }
 
-CacheEnvelope CacheEnvelopeBuilder::build(
-    const ExecutableBundle &executable,
-    const CacheEnvelopeBuildOptions &options) const {
+CacheEnvelope
+CacheEnvelopeBuilder::build(const ExecutableBundle &executable,
+                            const CacheEnvelopeBuildOptions &options) const {
   CacheEnvelope envelope;
   envelope.schema_version = kCacheEnvelopeSchemaVersion;
   envelope.manifest = executable.manifest;

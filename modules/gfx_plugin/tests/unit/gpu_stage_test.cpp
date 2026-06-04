@@ -18,7 +18,7 @@ public:
         init_called = true;
     }
 
-    void compile(GpuBufferManager* /*buffer_manager*/) override {}
+    void prepare_runtime_handle(GpuBufferManager* /*buffer_manager*/) override {}
 
     void execute(GpuCommandBufferHandle /*cb*/) override {
         executed = true;
@@ -55,7 +55,7 @@ private:
 class IncrementStage : public GpuStage {
 public:
     void init(GpuBufferManager* /*buffer_manager*/) override {}
-    void compile(GpuBufferManager* /*buffer_manager*/) override {}
+    void prepare_runtime_handle(GpuBufferManager* /*buffer_manager*/) override {}
 
     void execute(GpuCommandBufferHandle /*cb*/) override {
         if (!output_ || !output_->buf.buffer) {

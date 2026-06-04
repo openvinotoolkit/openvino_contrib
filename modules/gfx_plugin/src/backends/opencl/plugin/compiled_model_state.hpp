@@ -32,7 +32,7 @@ struct OpenClBackendState final : BackendState {
     std::unique_ptr<GpuStage> create_stage(
         const std::shared_ptr<const ov::Node>& node,
         const RuntimeStageExecutableDescriptor* descriptor) const override {
-        if (descriptor && descriptor->payload_kind == compiler::KernelArtifactPayloadKind::OpenClSource &&
+        if (descriptor && descriptor->payload_kind == KernelArtifactPayloadKind::OpenClSource &&
             descriptor->backend_domain == "opencl") {
             OPENVINO_ASSERT(descriptor->payload,
                             "GFX OpenCL: runtime descriptor is missing compiler-owned OpenCL source payload for ",

@@ -134,11 +134,13 @@ GfxMslGeneratedKernelSourcePlan make_activation_msl_kernel_source_plan(
                   {GfxKernelBufferRole::TensorInput,
                    GfxKernelBufferRole::TensorInput,
                    GfxKernelBufferRole::TensorOutput,
-                   GfxKernelBufferRole::ScalarParam})
+                   GfxKernelBufferRole::ScalarParam},
+                  GfxKernelBackendDomain::AppleMsl)
             : make_backend_custom_kernel_binding_plan(
                   "Activation",
                   desc.entry_point,
-                  scalar_args);
+                  scalar_args,
+                  GfxKernelBackendDomain::AppleMsl);
     if (!binding.valid) {
         return {};
     }

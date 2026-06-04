@@ -177,6 +177,12 @@ else()
 endif()
 
 configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/common/backend_config.hpp.in
+    ${CMAKE_CURRENT_BINARY_DIR}/common/backend_config.hpp
+    @ONLY
+)
+
+configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/compiler/backend_config.hpp.in
     ${CMAKE_CURRENT_BINARY_DIR}/compiler/backend_config.hpp
     @ONLY
@@ -259,21 +265,20 @@ target_link_libraries(gfx_runtime_common PRIVATE
     openvino::runtime::dev)
 set_target_properties(gfx_runtime_common PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-add_library(gfx_runtime_mlir STATIC)
-target_sources(gfx_runtime_mlir PRIVATE
-    ${GFX_RUNTIME_MLIR_HEADERS}
-    ${GFX_RUNTIME_MLIR_SOURCES})
-target_link_libraries(gfx_runtime_mlir PRIVATE
+add_library(gfx_mlir_stage_support STATIC)
+target_sources(gfx_mlir_stage_support PRIVATE
+    ${GFX_MLIR_STAGE_SUPPORT_HEADERS}
+    ${GFX_MLIR_STAGE_SUPPORT_SOURCES})
+target_link_libraries(gfx_mlir_stage_support PRIVATE
     gfx_plugin_build_settings
     gfx_plugin_public_headers
     gfx_plugin_private_headers
     openvino::runtime
     openvino::runtime::dev)
-set_target_properties(gfx_runtime_mlir PROPERTIES POSITION_INDEPENDENT_CODE ON)
+set_target_properties(gfx_mlir_stage_support PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(DEFINED GFX_LLVM_EXTERNAL_TARGET)
-    add_dependencies(gfx_runtime_mlir ${GFX_LLVM_EXTERNAL_TARGET})
+    add_dependencies(gfx_mlir_stage_support ${GFX_LLVM_EXTERNAL_TARGET})
 endif()
-target_link_libraries(gfx_runtime_common PRIVATE gfx_runtime_mlir)
 
 add_library(gfx_metal_msl_compiler STATIC)
 target_sources(gfx_metal_msl_compiler PRIVATE
@@ -331,7 +336,7 @@ target_link_libraries(gfx_metal_backend_compiler PRIVATE
     gfx_plugin_public_headers
     gfx_plugin_private_headers
     gfx_compiler_common
-    gfx_runtime_mlir
+    gfx_mlir_stage_support
     gfx_metal_msl_compiler
     gfx_metal_mpsrt_contract
     openvino::runtime
@@ -442,7 +447,6 @@ if(GFX_BACKEND_METAL_AVAILABLE)
         gfx_metal_mpsrt_contract
         openvino::runtime
         openvino::runtime::dev)
-    target_link_libraries(gfx_runtime_metal PRIVATE gfx_runtime_mlir)
     set_target_properties(gfx_runtime_metal PROPERTIES POSITION_INDEPENDENT_CODE ON)
     target_link_libraries(${TARGET_NAME} PRIVATE gfx_runtime_metal)
     if(DEFINED GFX_LLVM_EXTERNAL_TARGET)
@@ -476,7 +480,7 @@ endif()
 
 target_link_libraries(${TARGET_NAME} PRIVATE
     gfx_runtime_common
-    gfx_runtime_mlir
+    gfx_mlir_stage_support
     gfx_backend_module_provider)
 
 ov_mark_target_as_cc(${TARGET_NAME})

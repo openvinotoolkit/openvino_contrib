@@ -8,7 +8,7 @@
 #include "openvino/runtime/iremote_context.hpp"
 #include "openvino/runtime/so_ptr.hpp"
 #include "runtime/backend_runtime.hpp"
-#include "runtime/gfx_backend_utils.hpp"
+#include "common/gfx_backend_utils.hpp"
 
 namespace ov {
 namespace gfx_plugin {

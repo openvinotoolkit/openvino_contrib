@@ -54,8 +54,8 @@ RuntimeStageExecutableDescriptor make_metal_test_descriptor(
     descriptor.backend_domain = "metal";
     descriptor.kernel_id = "metal/generated/activation";
     descriptor.op_family = node ? node->get_type_name() : "null";
-    descriptor.origin = compiler::KernelArtifactOrigin::Generated;
-    descriptor.payload_kind = compiler::KernelArtifactPayloadKind::MslSource;
+    descriptor.origin = KernelArtifactOrigin::Generated;
+    descriptor.payload_kind = KernelArtifactPayloadKind::MslSource;
     descriptor.entry_point = source_plan.source.entry_point;
     descriptor.abi_arg_count = source_plan.source.signature.arg_count;
     descriptor.abi_output_arg_count =
@@ -66,7 +66,8 @@ RuntimeStageExecutableDescriptor make_metal_test_descriptor(
         descriptor.backend_domain,
         descriptor.entry_point,
         GfxKernelSourceLanguage::MetalShadingLanguage,
-        std::move(msl_source));
+        std::move(msl_source),
+        source_plan.binding.stage_manifest);
     return descriptor;
 }
 
@@ -83,8 +84,8 @@ RuntimeStageExecutableDescriptor make_legacy_descriptor_without_payload(
     descriptor.kernel_id =
         std::string("metal/generated/") + (node ? node->get_type_name() : "null");
     descriptor.op_family = node ? node->get_type_name() : "null";
-    descriptor.origin = compiler::KernelArtifactOrigin::Generated;
-    descriptor.payload_kind = compiler::KernelArtifactPayloadKind::None;
+    descriptor.origin = KernelArtifactOrigin::Generated;
+    descriptor.payload_kind = KernelArtifactPayloadKind::None;
     descriptor.entry_point = descriptor.kernel_id;
     descriptor.dispatch_contract = "manifest";
     return descriptor;
@@ -137,7 +138,7 @@ void run_activation(const ActivationCase& tc) {
     stage->set_inputs({&input});
     stage->set_output(&output);
     stage->init(&mgr);
-    stage->compile(&mgr);
+    stage->prepare_runtime_handle(&mgr);
     id<MTLCommandBuffer> cb = [queue commandBuffer];
     stage->execute(cb);
     metal_end_compute_encoder((GpuCommandBufferHandle)cb);
@@ -240,7 +241,7 @@ TEST(GpuStageActivation, RejectsRuntimeSourcePlanWithoutCompilerPayload) {
     stage->set_output(&output);
     stage->init(&mgr);
 
-    EXPECT_THROW(stage->compile(&mgr), ov::Exception);
+    EXPECT_THROW(stage->prepare_runtime_handle(&mgr), ov::Exception);
 
     MetalBufferManager::set_current_allocator(nullptr);
     metal_release_command_queue(gfx_queue);

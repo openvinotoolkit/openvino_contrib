@@ -62,10 +62,11 @@ Build-system notes:
 - `src/CMakeLists.txt` embeds selected `.cl` and `.metal` helper sources through
   `cmake/KernelSource.hpp.in`; generated headers stay in the build tree and
   must not be committed.
-- `gfx_plugin_core`, `gfx_runtime_common`, and `gfx_runtime_mlir` contain shared
-  code.
-- `src/common/` owns shared backend id and device-family/profile types used by
-  both compiler and runtime layers.
+- `gfx_plugin_core`, `gfx_runtime_common`, and `gfx_mlir_stage_support` contain
+  shared plugin, runtime, and MLIR stage support code.
+- `src/common/` owns shared backend id, backend availability, artifact payload,
+  and device-family/profile types used by compiler, runtime, and backend
+  layers.
 - `gfx_opencl_kernel_artifacts` contains OpenCL source-artifact payload
   materialization and embedded OpenCL helper wrappers.
 - `src/compiler/stage_placement.*` defines the shared stage-placement contract;
@@ -85,8 +86,12 @@ Build-system notes:
   consuming compiler-owned plan/fusion contracts.
 - `src/compiler/pipeline_stage_fusion.*` owns compiler-side fusion selection,
   fusion contracts, residual-add detection, and vendor attention planning.
-- `src/compiler/pipeline_stage_plan.*` owns compiled-pipeline input links,
-  model-output flags, output-source metadata, and fused output aliases.
+- `src/compiler/pipeline_stage_plan.*` owns compiler-side compiled-pipeline
+  input links, model-output flags, output-source metadata, and fused output
+  aliases.
+- `src/compiler/runtime_executable_descriptor_builder.*` owns conversion and
+  verification from compiler executable bundles into runtime executable
+  descriptors and attaches the runtime-facing stage plan.
 - `src/compiler/memory_plan.*` owns compiler memory regions, lifetimes, alias
   groups, and transient arenas; request code must consume the runtime descriptor
   instead of reconstructing this information.
@@ -108,10 +113,11 @@ Build-system notes:
   used by Metal runtime and focused contract tests.
 - `gfx_plugin_metal` / `gfx_runtime_metal` and
   `gfx_plugin_opencl` / `gfx_runtime_opencl` contain backend-specific code.
-- `src/compiler/backend_config.hpp.in` is configured into the build tree with
-  backend availability booleans and the resolved default backend; explicit
-  `GFX_DEFAULT_BACKEND=metal|opencl` requests fail CMake if the requested backend
-  is unavailable.
+- `src/common/backend_config.hpp.in` is configured into the build tree with
+  backend availability booleans and the resolved default backend;
+  `src/compiler/backend_config.hpp.in` includes that common header for existing
+  compiler-path includes. Explicit `GFX_DEFAULT_BACKEND=metal|opencl` requests
+  fail CMake if the requested backend is unavailable.
 - The OpenCL backend dynamically loads the target OpenCL runtime; it does not
   require a compile-time OpenCL SDK link.
 - `src/backends/opencl/runtime/opencl_runtime_bundle.*` owns plugin-local
@@ -151,20 +157,22 @@ Read in this order:
 8. `src/compiler/pipeline_stage_builder.*`
 9. `src/compiler/pipeline_stage_fusion.*`
 10. `src/compiler/pipeline_stage_plan.*`
-11. `src/compiler/memory_plan.*` and `src/compiler/cache_envelope.*`
-12. `src/compiler/tensor_layout.*`
-13. `src/compiler/stage_placement.*` and
+11. `src/compiler/runtime_executable_descriptor_builder.*`
+12. `src/compiler/memory_plan.*` and `src/compiler/cache_envelope.*`
+13. `src/compiler/tensor_layout.*`
+14. `src/compiler/stage_placement.*` and
    `src/compiler/stage_compiler_policy.*`
-14. `src/compiler/stage_policy.*`
-15. `src/runtime/backend_runtime.*` and
+15. `src/compiler/stage_policy.*`
+16. `src/runtime/backend_runtime.*` and
    `src/runtime/backend_runtime_provider.*`
-16. `src/runtime/backend_stage_factory.hpp`
-17. `src/runtime/pipeline_stage_desc.hpp`
-18. `src/runtime/pipeline_stage_materializer.*`
-19. `src/runtime/infer_pipeline.*`, `src/runtime/infer_executor.*`, and
+17. `src/runtime/backend_stage_factory.hpp`
+18. `src/runtime/pipeline_stage_desc.hpp`
+19. `src/runtime/pipeline_stage_plan.hpp`
+20. `src/runtime/pipeline_stage_materializer.*`
+21. `src/runtime/infer_pipeline.*`, `src/runtime/infer_executor.*`, and
    `src/runtime/infer_submission.*`
-20. `src/plugin/compiled_model.cpp`
-21. the backend directory you are changing
+22. `src/plugin/compiled_model.cpp`
+23. the backend directory you are changing
 
 For runtime planning, also inspect:
 
@@ -178,6 +186,7 @@ For runtime planning, also inspect:
 - `src/compiler/pipeline_stage_builder.*`
 - `src/compiler/pipeline_stage_fusion.*`
 - `src/compiler/pipeline_stage_plan.*`
+- `src/compiler/runtime_executable_descriptor_builder.*`
 - `src/compiler/memory_plan.*`
 - `src/compiler/cache_envelope.*`
 - `src/runtime/backend_runtime.*`
@@ -185,6 +194,7 @@ For runtime planning, also inspect:
 - `src/runtime/backend_request_state.hpp`
 - `src/runtime/backend_stage_factory.hpp`
 - `src/runtime/pipeline_stage_desc.hpp`
+- `src/runtime/pipeline_stage_plan.hpp`
 - `src/runtime/pipeline_stage_materializer.*`
 - `src/runtime/runtime_session.*`
 - `src/runtime/infer_pipeline.*`
@@ -261,7 +271,9 @@ For OpenCL source execution, start with:
 3. Add or adjust lowering in the relevant `mlir_builder_*.cpp`, backend
    compiler source-plan helper, or transform.
 4. Decide the shared runtime contract before adding backend code:
-   - compiler manifest/executable descriptor for stage ABI and artifact payloads
+   - compiler manifest/executable bundle for stage ABI and artifact payloads
+   - compiler-owned runtime executable descriptor builder for runtime ABI
+     validation and stage-plan attachment
    - compiler pipeline-stage builder for stage descriptor construction and
      node-to-stage mapping
    - compiler pipeline-stage fusion plan for post-op, residual-add, attention,
@@ -277,6 +289,7 @@ For OpenCL source execution, start with:
    - selected backend compiler policy passed through `GpuStageRuntimeOptions`
      and `compiler::StageCompilerPolicy`
    - runtime session binding tables for request-local resource preparation
+   - runtime pipeline-stage plan for materialization
    - shared stage policy for fusion, precision, and submission
    - kernel manifest for custom-kernel ABI
    - runtime-value payloads for dynamic metadata

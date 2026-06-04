@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "common/gpu_parallelism_profile.hpp"
 #include "common/gpu_stage_submit_policy.hpp"
 #include "common/gfx_activation.hpp"
 #include "runtime/gfx_batchnorm.hpp"
@@ -17,16 +18,10 @@
 namespace ov {
 namespace gfx_plugin {
 
-namespace compiler {
-class StagePlacementPolicy;
-struct PostOpFusionCapabilities;
-} // namespace compiler
-
 struct GpuStageRuntimeOptions {
   bool diagnostic_f32_vendor_image = false;
-  const compiler::StagePlacementPolicy *stage_placement_policy = nullptr;
-  const compiler::PostOpFusionCapabilities *post_op_fusion_capabilities =
-      nullptr;
+  bool source_kernel_dispatch_enabled = false;
+  GpuParallelismProfile source_kernel_fallback_parallelism{};
 };
 
 // Backend-neutral execution stage interface.
@@ -35,7 +30,7 @@ public:
   virtual ~GpuStage() = default;
 
   virtual void init(GpuBufferManager *buffer_manager) = 0;
-  virtual void compile(GpuBufferManager *buffer_manager) = 0;
+  virtual void prepare_runtime_handle(GpuBufferManager *buffer_manager) = 0;
   virtual void execute(GpuCommandBufferHandle command_buffer) = 0;
   virtual void prewarm_runtime_state() {}
 

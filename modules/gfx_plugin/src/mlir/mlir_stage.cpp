@@ -19,7 +19,7 @@
 #include "kernel_ir/gfx_kernel_plan.hpp"
 #include "mlir/codegen_common.hpp"
 #include "mlir/gfx_backend_custom_kernel_adapter.hpp"
-#include "mlir/gfx_kernel_runtime_params.hpp"
+#include "runtime/gfx_kernel_runtime_params.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/mlir_stage_backend_hooks.hpp"
 #include "mlir/gfx_stage_kernel_binding.hpp"
@@ -577,65 +577,6 @@ std::vector<uint8_t> pack_conv2d_weights_oc4(const ov::Tensor &tensor) {
   OPENVINO_THROW("GFX Conv2D weight pack: unsupported element type ", et);
 }
 
-std::optional<RuntimeReduceInfo>
-get_runtime_reduce_info(const std::shared_ptr<const ov::Node> &node) {
-  if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceSum>(node)) {
-    OPENVINO_ASSERT(reduce->reduction_axes_constant(),
-                    "GFX MLIR: ReduceSum axes must be constant");
-    return RuntimeReduceInfo{reduce->get_reduction_axes(),
-                             reduce->get_keep_dims()};
-  }
-  if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceMean>(node)) {
-    OPENVINO_ASSERT(reduce->reduction_axes_constant(),
-                    "GFX MLIR: ReduceMean axes must be constant");
-    return RuntimeReduceInfo{reduce->get_reduction_axes(),
-                             reduce->get_keep_dims()};
-  }
-  if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceMax>(node)) {
-    OPENVINO_ASSERT(reduce->reduction_axes_constant(),
-                    "GFX MLIR: ReduceMax axes must be constant");
-    return RuntimeReduceInfo{reduce->get_reduction_axes(),
-                             reduce->get_keep_dims()};
-  }
-  if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceMin>(node)) {
-    OPENVINO_ASSERT(reduce->reduction_axes_constant(),
-                    "GFX MLIR: ReduceMin axes must be constant");
-    return RuntimeReduceInfo{reduce->get_reduction_axes(),
-                             reduce->get_keep_dims()};
-  }
-  if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceProd>(node)) {
-    OPENVINO_ASSERT(reduce->reduction_axes_constant(),
-                    "GFX MLIR: ReduceProd axes must be constant");
-    return RuntimeReduceInfo{reduce->get_reduction_axes(),
-                             reduce->get_keep_dims()};
-  }
-  if (auto reduce = ov::as_type_ptr<const ov::op::v4::ReduceL1>(node)) {
-    OPENVINO_ASSERT(reduce->reduction_axes_constant(),
-                    "GFX MLIR: ReduceL1 axes must be constant");
-    return RuntimeReduceInfo{reduce->get_reduction_axes(),
-                             reduce->get_keep_dims()};
-  }
-  if (auto reduce = ov::as_type_ptr<const ov::op::v4::ReduceL2>(node)) {
-    OPENVINO_ASSERT(reduce->reduction_axes_constant(),
-                    "GFX MLIR: ReduceL2 axes must be constant");
-    return RuntimeReduceInfo{reduce->get_reduction_axes(),
-                             reduce->get_keep_dims()};
-  }
-  if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceLogicalAnd>(node)) {
-    OPENVINO_ASSERT(reduce->reduction_axes_constant(),
-                    "GFX MLIR: ReduceLogicalAnd axes must be constant");
-    return RuntimeReduceInfo{reduce->get_reduction_axes(),
-                             reduce->get_keep_dims()};
-  }
-  if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceLogicalOr>(node)) {
-    OPENVINO_ASSERT(reduce->reduction_axes_constant(),
-                    "GFX MLIR: ReduceLogicalOr axes must be constant");
-    return RuntimeReduceInfo{reduce->get_reduction_axes(),
-                             reduce->get_keep_dims()};
-  }
-  return std::nullopt;
-}
-
 inline void normalize_operand_segment_sizes(mlir::ModuleOp module) {
   (void)module;
 }
@@ -820,22 +761,23 @@ bool concat_has_runtime_shape(const std::shared_ptr<const ov::Node> &node) {
 
 } // namespace
 
-MlirStage::MlirStage(const std::shared_ptr<const ov::Node> &node)
-    : MlirStage(node, nullptr) {}
-
 MlirStage::MlirStage(const std::shared_ptr<const ov::Node> &node,
                      const RuntimeStageExecutableDescriptor *descriptor)
-    : m_runtime_descriptor(descriptor ? std::make_shared<RuntimeStageExecutableDescriptor>(*descriptor)
-                                      : nullptr),
+    : m_runtime_descriptor(descriptor
+                               ? std::make_shared<
+                                     RuntimeStageExecutableDescriptor>(
+                                     *descriptor)
+                               : nullptr),
       m_node(node),
       m_name(node ? node->get_friendly_name() : std::string("mlir_stage")),
       m_type(node ? node->get_type_name() : std::string("Unknown")) {
+  OPENVINO_ASSERT(descriptor,
+                  "GFX MLIR stage requires a compiler-owned runtime executable "
+                  "descriptor");
   if (node && node->get_output_partial_shape(0).is_static()) {
     m_output_shape = node->get_output_shape(0);
   }
-  m_is_view_op = m_runtime_descriptor
-                     ? m_runtime_descriptor->tensor_view_only
-                     : compiler::select_tensor_layout_plan(m_type, m_node).view_only;
+  m_is_view_op = m_runtime_descriptor->tensor_view_only;
 }
 
 void MlirStage::apply_kernel_metadata(const KernelRuntimeMetadata &meta,
@@ -1279,7 +1221,7 @@ void MlirStage::prepare_constant_input_buffers(bool skip_matmul_weight_const) {
   }
 }
 
-void MlirStage::compile(GpuBufferManager *buffer_manager) {
+void MlirStage::prepare_runtime_handle(GpuBufferManager *buffer_manager) {
   auto &ctx = gfx_mlir_context();
   if (m_is_view_op) {
     return;
@@ -1982,8 +1924,7 @@ void MlirStage::prepare_prewarm_kernel_runtime_state(
 
   if (m_type == "Interpolate") {
     const auto interpolate_plan = plan_interpolate_runtime_values(
-        runtime_inputs, outputs, *m_node, GfxKernelBackendDomain::AppleMsl,
-        m_name);
+        runtime_inputs, outputs, *m_node, m_name);
     assign_runtime_value_outputs(interpolate_plan.values, outputs);
     m_output_shape = interpolate_plan.values.output_shape;
     m_kernel_extra_inputs.clear();
@@ -2002,7 +1943,8 @@ void MlirStage::prepare_prewarm_kernel_runtime_state(
             "Interpolate", "interpolate_kernel",
             {GfxKernelBufferRole::TensorInput,
              GfxKernelBufferRole::RuntimeParams,
-             GfxKernelBufferRole::TensorOutput});
+             GfxKernelBufferRole::TensorOutput},
+            GfxKernelBackendDomain::AppleMsl);
         OPENVINO_ASSERT(
             binding.valid &&
                 annotate_backend_custom_kernel_module_with_binding_plan(
@@ -2710,8 +2652,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
     }
   } else if (m_type == "Interpolate") {
     const auto interpolate_plan = plan_interpolate_runtime_values(
-        runtime_inputs, outputs, *m_node, GfxKernelBackendDomain::AppleMsl,
-        m_name);
+        runtime_inputs, outputs, *m_node, m_name);
     assign_runtime_value_outputs(interpolate_plan.values, outputs);
     m_output_shape = interpolate_plan.values.output_shape;
     m_kernel_extra_inputs.clear();
@@ -2729,7 +2670,8 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
             "Interpolate", "interpolate_kernel",
             {GfxKernelBufferRole::TensorInput,
              GfxKernelBufferRole::RuntimeParams,
-             GfxKernelBufferRole::TensorOutput});
+             GfxKernelBufferRole::TensorOutput},
+            GfxKernelBackendDomain::AppleMsl);
         OPENVINO_ASSERT(
             binding.valid &&
                 annotate_backend_custom_kernel_module_with_binding_plan(module,
@@ -2779,7 +2721,8 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
             m_type, "softmax_kernel",
             {GfxKernelBufferRole::TensorInput,
              GfxKernelBufferRole::TensorOutput,
-             GfxKernelBufferRole::RuntimeParams});
+             GfxKernelBufferRole::RuntimeParams},
+            GfxKernelBackendDomain::AppleMsl);
         OPENVINO_ASSERT(
             binding.valid &&
                 annotate_backend_custom_kernel_module_with_binding_plan(module,
@@ -3081,7 +3024,8 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
            GfxKernelBufferRole::RuntimeParams,
            GfxKernelBufferRole::RuntimeParams,
            GfxKernelBufferRole::RuntimeParams,
-           GfxKernelBufferRole::RuntimeParams});
+           GfxKernelBufferRole::RuntimeParams},
+          GfxKernelBackendDomain::AppleMsl);
       OPENVINO_ASSERT(binding_plan.valid && binding_plan.scalar_arg_count ==
                                                 broadcast_scalars.size(),
                       "GFX MLIR: Broadcast dynamic target-shape binding is "
@@ -3733,8 +3677,10 @@ void MlirStage::set_input_transform(size_t input_idx,
 void MlirStage::set_runtime_options(const GpuStageRuntimeOptions &options) {
   m_runtime_traits.diagnostic_f32_vendor_image =
       options.diagnostic_f32_vendor_image;
-  m_compiler_policy.placement = options.stage_placement_policy;
-  m_compiler_policy.post_ops = options.post_op_fusion_capabilities;
+  m_compiler_policy.source_kernel_dispatch.enabled =
+      options.source_kernel_dispatch_enabled;
+  m_compiler_policy.source_kernel_dispatch.fallback_parallelism =
+      options.source_kernel_fallback_parallelism;
 }
 
 void MlirStage::enable_profiling(bool enable) { m_profiling_enabled = enable; }
@@ -3755,9 +3701,19 @@ void MlirStage::on_command_buffer_complete() {
 }
 
 bool MlirStage::fuse_activation(ActivationKind kind, float alpha) {
-  if (!m_compiler_policy.post_ops ||
-      !m_compiler_policy.post_ops->allow_stage_activation_fusion(m_type, kind) ||
-      !stage_optimization_plan().execution.fusion.allow_activation) {
+  if (m_type != "Convolution" && m_type != "GroupConvolution") {
+    return false;
+  }
+  if (kind != ActivationKind::Relu && kind != ActivationKind::Sigmoid &&
+      kind != ActivationKind::Tanh && kind != ActivationKind::Elu &&
+      kind != ActivationKind::Prelu && kind != ActivationKind::Gelu &&
+      kind != ActivationKind::Swish && kind != ActivationKind::HSwish &&
+      kind != ActivationKind::HSigmoid && kind != ActivationKind::Abs &&
+      kind != ActivationKind::Sign) {
+    return false;
+  }
+  if (!m_node || m_node->get_output_element_type(0).is_integral_number() ||
+      m_node->get_output_element_type(0) == ov::element::boolean) {
     return false;
   }
   OPENVINO_ASSERT(!m_kernel,
@@ -3806,9 +3762,6 @@ bool MlirStage::fuse_residual_add() {
 bool MlirStage::fuse_batchnorm(const BatchNormParams &params) {
   OPENVINO_ASSERT(!m_kernel,
                   "MlirStage: cannot fuse batchnorm after compilation");
-  if (!stage_optimization_plan().execution.fusion.allow_batchnorm) {
-    return false;
-  }
   if (!m_node) {
     return false;
   }
@@ -3836,10 +3789,10 @@ bool MlirStage::fuse_batchnorm(const BatchNormParams &params) {
 }
 
 bool MlirStage::fuse_bias(const BiasParams &params) {
-  if (!stage_optimization_plan().execution.fusion.allow_bias) {
+  OPENVINO_ASSERT(!m_kernel, "MlirStage: cannot fuse bias after compilation");
+  if (m_type != "Convolution" && m_type != "GroupConvolution") {
     return false;
   }
-  OPENVINO_ASSERT(!m_kernel, "MlirStage: cannot fuse bias after compilation");
   if (params.empty()) {
     return false;
   }

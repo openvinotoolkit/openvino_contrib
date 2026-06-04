@@ -2508,7 +2508,7 @@ TEST(GfxStagePolicyTest,
 TEST(GfxStagePolicyTest,
      CustomKernelStagePlanClassifiesConv2DKernelAsCustomConvolution) {
   const auto plan =
-      make_gfx_custom_kernel_stage_plan("Convolution", "conv2d_kernel");
+      make_gfx_custom_kernel_stage_plan("Convolution", "conv2d_kernel", GfxKernelBackendDomain::AppleMsl);
 
   ASSERT_TRUE(plan.valid);
   EXPECT_EQ(plan.family, GfxKernelFamily::Conv2DDirect);
@@ -2536,7 +2536,7 @@ TEST(GfxStagePolicyTest,
 TEST(GfxStagePolicyTest,
      CustomKernelStagePlanClassifiesMatMulKernelAsCustomGemm) {
   const auto plan =
-      make_gfx_custom_kernel_stage_plan("MatMul", "matmul_kernel");
+      make_gfx_custom_kernel_stage_plan("MatMul", "matmul_kernel", GfxKernelBackendDomain::AppleMsl);
 
   ASSERT_TRUE(plan.valid);
   EXPECT_EQ(plan.family, GfxKernelFamily::MatMulBuffer);
@@ -2560,8 +2560,7 @@ TEST(GfxStagePolicyTest,
 
 TEST(GfxStagePolicyTest,
      CustomKernelStagePlanClassifiesCompressedMatMulWithExplicitConstRoles) {
-  const auto plan = make_gfx_custom_kernel_stage_plan(
-      "CompressedMatMul", "compressed_matmul_kernel");
+  const auto plan = make_gfx_custom_kernel_stage_plan("CompressedMatMul", "compressed_matmul_kernel", GfxKernelBackendDomain::AppleMsl);
 
   ASSERT_TRUE(plan.valid);
   EXPECT_EQ(plan.family, GfxKernelFamily::MatMulBuffer);
@@ -2587,8 +2586,7 @@ TEST(GfxStagePolicyTest,
 
 TEST(GfxStagePolicyTest,
      CustomKernelStagePlanClassifiesSdpaKernelsWithRuntimeParamsTail) {
-  const auto sdpa_plan = make_gfx_custom_kernel_stage_plan(
-      "ScaledDotProductAttention", "sdpa_kernel");
+  const auto sdpa_plan = make_gfx_custom_kernel_stage_plan("ScaledDotProductAttention", "sdpa_kernel", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(sdpa_plan.valid);
   EXPECT_EQ(sdpa_plan.family, GfxKernelFamily::MaskedSoftmaxAttention);
   ASSERT_TRUE(sdpa_plan.stage_manifest.custom_kernel.external_buffer_abi.valid);
@@ -2610,8 +2608,7 @@ TEST(GfxStagePolicyTest,
   EXPECT_EQ(sdpa_binding.runtime_binding.operand_arg_indices,
             std::vector<int32_t>({0, 1, 2, 3, 4, 5}));
 
-  const auto sdpa_nomask_plan = make_gfx_custom_kernel_stage_plan(
-      "ScaledDotProductAttention", "sdpa_nomask_kernel");
+  const auto sdpa_nomask_plan = make_gfx_custom_kernel_stage_plan("ScaledDotProductAttention", "sdpa_nomask_kernel", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(sdpa_nomask_plan.valid);
   EXPECT_EQ(sdpa_nomask_plan.family, GfxKernelFamily::MaskedSoftmaxAttention);
   ASSERT_TRUE(
@@ -2633,8 +2630,7 @@ TEST(GfxStagePolicyTest,
   EXPECT_EQ(sdpa_nomask_binding.runtime_binding.operand_arg_indices,
             std::vector<int32_t>({0, 1, 2, 3, 4}));
 
-  const auto causal_plan = make_gfx_custom_kernel_stage_plan(
-      "GfxSDPAWithCausalMask", "sdpa_causal_mask_kernel");
+  const auto causal_plan = make_gfx_custom_kernel_stage_plan("GfxSDPAWithCausalMask", "sdpa_causal_mask_kernel", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(causal_plan.valid);
   ASSERT_TRUE(
       causal_plan.stage_manifest.custom_kernel.external_buffer_abi.valid);
@@ -2659,7 +2655,7 @@ TEST(GfxStagePolicyTest,
 TEST(GfxStagePolicyTest,
      BackendCustomKernelBindingPlanPreservesOutputBeforeRuntimeParamsOrder) {
   const auto gather_plan =
-      make_gfx_custom_kernel_stage_plan("Gather", "gather_kernel");
+      make_gfx_custom_kernel_stage_plan("Gather", "gather_kernel", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(gather_plan.valid);
   ASSERT_TRUE(
       gather_plan.stage_manifest.custom_kernel.external_buffer_abi.valid);
@@ -2681,8 +2677,7 @@ TEST(GfxStagePolicyTest,
   EXPECT_EQ(gather_binding.runtime_binding.operand_arg_indices,
             std::vector<int32_t>({0, 1, 3, 2}));
 
-  const auto gather_elements_binding = make_backend_custom_kernel_binding_plan(
-      "GatherElements", "gather_elements_kernel");
+  const auto gather_elements_binding = make_backend_custom_kernel_binding_plan(GfxKernelBackendDomain::AppleMsl, "GatherElements", "gather_elements_kernel");
   ASSERT_TRUE(gather_elements_binding.valid);
   EXPECT_EQ(gather_elements_binding.runtime_binding.inputs,
             std::vector<size_t>({0, 1}));
@@ -2693,7 +2688,8 @@ TEST(GfxStagePolicyTest,
             std::vector<int32_t>({0, 1, 3, 2}));
 
   const auto tile_binding =
-      make_backend_custom_kernel_binding_plan("Tile", "tile_kernel", {16, 4});
+      make_backend_custom_kernel_binding_plan(GfxKernelBackendDomain::AppleMsl,
+                                              "Tile", "tile_kernel", {16, 4});
   ASSERT_TRUE(tile_binding.valid);
   EXPECT_EQ(tile_binding.runtime_binding.inputs, std::vector<size_t>({0}));
   EXPECT_EQ(tile_binding.runtime_binding.input_arg_count, 5u);
@@ -2706,7 +2702,7 @@ TEST(GfxStagePolicyTest,
             std::vector<int32_t>({0, 5, -1, -1, 1, 2, 3, 4}));
 
   const auto softmax_binding =
-      make_backend_custom_kernel_binding_plan("Softmax", "softmax_kernel");
+      make_backend_custom_kernel_binding_plan(GfxKernelBackendDomain::AppleMsl, "Softmax", "softmax_kernel");
   ASSERT_TRUE(softmax_binding.valid);
   EXPECT_EQ(softmax_binding.runtime_binding.inputs, std::vector<size_t>({0}));
   EXPECT_EQ(softmax_binding.runtime_binding.input_arg_count, 2u);
@@ -2721,8 +2717,7 @@ TEST(GfxStagePolicyTest,
                                         GfxKernelBufferRole::TensorOutput,
                                         GfxKernelBufferRole::RuntimeParams}));
 
-  const auto split_binding = make_backend_custom_kernel_direct_io_binding_plan(
-      "VariadicSplit", "split_kernel", 1, 3);
+  const auto split_binding = make_backend_custom_kernel_direct_io_binding_plan("VariadicSplit", "split_kernel", 1, 3, GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(split_binding.valid);
   EXPECT_EQ(split_binding.runtime_binding.inputs, std::vector<size_t>({0}));
   EXPECT_EQ(split_binding.runtime_binding.input_arg_count, 1u);
@@ -2758,6 +2753,13 @@ TEST(GfxStagePolicyTest,
   EXPECT_EQ(split_source_plan.source.signature.output_arg_count, 3u);
   EXPECT_EQ(split_source_plan.binding.runtime_binding.operand_arg_indices,
             std::vector<int32_t>({0, 1, 2, 3}));
+  EXPECT_NE(split_source_plan.source.msl_source.find("constant uint DISPATCH_SPAN"),
+            std::string::npos);
+  EXPECT_NE(split_source_plan.source.msl_source.find(
+                "for (uint linear = gid; linear < total; linear += DISPATCH_SPAN)"),
+            std::string::npos);
+  EXPECT_NE(split_source_plan.source.msl_source.find("input[linear]"),
+            std::string::npos);
 
   mlir::MLIRContext split_ctx;
   auto split_module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&split_ctx));
@@ -2824,7 +2826,7 @@ TEST(GfxStagePolicyTest,
   EXPECT_NE(concat_msl.find("dst [[buffer(30)]]"), std::string::npos);
 
   const auto select_binding = make_backend_custom_kernel_binding_plan(
-      "Select", "select_kernel", {16, 4});
+      GfxKernelBackendDomain::AppleMsl, "Select", "select_kernel", {16, 4});
   ASSERT_TRUE(select_binding.valid);
   EXPECT_EQ(select_binding.runtime_binding.inputs,
             std::vector<size_t>({0, 1, 2}));
@@ -2838,7 +2840,7 @@ TEST(GfxStagePolicyTest,
             std::vector<int32_t>({0, 1, 2, 7, -1, -1, 3, 4, 5, 6}));
 
   const auto rms_binding =
-      make_backend_custom_kernel_binding_plan("RMS", "rms_kernel");
+      make_backend_custom_kernel_binding_plan(GfxKernelBackendDomain::AppleMsl, "RMS", "rms_kernel");
   ASSERT_TRUE(rms_binding.valid);
   EXPECT_EQ(rms_binding.runtime_binding.inputs, std::vector<size_t>({0, 1}));
   EXPECT_EQ(rms_binding.runtime_binding.input_arg_count, 2u);
@@ -2846,7 +2848,7 @@ TEST(GfxStagePolicyTest,
             std::vector<int32_t>({0, 1, 2}));
 
   const auto rms_residual_binding =
-      make_backend_custom_kernel_binding_plan("RMSResidual", "rms_kernel");
+      make_backend_custom_kernel_binding_plan(GfxKernelBackendDomain::AppleMsl, "RMSResidual", "rms_kernel");
   ASSERT_TRUE(rms_residual_binding.valid);
   EXPECT_EQ(rms_residual_binding.runtime_binding.inputs,
             std::vector<size_t>({0, 1, 2}));
@@ -2855,7 +2857,7 @@ TEST(GfxStagePolicyTest,
             std::vector<int32_t>({0, 1, 2, 3}));
 
   const auto rope_binding =
-      make_backend_custom_kernel_binding_plan("RoPE", "rope_kernel");
+      make_backend_custom_kernel_binding_plan(GfxKernelBackendDomain::AppleMsl, "RoPE", "rope_kernel");
   ASSERT_TRUE(rope_binding.valid);
   EXPECT_EQ(rope_binding.runtime_binding.inputs,
             std::vector<size_t>({0, 1, 2}));
@@ -2863,8 +2865,7 @@ TEST(GfxStagePolicyTest,
   EXPECT_EQ(rope_binding.runtime_binding.operand_arg_indices,
             std::vector<int32_t>({0, 1, 2, 3}));
 
-  const auto rope_pos_binding = make_backend_custom_kernel_binding_plan(
-      "RoPEWithPosition", "rope_kernel");
+  const auto rope_pos_binding = make_backend_custom_kernel_binding_plan(GfxKernelBackendDomain::AppleMsl, "RoPEWithPosition", "rope_kernel");
   ASSERT_TRUE(rope_pos_binding.valid);
   EXPECT_EQ(rope_pos_binding.runtime_binding.inputs,
             std::vector<size_t>({0, 1, 2, 3}));
@@ -2876,7 +2877,7 @@ TEST(GfxStagePolicyTest,
 TEST(GfxStagePolicyTest,
      CustomKernelStagePlanCoversExistingUnaryAndBinaryMslOps) {
   const auto elu_plan =
-      make_gfx_custom_kernel_stage_plan("Elu", "unary_kernel");
+      make_gfx_custom_kernel_stage_plan("Elu", "unary_kernel", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(elu_plan.valid);
   EXPECT_EQ(elu_plan.family, GfxKernelFamily::EltwiseFusedBuffer);
   EXPECT_EQ(elu_plan.stage_manifest.custom_kernel.entry_point,
@@ -2891,7 +2892,7 @@ TEST(GfxStagePolicyTest,
                                         GfxKernelBufferRole::ScalarParam}));
 
   const auto sqdiff_plan =
-      make_gfx_custom_kernel_stage_plan("SquaredDifference", "eltwise_kernel");
+      make_gfx_custom_kernel_stage_plan("SquaredDifference", "eltwise_kernel", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(sqdiff_plan.valid);
   EXPECT_EQ(sqdiff_plan.family, GfxKernelFamily::EltwiseFusedBuffer);
   EXPECT_EQ(sqdiff_plan.stage_manifest.custom_kernel.entry_point,
@@ -2908,7 +2909,7 @@ TEST(GfxStagePolicyTest,
            GfxKernelBufferRole::RuntimeParams}));
 
   const auto reduce_plan =
-      make_gfx_custom_kernel_stage_plan("ReduceMean", "reduce_kernel");
+      make_gfx_custom_kernel_stage_plan("ReduceMean", "reduce_kernel", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(reduce_plan.valid);
   EXPECT_EQ(reduce_plan.family, GfxKernelFamily::ReductionBuffer);
   EXPECT_EQ(reduce_plan.stage_manifest.custom_kernel.entry_point,
@@ -2948,7 +2949,7 @@ TEST(GfxStagePolicyTest,
   }
 
   const auto softmax_plan =
-      make_gfx_custom_kernel_stage_plan("Softmax", "softmax_kernel");
+      make_gfx_custom_kernel_stage_plan("Softmax", "softmax_kernel", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(softmax_plan.valid);
   EXPECT_EQ(softmax_plan.family, GfxKernelFamily::SoftmaxBuffer);
   ASSERT_TRUE(softmax_plan.stage_manifest.valid);
@@ -2977,7 +2978,7 @@ TEST(GfxStagePolicyTest,
            GfxKernelBufferRole::RuntimeParams}));
 
   const auto topk_plan =
-      make_gfx_custom_kernel_stage_plan("TopK", "topk_kernel");
+      make_gfx_custom_kernel_stage_plan("TopK", "topk_kernel", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(topk_plan.valid);
   EXPECT_EQ(topk_plan.family, GfxKernelFamily::GatherScatterIndexed);
   ASSERT_TRUE(topk_plan.stage_manifest.custom_kernel.external_buffer_abi.valid);
@@ -2988,7 +2989,7 @@ TEST(GfxStagePolicyTest,
                                         GfxKernelBufferRole::TensorOutput}));
 
   const auto gather_plan =
-      make_gfx_custom_kernel_stage_plan("Gather", "gather_kernel");
+      make_gfx_custom_kernel_stage_plan("Gather", "gather_kernel", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(gather_plan.valid);
   EXPECT_EQ(gather_plan.family, GfxKernelFamily::GatherScatterIndexed);
   ASSERT_TRUE(
@@ -3001,7 +3002,7 @@ TEST(GfxStagePolicyTest,
                                         GfxKernelBufferRole::RuntimeParams}));
 
   const auto slice_plan =
-      make_gfx_custom_kernel_stage_plan("Slice", "slice_kernel");
+      make_gfx_custom_kernel_stage_plan("Slice", "slice_kernel", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(slice_plan.valid);
   EXPECT_EQ(slice_plan.family, GfxKernelFamily::GatherScatterIndexed);
   ASSERT_TRUE(
@@ -3025,7 +3026,7 @@ TEST(GfxStagePolicyTest,
   }
 
   const auto shapeof_plan =
-      make_gfx_custom_kernel_stage_plan("ShapeOf", "shapeof_kernel");
+      make_gfx_custom_kernel_stage_plan("ShapeOf", "shapeof_kernel", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(shapeof_plan.valid);
   EXPECT_EQ(shapeof_plan.family, GfxKernelFamily::GatherScatterIndexed);
   EXPECT_EQ(
@@ -3036,7 +3037,7 @@ TEST(GfxStagePolicyTest,
                                         GfxKernelBufferRole::RuntimeParams}));
 
   const auto concat_plan =
-      make_gfx_custom_kernel_stage_plan("Concat", "concat_kernel");
+      make_gfx_custom_kernel_stage_plan("Concat", "concat_kernel", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(concat_plan.valid);
   EXPECT_EQ(concat_plan.family, GfxKernelFamily::ConcatSplitGeneric);
   EXPECT_EQ(
@@ -3046,7 +3047,7 @@ TEST(GfxStagePolicyTest,
                                         GfxKernelBufferRole::RuntimeParams}));
 
   const auto concat_binary_plan =
-      make_gfx_custom_kernel_stage_plan("Concat", "concat_binary_kernel");
+      make_gfx_custom_kernel_stage_plan("Concat", "concat_binary_kernel", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(concat_binary_plan.valid);
   EXPECT_EQ(
       concat_binary_plan.stage_manifest.custom_kernel.external_buffer_abi.roles,
@@ -3056,7 +3057,7 @@ TEST(GfxStagePolicyTest,
                                         GfxKernelBufferRole::RuntimeParams}));
 
   const auto transpose_plan =
-      make_gfx_custom_kernel_stage_plan("Transpose", "transpose_kernel");
+      make_gfx_custom_kernel_stage_plan("Transpose", "transpose_kernel", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(transpose_plan.valid);
   EXPECT_EQ(transpose_plan.family, GfxKernelFamily::TransposePackND);
   EXPECT_EQ(
@@ -3070,7 +3071,7 @@ TEST(GfxStagePolicyTest,
                                         GfxKernelBufferRole::RuntimeParams}));
 
   const auto tile_plan =
-      make_gfx_custom_kernel_stage_plan("Tile", "tile_kernel");
+      make_gfx_custom_kernel_stage_plan("Tile", "tile_kernel", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(tile_plan.valid);
   EXPECT_EQ(tile_plan.family, GfxKernelFamily::GatherScatterIndexed);
   ASSERT_EQ(
@@ -3094,7 +3095,7 @@ TEST(GfxStagePolicyTest,
   }
 
   const auto broadcast_plan =
-      make_gfx_custom_kernel_stage_plan("Broadcast", "broadcast_kernel");
+      make_gfx_custom_kernel_stage_plan("Broadcast", "broadcast_kernel", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(broadcast_plan.valid);
   EXPECT_EQ(broadcast_plan.family, GfxKernelFamily::EltwiseFusedBuffer);
   ASSERT_EQ(broadcast_plan.stage_manifest.custom_kernel.external_buffer_abi
@@ -3117,7 +3118,7 @@ TEST(GfxStagePolicyTest,
       GfxKernelBufferRole::ScalarParam);
 
   const auto select_plan =
-      make_gfx_custom_kernel_stage_plan("Select", "select_kernel");
+      make_gfx_custom_kernel_stage_plan("Select", "select_kernel", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(select_plan.valid);
   EXPECT_EQ(select_plan.family, GfxKernelFamily::EltwiseFusedBuffer);
   EXPECT_EQ(
@@ -3131,7 +3132,7 @@ TEST(GfxStagePolicyTest,
       10u);
 
   const auto range_plan =
-      make_gfx_custom_kernel_stage_plan("Range", "range_kernel");
+      make_gfx_custom_kernel_stage_plan("Range", "range_kernel", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(range_plan.valid);
   EXPECT_EQ(range_plan.family, GfxKernelFamily::GatherScatterIndexed);
   EXPECT_EQ(
@@ -3155,8 +3156,7 @@ TEST(GfxStagePolicyTest,
   EXPECT_EQ(range_binding.runtime_binding.operand_arg_indices,
             std::vector<int32_t>({0, 1, 2, 3, -1}));
 
-  const auto scatter_init_plan = make_gfx_custom_kernel_stage_plan(
-      "ScatterElementsUpdate", "scatter_elements_init");
+  const auto scatter_init_plan = make_gfx_custom_kernel_stage_plan("ScatterElementsUpdate", "scatter_elements_init", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(scatter_init_plan.valid);
   EXPECT_EQ(
       scatter_init_plan.stage_manifest.custom_kernel.external_buffer_abi.roles,
@@ -3164,8 +3164,7 @@ TEST(GfxStagePolicyTest,
                                         GfxKernelBufferRole::TensorOutput,
                                         GfxKernelBufferRole::RuntimeParams}));
 
-  const auto scatter_elements_update_plan = make_gfx_custom_kernel_stage_plan(
-      "ScatterElementsUpdate", "scatter_elements_update");
+  const auto scatter_elements_update_plan = make_gfx_custom_kernel_stage_plan("ScatterElementsUpdate", "scatter_elements_update", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(scatter_elements_update_plan.valid);
   EXPECT_EQ(
       scatter_elements_update_plan.stage_manifest.custom_kernel
@@ -3176,7 +3175,7 @@ TEST(GfxStagePolicyTest,
            GfxKernelBufferRole::RuntimeParams}));
 
   const auto scatter_nd_update_plan =
-      make_gfx_custom_kernel_stage_plan("ScatterNDUpdate", "scatter_nd_update");
+      make_gfx_custom_kernel_stage_plan("ScatterNDUpdate", "scatter_nd_update", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(scatter_nd_update_plan.valid);
   EXPECT_EQ(
       scatter_nd_update_plan.stage_manifest.custom_kernel.external_buffer_abi
@@ -3186,8 +3185,7 @@ TEST(GfxStagePolicyTest,
            GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
            GfxKernelBufferRole::RuntimeParams}));
 
-  const auto scatter_update_plan = make_gfx_custom_kernel_stage_plan(
-      "ScatterUpdate", "scatter_update_kernel");
+  const auto scatter_update_plan = make_gfx_custom_kernel_stage_plan("ScatterUpdate", "scatter_update_kernel", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(scatter_update_plan.valid);
   EXPECT_EQ(
       scatter_update_plan.stage_manifest.custom_kernel.external_buffer_abi
@@ -3198,7 +3196,7 @@ TEST(GfxStagePolicyTest,
            GfxKernelBufferRole::RuntimeParams}));
 
   const auto pool_plan =
-      make_gfx_custom_kernel_stage_plan("MaxPool", "pool2d_kernel");
+      make_gfx_custom_kernel_stage_plan("MaxPool", "pool2d_kernel", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(pool_plan.valid);
   EXPECT_EQ(pool_plan.family, GfxKernelFamily::Pool2DWindow);
   EXPECT_EQ(pool_plan.stage_manifest.stage_family,
@@ -3209,8 +3207,7 @@ TEST(GfxStagePolicyTest,
                                         GfxKernelBufferRole::RuntimeParams,
                                         GfxKernelBufferRole::TensorOutput}));
 
-  const auto batchnorm_plan = make_gfx_custom_kernel_stage_plan(
-      "BatchNormInference", "batchnorm2d_kernel");
+  const auto batchnorm_plan = make_gfx_custom_kernel_stage_plan("BatchNormInference", "batchnorm2d_kernel", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(batchnorm_plan.valid);
   EXPECT_EQ(batchnorm_plan.family, GfxKernelFamily::BatchNormBuffer);
   EXPECT_EQ(batchnorm_plan.stage_manifest.stage_family,
@@ -3223,7 +3220,7 @@ TEST(GfxStagePolicyTest,
                                         GfxKernelBufferRole::RuntimeParams}));
 
   const auto conv3d_plan =
-      make_gfx_custom_kernel_stage_plan("Convolution", "conv3d_kernel");
+      make_gfx_custom_kernel_stage_plan("Convolution", "conv3d_kernel", GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(conv3d_plan.valid);
   EXPECT_EQ(conv3d_plan.family, GfxKernelFamily::Conv3DDirect);
   EXPECT_EQ(conv3d_plan.stage_manifest.custom_kernel.entry_point,
@@ -3408,7 +3405,8 @@ TEST(GfxStagePolicyTest,
   epilogue_stage.kernel_name = "eltwise_fused_buffer";
   const auto epilogue_binding = make_backend_custom_kernel_roles_binding_plan(
       "MatMulEpilogue", "eltwise_fused_buffer",
-      {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput});
+      {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput},
+      GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(epilogue_binding.valid);
   ASSERT_TRUE(epilogue_binding.stage_manifest.valid);
   epilogue_stage.stage_manifest = epilogue_binding.stage_manifest;

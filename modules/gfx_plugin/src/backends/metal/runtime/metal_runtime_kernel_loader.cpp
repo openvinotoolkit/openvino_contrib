@@ -18,9 +18,9 @@ bool is_metal_source_domain(std::string_view domain) noexcept {
     return domain == "metal" || domain == "apple_msl";
 }
 
-bool is_source_origin(compiler::KernelArtifactOrigin origin) noexcept {
-    return origin == compiler::KernelArtifactOrigin::Generated ||
-           origin == compiler::KernelArtifactOrigin::HandwrittenException;
+bool is_source_origin(KernelArtifactOrigin origin) noexcept {
+    return origin == KernelArtifactOrigin::Generated ||
+           origin == KernelArtifactOrigin::HandwrittenException;
 }
 
 uint32_t descriptor_output_arg_count(
@@ -36,8 +36,7 @@ uint32_t descriptor_arg_count(
 void verify_msl_source_descriptor(
     const RuntimeStageExecutableDescriptor& descriptor,
     const GfxKernelSourcePayload& payload) {
-    OPENVINO_ASSERT(descriptor.payload_kind ==
-                        compiler::KernelArtifactPayloadKind::MslSource,
+    OPENVINO_ASSERT(descriptor.payload_kind == KernelArtifactPayloadKind::MslSource,
                     "GFX Metal: runtime descriptor payload is not MSL source");
     OPENVINO_ASSERT(is_metal_source_domain(descriptor.backend_domain),
                     "GFX Metal: MSL descriptor backend domain drift: ",
@@ -55,8 +54,7 @@ void verify_msl_source_descriptor(
                         GfxKernelSourceLanguage::MetalShadingLanguage,
                     "GFX Metal: runtime loader received non-MSL source "
                     "payload");
-    OPENVINO_ASSERT(payload.payload_kind() ==
-                        compiler::KernelArtifactPayloadKind::MslSource,
+    OPENVINO_ASSERT(payload.payload_kind() == KernelArtifactPayloadKind::MslSource,
                     "GFX Metal: payload kind drift for MSL descriptor");
     OPENVINO_ASSERT(payload.backend_domain() == descriptor.backend_domain,
                     "GFX Metal: payload backend domain drift for ",
@@ -78,7 +76,7 @@ void verify_msl_source_descriptor(
 
 bool MetalRuntimeKernelLoader::has_msl_source_payload(
     const RuntimeStageExecutableDescriptor& descriptor) noexcept {
-    return descriptor.payload_kind == compiler::KernelArtifactPayloadKind::MslSource &&
+    return descriptor.payload_kind == KernelArtifactPayloadKind::MslSource &&
            static_cast<bool>(descriptor.payload);
 }
 

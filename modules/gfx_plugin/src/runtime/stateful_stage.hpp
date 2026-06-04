@@ -20,7 +20,7 @@ public:
     explicit StatefulAssignStage(std::string name);
 
     void init(GpuBufferManager* buffer_manager) override;
-    void compile(GpuBufferManager* buffer_manager) override;
+    void prepare_runtime_handle(GpuBufferManager* buffer_manager) override;
     void execute(GpuCommandBufferHandle command_buffer) override;
 
     void set_inputs(const std::vector<GpuTensor*>& inputs) override;

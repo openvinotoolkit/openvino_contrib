@@ -19,7 +19,7 @@ public:
 
     void init(GpuBufferManager* /*buffer_manager*/) override {}
 
-    void compile(GpuBufferManager* /*buffer_manager*/) override {}
+    void prepare_runtime_handle(GpuBufferManager* /*buffer_manager*/) override {}
 
     void execute(GpuCommandBufferHandle /*command_buffer*/) override {}
 
@@ -56,7 +56,7 @@ StatefulAssignStage::StatefulAssignStage(std::string name)
 
 void StatefulAssignStage::init(GpuBufferManager* /*buffer_manager*/) {}
 
-void StatefulAssignStage::compile(GpuBufferManager* /*buffer_manager*/) {}
+void StatefulAssignStage::prepare_runtime_handle(GpuBufferManager* /*buffer_manager*/) {}
 
 void StatefulAssignStage::execute(GpuCommandBufferHandle /*command_buffer*/) {}
 

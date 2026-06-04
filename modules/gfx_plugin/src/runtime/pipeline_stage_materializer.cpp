@@ -19,49 +19,13 @@ namespace gfx_plugin {
 namespace {
 
 void apply_pipeline_stage_io_plan(PipelineStageDesc &stage_desc,
-                                  compiler::PipelineStageIoPlan stage_plan) {
-  static_cast<compiler::PipelineStageIoPlan &>(stage_desc) =
-      std::move(stage_plan);
-}
-
-RuntimeStageExecutableDescriptor make_vendor_attention_stage_descriptor(
-    const RuntimeStageExecutableDescriptor &base_descriptor,
-    const compiler::KernelArtifactDescriptor &artifact,
-    std::shared_ptr<const compiler::KernelArtifactPayload> payload) {
-  RuntimeStageExecutableDescriptor descriptor = base_descriptor;
-  descriptor.manifest_ref = artifact.manifest_ref;
-  descriptor.abi_fingerprint = artifact.abi_fingerprint;
-  descriptor.artifact_key = artifact.artifact_key;
-  descriptor.backend_domain = artifact.kernel.backend_domain;
-  descriptor.kernel_id = artifact.kernel.kernel_id;
-  descriptor.op_family = artifact.kernel.op_family;
-  descriptor.origin = artifact.kernel.origin;
-  descriptor.payload_kind = artifact.payload_kind;
-  descriptor.entry_point = artifact.entry_point;
-  descriptor.compile_options_key = artifact.compile_options_key;
-  descriptor.abi_arg_count = artifact.abi_arg_count;
-  descriptor.abi_output_arg_count = artifact.abi_output_arg_count;
-  descriptor.dispatch_contract = artifact.kernel.dispatch_contract;
-  descriptor.layout_contract = artifact.kernel.layout_contract;
-  descriptor.runtime_shape_rule = artifact.kernel.runtime_shape_rule;
-  descriptor.requires_runtime_shape_args =
-      artifact.kernel.requires_runtime_shape_args;
-  descriptor.tensor_view_only = false;
-  descriptor.tensor_roles = artifact.kernel.tensor_roles;
-  descriptor.scalar_roles = artifact.kernel.scalar_roles;
-  descriptor.exception_ticket.clear();
-  descriptor.exception_reason.clear();
-  descriptor.exception_removal_condition.clear();
-  descriptor.optional_cache_payload_allowed =
-      artifact.optional_cache_payload_allowed;
-  descriptor.payload = std::move(payload);
-  return descriptor;
+                                  PipelineStageIoPlan stage_plan) {
+  static_cast<PipelineStageIoPlan &>(stage_desc) = std::move(stage_plan);
 }
 
 void apply_input_transform_plan(
     GpuStage &stage,
-    const std::vector<compiler::PipelineStageInputTransformBinding>
-        &input_transforms) {
+    const std::vector<PipelineStageInputTransformBinding> &input_transforms) {
   for (const auto &binding : input_transforms) {
     GfxInputTransform transform;
     transform.source_shape = binding.transform.source_shape;
@@ -71,8 +35,7 @@ void apply_input_transform_plan(
 }
 
 void apply_single_stage_fusion_plan(
-    GpuStage &stage,
-    const compiler::PipelineStageMaterializationPlan &plan) {
+    GpuStage &stage, const PipelineStageMaterializationPlan &plan) {
   apply_input_transform_plan(stage, plan.input_transforms);
 
   if (plan.residual_add) {
@@ -122,27 +85,27 @@ void apply_single_stage_fusion_plan(
   }
 }
 
-FusedInputKind to_runtime_fused_input_kind(
-    compiler::PipelineFusedInputPlan::Kind kind) {
+FusedInputKind
+to_runtime_fused_input_kind(PipelineFusedInputPlan::Kind kind) {
   switch (kind) {
-  case compiler::PipelineFusedInputPlan::Kind::External:
+  case PipelineFusedInputPlan::Kind::External:
     return FusedInputKind::External;
-  case compiler::PipelineFusedInputPlan::Kind::Output:
+  case PipelineFusedInputPlan::Kind::Output:
     return FusedInputKind::Output;
-  case compiler::PipelineFusedInputPlan::Kind::None:
+  case PipelineFusedInputPlan::Kind::None:
   default:
     return FusedInputKind::None;
   }
 }
 
 FusedOutputLifetimeInputRef::Kind to_lifetime_fused_input_kind(
-    compiler::PipelineFusedInputPlan::Kind kind) {
+    PipelineFusedInputPlan::Kind kind) {
   switch (kind) {
-  case compiler::PipelineFusedInputPlan::Kind::External:
+  case PipelineFusedInputPlan::Kind::External:
     return FusedOutputLifetimeInputRef::Kind::External;
-  case compiler::PipelineFusedInputPlan::Kind::Output:
+  case PipelineFusedInputPlan::Kind::Output:
     return FusedOutputLifetimeInputRef::Kind::Output;
-  case compiler::PipelineFusedInputPlan::Kind::None:
+  case PipelineFusedInputPlan::Kind::None:
   default:
     return FusedOutputLifetimeInputRef::Kind::None;
   }
@@ -205,27 +168,6 @@ size_t PipelineStageMaterializer::stage_index_for(
   return descriptor->stage_index;
 }
 
-compiler::PipelineStageFusionContract
-PipelineStageMaterializer::fusion_contract_for(
-    const std::shared_ptr<const ov::Node> &node) const {
-  const auto *descriptor = descriptor_for(node);
-  OPENVINO_ASSERT(descriptor,
-                  "GFX: missing compiler-owned runtime executable descriptor "
-                  "for fusion contract of op ",
-                  node ? node->get_friendly_name() : std::string("<null>"),
-                  " (", node ? node->get_type_name() : "<null>", ")");
-  compiler::PipelineStageFusionContract contract;
-  contract.op_family = !descriptor->op_family.empty()
-                           ? descriptor->op_family
-                           : (node ? node->get_type_name() : std::string{});
-  contract.origin = descriptor->origin;
-  contract.payload_kind = descriptor->payload_kind;
-  if (node && node->get_output_size() > 0) {
-    contract.element_type = node->get_output_element_type(0);
-  }
-  return contract;
-}
-
 std::unique_ptr<GpuStage> PipelineStageMaterializer::create_stage(
     const std::shared_ptr<const ov::Node> &node) const {
   const auto *descriptor = descriptor_for(node);
@@ -241,8 +183,7 @@ std::unique_ptr<GpuStage> PipelineStageMaterializer::create_stage(
 
 std::unique_ptr<GpuStage>
 PipelineStageMaterializer::create_vendor_attention_stage(
-    const compiler::PipelineVendorAttentionPlan &plan,
-    const compiler::PipelineVendorAttentionArtifact &artifact,
+    const PipelineVendorAttentionStagePlan &plan,
     const std::shared_ptr<const ov::Node> &final_node) const {
   const auto *base_descriptor = descriptor_for(final_node);
   OPENVINO_ASSERT(base_descriptor,
@@ -250,17 +191,14 @@ PipelineStageMaterializer::create_vendor_attention_stage(
                   "for vendor attention output op ",
                   final_node ? final_node->get_friendly_name()
                              : std::string("<null>"));
-  OPENVINO_ASSERT(artifact.valid(),
-                  "GFX: compiler did not provide a valid vendor attention "
-                  "artifact for ",
+  OPENVINO_ASSERT(plan.valid(),
+                  "GFX: compiler did not provide a valid runtime vendor "
+                  "attention stage plan for ",
                   plan.name);
   OPENVINO_ASSERT(
-      artifact.descriptor.stage_record_key == base_descriptor->stage_record_key,
+      plan.descriptor.stage_record_key == base_descriptor->stage_record_key,
       "GFX: vendor attention artifact stage key drift for ", plan.name);
-  RuntimeStageExecutableDescriptor descriptor =
-      make_vendor_attention_stage_descriptor(*base_descriptor,
-                                             artifact.descriptor,
-                                             artifact.payload);
+  RuntimeStageExecutableDescriptor descriptor = plan.descriptor;
 
   auto stage = m_stage_factory.create_stage(final_node, &descriptor);
   configure_stage(stage);
@@ -269,10 +207,10 @@ PipelineStageMaterializer::create_vendor_attention_stage(
 
 std::optional<MaterializedFusedSequenceStage>
 PipelineStageMaterializer::create_attention_sequence_stage(
-    const compiler::PipelineStageMaterializationPlan &plan,
+    const PipelineStageMaterializationPlan &plan,
     const std::vector<std::shared_ptr<ov::Node>> &ordered_ops) const {
-  const auto &group = plan.fusion_group;
-  const size_t stage_count = group.node_indices.size();
+  const auto &node_indices = plan.fused_node_indices;
+  const size_t stage_count = node_indices.size();
   if (stage_count < 3 || plan.fused_inner_stages.size() != stage_count) {
     return std::nullopt;
   }
@@ -283,7 +221,7 @@ PipelineStageMaterializer::create_attention_sequence_stage(
   fused_lifetime_stages.reserve(stage_count);
 
   for (size_t i = 0; i < stage_count; ++i) {
-    const size_t idx = group.node_indices[i];
+    const size_t idx = node_indices[i];
     if (idx >= ordered_ops.size()) {
       return std::nullopt;
     }
@@ -347,22 +285,22 @@ std::vector<PipelineStageDesc> materialize_pipeline_stage_descriptors(
                   "GFX: pipeline materializer requires backend stage factory");
   OPENVINO_ASSERT(request.runtime_descriptor,
                   "GFX: pipeline materializer requires runtime descriptor");
-  OPENVINO_ASSERT(request.build_result,
-                  "GFX: pipeline materializer requires compiler stage plan");
+  OPENVINO_ASSERT(request.runtime_plan,
+                  "GFX: pipeline materializer requires runtime stage plan");
 
   PipelineStageMaterializer materializer(
-      *request.stage_factory, request.build_result->ordered_ops,
+      *request.stage_factory, request.runtime_plan->ordered_ops,
       *request.runtime_descriptor, request.runtime_options);
 
   std::vector<PipelineStageDesc> pipeline;
-  pipeline.reserve(request.build_result->stage_plans.size());
-  for (const auto &stage_plan : request.build_result->stage_plans) {
+  pipeline.reserve(request.runtime_plan->stage_plans.size());
+  for (const auto &stage_plan : request.runtime_plan->stage_plans) {
     PipelineStageDesc stage_desc;
     apply_pipeline_stage_io_plan(stage_desc, stage_plan.io_plan);
 
     uint64_t materialized_stage_count = 1;
     switch (stage_plan.kind) {
-    case compiler::PipelineStageMaterializationKind::SingleStage:
+    case PipelineStageMaterializationKind::SingleStage:
       stage_desc.stage = materializer.create_stage(stage_plan.io_plan.node);
       OPENVINO_ASSERT(stage_desc.stage,
                       "GFX: unsupported op in MLIR pipeline: ",
@@ -376,15 +314,14 @@ std::vector<PipelineStageDesc> materialize_pipeline_stage_descriptors(
                       ")");
       apply_single_stage_fusion_plan(*stage_desc.stage, stage_plan);
       break;
-    case compiler::PipelineStageMaterializationKind::VendorAttention:
+    case PipelineStageMaterializationKind::VendorAttention:
       stage_desc.stage = materializer.create_vendor_attention_stage(
-          stage_plan.vendor_attention, stage_plan.vendor_attention_artifact,
-          stage_plan.io_plan.node);
+          stage_plan.vendor_attention, stage_plan.io_plan.node);
       break;
-    case compiler::PipelineStageMaterializationKind::FusedAttentionSequence: {
+    case PipelineStageMaterializationKind::FusedAttentionSequence: {
       auto materialized =
           materializer.create_attention_sequence_stage(
-              stage_plan, request.build_result->ordered_ops);
+              stage_plan, request.runtime_plan->ordered_ops);
       OPENVINO_ASSERT(materialized,
                       "GFX: failed to materialize compiler-owned fused "
                       "attention sequence plan");

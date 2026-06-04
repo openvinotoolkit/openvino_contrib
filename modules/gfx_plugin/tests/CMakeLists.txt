@@ -59,6 +59,8 @@ set(GFX_GTEST_SOURCE_CONTRACT_TOOL
     "${CMAKE_CURRENT_SOURCE_DIR}/tools/gfx_gtest_source_contract.py")
 set(GFX_GTEST_MATRIX_TOOL
     "${CMAKE_CURRENT_SOURCE_DIR}/tools/gfx_gtest_matrix.py")
+set(GFX_GTEST_MATRIX_REFERENCE_ROOTS "" CACHE STRING
+    "Semicolon-separated LABEL=DIR roots with captured GFX gtest matrices to compare against this build")
 
 function(gfx_assert_gtest_source_contract label native_sources_var adapter_sources_var)
     set(_gfx_native_sources ${${native_sources_var}})
@@ -155,7 +157,7 @@ set(GFX_TEST_LINK_LIBS
     gtest_main
     gtest
     gfx_runtime_common
-    gfx_runtime_mlir
+    gfx_mlir_stage_support
     gfx_compiler_common)
 
 set(GFX_UNIT_TEST_LINK_LIBS
@@ -167,7 +169,7 @@ set(GFX_UNIT_TEST_LINK_LIBS
     gtest
     common_test_utils
     gfx_runtime_common
-    gfx_runtime_mlir
+    gfx_mlir_stage_support
     gfx_compiler_common
     gfx_metal_mpsrt_contract
     gfx_mlir
@@ -410,6 +412,20 @@ set(GFX_GTEST_MATRIX_CAPTURE_ARGS
         "${UNIT_TARGET_NAME}::$<TARGET_FILE:${UNIT_TARGET_NAME}>::${GFX_GTEST_MATRIX_OUTPUT_DIR}/${UNIT_TARGET_NAME}.txt"
     "--capture"
         "${RUNTIME_MICRO_TARGET_NAME}::$<TARGET_FILE:${RUNTIME_MICRO_TARGET_NAME}>::${GFX_GTEST_MATRIX_OUTPUT_DIR}/${RUNTIME_MICRO_TARGET_NAME}.txt")
+set(GFX_GTEST_MATRIX_TARGETS
+    ${TARGET_NAME}
+    ${UNIT_TARGET_NAME}
+    ${RUNTIME_MICRO_TARGET_NAME})
+set(GFX_GTEST_MATRIX_COMPARE_TARGET_ARGS)
+foreach(_gfx_gtest_matrix_target IN LISTS GFX_GTEST_MATRIX_TARGETS)
+    list(APPEND GFX_GTEST_MATRIX_COMPARE_TARGET_ARGS
+        --target "${_gfx_gtest_matrix_target}")
+endforeach()
+set(GFX_GTEST_MATRIX_REFERENCE_ARGS)
+foreach(_gfx_gtest_matrix_root IN LISTS GFX_GTEST_MATRIX_REFERENCE_ROOTS)
+    list(APPEND GFX_GTEST_MATRIX_REFERENCE_ARGS
+        --root "${_gfx_gtest_matrix_root}")
+endforeach()
 
 set(GFX_GTEST_MATRIX_CAPTURE_ON_HOST TRUE)
 if(CMAKE_CROSSCOMPILING AND NOT CMAKE_CROSSCOMPILING_EMULATOR)
@@ -442,6 +458,33 @@ if(GFX_GTEST_MATRIX_CAPTURE_ON_HOST)
     set_tests_properties(ov_gfx_gtest_matrix_capture PROPERTIES
         LABELS "OV;GFX"
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+
+    if(GFX_GTEST_MATRIX_REFERENCE_ARGS)
+        add_custom_target(gfx_gtest_matrix_compare
+            COMMAND "${CMAKE_COMMAND}" -E env ${GFX_TEST_RUNTIME_ENVIRONMENT}
+                "${Python3_EXECUTABLE}"
+                "${GFX_GTEST_MATRIX_TOOL}"
+                --root "current=${GFX_GTEST_MATRIX_OUTPUT_DIR}"
+                ${GFX_GTEST_MATRIX_REFERENCE_ARGS}
+                ${GFX_GTEST_MATRIX_COMPARE_TARGET_ARGS}
+            DEPENDS gfx_gtest_matrix_capture
+            WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+            COMMENT "Compare GFX production --gtest_list_tests registrations across captured targets"
+            VERBATIM)
+
+        add_test(
+            NAME ov_gfx_gtest_matrix_compare
+            COMMAND "${CMAKE_COMMAND}" -E env ${GFX_TEST_RUNTIME_ENVIRONMENT}
+                "${Python3_EXECUTABLE}"
+                "${GFX_GTEST_MATRIX_TOOL}"
+                --root "current=${GFX_GTEST_MATRIX_OUTPUT_DIR}"
+                ${GFX_GTEST_MATRIX_REFERENCE_ARGS}
+                ${GFX_GTEST_MATRIX_COMPARE_TARGET_ARGS})
+        set_tests_properties(ov_gfx_gtest_matrix_compare PROPERTIES
+            LABELS "OV;GFX"
+            WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+            DEPENDS ov_gfx_gtest_matrix_capture)
+    endif()
 endif()
 
 add_executable(ov_gfx_compare_runner

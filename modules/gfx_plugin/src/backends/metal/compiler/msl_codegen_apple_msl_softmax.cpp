@@ -199,7 +199,8 @@ make_softmax_msl_kernel_source_plan(const std::shared_ptr<const ov::Node> &node,
                                          static_cast<int32_t>(dims.inner)};
 
   auto binding = make_backend_custom_kernel_binding_plan(
-      node->get_type_name(), descriptor->entry_point, scalar_args);
+      node->get_type_name(), descriptor->entry_point, scalar_args,
+      GfxKernelBackendDomain::AppleMsl);
   if (!binding.valid) {
     return {};
   }
@@ -244,7 +245,8 @@ make_softmax_runtime_params_msl_kernel_source_plan(
   auto binding = make_backend_custom_kernel_roles_binding_plan(
       node->get_type_name(), "softmax_kernel",
       {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
-       GfxKernelBufferRole::RuntimeParams});
+       GfxKernelBufferRole::RuntimeParams},
+      GfxKernelBackendDomain::AppleMsl);
   if (!binding.valid) {
     return {};
   }

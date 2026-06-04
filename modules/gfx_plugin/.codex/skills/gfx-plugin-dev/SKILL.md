@@ -34,7 +34,10 @@ Then inspect the relevant code path:
 - stage compiler policy: `src/compiler/stage_compiler_policy.*`
 - pipeline-stage descriptor builder: `src/compiler/pipeline_stage_builder.*`
 - pipeline-stage fusion selection: `src/compiler/pipeline_stage_fusion.*`
-- pipeline-stage I/O contracts: `src/compiler/pipeline_stage_plan.*`
+- compiler-side pipeline-stage I/O contracts:
+  `src/compiler/pipeline_stage_plan.*`
+- runtime executable descriptor builder:
+  `src/compiler/runtime_executable_descriptor_builder.*`
 - memory/cache compiler contracts: `src/compiler/memory_plan.*` and
   `src/compiler/cache_envelope.*`
 - tensor-layout contracts: `src/compiler/tensor_layout.*`
@@ -45,7 +48,8 @@ Then inspect the relevant code path:
   `src/runtime/backend_request_state.hpp`
 - backend stage factory and pipeline materialization:
   `src/runtime/backend_stage_factory.hpp`,
-  `src/runtime/pipeline_stage_desc.hpp`, and
+  `src/runtime/pipeline_stage_desc.hpp`,
+  `src/runtime/pipeline_stage_plan.hpp`, and
   `src/runtime/pipeline_stage_materializer.*`
 - kernel manifests and source artifacts: `src/kernel_ir/`
 - MLIR builders and backend hooks: `src/mlir/`
@@ -59,10 +63,11 @@ Then inspect the relevant code path:
 - Treat module docs as the public source of truth.
 - Keep shared behavior in `src/plugin/`, `src/runtime/`, `src/kernel_ir/`, or
   `src/mlir/` unless the code is truly backend-specific.
-- Keep backend target, operation support, lowering plans, pipeline-stage I/O
-  plans, pipeline-stage builders, fusion selection, manifests, executable
-  bundles, tensor-layout plans, stage-placement value objects, and artifact
-  descriptors in `src/compiler/`.
+- Keep backend target, operation support, lowering plans, compiler-side
+  pipeline-stage I/O plans, pipeline-stage builders, fusion selection,
+  manifests, executable bundles, runtime executable descriptor
+  build/verification, tensor-layout plans, stage-placement value objects, and
+  artifact descriptors in `src/compiler/`.
 - Keep descriptor-backed stage creation, `PipelineStageDesc`, vendor attention
   artifact materialization, and fused attention sequence materialization in
   `src/runtime/backend_stage_factory.hpp`,
@@ -74,8 +79,9 @@ Then inspect the relevant code path:
 - Keep fused-output lifetime and alias-storage planning in
   `src/runtime/fused_output_lifetime_plan.*`; do not reintroduce runtime-stage
   type-name checks for view or lifetime classification.
-- Keep configured backend availability in `src/compiler/backend_config.hpp.in`;
-  the default `BackendRegistry` contains only backend modules available in the
+- Keep configured backend availability in `src/common/backend_config.hpp.in`;
+  `src/compiler/backend_config.hpp.in` is only the compiler-path include. The
+  default `BackendRegistry` contains only backend modules available in the
   configured build.
 - Keep Metal-specific code under `src/backends/metal/` and OpenCL-specific code
   under `src/backends/opencl/`.
@@ -115,10 +121,12 @@ For Metal placement, MPSRT, or MSL source changes, keep these aligned:
 - `src/compiler/pipeline_stage_builder.*`
 - `src/compiler/pipeline_stage_fusion.*`
 - `src/compiler/pipeline_stage_plan.*`
+- `src/compiler/runtime_executable_descriptor_builder.*`
 - `src/compiler/memory_plan.*`
 - `src/runtime/fused_output_lifetime_plan.*`
 - `src/runtime/backend_stage_factory.hpp`
 - `src/runtime/pipeline_stage_desc.hpp`
+- `src/runtime/pipeline_stage_plan.hpp`
 - `src/runtime/pipeline_stage_materializer.*`
 - `src/runtime/runtime_session.*`
 - `src/backends/metal/compiler/`

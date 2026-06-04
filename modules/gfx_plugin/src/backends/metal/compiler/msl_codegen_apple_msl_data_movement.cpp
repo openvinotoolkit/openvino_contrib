@@ -46,7 +46,8 @@ std::optional<KernelSource> make_apple_metal_data_movement_kernel_source(
     const auto binding = make_backend_custom_kernel_roles_binding_plan(
         "Interpolate", "interpolate_kernel",
         {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::RuntimeParams,
-         GfxKernelBufferRole::TensorOutput});
+         GfxKernelBufferRole::TensorOutput},
+        GfxKernelBackendDomain::AppleMsl);
     OPENVINO_ASSERT(binding.valid &&
                         configure_backend_custom_kernel_source_from_binding_plan(
                             source, binding),

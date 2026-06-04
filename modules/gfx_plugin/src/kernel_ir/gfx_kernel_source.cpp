@@ -25,15 +25,15 @@ std::string_view gfx_kernel_source_language_name(GfxKernelSourceLanguage languag
     return "unknown";
 }
 
-compiler::KernelArtifactPayloadKind gfx_kernel_source_payload_kind(
+KernelArtifactPayloadKind gfx_kernel_source_payload_kind(
     GfxKernelSourceLanguage language) noexcept {
     switch (language) {
     case GfxKernelSourceLanguage::OpenCL:
-        return compiler::KernelArtifactPayloadKind::OpenClSource;
+        return KernelArtifactPayloadKind::OpenClSource;
     case GfxKernelSourceLanguage::MetalShadingLanguage:
-        return compiler::KernelArtifactPayloadKind::MslSource;
+        return KernelArtifactPayloadKind::MslSource;
     }
-    return compiler::KernelArtifactPayloadKind::None;
+    return KernelArtifactPayloadKind::None;
 }
 
 bool gfx_kernel_source_valid(const GfxKernelSource& source) noexcept {
@@ -42,7 +42,7 @@ bool gfx_kernel_source_valid(const GfxKernelSource& source) noexcept {
            source.entry_point && source.entry_point[0] != '\0' &&
            source.source && source.source[0] != '\0' &&
            gfx_kernel_source_payload_kind(source.source_language) !=
-               compiler::KernelArtifactPayloadKind::None;
+               KernelArtifactPayloadKind::None;
 }
 
 GfxKernelSourcePayload::GfxKernelSourcePayload(GfxKernelSource source)
@@ -64,7 +64,39 @@ GfxKernelSourcePayload::GfxKernelSourcePayload(std::string kernel_id,
     m_source.source = m_owned_source.c_str();
 }
 
-compiler::KernelArtifactPayloadKind GfxKernelSourcePayload::payload_kind() const noexcept {
+GfxKernelSourcePayload::GfxKernelSourcePayload(
+    std::string kernel_id,
+    std::string backend_domain,
+    std::string entry_point,
+    GfxKernelSourceLanguage source_language,
+    std::string source,
+    GfxKernelStageManifest stage_manifest)
+    : GfxKernelSourcePayload(std::move(kernel_id),
+                             std::move(backend_domain),
+                             std::move(entry_point),
+                             source_language,
+                             std::move(source)) {
+    m_stage_manifest = std::move(stage_manifest);
+}
+
+GfxKernelSourcePayload::GfxKernelSourcePayload(
+    std::string kernel_id,
+    std::string backend_domain,
+    std::string entry_point,
+    GfxKernelSourceLanguage source_language,
+    std::string source,
+    GfxKernelStageManifest stage_manifest,
+    GfxKernelSourceRuntimeBinding runtime_binding)
+    : GfxKernelSourcePayload(std::move(kernel_id),
+                             std::move(backend_domain),
+                             std::move(entry_point),
+                             source_language,
+                             std::move(source),
+                             std::move(stage_manifest)) {
+    m_runtime_binding = std::move(runtime_binding);
+}
+
+KernelArtifactPayloadKind GfxKernelSourcePayload::payload_kind() const noexcept {
     return gfx_kernel_source_payload_kind(m_source.source_language);
 }
 

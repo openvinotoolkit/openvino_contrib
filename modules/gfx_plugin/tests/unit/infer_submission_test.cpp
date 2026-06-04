@@ -22,7 +22,7 @@ public:
         : m_policy(policy), m_type(std::move(type)) {}
 
     void init(GpuBufferManager*) override {}
-    void compile(GpuBufferManager*) override {}
+    void prepare_runtime_handle(GpuBufferManager*) override {}
 
     void execute(GpuCommandBufferHandle) override {
         ++execute_count;

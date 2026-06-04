@@ -11,10 +11,15 @@
 #include <vector>
 
 #include "compiler/manifest.hpp"
+#include "common/artifact_payload.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 namespace compiler {
+
+using ::ov::gfx_plugin::KernelArtifactOrigin;
+using ::ov::gfx_plugin::KernelArtifactPayload;
+using ::ov::gfx_plugin::KernelArtifactPayloadKind;
 
 struct PipelineVendorAttentionPlan;
 
@@ -24,33 +29,6 @@ struct ExecutableStageRecord {
   std::string kernel_unit_kind;
   LoweringRouteKind execution_kind = LoweringRouteKind::Unsupported;
   size_t artifact_descriptor_index = 0;
-};
-
-enum class KernelArtifactOrigin {
-  Unknown,
-  Common,
-  Metadata,
-  VendorPrimitive,
-  Generated,
-  HandwrittenException,
-};
-
-enum class KernelArtifactPayloadKind {
-  None,
-  VendorDescriptor,
-  MslSource,
-  OpenClSource,
-};
-
-class KernelArtifactPayload {
-public:
-  virtual ~KernelArtifactPayload() = default;
-
-  virtual KernelArtifactPayloadKind payload_kind() const noexcept = 0;
-  virtual std::string_view backend_domain() const noexcept = 0;
-  virtual std::string_view source_id() const noexcept = 0;
-  virtual std::string_view entry_point() const noexcept = 0;
-  virtual bool valid() const noexcept = 0;
 };
 
 struct KernelDescriptor {

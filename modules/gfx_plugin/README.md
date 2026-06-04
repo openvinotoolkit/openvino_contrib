@@ -45,28 +45,31 @@ Read these files first:
 ## Source Layout
 
 - `include/openvino/gfx_plugin/`: public plugin headers and property names
-- `src/common/`: backend ids, activation/bias metadata, dispatch and
+- `src/common/`: backend ids, configured-backend availability values,
+  artifact-payload interfaces, activation/bias metadata, dispatch and
   parallelism value types, submit-policy records, constant-evaluation helpers,
   and device-family/profile value types shared by compiler, runtime, and
   backend code
 - `src/compiler/`: backend target registry, backend capability records,
   operation support policies, backend stage-placement contracts, tensor-layout
   classification, stage compiler policy, lowering-plan construction,
-  pipeline-stage descriptor building, fusion selection, pipeline-stage I/O
-  planning, memory planning, manifest/cache-envelope building,
-  executable-bundle assembly, backend-module construction, and artifact payload
-  routing used by query and compilation
+  pipeline-stage descriptor building, fusion selection, compiler-side
+  pipeline-stage I/O planning, memory planning, manifest/cache-envelope
+  building, executable-bundle assembly, runtime executable descriptor
+  build/verification, backend-module construction, and artifact payload routing
+  used by query and compilation
 - `src/plugin/`: OpenVINO-facing `Plugin`, `CompiledModel`, infer-request
   API glue, properties, model serialization, backend selection, backend-access
   helpers, and variable-state OpenVINO API objects
 - `src/runtime/`: backend-neutral stage interfaces, submission planning,
-  profiling report assembly, runtime executable descriptors, runtime sessions,
-  backend runtime/provider interfaces, backend request state, backend stage
-  factory interfaces, infer pipeline/executor/submission helpers, stateful
-  runtime helpers, pipeline-stage materialization, fused-output lifetime
-  planning, liveness-aware output workspaces, remote context/tensor helpers,
-  descriptor-backed view-only stages, runtime-value planning, and target
-  profiles
+  profiling report assembly, runtime executable descriptor records, runtime
+  pipeline-stage plans, runtime sessions, backend runtime/provider interfaces,
+  backend request state, backend stage factory interfaces, infer
+  pipeline/executor/submission helpers, stateful runtime helpers,
+  pipeline-stage materialization, fused-output lifetime planning,
+  liveness-aware output workspaces, remote context/tensor helpers,
+  descriptor-backed view-only stages, runtime-value and kernel-launch planning,
+  and target profiles
 - `src/kernel_ir/`: backend-neutral kernel manifests, custom-kernel family
   metadata, cache keys, dispatch descriptions, embedded Metal/OpenCL helper
   sources, and OpenCL source artifacts
@@ -108,14 +111,18 @@ The high-level path is:
    checks, lowering-plan creation, memory-plan creation, manifest building,
    executable-bundle assembly, cache-envelope construction, and artifact payload
    materialization.
-4. `CompiledModel` validates the executable bundle and builds a
-   `RuntimeExecutableDescriptor` that is passed into backend stage creation.
-5. `CompiledModel::build_op_pipeline()` delegates stage descriptor construction
-   to `src/compiler/pipeline_stage_builder.*`. The builder uses
+4. `CompiledModel` asks
+   `src/compiler/runtime_executable_descriptor_builder.*` to build and verify a
+   `RuntimeExecutableDescriptor` from the compiler executable bundle. The
+   descriptor also carries the runtime `PipelineStageRuntimePlan` used for
+   stage materialization.
+5. `CompiledModel::build_op_pipeline()` consumes the descriptor-owned runtime
+   plan and delegates concrete stage materialization to
+   `src/runtime/pipeline_stage_materializer.*`. The compiler stage builder uses
    `src/compiler/pipeline_stage_plan.*` for model-output flags, input links,
    and output aliases, `src/compiler/pipeline_stage_fusion.*` for fusion
-   selection, and `src/runtime/pipeline_stage_materializer.*` for
-   descriptor-backed stage materialization.
+   selection, and emits runtime-facing plans in
+   `src/runtime/pipeline_stage_plan.hpp`.
 6. Pipeline records are `PipelineStageDesc` values from
    `src/runtime/pipeline_stage_desc.hpp`. Fused output lifetimes are derived
    from runtime memory contracts in
@@ -378,9 +385,10 @@ parity, duplicate registrations, and forbidden `DISABLED_` registrations.
 4. Choose the shared runtime contract first: stage policy, kernel manifest,
    compiler tensor-layout plan, compiler pipeline-stage builder/fusion plan,
    compiler pipeline-stage I/O plan, runtime stage materializer, compiler
-   memory plan, fused-output lifetime plan, runtime executable descriptor,
-   runtime-value payloads, OpenCL artifact metadata, or Metal MPSRT/Apple MSL
-   source planning under the backend compiler directory.
+   memory plan, fused-output lifetime plan, compiler-owned runtime executable
+   descriptor builder, runtime stage plan, runtime-value payloads, OpenCL
+   artifact metadata, or Metal MPSRT/Apple MSL source planning under the
+   backend compiler directory.
 5. Add backend-specific code only under `src/backends/metal/` or
    `src/backends/opencl/` when the shared path cannot express the behavior.
 6. Add focused unit tests first, then backend or functional coverage when the

@@ -82,6 +82,10 @@ GfxKernelRuntimeBindingPlan make_backend_custom_kernel_binding_plan(
     std::string_view stage_type, std::string_view entry_point,
     GfxKernelBackendDomain backend_domain, GfxKernelStorageKind storage,
     std::string_view specialization_prefix) {
+  if (specialization_prefix.empty()) {
+    specialization_prefix =
+        backend_custom_kernel_specialization_prefix(backend_domain, storage);
+  }
   const auto custom_kernel_plan = make_gfx_custom_kernel_stage_plan(
       stage_type, entry_point, backend_domain, storage, specialization_prefix);
   if (!custom_kernel_plan.valid) {
@@ -138,6 +142,10 @@ GfxKernelRuntimeBindingPlan make_backend_custom_kernel_direct_io_binding_plan(
     size_t tensor_input_count, size_t output_count,
     GfxKernelBackendDomain backend_domain, GfxKernelStorageKind storage,
     std::string_view specialization_prefix) {
+  if (specialization_prefix.empty()) {
+    specialization_prefix =
+        backend_custom_kernel_specialization_prefix(backend_domain, storage);
+  }
   if (tensor_input_count == 0 || output_count == 0) {
     return {};
   }
@@ -167,6 +175,10 @@ GfxKernelRuntimeBindingPlan make_backend_custom_kernel_roles_binding_plan(
     std::vector<GfxKernelBufferRole> roles,
     GfxKernelBackendDomain backend_domain, GfxKernelStorageKind storage,
     std::string_view specialization_prefix) {
+  if (specialization_prefix.empty()) {
+    specialization_prefix =
+        backend_custom_kernel_specialization_prefix(backend_domain, storage);
+  }
   if (roles.empty()) {
     return {};
   }
@@ -197,17 +209,13 @@ make_backend_custom_kernel_binding_plan_from_module_or_request(
     auto plan =
         make_backend_custom_kernel_binding_plan_from_stage_manifest(manifest);
     if (plan.valid) {
-      const bool can_override_manifest =
-          manifest.backend_domain != GfxKernelBackendDomain::AppleMsl;
       const bool requested_entry =
           !entry_point.empty() &&
           manifest.custom_kernel.entry_point != entry_point;
       const bool requested_scalars =
           !scalar_args.empty() && plan.scalar_arg_count != scalar_args.size();
-      if (requested_scalars || (can_override_manifest && requested_entry)) {
-        return make_backend_custom_kernel_binding_plan(
-            stage_type, entry_point, std::move(scalar_args), backend_domain,
-            storage, specialization_prefix);
+      if (requested_scalars || requested_entry) {
+        return {};
       }
       if (plan.scalar_arg_count == 0 || !scalar_args.empty()) {
         if (plan.scalar_arg_count != scalar_args.size()) {
@@ -221,6 +229,10 @@ make_backend_custom_kernel_binding_plan_from_module_or_request(
     }
   }
 
+  if (specialization_prefix.empty()) {
+    specialization_prefix =
+        backend_custom_kernel_specialization_prefix(backend_domain, storage);
+  }
   if (scalar_args.empty()) {
     return make_backend_custom_kernel_binding_plan(stage_type, entry_point,
                                                    backend_domain, storage,
@@ -235,11 +247,17 @@ GfxKernelRuntimeBindingPlan make_backend_custom_kernel_source_binding_plan(
     const KernelSource &source, GfxKernelBackendDomain backend_domain,
     std::string_view stage_type, std::string_view entry_point,
     std::vector<int32_t> scalar_args) {
+  GfxKernelStageManifest existing_manifest{};
+  const bool has_compiler_owned_manifest =
+      read_backend_custom_kernel_stage_manifest_from_module(
+          source.module, backend_domain, existing_manifest);
   const std::string resolved_entry =
       entry_point.empty() ? source.entry_point : std::string(entry_point);
   constexpr auto storage = GfxKernelStorageKind::Buffer;
   return make_backend_custom_kernel_binding_plan_from_module_or_request(
-      source.module, stage_type, resolved_entry, std::move(scalar_args),
+      source.module, stage_type,
+      has_compiler_owned_manifest ? std::string_view{} : resolved_entry,
+      std::move(scalar_args),
       backend_domain, storage,
       backend_custom_kernel_specialization_prefix(backend_domain, storage));
 }

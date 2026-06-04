@@ -10,9 +10,9 @@
 #include <string_view>
 #include <vector>
 
-#include "compiler/executable_bundle.hpp"
 #include "kernel_ir/gfx_kernel_manifest.hpp"
 #include "openvino/core/node.hpp"
+#include "common/artifact_payload.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -184,11 +184,11 @@ struct GfxOpenClSourceArtifact {
 };
 
 class GfxOpenClSourceArtifactPayload final
-    : public compiler::KernelArtifactPayload {
+    : public KernelArtifactPayload {
 public:
   explicit GfxOpenClSourceArtifactPayload(GfxOpenClSourceArtifact artifact);
 
-  compiler::KernelArtifactPayloadKind payload_kind() const noexcept override;
+  KernelArtifactPayloadKind payload_kind() const noexcept override;
   std::string_view backend_domain() const noexcept override;
   std::string_view source_id() const noexcept override;
   std::string_view entry_point() const noexcept override;

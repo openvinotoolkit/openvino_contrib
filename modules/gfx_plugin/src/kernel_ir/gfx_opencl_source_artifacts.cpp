@@ -5976,9 +5976,9 @@ GfxOpenClSourceArtifactPayload::GfxOpenClSourceArtifactPayload(
     GfxOpenClSourceArtifact artifact)
     : m_artifact(std::move(artifact)) {}
 
-compiler::KernelArtifactPayloadKind
+KernelArtifactPayloadKind
 GfxOpenClSourceArtifactPayload::payload_kind() const noexcept {
-  return compiler::KernelArtifactPayloadKind::OpenClSource;
+  return KernelArtifactPayloadKind::OpenClSource;
 }
 
 std::string_view
