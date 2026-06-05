@@ -150,6 +150,9 @@ public:
      */
     template <typename TNode>
     static std::size_t GetTensorByteSize(const TNode& node) {
+        if (node.get_partial_shape().is_dynamic()) {
+            return 0;
+        }
         return node.get_element_type().size() * std::max(std::size_t(1), shape_size(node.get_shape()));
     }
 
