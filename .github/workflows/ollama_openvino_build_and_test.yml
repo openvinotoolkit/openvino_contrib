@@ -4,12 +4,20 @@
 name: ollama_openvino_build_and_test
 
 on:
-  workflow_call:
+  pull_request:
+    paths:
+      - 'modules/ollama_openvino/**'
+      - '.github/workflows/ollama_openvino_build_and_test'
 
 permissions: read-all
 
 jobs:
+  copyright:
+    name: Copyright
+    uses: ./.github/workflows/copyright.yml
+
   test_ubuntu22:
+    needs: copyright
     runs-on: ubuntu-22.04
     steps:
       - name: Download repo

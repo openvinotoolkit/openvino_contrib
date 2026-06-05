@@ -4,12 +4,20 @@
 name: llama_cpp_plugin_build_and_test
 
 on:
-  workflow_call:
+  pull_request:
+    paths:
+      - 'modules/llama_cpp_plugin/**'
+      - '.github/workflows/llama_cpp_plugin_build_and_test.yml'
 
 permissions: read-all
 
 jobs:
+  copyright:
+    name: Copyright
+    uses: ./.github/workflows/copyright.yml
+
   build_ubuntu20:
+    needs: copyright
     runs-on: ubuntu-20.04-8-cores
     steps:
       - name: Setup cmake

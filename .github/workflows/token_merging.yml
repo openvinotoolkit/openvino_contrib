@@ -4,7 +4,16 @@
 name: Token Merging - Test
 
 on:
-  workflow_call:
+  push:
+    branches:
+      - master
+    paths:
+      - 'modules/token_merging/**'
+  pull_request:
+    branches:
+      - master
+    paths:
+      - 'modules/token_merging/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -13,7 +22,12 @@ concurrency:
 permissions: read-all
 
 jobs:
+  copyright:
+    name: Copyright
+    uses: ./.github/workflows/copyright.yml
+
   Precommit:
+    needs: copyright
     strategy:
       fail-fast: false
       matrix:

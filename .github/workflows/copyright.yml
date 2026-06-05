@@ -5,6 +5,12 @@ name: Copyright
 
 on:
   workflow_call:
+  pull_request:
+  push:
+    branches:
+      - master
+      - 'releases/**'
+  workflow_dispatch:
 
 permissions: read-all
 
