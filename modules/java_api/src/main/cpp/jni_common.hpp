@@ -215,7 +215,7 @@ static jobject vectorToJavaList(JNIEnv *env, std::vector<std::string> items)
 
         for (const auto& item : items) {
             jstring string = env->NewStringUTF(item.c_str());
-            env->CallBooleanMethod(arrayObj, arrayAdd, string);
+            env->CallObjectMethod(arrayObj, arrayAdd, string);
         }
 
         return arrayObj;

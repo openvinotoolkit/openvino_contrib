@@ -41,7 +41,7 @@ JNIEXPORT jobject JNICALL Java_org_intel_openvino_CompiledModel_GetInputs(JNIEnv
             *input = item;
 
             jobject inputObj = env->NewObject(outputClass, outputConstructor, (jlong)(input));
-            env->CallBooleanMethod(arrayObj, arrayAdd, inputObj);
+            env->CallObjectMethod(arrayObj, arrayAdd, inputObj);
         }
 
         return arrayObj;
@@ -68,7 +68,7 @@ JNIEXPORT jobject JNICALL Java_org_intel_openvino_CompiledModel_GetOutputs(JNIEn
             *output = item;
 
             jobject outputObj = env->NewObject(outputClass, outputConstructor, (jlong)(output));
-            env->CallBooleanMethod(arrayObj, arrayAdd, outputObj);
+            env->CallObjectMethod(arrayObj, arrayAdd, outputObj);
         }
 
         return arrayObj;
