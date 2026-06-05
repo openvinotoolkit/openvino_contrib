@@ -1,6 +1,5 @@
 """
-mAP @ IoU[0.50:0.95] evaluation (COCO-style)
-Shared between run_inference_custom.py and infer_ism_ov.py
+Utilites for mAP @ IoU[0.50:0.95] evaluation
 """
 
 import os
@@ -10,26 +9,33 @@ import numpy as np
 
 def _mask_iou(mask_a: np.ndarray, mask_b: np.ndarray) -> float:
     """Compute IoU between two binary masks."""
+
     intersection = np.logical_and(mask_a, mask_b).sum()
     union = np.logical_or(mask_a, mask_b).sum()
+
     return float(intersection / union) if union > 0 else 0.0
 
 
 def _compute_ap_101(recall: np.ndarray, precision: np.ndarray) -> float:
     """COCO-style 101-point interpolation AP."""
+
     if len(recall) == 0:
         return 0.0
+
     mrec = np.concatenate(([0.0], recall, [1.0]))
     mpre = np.concatenate(([0.0], precision, [0.0]))
+
     for i in range(len(mpre) - 2, -1, -1):
         mpre[i] = max(mpre[i], mpre[i + 1])
+
     recall_interp = np.linspace(0, 1, 101)
     precision_interp = np.interp(recall_interp, mrec, mpre)
+
     return float(np.mean(precision_interp))
 
 
 def compute_map_iou(pred_masks, pred_scores, gt_masks, iou_thresholds=None):
-    """Compute COCO-style mAP @ IoU[0.50:0.95] for one image.
+    """Compute VOC-style mAP @ IoU[0.50:0.95] for one image.
 
     Parameters
     ----------
@@ -42,23 +48,30 @@ def compute_map_iou(pred_masks, pred_scores, gt_masks, iou_thresholds=None):
     -------
     dict: map, ap_per_iou, best_iou, n_pred, n_gt
     """
+
     if iou_thresholds is None:
         iou_thresholds = np.arange(0.50, 0.96, 0.05)
+
     n_gt = len(gt_masks)
     n_pred = len(pred_masks)
+
     if n_gt == 0 or n_pred == 0:
         return {"map": 0.0, "ap_per_iou": {}, "best_iou": 0.0,
                 "n_pred": n_pred, "n_gt": n_gt}
+
     order = np.argsort(pred_scores)[::-1]
     pred_masks = pred_masks[order]
     pred_scores = pred_scores[order]
     iou_matrix = np.zeros((n_pred, n_gt), dtype=np.float64)
+
     for i in range(n_pred):
         pm = pred_masks[i].astype(bool)
         for j in range(n_gt):
             iou_matrix[i, j] = _mask_iou(pm, gt_masks[j].astype(bool))
+
     best_iou = float(iou_matrix[0].max()) if n_pred > 0 else 0.0
     ap_per_iou = {}
+
     for th in iou_thresholds:
         matched_gt = set()
         tp = np.zeros(n_pred)
@@ -76,18 +89,170 @@ def compute_map_iou(pred_masks, pred_scores, gt_masks, iou_thresholds=None):
                 matched_gt.add(best_j)
             else:
                 fp[i] = 1
+
         tp_cum = np.cumsum(tp)
         fp_cum = np.cumsum(fp)
         recall = tp_cum / n_gt
         precision = tp_cum / (tp_cum + fp_cum)
-        ap_per_iou[f"{th:.2f}"] = _compute_ap_101(recall, precision)
+        ap_per_iou[f"{th:.2f}"] = _compute_ap_voc(recall, precision)
+
     mAP = float(np.mean(list(ap_per_iou.values())))
+
     return {"map": mAP, "ap_per_iou": ap_per_iou, "best_iou": best_iou,
             "n_pred": n_pred, "n_gt": n_gt}
 
 
+def _compute_ap_voc(recall: np.ndarray, precision: np.ndarray) -> float:
+    """Continuous (envelope) interpolation AP - standard VOC-style.
+
+    Computes the area under the precision-recall curve using the
+    monotonically-decreasing precision envelope, then integrating at
+    every unique recall change-point (not fixed 101 points).
+    """
+
+    if len(recall) == 0:
+        return 0.0
+
+    mrec = np.concatenate(([0.0], recall, [recall[-1]]))
+    mpre = np.concatenate(([1.0], precision, [0.0]))
+
+    # Monotone-decreasing envelope
+    for i in range(len(mpre) - 2, -1, -1):
+        mpre[i] = max(mpre[i], mpre[i + 1])
+
+    # AP = sum of rectangular areas at recall change-points
+    idx = np.where(mrec[1:] != mrec[:-1])[0]
+    ap = float(np.sum((mrec[idx + 1] - mrec[idx]) * mpre[idx + 1]))
+
+    return ap
+
+
+def compute_mask_iou_matrix(pred_masks: np.ndarray,
+                            gt_masks: np.ndarray) -> np.ndarray:
+    """Compute pairwise IoU between N pred masks and M gt masks.
+
+    Parameters
+    ----------
+    pred_masks : (N, H, W) binary
+    gt_masks   : (M, H, W) binary
+
+    Returns
+    -------
+    (N, M) float64 IoU matrix
+    """
+
+    N = pred_masks.shape[0]
+    M = gt_masks.shape[0]
+
+    pred_flat = pred_masks.reshape(N, -1).astype(bool)
+    gt_flat = gt_masks.reshape(M, -1).astype(bool)
+    intersection = (pred_flat[:, None, :] & gt_flat[None, :, :]).sum(axis=2)
+    union = (pred_flat[:, None, :] | gt_flat[None, :, :]).sum(axis=2)
+
+    return np.where(union > 0, intersection / union, 0.0)
+
+
+def evaluate_image_multiclass(pred_masks, pred_scores, pred_obj_ids,
+                              gt_masks, gt_obj_ids, iou_thresh=0.5):
+    """Evaluate one image: per-class TP/FP matching at a given IoU threshold.
+
+    Parameters
+    ----------
+    pred_masks   : (N, H, W) binary uint8
+    pred_scores  : (N,) float
+    pred_obj_ids : (N,) int - BOP object IDs
+    gt_masks     : (M, H, W) binary uint8
+    gt_obj_ids   : (M,) int - BOP object IDs
+
+    Returns
+    -------
+    dict {obj_id: {"scores": list, "matched": list[bool], "n_gt": int}}
+    """
+
+    per_class = {}
+    all_ids = set(gt_obj_ids) | set(pred_obj_ids)
+
+    for obj_id in all_ids:
+        gt_idx = [i for i, g in enumerate(gt_obj_ids) if g == obj_id]
+        pred_idx = [i for i, p in enumerate(pred_obj_ids) if p == obj_id]
+        n_gt = len(gt_idx)
+
+        if len(pred_idx) == 0:
+            per_class[obj_id] = {"scores": [], "matched": [], "n_gt": n_gt}
+            continue
+
+        p_masks = pred_masks[pred_idx]
+        p_scores = pred_scores[pred_idx]
+        order = np.argsort(-p_scores)
+        matched_flags = []
+
+        gt_matched = set()
+
+        for o in order:
+            best_iou_val, best_gt = 0.0, -1
+
+            for gi in gt_idx:
+                if gi in gt_matched:
+                    continue
+
+                iou_val = compute_mask_iou_matrix(
+                    p_masks[o:o + 1], gt_masks[gi:gi + 1]
+                )[0, 0]
+
+                if iou_val > best_iou_val:
+                    best_iou_val = iou_val
+                    best_gt = gi
+
+            if best_iou_val >= iou_thresh and best_gt >= 0:
+                matched_flags.append(True)
+                gt_matched.add(best_gt)
+
+            else:
+                matched_flags.append(False)
+
+        per_class[obj_id] = {
+            "scores": p_scores[order].tolist(),
+            "matched": matched_flags,
+            "n_gt": n_gt,
+        }
+
+    return per_class
+
+
+def compute_global_ap_voc(scores, matched, n_gt):
+    """Compute VOC-style AP from accumulated (scores, matched, n_gt).
+
+    Parameters
+    ----------
+    scores  : array-like of float confidence scores
+    matched : array-like of bool TP flags
+    n_gt    : int total number of GT instances for this class
+
+    Returns
+    -------
+    float AP value
+    """
+
+    if n_gt == 0 or len(scores) == 0:
+        return 0.0
+
+    scores = np.asarray(scores, dtype=np.float64)
+    matched = np.asarray(matched, dtype=bool)
+    order = np.argsort(-scores)
+    matched = matched[order]
+
+    tp = np.cumsum(matched)
+    fp = np.cumsum(~matched)
+
+    recall = tp / n_gt
+    precision = tp / (tp + fp)
+
+    return _compute_ap_voc(recall, precision)
+
+
 def load_gt_masks(gt_mask_path):
     """Load GT masks from a single PNG or directory of PNGs."""
+
     masks = []
     if os.path.isdir(gt_mask_path):
         for f in sorted(os.listdir(gt_mask_path)):
@@ -100,6 +265,7 @@ def load_gt_masks(gt_mask_path):
         m = cv2.imread(gt_mask_path, cv2.IMREAD_GRAYSCALE)
         if m is not None:
             masks.append((m > 127).astype(np.uint8))
+
     return masks
 
 
@@ -111,14 +277,15 @@ def evaluate_and_print_map(pred_masks_bin, pred_scores, gt_mask_arg,
     ----------
     pred_masks_bin : (N, H, W) uint8 binary masks
     pred_scores : (N,) float scores
-    gt_mask_arg : str or None — explicit --gt_mask path
-    rgb_path : str — path to the RGB image (for auto-detect)
-    fallback_depth : bool — whether to try depth connected-components fallback
+    gt_mask_arg : str or None - explicit --gt_mask path
+    rgb_path : str - path to the RGB image (for auto-detect)
+    fallback_depth : bool - whether to try depth connected-components fallback
 
     Returns
     -------
-    dict or None — metrics dict if GT found, else None
+    dict or None - metrics dict if GT found, else None
     """
+
     gt_masks_list = []
     gt_source = None
 
@@ -128,40 +295,51 @@ def evaluate_and_print_map(pred_masks_bin, pred_scores, gt_mask_arg,
     else:
         img_dir = os.path.dirname(os.path.abspath(rgb_path))
         mask_visib_dir = os.path.join(img_dir, "mask_visib")
+
         if os.path.isdir(mask_visib_dir):
             gt_masks_list = load_gt_masks(mask_visib_dir)
             gt_source = mask_visib_dir
         elif fallback_depth:
             depth_fallback = os.path.join(img_dir, "depth.png")
+
             if os.path.isfile(depth_fallback):
                 depth_gt = cv2.imread(depth_fallback, cv2.IMREAD_UNCHANGED)
+
                 if depth_gt is not None:
                     fg = (depth_gt > 0).astype(np.uint8)
                     if fg.ndim == 3:
                         fg = fg[:, :, 0]
                     n_cc, labels = cv2.connectedComponents(fg)
+
                     for cc_id in range(1, n_cc):
                         cc_mask = (labels == cc_id).astype(np.uint8)
+
                         if cc_mask.sum() < fg.shape[0] * fg.shape[1] * 0.001:
                             continue
+
                         gt_masks_list.append(cc_mask)
+
                     gt_source = (f"{depth_fallback} "
                                  f"({len(gt_masks_list)} objects "
                                  f"via connected components)")
 
     if gt_masks_list:
         metrics = compute_map_iou(pred_masks_bin, pred_scores, gt_masks_list)
+
         print(f"\n  {'='*55}")
-        print(f"  mAP @ IoU[0.50:0.95] (COCO-style)")
+        print(f"  mAP @ IoU[0.50:0.95] (VOC-style)")
         print(f"  {'='*55}")
         print(f"    GT source   : {gt_source}")
         print(f"    Predictions : {metrics['n_pred']}")
         print(f"    GT masks    : {metrics['n_gt']}")
         print(f"    Best IoU    : {metrics['best_iou']:.4f}")
+
         for th_key, ap_val in sorted(metrics["ap_per_iou"].items()):
             print(f"    AP@{th_key}    : {ap_val * 100:6.2f}%")
+
         print(f"    ─────────────────────────────")
         print(f"    mAP@[.50:.95]: {metrics['map'] * 100:6.2f}%")
+
         return metrics
     else:
         print(f"\n  [mAP] No GT masks found "
@@ -174,8 +352,8 @@ def load_gt_masks_for_object(mask_visib_dir, gt_data, image_id, obj_id):
 
     Parameters
     ----------
-    mask_visib_dir : str — path to mask_visib/ directory
-    gt_data : dict — parsed scene_gt.json {str(img_id): [{"obj_id":...}, ...]}
+    mask_visib_dir : str - path to mask_visib/ directory
+    gt_data : dict - parsed scene_gt.json {str(img_id): [{"obj_id":...}, ...]}
     image_id : int
     obj_id : int
 
@@ -183,8 +361,10 @@ def load_gt_masks_for_object(mask_visib_dir, gt_data, image_id, obj_id):
     -------
     list of (H, W) uint8 binary masks
     """
+
     gt_entries = gt_data.get(str(image_id), [])
     gt_masks = []
+
     for gt_idx, entry in enumerate(gt_entries):
         if entry["obj_id"] == obj_id:
             mask_path = os.path.join(mask_visib_dir,
@@ -193,6 +373,7 @@ def load_gt_masks_for_object(mask_visib_dir, gt_data, image_id, obj_id):
                 m = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
                 if m is not None:
                     gt_masks.append((m > 127).astype(np.uint8))
+
     return gt_masks
 
 
@@ -207,8 +388,10 @@ def aggregate_bop_maps(maps_by_obj):
     -------
     dict with 'per_object', 'overall_mAP' (percent), 'n_total'
     """
+
     per_object = {}
     all_maps = []
+
     for oid in sorted(maps_by_obj.keys()):
         obj_maps = maps_by_obj[oid]
         per_object[oid] = {
@@ -216,6 +399,8 @@ def aggregate_bop_maps(maps_by_obj):
             "mAP": float(np.mean(obj_maps)) * 100 if obj_maps else 0.0,
         }
         all_maps.extend(obj_maps)
+
     overall = float(np.mean(all_maps)) * 100 if all_maps else 0.0
+
     return {"per_object": per_object, "overall_mAP": overall,
             "n_total": len(all_maps)}

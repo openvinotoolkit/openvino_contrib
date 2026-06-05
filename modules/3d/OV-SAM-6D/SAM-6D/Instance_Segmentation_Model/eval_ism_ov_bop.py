@@ -2,89 +2,92 @@
 """
 BOP dataset evaluation for OpenVINO ISM pipeline.
 
-Runs the full ISM inference (segmentation → DINOv2 → scoring) on the BOP
-LM-O test set, computes mAP @ IoU[0.50:0.95] per testcase, and aggregates
-per-object and overall metrics.
-
 Example:
     python3 eval_ism_ov_bop.py \
         --bop_dir /workspace/SAM-6D/Data/BOP/lmo \
         --ov_device GPU --segmentor_model fastsam \
-        --max_images 3 --obj_ids 5 6 9 12 --batch_size 4
+        --ext --max_images 10 --batch_size 4
 """
 
 from __future__ import annotations
 
 import argparse
+import gc
 import glob
 import json
-import logging
 import os
 import sys
 import time
 from collections import defaultdict
 
+import cv2
 import imageio.v2 as imageio
 import numpy as np
+import pandas as pd
 import torch
+import torchvision.transforms as T
 from PIL import Image
 from plyfile import PlyData
 
-import cv2
+import openvino as ov
 
 # ---------------------------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
 
 from infer_ism_ov import init_model_ov, init_model_ov_ext
-from model.utils import Detections, convert_npz_to_json
-from utils.inout import save_json_bop23
-from segment_anything.utils.amg import rle_to_mask
-from eval_utils import compute_map_iou, load_gt_masks_for_object, aggregate_bop_maps
+from model.utils import Detections
+from utils.inout import save_npz
+from utils.bbox_utils import force_binary_mask, xyxy_to_xywh
+from eval_utils import (
+    evaluate_image_multiclass,
+    compute_global_ap_voc,
+)
+
+_RGB_TRANSFORM = T.Compose([
+    T.ToTensor(),
+    T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+])
+_INV_RGB_TRANSFORM = T.Compose([
+    T.Normalize(
+        mean=[-0.485 / 0.229, -0.456 / 0.224, -0.406 / 0.225],
+        std=[1 / 0.229, 1 / 0.224, 1 / 0.225],
+    ),
+])
 
 
 # ===================================================================
-#  Helper functions (mesh sampling, template loading, scoring)
+#  Helper functions
 # ===================================================================
 
 def _sample_mesh_surface(verts, faces, n_pts):
     """Sample *n_pts* points uniformly on a triangle mesh surface."""
     v0, v1, v2 = verts[faces[:, 0]], verts[faces[:, 1]], verts[faces[:, 2]]
+
     areas = 0.5 * np.linalg.norm(np.cross(v1 - v0, v2 - v0), axis=1)
     probs = areas / areas.sum()
     tri_idx = np.random.choice(len(faces), size=n_pts, p=probs)
+
     r1 = np.sqrt(np.random.rand(n_pts, 1))
     r2 = np.random.rand(n_pts, 1)
+
     return ((1 - r1) * verts[faces[tri_idx, 0]]
             + r1 * (1 - r2) * verts[faces[tri_idx, 1]]
             + r1 * r2 * verts[faces[tri_idx, 2]])
 
 
-def load_object_pointcloud(model, cad_path, selected_poses, device):
-    """Load CAD pointcloud and poses into *model.ref_data*."""
-    model.ref_data["poses"] = selected_poses
-    ply = PlyData.read(cad_path)
-    verts = np.column_stack(
-        [ply["vertex"]["x"], ply["vertex"]["y"], ply["vertex"]["z"]]
-    ).astype(np.float64)
-    faces = np.vstack(ply["face"]["vertex_indices"])
-    pts = _sample_mesh_surface(verts, faces, 2048).astype(np.float32) / 1000.0
-    model.ref_data["pointcloud"] = (
-        torch.tensor(pts).unsqueeze(0).data.to(device)
-    )
+def _compute_template_descriptors(model, template_dir,
+                                  proposal_processor, device):
+    """Compute DINOv2 cls + appearance descriptors for one object.
 
-
-def load_template_descriptors(model, template_dir, proposal_processor, device):
-    """Load pre-rendered templates and compute DINOv2 descriptors.
-
-    Populates model.ref_data["descriptors"] and
-    model.ref_data["appe_descriptors"].
-
-    Returns the number of templates loaded (0 if template_dir is empty).
+    Returns
+    -------
+    (cls_desc, appe_desc) - (N_tpl, D) and (N_tpl, N_patch, D)
     """
     n_tpl = len(glob.glob(os.path.join(template_dir, "*.npy")))
+
     if n_tpl == 0:
-        return 0
+        return None, None
 
     tpl_boxes, tpl_masks_list, tpl_images = [], [], []
     for idx in range(n_tpl):
@@ -108,79 +111,145 @@ def load_template_descriptors(model, template_dir, proposal_processor, device):
         images=tpl_msks, boxes=tpl_bxs
     ).to(device)
 
-    model.ref_data = {}
-    model.ref_data["descriptors"] = (
-        model.descriptor_model.compute_features(
-            tpl_imgs, token_name="x_norm_clstoken"
-        ).unsqueeze(0).data
-    )
-    model.ref_data["appe_descriptors"] = (
-        model.descriptor_model.compute_masked_patch_feature(
-            tpl_imgs, tpl_msks_crop[:, 0, :, :]
-        ).unsqueeze(0).data
-    )
-    return n_tpl
+    cls_desc = model.descriptor_model.compute_features(
+        tpl_imgs, token_name="x_norm_clstoken"
+    ).data
+    appe_desc = model.descriptor_model.compute_masked_patch_feature(
+        tpl_imgs, tpl_msks_crop[:, 0, :, :]
+    ).data
+
+    return cls_desc, appe_desc
 
 
-def run_scoring_pipeline(model, detections, query_cls, query_patch,
-                         depth_path, cam_info, device):
-    """Run the full ISM scoring pipeline on proposals.
+def _load_pointcloud(cad_path, n_pts=2048):
+    """Load mesh and sample *n_pts* surface points -> (n_pts, 3) tensor."""
+    ply = PlyData.read(cad_path)
+    verts = np.column_stack(
+        [ply["vertex"]["x"], ply["vertex"]["y"], ply["vertex"]["z"]]
+    ).astype(np.float64)
+    faces = np.vstack(ply["face"]["vertex_indices"])
+    pts = _sample_mesh_surface(verts, faces, n_pts).astype(np.float32) / 1000.0
 
-    Returns
-    -------
-    (final_score, det_score, idx_sel, score_label) or None if no proposals
-    survive the semantic filter.
+    return torch.tensor(pts)
+
+
+def load_gt_for_frame(mask_visib_dir, gt_data, img_id):
+    """Load all GT visible masks + object IDs for a BOP frame.
+
+    Returns (gt_masks, gt_obj_ids) - lists of (H,W) uint8 and int.
     """
-    # Clone detections + descriptors so originals stay intact
-    det_score = Detections({
-        key: getattr(detections, key).clone()
-        if torch.is_tensor(getattr(detections, key))
-        else getattr(detections, key)
-        for key in detections.keys
-    })
-    qcls = query_cls.clone()
-    qpatch = query_patch.clone()
+    gt_entries = gt_data.get(str(img_id), [])
+    gt_masks, gt_obj_ids = [], []
+    for gt_idx, entry in enumerate(gt_entries):
+        mask_path = os.path.join(
+            mask_visib_dir, f"{img_id:06d}_{gt_idx:06d}.png"
+        )
+        if os.path.exists(mask_path):
+            m = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+            if m is not None:
+                gt_masks.append((m > 0).astype(np.uint8))
+                gt_obj_ids.append(entry["obj_id"])
 
-    # -- Semantic score + proposal filter ---------------------------
-    (idx_sel, pred_idx_obj, sem_score, best_tpl) = \
-        model.compute_semantic_score(qcls)
-    if len(idx_sel) == 0:
-        return None
-    det_score.filter(idx_sel)
-    qpatch_sel = qpatch[idx_sel, :]
+    return gt_masks, gt_obj_ids
 
-    # -- Appearance score -------------------------------------------
-    appe_score, ref_aux = model.compute_appearance_score(
-        best_tpl, pred_idx_obj, qpatch_sel
+
+def _load_rgb(rgb_path):
+    """dataloader inverse-normalize path."""
+    image_np = _INV_RGB_TRANSFORM(
+        _RGB_TRANSFORM(Image.open(rgb_path).convert("RGB"))
+    ).cpu().numpy().transpose(1, 2, 0)
+
+    return np.uint8(image_np.clip(0, 1) * 255)
+
+
+def _dataset_name_from_bop_dir(bop_dir):
+    return os.path.basename(os.path.normpath(bop_dir))
+
+
+def _load_bop_test_records(bop_dir):
+    """Load BOP test records in the deterministic order."""
+    split_dir = os.path.join(bop_dir, "test")
+    if not os.path.isdir(split_dir):
+        raise FileNotFoundError(f"Missing BOP test split: {split_dir}")
+
+    scene_dirs = sorted(
+        os.path.join(split_dir, scene)
+        for scene in os.listdir(split_dir)
+        if os.path.isdir(os.path.join(split_dir, scene))
     )
 
-    # -- Geometric score (requires depth) ---------------------------
-    has_depth = (depth_path and os.path.isfile(depth_path)
-                 and cam_info is not None)
-    if has_depth:
-        depth = np.array(imageio.imread(depth_path)).astype(np.int32)
-        cam_K = np.array(cam_info["cam_K"]).reshape((3, 3))
-        depth_scale = np.array(cam_info["depth_scale"])
-        batch = {
-            "depth": torch.from_numpy(depth).unsqueeze(0).to(device),
-            "cam_intrinsic": torch.from_numpy(cam_K).unsqueeze(0).to(device),
-            "depth_scale": torch.from_numpy(depth_scale).unsqueeze(0).to(device),
-        }
-        image_uv = model.project_template_to_image(
-            best_tpl, pred_idx_obj, batch, det_score.masks
-        )
-        geo_score, vis_ratio = model.compute_geometric_score(
-            image_uv, det_score, qpatch_sel, ref_aux,
-            visible_thred=model.visible_thred,
-        )
-        final_score = (sem_score + appe_score + geo_score * vis_ratio) / \
-                       (1 + 1 + vis_ratio)
-        score_label = "sem+appe+geo"
-    else:
-        final_score = (sem_score + appe_score) / 2.0
-        score_label = "sem+appe"
+    records = []
+    scene_gt_cache = {}
+    scene_cam_cache = {}
 
-    return final_score, det_score, idx_sel, score_label
+    for scene_dir in scene_dirs:
+        scene_id = os.path.basename(scene_dir)
+        gt_path = os.path.join(scene_dir, "scene_gt.json")
+        cam_path = os.path.join(scene_dir, "scene_camera.json")
+        if not os.path.isfile(gt_path) or not os.path.isfile(cam_path):
+            continue
+
+        with open(gt_path) as f:
+            scene_gt_cache[scene_id] = json.load(f)
+        with open(cam_path) as f:
+            scene_cam_cache[scene_id] = json.load(f)
+
+        rgb_dir = os.path.join(scene_dir, "rgb")
+        gray_dir = os.path.join(scene_dir, "gray")
+        if os.path.isdir(rgb_dir):
+            image_paths = sorted(
+                glob.glob(os.path.join(rgb_dir, "*.[pj][pn][g]"))
+            )
+        else:
+            image_paths = sorted(glob.glob(os.path.join(gray_dir, "*.tif")))
+
+        for rgb_path in image_paths:
+            img_id = int(os.path.splitext(os.path.basename(rgb_path))[0])
+            depth_path = os.path.join(scene_dir, "depth", f"{img_id:06d}.png")
+            if not os.path.isfile(depth_path):
+                depth_path = None
+            records.append({
+                "scene_id": scene_id,
+                "image_id": img_id,
+                "rgb_path": rgb_path,
+                "depth_path": depth_path,
+                "mask_visib_dir": os.path.join(scene_dir, "mask_visib"),
+            })
+
+    if not records:
+        raise RuntimeError(f"No BOP test images found under {split_dir}")
+
+    records_df = pd.DataFrame.from_records(records)
+
+    records_df = records_df.sample(frac=1, random_state=2021).reset_index(drop=True)
+    # Match BaseBOPTest: BaseBOP.load_metaData shuffles once, then BaseBOPTest
+    # shuffles the resulting metadata again before DataLoader iteration.
+    records_df = records_df.sample(frac=1, random_state=2021).reset_index(drop=True)
+
+    return records_df.to_dict("records"), scene_gt_cache, scene_cam_cache
+
+
+def _shape_of(value):
+    if value is None:
+        return "-"
+    if torch.is_tensor(value):
+        return list(value.shape)
+    if isinstance(value, np.ndarray):
+        return list(value.shape)
+    if hasattr(value, "shape"):
+        return list(value.shape)
+    return str(value)
+
+
+def _print_perf(enabled, index, step, elapsed_s,
+                inputs=(), outputs=()):
+    if not enabled:
+        return
+    print(f"    [perf {index}] {step}: {elapsed_s * 1000.0:.1f} ms")
+    for name, value in inputs:
+        print(f"      input  {name}: {_shape_of(value)}")
+    for name, value in outputs:
+        print(f"      output {name}: {_shape_of(value)}")
 
 
 # ===================================================================
@@ -189,71 +258,420 @@ def run_scoring_pipeline(model, detections, query_cls, query_patch,
 
 def parse_args():
     p = argparse.ArgumentParser(
-        description="BOP dataset evaluation — OpenVINO ISM pipeline"
+        description="BOP evaluation - OpenVINO ISM (multi-class, VOC mAP)"
     )
-    # --- args shared with infer_ism_ov.py --------------------------
     p.add_argument("--ov_model_dir",
-                   default=os.path.join(BASE_DIR, "checkpoints/ov_models"),
-                   help="Directory containing OV IR files")
-    p.add_argument("--ov_device", default="GPU",
-                   help="OpenVINO device: CPU or GPU")
-    p.add_argument("--ext", action="store_true",
-                   help="Use extended models (baked pre/post-processing)")
+                   default=os.path.join(BASE_DIR, "checkpoints/ov_models"))
+    p.add_argument("--ov_device", default="GPU")
+    p.add_argument(
+        "--ext", action=argparse.BooleanOptionalAction, default=True,
+        help="Use extended OV IRs. Default: True."
+    )
     p.add_argument("--segmentor_model", default="fastsam",
-                   choices=["sam", "fastsam"],
-                   help="Segmentor: sam or fastsam")
-    p.add_argument("--points_per_side", type=int, default=32,
-                   help="SAM grid size NxN (default: 32)")
-    p.add_argument("--stability_score_thresh", type=float, default=0.85,
-                   help="SAM stability_score_thresh (default: 0.85)")
-    p.add_argument("--points_per_batch", type=int, default=64,
-                   help="SAM decoder points per call (default: 64)")
+                   choices=["sam", "fastsam"])
+    p.add_argument("--points_per_side", type=int, default=32)
+    p.add_argument("--stability_score_thresh", type=float, default=0.85)
+    p.add_argument("--points_per_batch", type=int, default=64)
     p.add_argument("--chunk_size", type=int, default=16,
                    help="DINOv2 proposals per call (default: 16)")
-
-    # --- BOP-specific args -----------------------------------------
-    p.add_argument("--bop_dir", required=True,
-                   help="BOP dataset root (e.g. /workspace/SAM-6D/Data/BOP/lmo)")
-    p.add_argument("--max_images", type=int, default=None,
-                   help="Limit to first N unique images")
-    p.add_argument("--obj_ids", type=int, nargs="+", default=None,
-                   help="Restrict to these object IDs")
-    p.add_argument("--max_objects", type=int, default=None,
-                   help="Limit to first N object IDs")
-    p.add_argument("--skip_existing", action=argparse.BooleanOptionalAction,
-                   default=True,
-                   help="Skip testcases whose result JSON already exists")
     p.add_argument("--batch_size", type=int, default=4,
-                   help="(Informational, not used for ISM)")
-    p.add_argument("--output_dir", default=None,
-                   help="Output directory (default: <bop_dir>/bop/ism_ov_<dev>_<seg>_results)")
-    p.add_argument("--templates_root", default=None,
-                   help="Root dir for pre-rendered templates "
-                        "(default: <bop_dir>/eval_output)")
-    p.add_argument("--vis_ism", action="store_true", default=False,
-                   help="Save vis_ism.png visualisation for each testcase")
+                   help="Batch size (default: 4)")
+    p.add_argument("--bop_dir", default=None,
+                   help="BOP dataset root")
+    p.add_argument("--profile_example", action="store_true",
+                   help="Run one Data/Example image with t3-t9 timing and shapes, then exit.")
+    p.add_argument("--example_dir",
+                   default=os.path.abspath(os.path.join(BASE_DIR, "..", "Data", "Example")),
+                   help="Example directory used with --profile_example")
+    p.add_argument("--max_images", type=int, default=None)
+    p.add_argument("--obj_ids", type=int, nargs="+", default=None)
+    p.add_argument("--max_objects", type=int, default=None)
+    p.add_argument("--skip_existing", action=argparse.BooleanOptionalAction,
+                   default=False,
+                   help="Skip per-image files already present in output_dir. "
+                        "Default is false because skipped images cannot "
+                        "contribute to global VOC mAP accumulation.")
+    p.add_argument("--output_dir", default=None)
+    p.add_argument("--templates_root", default=None)
+    p.add_argument("--ref_cache_dir", default=None,
+                   help="Dir with cached descriptors.pth / pointcloud.pth "
+                        "(e.g. templates_pyrender/lmo). Skips recompute.")
+    p.add_argument("--precision", default=os.environ.get("OV_PRECISION", "fp16"),
+                   choices=["fp32", "fp16"],
+                   help="Inference precision: fp32 or fp16. "
+                        "Default: OV_PRECISION env var or fp16.")
+
     return p.parse_args()
 
 
+def recompile_gpu_with_cache(args, model):
+    if not args.ov_device.upper().startswith("GPU"):
+        return
+
+    _core = ov.Core()
+
+    _ism_ext_so = os.path.join(BASE_DIR, "ov_plugins", "build", "ism_extension.so")
+    if os.path.isfile(_ism_ext_so):
+        _core.add_extension(_ism_ext_so)
+
+    _cache_dir = os.path.join(args.ov_model_dir, ".ov_gpu_cache")
+
+    os.makedirs(_cache_dir, exist_ok=True)
+
+    _ism_gpu_xml = os.path.join(BASE_DIR, "ov_plugins", "ism_gpu",
+                                "ism_custom_gpu_kernels.xml")
+
+    _prec_hint = "f32" if args.precision == "fp32" else "f16"
+    _gpu_config = {
+        "PERFORMANCE_HINT": "LATENCY",
+        "NUM_STREAMS": "1",
+        "INFERENCE_PRECISION_HINT": _prec_hint,
+        "CACHE_DIR": _cache_dir,
+    }
+    if args.precision == "fp32":
+        _gpu_config["EXECUTION_MODE_HINT"] = "ACCURACY"
+    if os.path.isfile(_ism_gpu_xml):
+        _gpu_config["CONFIG_FILE"] = _ism_gpu_xml
+
+    if args.segmentor_model == "fastsam":
+        _xml = os.path.join(args.ov_model_dir, "fastsam_x_dynamic.xml")
+        _fastsam_config = dict(_gpu_config)
+        _fastsam_config["INFERENCE_PRECISION_HINT"] = "f32"
+        model.segmentor_model.compiled = _core.compile_model(
+            _core.read_model(_xml), args.ov_device, _fastsam_config)
+        print(f"  FastSAM re-compiled with CACHE_DIR (precision={args.precision})", flush=True)
+
+    _dinov2_name = "dinov2_vitl14_ext.xml" if args.ext else "dinov2_vitl14.xml"
+    _dinov2_xml = os.path.join(args.ov_model_dir, _dinov2_name)
+    model.descriptor_model.dinov2_compiled = _core.compile_model(
+        _core.read_model(_dinov2_xml), args.ov_device, _gpu_config)
+    if hasattr(model.descriptor_model, "_dinov2_request"):
+        model.descriptor_model._dinov2_request = (
+            model.descriptor_model.dinov2_compiled.create_infer_request()
+        )
+    print(f"  DINOv2 re-compiled with CACHE_DIR (precision={args.precision})", flush=True)
+
+
+def _batch_example_input_data(example_dir, device):
+    depth_path = os.path.join(example_dir, "depth.png")
+    cam_path = os.path.join(example_dir, "camera.json")
+    with open(cam_path) as f:
+        cam_info = json.load(f)
+    depth = np.array(imageio.imread(depth_path)).astype(np.int32)
+    cam_K = np.array(cam_info["cam_K"]).reshape((3, 3))
+    depth_scale = np.array(cam_info["depth_scale"])
+
+    return {
+        "depth": torch.from_numpy(depth).unsqueeze(0).to(device),
+        "cam_intrinsic": torch.from_numpy(cam_K).unsqueeze(0).to(device),
+        "depth_scale": torch.from_numpy(depth_scale).unsqueeze(0).to(device),
+    }
+
+
+def _run_example_profile(args):
+    example_dir = args.example_dir
+
+    rgb_path = os.path.join(example_dir, "rgb.png")
+    cad_path = os.path.join(example_dir, "obj_000005.ply")
+    template_dir = os.path.join(example_dir, "outputs", "templates")
+
+    for path, label in ((rgb_path, "RGB image"), (cad_path, "CAD model"),
+                        (template_dir, "templates dir")):
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Missing Example {label}: {path}")
+
+    print(f"\n{'='*65}")
+    print("  Example ISM Profile - OpenVINO (t3-t9)")
+    print(f"{'='*65}")
+    print(f"  Example dir   : {example_dir}")
+    print(f"  Device        : {args.ov_device} (ext={args.ext})")
+    print(f"  Segmentor     : {args.segmentor_model}")
+    print(f"  Chunk size    : {args.chunk_size}")
+    print(f"  Templates dir : {template_dir}")
+    print(flush=True)
+
+    init_fn = init_model_ov_ext if args.ext else init_model_ov
+    model, _cfg, device, selected_poses, proposal_processor = init_fn(
+        ov_model_dir=args.ov_model_dir,
+        ov_device=args.ov_device,
+        segmentor_model_name=args.segmentor_model,
+        stability_score_thresh=args.stability_score_thresh,
+        points_per_side=args.points_per_side,
+        points_per_batch=args.points_per_batch,
+        chunk_size=args.chunk_size,
+    )
+
+    if hasattr(model.segmentor_model, "points_per_batch"):
+        model.segmentor_model.points_per_batch = args.points_per_batch
+    if hasattr(model.descriptor_model, "chunk_size"):
+        model.descriptor_model.chunk_size = args.chunk_size
+
+    recompile_gpu_with_cache(args, model)
+
+    print("Pre-loading one-object reference data ...", flush=True)
+    cls_desc, appe_desc = _compute_template_descriptors(
+        model, template_dir, proposal_processor, device
+    )
+
+    pointcloud = _load_pointcloud(cad_path, n_pts=2048)
+    model.ref_data = {
+        "descriptors": cls_desc.unsqueeze(0),
+        "appe_descriptors": appe_desc.unsqueeze(0),
+        "pointcloud": pointcloud.unsqueeze(0).to(device),
+        "poses": selected_poses,
+    }
+
+    print(f"    descriptors      : {model.ref_data['descriptors'].shape}")
+    print(f"    appe_descriptors : {model.ref_data['appe_descriptors'].shape}")
+    print(f"    pointcloud       : {model.ref_data['pointcloud'].shape}")
+
+    rgb = _load_rgb(rgb_path)
+    print("  GPU warmup (outside t3-t9 timing)...", flush=True)
+    _ = model.segmentor_model.generate_masks(rgb)
+    print("  GPU warmup done\n", flush=True)
+
+    timings = []
+
+    t0 = time.time()
+    proposals = model.segmentor_model.generate_masks(rgb)
+    detections = Detections(proposals)
+    detections.remove_very_small_detections(
+        config=model.post_processing_config.mask_post_processing
+    )
+    seg_time = time.time() - t0
+    timings.append(seg_time)
+
+    _print_perf(
+        True, "t3", "generate_masks", seg_time,
+        inputs=(("np.array(rgb).shape", rgb),),
+        outputs=(("detections['masks'].size()", detections.masks),
+                 ("detections['boxes'].size()", detections.boxes)),
+    )
+
+    t0 = time.time()
+    query_cls, query_appe = model.descriptor_model(rgb, detections)
+    desc_time = time.time() - t0
+    timings.append(desc_time)
+
+    _print_perf(
+        True, "t4", "descriptor_model.forward", desc_time,
+        inputs=(("np.array(rgb).shape", rgb),
+                ("detections.masks.size()", detections.masks),
+                ("detections.boxes.size()", detections.boxes)),
+        outputs=(("query_descriptors.size()", query_cls),
+                 ("query_appe_descriptors.size()", query_appe),
+                 ("detections.masks.size()", detections.masks)),
+    )
+
+    t0 = time.time()
+    idx_selected, pred_idx_objects, semantic_score, best_template = \
+        model.compute_semantic_score(query_cls)
+    semantic_time = time.time() - t0
+    timings.append(semantic_time)
+
+    _print_perf(
+        True, "t5", "compute_semantic_score", semantic_time,
+        inputs=(("query_descriptors.size()", query_cls),),
+        outputs=(("idx_selected_proposals.size()", idx_selected),
+                 ("pred_idx_objects.size()", pred_idx_objects),
+                 ("semantic_score.size()", semantic_score),
+                 ("best_template.size()", best_template)),
+    )
+
+    selected_count = len(idx_selected)
+    if selected_count == 0:
+        print("\n  no proposals survived semantic filter")
+        print("  mAP@0.50: 0.0000")
+        print("  mAP@0.50:0.95: 0.0000")
+        print(f"{'='*65}")
+        return
+
+    detections.filter(idx_selected)
+    query_appe_sel = query_appe[idx_selected, :]
+
+    t0 = time.time()
+    appe_scores, ref_aux_descriptor = model.compute_appearance_score(
+        best_template, pred_idx_objects, query_appe_sel
+    )
+    appearance_time = time.time() - t0
+    timings.append(appearance_time)
+
+    _print_perf(
+        True, "t6", "compute_appearance_score", appearance_time,
+        inputs=(("best_template.size()", best_template),
+                ("pred_idx_objects.size()", pred_idx_objects),
+                ("query_appe_descriptors.size()", query_appe_sel)),
+        outputs=(("appe_scores.size()", appe_scores),
+                 ("ref_aux_descriptor.size()", ref_aux_descriptor)),
+    )
+
+    batch_geo = _batch_example_input_data(example_dir, device)
+    t0 = time.time()
+    image_uv = model.project_template_to_image(
+        best_template, pred_idx_objects, batch_geo, detections.masks
+    )
+    project_time = time.time() - t0
+    timings.append(project_time)
+
+    _print_perf(
+        True, "t7", "project_template_to_image", project_time,
+        inputs=(("best_template.size()", best_template),
+                ("pred_idx_objects.size()", pred_idx_objects),
+                ("detections.masks.size()", detections.masks),
+                ("batch['depth'].size()", batch_geo["depth"]),
+                ("batch['cam_intrinsic'].size()", batch_geo["cam_intrinsic"]),
+                ("batch['depth_scale'].size()", batch_geo["depth_scale"])),
+        outputs=(("image_uv.size()", image_uv),),
+    )
+
+    t0 = time.time()
+    geometric_score, visible_ratio = model.compute_geometric_score(
+        image_uv, detections, query_appe_sel, ref_aux_descriptor,
+        visible_thred=model.visible_thred,
+    )
+    geometric_time = time.time() - t0
+    timings.append(geometric_time)
+
+    _print_perf(
+        True, "t8", "compute_geometric_score", geometric_time,
+        inputs=(("image_uv.size()", image_uv),
+                ("detections.masks.size()", detections.masks),
+                ("detections.boxes.size()", detections.boxes),
+                ("query_appe_descriptors.size()", query_appe_sel),
+                ("ref_aux_descriptor.size()", ref_aux_descriptor)),
+        outputs=(("geometric_score.size()", geometric_score),
+                 ("visible_ratio.size()", visible_ratio)),
+    )
+
+    t0 = time.time()
+    final_score = (
+        semantic_score + appe_scores + geometric_score * visible_ratio
+    ) / (1 + 1 + visible_ratio)
+    final_time = time.time() - t0
+    timings.append(final_time)
+
+    _print_perf(
+        True, "t9", "final score", final_time,
+        inputs=(("semantic_score.size()", semantic_score),
+                ("appe_scores.size()", appe_scores),
+                ("geometric_score.size()", geometric_score),
+                ("visible_ratio.size()", visible_ratio)),
+        outputs=(("final_score.size()", final_score),),
+    )
+
+    scores_cpu = final_score.detach().cpu().numpy()
+    semantic_cpu = semantic_score.detach().cpu().numpy()
+    appe_cpu = appe_scores.detach().cpu().numpy()
+    geometric_cpu = geometric_score.detach().cpu().numpy()
+    template_cpu = best_template.detach().cpu().numpy()
+    score_order = np.argsort(scores_cpu)[::-1]
+
+    detections.add_attribute("scores", final_score)
+    detections.add_attribute("object_ids", pred_idx_objects)
+    detections.apply_nms_per_object_id(
+        nms_thresh=model.post_processing_config.nms_thresh
+    )
+    n_dets = len(detections)
+    detections.to_numpy()
+    pred_masks = detections.masks
+    pred_scores = detections.scores
+    pred_bop_ids = np.full(n_dets, 5, dtype=np.int64)
+    pred_masks_bin = (
+        np.array([force_binary_mask(m) for m in pred_masks])
+        if n_dets > 0
+        else np.zeros((0, 1, 1), dtype=np.uint8)
+    )
+
+    mask_paths = sorted(glob.glob(os.path.join(example_dir, "mask_visib", "*.png")))
+    gt_masks = [
+        (np.array(imageio.imread(mask_path)) > 0).astype(np.uint8)
+        for mask_path in mask_paths
+    ]
+    gt_masks_arr = (
+        np.stack(gt_masks)
+        if gt_masks
+        else np.zeros((0, 1, 1), dtype=np.uint8)
+    )
+    gt_obj_ids_arr = np.full(len(gt_masks), 5, dtype=np.int64)
+
+    iou_thresholds = [round(x, 2) for x in np.arange(0.5, 1.0, 0.05)]
+    map_values = []
+    map_50 = 0.0
+    for iou_thresh in iou_thresholds:
+        if n_dets > 0 and len(gt_masks_arr) > 0:
+            img_eval = evaluate_image_multiclass(
+                pred_masks_bin, pred_scores, pred_bop_ids,
+                gt_masks_arr, gt_obj_ids_arr, iou_thresh=iou_thresh,
+            )
+        else:
+            img_eval = {
+                int(obj_id): {"scores": [], "matched": [], "n_gt": 1}
+                for obj_id in gt_obj_ids_arr
+            }
+        aps = []
+        for info in img_eval.values():
+            aps.append(compute_global_ap_voc(
+                np.array(info["scores"]) if info["scores"] else np.array([]),
+                info["matched"] if info["matched"] else [],
+                info["n_gt"],
+            ))
+        mean_ap = float(np.mean(aps)) if aps else 0.0
+        if iou_thresh == 0.5:
+            map_50 = mean_ap
+        map_values.append(mean_ap)
+    map_5095 = float(np.mean(map_values)) if map_values else 0.0
+
+    print(f"\n  t3-t9 total: {sum(timings) * 1000.0:.1f} ms")
+    print(f"  selected proposals: {selected_count} / {len(query_cls)}")
+    print(f"  detections after NMS: {n_dets}")
+    print(f"  GT masks: {len(gt_masks)} (obj_id=5)")
+    print(f"  mAP@0.50: {map_50:.4f}")
+    print(f"  mAP@0.50:0.95: {map_5095:.4f}")
+    if len(score_order) > 0:
+        best_idx = int(score_order[0])
+        best_score = float(scores_cpu[best_idx])
+        confidence = "CONFIDENT" if best_score >= 0.5 else "LOW"
+        print(f"  Best match score: {best_score:.4f} ({confidence})")
+        print("  Top-5 proposal scores:")
+        print("    Rank    Final   Semantic   Appearance   Geometric   Template")
+        for rank, idx in enumerate(score_order[:5], 1):
+            print(
+                f"    {rank:>4}  {scores_cpu[idx]:>7.4f}"
+                f"  {semantic_cpu[idx]:>9.4f}"
+                f"  {appe_cpu[idx]:>11.4f}"
+                f"  {geometric_cpu[idx]:>10.4f}"
+                f"  template_{int(template_cpu[idx]):>3d}"
+            )
+    print("  scoring components: semantic + appearance + geometric")
+    print(f"{'='*65}")
+
+
 # ===================================================================
-#  Main evaluation loop
+#  Main
 # ===================================================================
 
 def main():
     args = parse_args()
-    logging.basicConfig(level=logging.INFO)
 
-    # -- random seeds for reproducibility -----------------------
     np.random.seed(42)
     torch.manual_seed(42)
 
-    # -- Resolve paths ----------------------------------------------
-    scene_dir = os.path.join(args.bop_dir, "test", "000002")
-    scene_gt_path = os.path.join(scene_dir, "scene_gt.json")
-    scene_cam_path = os.path.join(scene_dir, "scene_camera.json")
-    mask_visib_dir = os.path.join(scene_dir, "mask_visib")
-    rgb_dir = os.path.join(scene_dir, "rgb")
-    depth_dir = os.path.join(scene_dir, "depth")
+    if args.profile_example:
+        _run_example_profile(args)
+        return
+
+    if not args.bop_dir:
+        raise ValueError("--bop_dir is required unless --profile_example is used")
+
+    # -- Resolve paths ------------------------------------------------
+    dataset_name = _dataset_name_from_bop_dir(args.bop_dir)
+    image_records, scene_gt_cache, scene_cam_cache = _load_bop_test_records(
+        args.bop_dir
+    )
+    if args.max_images is not None:
+        image_records = image_records[:args.max_images]
+    n_images = len(image_records)
+
     models_dir = os.path.join(args.bop_dir, "models")
     templates_root = args.templates_root or os.path.join(
         args.bop_dir, "eval_output"
@@ -267,15 +685,10 @@ def main():
     )
     os.makedirs(output_dir, exist_ok=True)
 
-    # -- Load BOP annotations ---------------------------------------
-    with open(scene_gt_path) as f:
-        gt_data = json.load(f)
-    with open(scene_cam_path) as f:
-        cam_data = json.load(f)
-
-    # -- Determine target objects -----------------------------------
+    # -- Target objects -----------------------------------------------
     all_obj_ids = sorted({
         e["obj_id"]
+        for gt_data in scene_gt_cache.values()
         for entries in gt_data.values()
         for e in entries
     })
@@ -285,49 +698,37 @@ def main():
         target_obj_ids = list(all_obj_ids)
     if args.max_objects:
         target_obj_ids = target_obj_ids[:args.max_objects]
-    target_set = set(target_obj_ids)
 
-    # -- Build testcases (image_id, obj_id) -------------------------
-    # Ordered by image_id to maximise segmentation cache reuse.
-    testcases = []
-    for img_id_str in sorted(gt_data.keys(), key=int):
-        img_id = int(img_id_str)
-        for entry in gt_data[img_id_str]:
-            if entry["obj_id"] in target_set:
-                testcases.append({
-                    "image_id": img_id,
-                    "obj_id": entry["obj_id"],
-                })
+    profile_enabled = args.max_images is not None and args.max_images <= 5
 
-    if args.max_images is not None:
-        unique_imgs = sorted({tc["image_id"] for tc in testcases})
-        keep_imgs = set(unique_imgs[:args.max_images])
-        testcases = [tc for tc in testcases if tc["image_id"] in keep_imgs]
-
-    n_total = len(testcases)
-
-    # -- Header -----------------------------------------------------
+    # -- Header -------------------------------------------------------
     print(f"\n{'='*65}")
-    print(f"  BOP ISM Evaluation — OpenVINO Pipeline")
+    print(f"  BOP ISM Evaluation - OpenVINO")
     print(f"{'='*65}")
     print(f"  BOP dir       : {args.bop_dir}")
-    print(f"  Device        : {args.ov_device} {'(ext)' if args.ext else ''}")
+    print(f"  Device        : {args.ov_device} ({args.ext})")
     print(f"  Segmentor     : {args.segmentor_model}")
     print(f"  Objects       : {target_obj_ids}")
-    print(f"  Testcases     : {n_total}")
-    print(f"  Max images    : {args.max_images or 'all'}")
+    print(f"  Images        : {n_images}")
+    print(f"  Batch size    : {args.batch_size}")
+    print(f"  Chunk size    : {args.chunk_size}")
     print(f"  Output        : {output_dir}")
     print(f"  Skip existing : {args.skip_existing}")
     print(f"  Templates root: {templates_root}")
-    print()
+    print(f"  Ref cache dir : {args.ref_cache_dir}")
+    if profile_enabled:
+        print(f"  Perf profile  : enabled (max_images <= 5)")
+    print(flush=True)
 
-    if n_total == 0:
-        print("No testcases to evaluate.")
+    if n_images == 0:
+        print("No images to evaluate.")
         return
 
-    # -- Init OV ISM pipeline ---------------------------------------
-    print("Initializing OV ISM pipeline ...")
-    t_init_start = time.time()
+    # =================================================================
+    #  1. Init OV ISM pipeline
+    # =================================================================
+    print("Initializing OV ISM pipeline ...", flush=True)
+    t_init_start = time.time() if profile_enabled else None
     init_fn = init_model_ov_ext if args.ext else init_model_ov
     model, cfg, device, selected_poses, proposal_processor = init_fn(
         ov_model_dir=args.ov_model_dir,
@@ -335,318 +736,593 @@ def main():
         segmentor_model_name=args.segmentor_model,
         stability_score_thresh=args.stability_score_thresh,
         points_per_side=args.points_per_side,
+        points_per_batch=args.points_per_batch,
+        chunk_size=args.chunk_size,
     )
-    init_time = time.time() - t_init_start
-    print(f"  Model init: {init_time:.1f}s\n")
+    if hasattr(model.segmentor_model, "points_per_batch"):
+        model.segmentor_model.points_per_batch = args.points_per_batch
+    if hasattr(model.descriptor_model, "chunk_size"):
+        model.descriptor_model.chunk_size = args.chunk_size
 
-    # -- Caches -----------------------------------------------------
-    # Image-level: segmentation + DINOv2 query descriptors
-    img_cache = {}          # image_id -> (detections, query_cls, query_patch)
-    # Object-level: template + pointcloud ref_data
-    obj_ref_cache = {}      # obj_id -> dict (cloned model.ref_data)
+    # -- Re-compile with CACHE_DIR for GPU ----------------------------
+    if args.ov_device.upper().startswith("GPU"):
+        _core = ov.Core()
 
-    # -- Tracking ---------------------------------------------------
-    maps_by_obj = defaultdict(list)
-    timings = []
-    n_completed = 0
-    n_skipped = 0
-    t_eval_start = time.time()
+        _cache_dir = os.path.join(args.ov_model_dir, ".ov_gpu_cache")
+        os.makedirs(_cache_dir, exist_ok=True)
 
-    for tc_idx, tc in enumerate(testcases):
-        img_id = tc["image_id"]
-        obj_id = tc["obj_id"]
-        result_name = f"img{img_id:06d}_obj{obj_id:06d}.json"
-        result_path = os.path.join(output_dir, result_name)
+        _prec_hint = "f32" if args.precision == "fp32" else "f16"
+        _gpu_config = {
+            "PERFORMANCE_HINT": "LATENCY",
+            "NUM_STREAMS": "1",
+            "INFERENCE_PRECISION_HINT": _prec_hint,
+            "CACHE_DIR": _cache_dir,
+        }
+        if args.precision == "fp32":
+            _gpu_config["EXECUTION_MODE_HINT"] = "ACCURACY"
 
-        # -- skip_existing ------------------------------------------
-        if args.skip_existing and os.path.exists(result_path):
-            try:
-                with open(result_path) as f:
-                    existing = json.load(f)
-                maps_by_obj[obj_id].append(existing.get("map", 0.0))
-                timings.append(existing.get("timing_total", 0.0))
-            except Exception:
-                pass
-            n_completed += 1
-            n_skipped += 1
-            if n_completed % 500 == 0:
-                _print_progress(n_completed, n_total, maps_by_obj, timings)
-            continue
+        if args.segmentor_model == "fastsam":
+            _xml = os.path.join(args.ov_model_dir, "fastsam_x_dynamic.xml")
+            _fastsam_config = dict(_gpu_config)
+            _fastsam_config["INFERENCE_PRECISION_HINT"] = "f32"
+            model.segmentor_model.compiled = _core.compile_model(
+                _core.read_model(_xml), args.ov_device, _fastsam_config)
 
-        t_tc_start = time.time()
-        timing = {}
+            print(f"  FastSAM re-compiled with CACHE_DIR (precision={args.precision})", flush=True)
 
-        # ---- Step 1: Segmentation (cached per image) --------------
-        if img_id not in img_cache:
-            t0 = time.time()
-            rgb_path = os.path.join(rgb_dir, f"{img_id:06d}.png")
-            rgb = np.array(Image.open(rgb_path).convert("RGB"))
-            detections = model.segmentor_model.generate_masks(rgb)
-            detections = Detections(detections)
-            timing["segmentation"] = time.time() - t0
+        _dinov2_name = "dinov2_vitl14_ext.xml" if args.ext else "dinov2_vitl14.xml"
+        _dinov2_xml = os.path.join(args.ov_model_dir, _dinov2_name)
+        model.descriptor_model.dinov2_compiled = _core.compile_model(
+            _core.read_model(_dinov2_xml), args.ov_device, _gpu_config)
+        if hasattr(model.descriptor_model, "_dinov2_request"):
+            model.descriptor_model._dinov2_request = (
+                model.descriptor_model.dinov2_compiled.create_infer_request()
+            )
+        print(f"  DINOv2 re-compiled with CACHE_DIR (precision={args.precision})", flush=True)
 
-            t0 = time.time()
-            query_cls, query_patch = model.descriptor_model(rgb, detections)
-            timing["descriptor"] = time.time() - t0
-
-            img_cache[img_id] = (detections, query_cls, query_patch)
-            # Evict old entries to save memory (keep only current image)
-            for k in [k for k in img_cache if k != img_id]:
-                del img_cache[k]
+    # -- GPU warmup ---------------------------------------------------
+    warmup_rgb_path = image_records[0]["rgb_path"]
+    if os.path.isfile(warmup_rgb_path):
+        print("  GPU warmup (compiling kernels)...", flush=True)
+        t_warmup = time.time() if profile_enabled else None
+        warmup_rgb = _load_rgb(warmup_rgb_path)
+        _ = model.segmentor_model.generate_masks(warmup_rgb)
+        if profile_enabled:
+            print(f"  GPU warmup done: {time.time() - t_warmup:.1f}s", flush=True)
         else:
-            detections, query_cls, query_patch = img_cache[img_id]
-            timing["segmentation"] = 0.0
-            timing["descriptor"] = 0.0
+            print(f"  GPU warmup done", flush=True)
 
-        n_proposals = len(detections.masks)
+    init_time = time.time() - t_init_start if profile_enabled else None
+    if profile_enabled:
+        print(f"  Model init: {init_time:.1f}s", flush=True)
 
-        # ---- Step 2: Load template descriptors (cached per obj) ---
-        t0 = time.time()
-        template_dir = os.path.join(
-            templates_root, f"obj_{obj_id:06d}", "templates"
-        )
-        cad_path = os.path.join(models_dir, f"obj_{obj_id:06d}.ply")
+    # =================================================================
+    #  2. Pre-load reference data (multi-class)
+    # =================================================================
+    print("\nPre-loading reference data for all objects ...", flush=True)
+    t_ref_start = time.time() if profile_enabled else None
+    bop_obj_ids = np.array(target_obj_ids)   # ref index -> BOP ID mapping
 
-        if not os.path.isdir(template_dir):
-            print(f"  [SKIP] img={img_id} obj={obj_id}: "
-                  f"no templates at {template_dir}")
-            continue
-        if not os.path.isfile(cad_path):
-            print(f"  [SKIP] img={img_id} obj={obj_id}: "
-                  f"no CAD at {cad_path}")
-            continue
+    # -- Check for cached descriptors --
+    ref_cache_dir = args.ref_cache_dir
+    desc_path = os.path.join(ref_cache_dir, "descriptors.pth") if ref_cache_dir else ""
+    appe_path = os.path.join(ref_cache_dir, "descriptors_appe.pth") if ref_cache_dir else ""
+    pc_path = os.path.join(ref_cache_dir, "pointcloud.pth") if ref_cache_dir else ""
 
-        if obj_id in obj_ref_cache:
-            # Restore cached ref_data
-            model.ref_data = {
-                k: v.clone() if torch.is_tensor(v) else v
-                for k, v in obj_ref_cache[obj_id].items()
-            }
-        else:
-            load_template_descriptors(
+    if ref_cache_dir and os.path.exists(desc_path) and os.path.exists(appe_path) and os.path.exists(pc_path):
+        print(f"  Loading cached ref data from: {ref_cache_dir}")
+        all_descriptors = torch.load(desc_path, map_location="cpu")
+        all_appe_descriptors = torch.load(appe_path, map_location="cpu")
+        all_pointclouds = torch.load(pc_path, map_location="cpu")
+        print(f"    descriptors      : {all_descriptors.shape}")
+        print(f"    appe_descriptors : {all_appe_descriptors.shape}")
+        print(f"    pointcloud       : {all_pointclouds.shape}")
+    else:
+        # -- Compute from template images --
+        all_cls_descs = []
+        all_appe_descs = []
+        all_pc_list = []
+
+        for obj_id in target_obj_ids:
+            template_dir = os.path.join(
+                templates_root, f"obj_{obj_id:06d}", "templates"
+            )
+            cad_path = os.path.join(models_dir, f"obj_{obj_id:06d}.ply")
+
+            if not os.path.isdir(template_dir):
+                print(f"  [ERROR] No templates at {template_dir}")
+                return
+            if not os.path.isfile(cad_path):
+                print(f"  [ERROR] No CAD at {cad_path}")
+                return
+
+            print(f"  obj {obj_id:>2d}: templates ...", end="", flush=True)
+            cls_desc, appe_desc = _compute_template_descriptors(
                 model, template_dir, proposal_processor, device
             )
-            load_object_pointcloud(model, cad_path, selected_poses, device)
-            # Cache for reuse
-            obj_ref_cache[obj_id] = {
-                k: v.clone() if torch.is_tensor(v) else v
-                for k, v in model.ref_data.items()
-            }
-        timing["template_load"] = time.time() - t0
+            pc = _load_pointcloud(cad_path, n_pts=2048)
+            all_cls_descs.append(cls_desc)
+            all_appe_descs.append(appe_desc)
+            all_pc_list.append(pc)
+            print(f" done ({cls_desc.shape[0]} templates)", flush=True)
 
-        # ---- Step 3: Scoring pipeline -----------------------------
-        t0 = time.time()
-        depth_path = os.path.join(depth_dir, f"{img_id:06d}.png")
-        cam_info = cam_data.get(str(img_id))
+        all_descriptors = torch.stack(all_cls_descs)
+        all_appe_descriptors = torch.stack(all_appe_descs)
+        all_pointclouds = torch.stack(all_pc_list)
 
-        result = run_scoring_pipeline(
-            model, detections, query_cls, query_patch,
-            depth_path, cam_info, device,
-        )
-        timing["scoring"] = time.time() - t0
-
-        # ---- Step 4: mAP evaluation ------------------------------
-        t0 = time.time()
-        gt_masks = load_gt_masks_for_object(
-            mask_visib_dir, gt_data, img_id, obj_id
-        )
-
-        if result is None:
-            metrics = {"map": 0.0, "best_iou": 0.0,
-                       "n_pred": 0, "n_gt": len(gt_masks)}
-            n_after_sem = 0
-            n_detections = 0
-            score_label = "n/a"
-        else:
-            final_score, det_score, idx_sel, score_label = result
-
-            # Build numpy detection masks for mAP
-            obj_ids_tensor = torch.full(
-                (len(final_score),), obj_id - 1, dtype=torch.long
-            )
-            det_score.add_attribute("scores", final_score)
-            det_score.add_attribute("object_ids", obj_ids_tensor)
-            det_np = Detections({
-                key: getattr(det_score, key).clone()
-                if torch.is_tensor(getattr(det_score, key))
-                else getattr(det_score, key)
-                for key in det_score.keys
-            })
-            det_np.to_numpy()
-            n_after_sem = len(final_score)
-            n_detections = len(det_np.masks) if det_np.masks is not None else 0
-
-            # ---- Save detection_ism.npz + detection_ism.json ------
-            det_save_path = os.path.join(
-                output_dir,
-                f"img{img_id:06d}_obj{obj_id:06d}_detection_ism",
-            )
-            det_np.save_to_file(
-                0, img_id, 0, det_save_path, "Custom",
-                return_results=False,
-            )
-            det_list = convert_npz_to_json(
-                idx=0, list_npz_paths=[det_save_path + ".npz"]
-            )
-            save_json_bop23(det_save_path + ".json", det_list)
-
-            # ---- Optional vis_ism.png -----------------------------
-            if args.vis_ism and det_list:
-                rgb_path_vis = os.path.join(rgb_dir, f"{img_id:06d}.png")
-                rgb_vis = np.array(Image.open(rgb_path_vis).convert("RGB"))
-                best_det = max(det_list, key=lambda d: d["score"])
-                gray = cv2.cvtColor(rgb_vis, cv2.COLOR_RGB2GRAY)
-                overlay = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB).astype(
-                    np.float32)
-                bmask = rle_to_mask(best_det["segmentation"])
-                alpha_v = 0.33
-                overlay[bmask, 0] = np.clip(
-                    alpha_v * 255 + (1 - alpha_v) * overlay[bmask, 0], 0, 255)
-                overlay[bmask, 1] = np.clip(
-                    alpha_v * 105 + (1 - alpha_v) * overlay[bmask, 1], 0, 255)
-                overlay[bmask, 2] = np.clip(
-                    alpha_v * 0 + (1 - alpha_v) * overlay[bmask, 2], 0, 255)
-                pred_pil = Image.fromarray(overlay.astype(np.uint8))
-                rgb_pil = Image.fromarray(rgb_vis)
-                h, w = rgb_vis.shape[:2]
-                concat = Image.new("RGB", (w * 2, h))
-                concat.paste(rgb_pil, (0, 0))
-                concat.paste(pred_pil, (w, 0))
-                vis_path = os.path.join(
-                    output_dir,
-                    f"img{img_id:06d}_obj{obj_id:06d}_vis_ism.png",
-                )
-                concat.save(vis_path)
-
-            if gt_masks and n_detections > 0:
-                nms_masks = det_np.masks
-                nms_scores = det_np.scores
-                nms_masks_bin = (nms_masks > 0.5).astype(np.uint8)
-                if nms_masks_bin.ndim == 4:
-                    nms_masks_bin = nms_masks_bin.squeeze(1)
-                metrics = compute_map_iou(nms_masks_bin, nms_scores, gt_masks)
-            else:
-                metrics = {"map": 0.0, "best_iou": 0.0,
-                           "n_pred": n_detections, "n_gt": len(gt_masks)}
-
-        timing["eval"] = time.time() - t0
-        total_time = time.time() - t_tc_start
-
-        # ---- Save result JSON -------------------------------------
-        tc_result = {
-            "image_id": img_id,
-            "obj_id": obj_id,
-            "n_proposals": n_proposals,
-            "n_after_semantic": n_after_sem,
-            "n_detections": n_detections,
-            "n_gt": metrics.get("n_gt", len(gt_masks)),
-            "map": metrics["map"],
-            "best_iou": metrics["best_iou"],
-            "ap_per_iou": metrics.get("ap_per_iou", {}),
-            "score_type": score_label,
-            "timing_total": total_time,
-            "timing": timing,
-            "config": {
-                "ov_device": args.ov_device,
-                "ext": args.ext,
-                "segmentor_model": args.segmentor_model,
-                "points_per_side": args.points_per_side,
-                "stability_score_thresh": args.stability_score_thresh,
-            },
-        }
-        with open(result_path, "w") as f:
-            json.dump(tc_result, f, indent=2, default=str)
-
-        maps_by_obj[obj_id].append(metrics["map"])
-        timings.append(total_time)
-        n_completed += 1
-
-        # ---- Progress every 500 iterations ------------------------
-        if n_completed % 500 == 0:
-            _print_progress(n_completed, n_total, maps_by_obj, timings)
-
-    # -- Final summary ----------------------------------------------
-    total_eval_time = time.time() - t_eval_start
-    _print_final_summary(
-        n_completed, n_skipped, n_total,
-        maps_by_obj, timings, init_time, total_eval_time, output_dir,
-    )
-
-    # Save aggregate summary JSON
-    agg = aggregate_bop_maps(maps_by_obj)
-    agg["init_time_s"] = init_time
-    agg["total_eval_time_s"] = total_eval_time
-    agg["avg_inference_s"] = float(np.mean(timings)) if timings else 0.0
-    agg["config"] = {
-        "ov_device": args.ov_device,
-        "ext": args.ext,
-        "segmentor_model": args.segmentor_model,
-        "points_per_side": args.points_per_side,
-        "stability_score_thresh": args.stability_score_thresh,
-        "obj_ids": target_obj_ids,
-        "max_images": args.max_images,
-        "n_testcases": n_total,
-        "n_completed": n_completed,
-        "n_skipped": n_skipped,
+    model.ref_data = {
+        "descriptors": all_descriptors,
+        "appe_descriptors": all_appe_descriptors,
+        "pointcloud": all_pointclouds.to(device),
+        "poses": selected_poses,
     }
+    ref_time = time.time() - t_ref_start if profile_enabled else None
+    if profile_enabled:
+        print(f"  Reference data ready ({ref_time:.1f}s)")
+    else:
+        print(f"  Reference data ready")
+    print(f"    descriptors      : {model.ref_data['descriptors'].shape}")
+    print(f"    appe_descriptors : {model.ref_data['appe_descriptors'].shape}")
+    print(f"    pointcloud       : {model.ref_data['pointcloud'].shape}")
+    total_setup = time.time() - t_init_start if profile_enabled else None
+    if profile_enabled:
+        print(f"  Total init + ref: {total_setup:.1f}s\n", flush=True)
+    else:
+        print(flush=True)
+
+    # =================================================================
+    #  3. mAP accumulators (VOC-style, global across images)
+    # =================================================================
+    IOU_THRESHOLDS = [round(x, 2) for x in np.arange(0.5, 1.0, 0.05)]
+    global_per_class = {
+        t: defaultdict(lambda: {"scores": [], "matched": [], "n_gt": 0})
+        for t in IOU_THRESHOLDS
+    }
+    image_results = []
+    timings = []
+
+    # =================================================================
+    #  4. Main inference loop
+    # =================================================================
+    print(f"Starting inference on {n_images} images\n", flush=True)
+    t_eval_start = time.time()
+    evaluated_images = 0
+
+    for img_idx, record in enumerate(image_records):
+        scene_id = record["scene_id"]
+        img_id = int(record["image_id"])
+        t_img_start = time.time() if profile_enabled else None
+        print(
+            f"  [{img_idx + 1}/{n_images}] scene={scene_id} img={img_id}",
+            flush=True,
+        )
+
+        # -- skip_existing (per image) --------------------------------
+        result_path = os.path.join(
+            output_dir, f"scene{scene_id}_img{img_id:06d}.json"
+        )
+        if args.skip_existing and os.path.exists(result_path):
+            print(f"    (skipped - existing)", flush=True)
+            continue
+        evaluated_images += 1
+
+        # ---- Step 1: Segmentation -----------------------------------
+        rgb_path = record["rgb_path"]
+        rgb = _load_rgb(rgb_path)
+        t0 = time.time() if profile_enabled else None
+        proposals = model.segmentor_model.generate_masks(rgb)
+        detections = Detections(proposals)
+        detections.remove_very_small_detections(
+            config=model.post_processing_config.mask_post_processing
+        )
+        seg_time = time.time() - t0 if profile_enabled else None
+        if profile_enabled:
+            print(f"    segmentation ... {seg_time:.1f}s ({len(detections)} proposals)", flush=True)
+            _print_perf(
+                profile_enabled, "t3", "generate_masks", seg_time,
+                inputs=(("np.array(rgb).shape", rgb),),
+                outputs=(("detections['masks'].size()", detections.masks),
+                         ("detections['boxes'].size()", detections.boxes)),
+            )
+        else:
+            print(f"    segmentation ({len(detections)} proposals)", flush=True)
+
+        # ---- Step 2: DINOv2 query descriptors -----------------------
+        t0 = time.time() if profile_enabled else None
+        query_cls, query_appe = model.descriptor_model(rgb, detections)
+        desc_time = time.time() - t0 if profile_enabled else None
+        if profile_enabled:
+            print(f"    descriptors ... {desc_time:.1f}s", flush=True)
+            _print_perf(
+                profile_enabled, "t4", "descriptor_model.forward", desc_time,
+                inputs=(("np.array(rgb).shape", rgb),
+                        ("detections.masks.size()", detections.masks),
+                        ("detections.boxes.size()", detections.boxes)),
+                outputs=(("query_descriptors.size()", query_cls),
+                         ("query_appe_descriptors.size()", query_appe),
+                         ("detections.masks.size()", detections.masks)),
+            )
+        else:
+            print(f"    descriptors", flush=True)
+
+        # ---- Step 3: Semantic matching (multi-class) ----------------
+        t_match_start = time.time() if profile_enabled else None
+        t0 = time.time() if profile_enabled else None
+        (idx_selected, pred_idx_objects, semantic_score, best_template) = \
+            model.compute_semantic_score(query_cls)
+        semantic_time = time.time() - t0 if profile_enabled else None
+        _print_perf(
+            profile_enabled, "t5", "compute_semantic_score", semantic_time,
+            inputs=(("query_descriptors.size()", query_cls),),
+            outputs=(("idx_selected_proposals.size()", idx_selected),
+                     ("pred_idx_objects.size()", pred_idx_objects),
+                     ("semantic_score.size()", semantic_score),
+                     ("best_template.size()", best_template)),
+        )
+
+        # Load GT early (need even if no detections, for n_gt counts)
+        gt_data = scene_gt_cache[scene_id]
+        gt_masks, gt_obj_ids = load_gt_for_frame(
+            record["mask_visib_dir"], gt_data, img_id
+        )
+        if gt_masks:
+            gt_masks_arr = np.stack(gt_masks)
+            gt_obj_ids_arr = np.array(gt_obj_ids)
+        else:
+            gt_masks_arr = np.zeros((0, 1, 1), dtype=np.uint8)
+            gt_obj_ids_arr = np.array([], dtype=int)
+
+        if len(idx_selected) == 0:
+            print(f"    no proposals survived semantic filter", flush=True)
+            # Accumulate GT counts (no predictions)
+            for t in IOU_THRESHOLDS:
+                for oid in gt_obj_ids:
+                    global_per_class[t][oid]["n_gt"] += 1
+            img_time = time.time() - t_img_start if profile_enabled else None
+            if profile_enabled:
+                timings.append(img_time)
+            image_results.append({
+                "scene_id": scene_id,
+                "image_id": img_id, "num_detections": 0,
+                "num_gt": len(gt_masks),
+                "mAP_0.5": 0.0, "mAP_0.5_0.95": 0.0,
+            })
+            if profile_enabled:
+                image_results[-1]["time_s"] = round(img_time, 2)
+            with open(result_path, "w") as f:
+                json.dump(image_results[-1], f, indent=2, default=str)
+            continue
+
+        detections.filter(idx_selected)
+        query_appe_sel = query_appe[idx_selected, :]
+
+        # ---- Step 4: Appearance score -------------------------------
+        t0 = time.time() if profile_enabled else None
+        appe_scores, ref_aux_descriptor = model.compute_appearance_score(
+            best_template, pred_idx_objects, query_appe_sel
+        )
+        appearance_time = time.time() - t0 if profile_enabled else None
+        _print_perf(
+            profile_enabled, "t6", "compute_appearance_score", appearance_time,
+            inputs=(("best_template.size()", best_template),
+                    ("pred_idx_objects.size()", pred_idx_objects),
+                    ("query_appe_descriptors.size()", query_appe_sel)),
+            outputs=(("appe_scores.size()", appe_scores),
+                     ("ref_aux_descriptor.size()", ref_aux_descriptor)),
+        )
+
+        # ---- Step 5: Geometric score --------------------------------
+        depth_path = record["depth_path"]
+        cam_data = scene_cam_cache[scene_id]
+        cam_info = cam_data.get(str(img_id))
+        has_depth = (
+            depth_path is not None
+            and os.path.isfile(depth_path)
+            and cam_info is not None
+        )
+
+        if has_depth:
+            depth = np.array(imageio.imread(depth_path)).astype(np.int32)
+            cam_K = np.array(cam_info["cam_K"]).reshape((3, 3))
+            depth_scale = np.array(cam_info["depth_scale"])
+            batch_geo = {
+                "depth": torch.from_numpy(depth).unsqueeze(0).to(device),
+                "cam_intrinsic": torch.from_numpy(cam_K).unsqueeze(0).to(device),
+                "depth_scale": torch.from_numpy(depth_scale).unsqueeze(0).to(device),
+            }
+            t0 = time.time() if profile_enabled else None
+            image_uv = model.project_template_to_image(
+                best_template, pred_idx_objects, batch_geo, detections.masks
+            )
+            project_time = time.time() - t0 if profile_enabled else None
+            _print_perf(
+                profile_enabled, "t7", "project_template_to_image", project_time,
+                inputs=(("best_template.size()", best_template),
+                        ("pred_idx_objects.size()", pred_idx_objects),
+                        ("detections.masks.size()", detections.masks),
+                        ("batch['depth'].size()", batch_geo["depth"]),
+                        ("batch['cam_intrinsic'].size()", batch_geo["cam_intrinsic"]),
+                        ("batch['depth_scale'].size()", batch_geo["depth_scale"])),
+                outputs=(("image_uv.size()", image_uv),),
+            )
+
+            t0 = time.time() if profile_enabled else None
+            geometric_score, visible_ratio = model.compute_geometric_score(
+                image_uv, detections, query_appe_sel, ref_aux_descriptor,
+                visible_thred=model.visible_thred,
+            )
+            geometric_time = time.time() - t0 if profile_enabled else None
+            _print_perf(
+                profile_enabled, "t8", "compute_geometric_score", geometric_time,
+                inputs=(("image_uv.size()", image_uv),
+                        ("detections.masks.size()", detections.masks),
+                        ("detections.boxes.size()", detections.boxes),
+                        ("query_appe_descriptors.size()", query_appe_sel),
+                        ("ref_aux_descriptor.size()", ref_aux_descriptor)),
+                outputs=(("geometric_score.size()", geometric_score),
+                         ("visible_ratio.size()", visible_ratio)),
+            )
+
+            t0 = time.time() if profile_enabled else None
+            final_score = (
+                semantic_score + appe_scores + geometric_score * visible_ratio
+            ) / (1 + 1 + visible_ratio)
+            final_time = time.time() - t0 if profile_enabled else None
+            _print_perf(
+                profile_enabled, "t9", "final score", final_time,
+                inputs=(("semantic_score.size()", semantic_score),
+                        ("appe_scores.size()", appe_scores),
+                        ("geometric_score.size()", geometric_score),
+                        ("visible_ratio.size()", visible_ratio)),
+                outputs=(("final_score.size()", final_score),),
+            )
+        else:
+            t0 = time.time() if profile_enabled else None
+            final_score = (semantic_score + appe_scores) / 2.0
+            final_time = time.time() - t0 if profile_enabled else None
+            _print_perf(
+                profile_enabled, "t9", "final score", final_time,
+                inputs=(("semantic_score.size()", semantic_score),
+                        ("appe_scores.size()", appe_scores)),
+                outputs=(("final_score.size()", final_score),),
+            )
+
+        match_time = time.time() - t_match_start if profile_enabled else None
+
+        # ---- Step 6: NMS per object ---------------------------------
+        detections.add_attribute("scores", final_score)
+        detections.add_attribute("object_ids", pred_idx_objects)
+        detections.apply_nms_per_object_id(
+            nms_thresh=model.post_processing_config.nms_thresh
+        )
+        n_dets = len(detections)
+        if profile_enabled:
+            print(f"    matching: {match_time:.1f}s -> {n_dets} dets", flush=True)
+        else:
+            print(f"    matching -> {n_dets} dets", flush=True)
+
+        # ---- Convert to numpy ---------------------------------------
+        detections.to_numpy()
+        pred_masks = detections.masks
+        pred_scores = detections.scores
+        pred_obj_ids_raw = detections.object_ids
+        # Map 0-indexed object indices -> BOP object IDs
+        pred_bop_ids = bop_obj_ids[pred_obj_ids_raw]
+
+        # Binarize masks
+        pred_masks_bin = (
+            np.array([force_binary_mask(m) for m in pred_masks])
+            if n_dets > 0
+            else np.zeros((0, 1, 1), dtype=np.uint8)
+        )
+
+        # ---- Save detections ----------------------------------------
+        det_save_path = os.path.join(
+            output_dir, f"scene{scene_id}_img{img_id:06d}_detection_ism"
+        )
+        save_npz(det_save_path, {
+            "scene_id": int(scene_id),
+            "image_id": img_id,
+            "category_id": pred_bop_ids,
+            "score": pred_scores,
+            "bbox": xyxy_to_xywh(detections.boxes),
+            "time": 0,
+            "segmentation": pred_masks,
+        })
+
+        # ---- Step 7: Per-image mAP (VOC-style, per-threshold) -------
+        img_aps_per_thresh = {}
+        for t in IOU_THRESHOLDS:
+            if n_dets > 0 and len(gt_obj_ids_arr) > 0:
+                img_eval = evaluate_image_multiclass(
+                    pred_masks_bin, pred_scores, pred_bop_ids,
+                    gt_masks_arr, gt_obj_ids_arr, iou_thresh=t,
+                )
+            else:
+                img_eval = {}
+                for oid in gt_obj_ids_arr:
+                    img_eval[oid] = {
+                        "scores": [], "matched": [], "n_gt": 1
+                    }
+
+            aps_at_t = {}
+            for obj_id, info in img_eval.items():
+                ap = compute_global_ap_voc(
+                    np.array(info["scores"]) if info["scores"]
+                    else np.array([]),
+                    info["matched"] if info["matched"] else [],
+                    info["n_gt"],
+                )
+                aps_at_t[obj_id] = ap
+                # Accumulate into global counters
+                global_per_class[t][obj_id]["scores"].extend(info["scores"])
+                global_per_class[t][obj_id]["matched"].extend(
+                    info["matched"]
+                )
+                global_per_class[t][obj_id]["n_gt"] += info["n_gt"]
+            img_aps_per_thresh[t] = aps_at_t
+
+        # Per-image summary numbers
+        img_aps_50 = img_aps_per_thresh.get(0.5, {})
+        img_map_50 = (
+            float(np.mean(list(img_aps_50.values())))
+            if img_aps_50 else 0.0
+        )
+        all_thresh_maps = []
+        for t in IOU_THRESHOLDS:
+            aps = img_aps_per_thresh.get(t, {})
+            all_thresh_maps.append(
+                float(np.mean(list(aps.values()))) if aps else 0.0
+            )
+        img_map_5095 = (
+            float(np.mean(all_thresh_maps)) if all_thresh_maps else 0.0
+        )
+
+        img_time = time.time() - t_img_start if profile_enabled else None
+        if profile_enabled:
+            timings.append(img_time)
+
+        if profile_enabled:
+            print(
+                f"    GT: {len(gt_masks)} | dets: {n_dets} | "
+                f"mAP@.5={img_map_50:.4f} | "
+                f"mAP@[.5:.95]={img_map_5095:.4f} | "
+                f"{img_time:.1f}s",
+                flush=True,
+            )
+        else:
+            print(
+                f"    GT: {len(gt_masks)} | dets: {n_dets} | "
+                f"mAP@.5={img_map_50:.4f} | "
+                f"mAP@[.5:.95]={img_map_5095:.4f}",
+                flush=True,
+            )
+
+        image_results.append({
+            "scene_id": scene_id,
+            "image_id": img_id,
+            "num_detections": n_dets,
+            "num_gt": len(gt_masks),
+            "per_class_ap_0.5": {
+                int(k): round(v, 4) for k, v in img_aps_50.items()
+            },
+            "mAP_0.5": round(img_map_50, 4),
+            "mAP_0.5_0.95": round(img_map_5095, 4),
+        })
+        if profile_enabled:
+            image_results[-1]["time_s"] = round(img_time, 2)
+        with open(result_path, "w") as f:
+            json.dump(image_results[-1], f, indent=2, default=str)
+
+        # Free per-image memory
+        del detections, proposals, query_cls, query_appe
+        del pred_masks, pred_masks_bin
+        gc.collect()
+
+    total_eval_time = time.time() - t_eval_start
+
+    # =================================================================
+    #  5. Global VOC-style mAP - across all images
+    # =================================================================
+    print(f"\n{'='*65}")
+    print(
+        f"  OVERALL RESULTS  ({evaluated_images}/{n_images} images, "
+        f"{total_eval_time:.1f}s)"
+    )
+    print(f"{'='*65}")
+
+    all_obj_ids_seen = set()
+    for t in IOU_THRESHOLDS:
+        all_obj_ids_seen.update(global_per_class[t].keys())
+
+    class_aps_per_thresh = {}
+    for t in IOU_THRESHOLDS:
+        class_aps_per_thresh[t] = {}
+        for obj_id in sorted(all_obj_ids_seen):
+            info = global_per_class[t][obj_id]
+            ap = compute_global_ap_voc(
+                np.array(info["scores"]) if info["scores"]
+                else np.array([]),
+                info["matched"] if info["matched"] else [],
+                info["n_gt"],
+            )
+            class_aps_per_thresh[t][obj_id] = ap
+
+    print(
+        f"\n  {'obj':>5s}  {'AP@.5':>8s}  {'AP@.75':>8s}  "
+        f"{'AP@[.5:.95]':>12s}  {'GT':>4s}  {'dets':>5s}"
+    )
+    print(
+        f"  {'-'*5}  {'-'*8}  {'-'*8}  {'-'*12}  {'-'*4}  {'-'*5}"
+    )
+    class_ap_5095 = {}
+    for obj_id in sorted(all_obj_ids_seen):
+        ap50 = class_aps_per_thresh[0.5].get(obj_id, 0.0)
+        ap75 = class_aps_per_thresh[0.75].get(obj_id, 0.0)
+        ap_avg = float(np.mean(
+            [class_aps_per_thresh[t].get(obj_id, 0.0) for t in IOU_THRESHOLDS]
+        ))
+        class_ap_5095[obj_id] = ap_avg
+        n_gt = global_per_class[0.5][obj_id]["n_gt"]
+        n_det = len(global_per_class[0.5][obj_id]["scores"])
+        print(
+            f"  {obj_id:>5d}  {ap50:>8.4f}  {ap75:>8.4f}  "
+            f"{ap_avg:>12.4f}  {n_gt:>4d}  {n_det:>5d}"
+        )
+
+    overall_map_50 = float(
+        np.mean(list(class_aps_per_thresh[0.5].values()))
+    ) if class_aps_per_thresh[0.5] else 0.0
+    overall_map_75 = float(
+        np.mean(list(class_aps_per_thresh[0.75].values()))
+    ) if class_aps_per_thresh[0.75] else 0.0
+    overall_map_5095 = float(
+        np.mean(list(class_ap_5095.values()))
+    ) if class_ap_5095 else 0.0
+
+    print(f"\n  ** mAP@0.5       = {overall_map_50:.4f} **")
+    print(f"  ** mAP@0.75      = {overall_map_75:.4f} **")
+    print(f"  ** mAP@[.5:.95]  = {overall_map_5095:.4f} **")
+    print(f"{'='*65}")
+
+    # -- Save summary -------------------------------------------------
+    summary = {
+        "dataset": dataset_name,
+        "num_images": n_images,
+        "evaluated_images": evaluated_images,
+        "total_runtime_s": round(total_eval_time, 2),
+        "ov_device": args.ov_device,
+        "segmentor_model": args.segmentor_model,
+        "batch_size": args.batch_size,
+        "chunk_size": args.chunk_size,
+        "overall_mAP_0.5": round(overall_map_50, 4),
+        "overall_mAP_0.75": round(overall_map_75, 4),
+        "overall_mAP_0.5_0.95": round(overall_map_5095, 4),
+        "per_class_AP_0.5": {
+            int(k): round(v, 4)
+            for k, v in class_aps_per_thresh[0.5].items()
+        },
+        "per_class_AP_0.5_0.95": {
+            int(k): round(v, 4) for k, v in class_ap_5095.items()
+        },
+        "per_image": image_results,
+        "config": {
+            "ov_device": args.ov_device,
+            "ext": args.ext,
+            "segmentor_model": args.segmentor_model,
+            "points_per_side": args.points_per_side,
+            "stability_score_thresh": args.stability_score_thresh,
+            "obj_ids": target_obj_ids,
+        },
+    }
+    if profile_enabled:
+        summary["init_time_s"] = round(init_time, 2)
+        summary["ref_time_s"] = round(ref_time, 2)
     summary_path = os.path.join(output_dir, "summary.json")
     with open(summary_path, "w") as f:
-        json.dump(agg, f, indent=2, default=str)
+        json.dump(summary, f, indent=2, default=str)
     print(f"\n  Summary saved to: {summary_path}")
-
-
-# ===================================================================
-#  Progress / summary printing
-# ===================================================================
-
-def _print_progress(n_done, n_total, maps_by_obj, timings):
-    all_maps = [m for maps in maps_by_obj.values() for m in maps]
-    avg_map = np.mean(all_maps) * 100 if all_maps else 0.0
-    avg_time = np.mean(timings) if timings else 0.0
-    elapsed = sum(timings)
-    print(
-        f"\n  --- Progress: {n_done}/{n_total} "
-        f"({100 * n_done / n_total:.1f}%) | "
-        f"Avg mAP: {avg_map:.2f}% | "
-        f"Avg time/tc: {avg_time:.2f}s | "
-        f"Elapsed: {elapsed:.0f}s ---"
-    )
-
-
-def _print_final_summary(n_completed, n_skipped, n_total,
-                          maps_by_obj, timings, init_time,
-                          total_eval_time, output_dir):
-    print(f"\n{'='*65}")
-    print(f"  BOP ISM Evaluation — FINAL RESULTS")
-    print(f"{'='*65}")
-    print(f"  Completed      : {n_completed}/{n_total} "
-          f"(skipped existing: {n_skipped})")
-    print(f"  Model init     : {init_time:.1f}s")
-    if timings:
-        print(f"  Avg time/tc    : {np.mean(timings):.2f}s")
-        print(f"  Total eval time: {total_eval_time:.1f}s")
-
-    print(f"\n  Per-Object mAP @ IoU[0.50:0.95]:")
-    all_maps = []
-    for oid in sorted(maps_by_obj.keys()):
-        obj_maps = maps_by_obj[oid]
-        obj_map = np.mean(obj_maps) * 100 if obj_maps else 0.0
-        all_maps.extend(obj_maps)
-        print(f"    Object {oid:>2} ({len(obj_maps):>4} tc):  "
-              f"mAP = {obj_map:6.2f}%")
-
-    if all_maps:
-        overall_map = np.mean(all_maps) * 100
-        print(f"\n  {'='*55}")
-        print(f"  OVERALL mAP @ IoU[0.50:0.95]: {overall_map:.2f}%")
-        print(f"\n  Paper reference (SAM, LM-O, all scores): 46.0% mAP")
-        diff = overall_map - 46.0
-        print(f"  Your result vs paper: {diff:+.1f}% "
-              f"({'above' if diff >= 0 else 'below'})")
-    else:
-        print("\n  No testcases evaluated.")
-
-    print(f"\n  Results dir: {output_dir}")
+    print(f"  Results dir: {output_dir}")
 
 
 if __name__ == "__main__":
