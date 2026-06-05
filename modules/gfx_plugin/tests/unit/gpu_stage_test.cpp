@@ -77,7 +77,7 @@ public:
 
 private:
     std::string name_{"increment_stage"};
-    std::string type_{"Mock"}; 
+    std::string type_{"Mock"};
     std::vector<GpuTensor*> inputs_;
     GpuTensor* output_ = nullptr;
 };
