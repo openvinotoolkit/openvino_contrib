@@ -3,23 +3,12 @@
 
 name: Code Style
 on:
-  push:
-    paths:
-      - 'modules/java_api/**'
-  pull_request:
-    paths:
-      - '.github/workflows/code_style.yml'
-      - 'modules/java_api/**'
+  workflow_call:
 
 permissions: read-all
 
 jobs:
-  license-header:
-    name: License header check
-    uses: ./.github/workflows/copyright.yml
-
   Java:
-    needs: license-header
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6

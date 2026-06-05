@@ -3,22 +3,12 @@
 
 name: Sanitizer CUDA
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - 'modules/nvidia_plugin/**'
-  workflow_dispatch:
+  workflow_call:
 
 permissions: read-all
 
 jobs:
-  license-header:
-    name: License header check
-    uses: ./.github/workflows/copyright.yml
-
   cuda-compute-sanitizer:
-    needs: license-header
     runs-on: lohika-ci
     timeout-minutes: 300
     steps:

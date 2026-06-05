@@ -3,12 +3,7 @@
 
 name: macOS (Python 3.11)
 on:
-  workflow_dispatch:
-  pull_request:
-  push:
-    branches:
-      - master
-      - 'releases/**'
+  workflow_call:
 
 concurrency:
   # github.ref is not unique in post-commit
@@ -22,13 +17,8 @@ env:
 permissions: read-all
 
 jobs:
-  license-header:
-    name: License header check
-    uses: ./.github/workflows/copyright.yml
-
   Build_and_test:
     name: Build and Test
-    needs: license-header
     timeout-minutes: 150
     defaults:
       run:
@@ -164,7 +154,7 @@ jobs:
 
   Overall_Status:
     name: ci/gha_overall_status_mac
-    needs: [ license-header, Build_and_test ]
+    needs: [ Build_and_test ]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:

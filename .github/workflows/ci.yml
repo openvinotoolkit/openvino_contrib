@@ -1,0 +1,70 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+name: CI
+
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches:
+      - master
+      - 'releases/**'
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  copyright:
+    name: Copyright
+    uses: ./.github/workflows/copyright.yml
+
+  code-style:
+    name: Code Style
+    needs: copyright
+    uses: ./.github/workflows/code_style.yml
+
+  history-cuda:
+    name: History CUDA
+    needs: copyright
+    uses: ./.github/workflows/history_cuda.yml
+
+  linux:
+    name: Linux
+    needs: copyright
+    uses: ./.github/workflows/linux.yml
+
+  mac:
+    name: macOS
+    needs: copyright
+    uses: ./.github/workflows/mac.yml
+
+  windows:
+    name: Windows
+    needs: copyright
+    uses: ./.github/workflows/windows.yml
+
+  llama-cpp-plugin:
+    name: llama_cpp_plugin
+    needs: copyright
+    uses: ./.github/workflows/llama_cpp_plugin_build_and_test.yml
+
+  ollama-openvino:
+    name: ollama_openvino
+    needs: copyright
+    uses: ./.github/workflows/ollama_openvino_build_and_test.yml
+
+  sanitizer-cuda:
+    name: Sanitizer CUDA
+    needs: copyright
+    uses: ./.github/workflows/sanitizer_cuda.yml
+
+  test-cuda:
+    name: Test CUDA
+    needs: copyright
+    uses: ./.github/workflows/test_cuda.yml
+
+  token-merging:
+    name: Token Merging
+    needs: copyright
+    uses: ./.github/workflows/token_merging.yml

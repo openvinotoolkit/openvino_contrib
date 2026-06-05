@@ -3,13 +3,7 @@
 
 name: History CUDA
 on:
-  push:
-    paths:
-      - 'modules/nvidia_plugin/**'
-  pull_request:
-    paths:
-      - 'modules/nvidia_plugin/**'
-      - '.github/workflows/history_cuda.yml'
+  workflow_call:
 
 permissions: read-all
 
@@ -17,12 +11,7 @@ env:
   OV_BRANCH: ${{ github.base_ref || github.event.merge_group.base_ref || github.ref }}
 
 jobs:
-  license-header:
-    name: License header check
-    uses: ./.github/workflows/copyright.yml
-
   history:
-    needs: license-header
     runs-on: ubuntu-22.04
     steps:
     - name: checkout master branch

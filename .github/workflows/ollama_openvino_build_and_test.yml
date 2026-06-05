@@ -4,20 +4,12 @@
 name: ollama_openvino_build_and_test
 
 on:
-  pull_request:
-    paths:
-      - 'modules/ollama_openvino/**'
-      - '.github/workflows/ollama_openvino_build_and_test'
+  workflow_call:
 
 permissions: read-all
 
 jobs:
-  license-header:
-    name: License header check
-    uses: ./.github/workflows/copyright.yml
-
   test_ubuntu22:
-    needs: license-header
     runs-on: ubuntu-22.04
     steps:
       - name: Download repo
@@ -78,4 +70,3 @@ jobs:
           tmux new-session -d -s runsession 'ollama run TinyLlama-1.1B-Chat-v1.0-int4-ov:v1 "Who are you? Please give a brief answer" > output.txt'
           sleep 60
           cat output.txt
-

@@ -3,22 +3,12 @@
 
 name: Test CUDA
 on:
-  push:
-    paths:
-      - 'modules/nvidia_plugin/**'
-  pull_request:
-    paths:
-      - 'modules/nvidia_plugin/**'
+  workflow_call:
 
 permissions: read-all
 
 jobs:
-  license-header:
-    name: License header check
-    uses: ./.github/workflows/copyright.yml
-
   build:
-    needs: license-header
     runs-on: lohika-ci
     steps:
     - name: fetch openvino master branch
