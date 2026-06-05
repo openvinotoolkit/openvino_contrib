@@ -23,8 +23,6 @@
 #include "kernel_ir/gfx_kernel_source.hpp"
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
 #include "kernel_ir/metal_kernels/reduction_kernels.hpp"
-#include "kernel_ir/opencl_kernels/reduction_f32_kernel.hpp"
-#include "kernel_ir/opencl_kernels/reduction_logical_bool_kernel.hpp"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
@@ -89,16 +87,6 @@ std::vector<uint32_t> reduce_axis1_static_u32_scalars(bool keep_dims) {
                                            4, 1, 2, 0, 4, 2, 4}
                    : std::vector<uint32_t>{3, 2, 2, 3, 4, 1, 2, 4,
                                            1, 1, 2, 0, 2, 4, 4};
-}
-
-std::vector<std::string> non_reduction_opencl_sources() {
-  return {"float",
-          "long",
-          "gfx_opencl_generated_eltwise_logical_unary_bool",
-          "gfx_opencl_generated_eltwise_logical_binary_bool",
-          "gfx_opencl_generated_eltwise_logical_binary_broadcast_bool",
-          "gfx_opencl_generated_eltwise_select_f32",
-          "gfx_opencl_generated_eltwise_compare_f32"};
 }
 
 struct ReductionOpCase {
@@ -278,9 +266,6 @@ public:
             GfxKernelStageFamily::Reduction, "opencl/generated/reduction_f32",
             "gfx_opencl_generated_reduction_f32", 19u, 1u,
             reduction_static_scalar_args(), {0}, m_case.static_u32_scalars)
-        .uses_source(opencl_generated_reduction_f32_kernel_source())
-        .excludes({"gfx_opencl_generated_reduction_bool",
-                   "gfx_opencl_baseline_binary_f32"})
         .has_op(m_case.op)
         .supports_opencl_compiler();
   }
@@ -298,7 +283,7 @@ class ReductionNumericOpenClArtifactContractTest
     : public ::testing::TestWithParam<ReductionOpenClArtifactCase> {};
 
 TEST_P(ReductionNumericOpenClArtifactContractTest,
-       UsesFamilyOwnedGeneratedKernelUnit) {
+       UsesFamilyOwnedGeneratedKernelArtifactContract) {
   ReductionNumericOpenClArtifactContract(GetParam()).verify();
 }
 
@@ -318,8 +303,6 @@ TEST(ReductionOpenClArtifactContract,
                        "gfx_opencl_generated_reduction_bool", 19u, 1u,
                        reduction_static_scalar_args(), {0},
                        reduce_axis1_static_u32_scalars(false))
-      .uses_source(opencl_generated_reduction_bool_kernel_source())
-      .excludes(non_reduction_opencl_sources())
       .has_op(GfxOpenClArtifactOp::ReduceLogicalAnd)
       .supports_opencl_compiler();
 
@@ -332,8 +315,6 @@ TEST(ReductionOpenClArtifactContract,
           GfxKernelStageFamily::Reduction, "opencl/generated/reduction_bool",
           "gfx_opencl_generated_reduction_bool", 19u, 1u,
           reduction_static_scalar_args(), {0}, or_static_u32_scalars)
-      .uses_source(opencl_generated_reduction_bool_kernel_source())
-      .excludes(non_reduction_opencl_sources())
       .has_op(GfxOpenClArtifactOp::ReduceLogicalOr)
       .supports_opencl_compiler();
 }

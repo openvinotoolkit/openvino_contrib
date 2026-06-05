@@ -32,7 +32,7 @@ struct InferRuntimeExecutionConfig {
     const std::unordered_map<const ov::Node*, size_t>* param_map = nullptr;
     std::vector<std::shared_ptr<GfxRemoteTensor>>* remote_outputs = nullptr;
     const std::vector<std::shared_ptr<GfxRemoteTensor>>* remote_inputs = nullptr;
-    GpuBackend expected_backend = GpuBackend::Unknown;
+    const compiler::BackendTarget* expected_target = nullptr;
     std::shared_ptr<const RuntimeExecutableDescriptor> runtime_descriptor;
     GpuBufferPool* pool = nullptr;
     InferPipelinePostPrepareHook post_prepare;

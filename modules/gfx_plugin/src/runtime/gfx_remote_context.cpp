@@ -87,6 +87,7 @@ ov::SoPtr<ov::IRemoteTensor> GfxRemoteContext::create_tensor(const ov::element::
                                                shape,
                                                merged,
                                                m_device,
+                                               m_target,
                                                created.tensor,
                                                created.release_fn);
     return ov::SoPtr<ov::IRemoteTensor>{t, nullptr};

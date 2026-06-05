@@ -18,7 +18,8 @@ notes or deleted backend code as current behavior.
 
 - `src/plugin/`: OpenVINO runtime integration, properties, backend resolution,
   compiled-model state, infer-request OpenVINO API glue, output resolution,
-  model serialization, backend-access helpers, and variable-state API objects
+  disabled compiled-model cache/import/export entry points, backend-access
+  helpers, and variable-state API objects
 - `src/common/`: backend ids, configured-backend availability values,
   artifact-payload interfaces, activation/bias metadata, dispatch and
   parallelism value types, submit-policy records, constant-evaluation helpers,
@@ -47,9 +48,9 @@ notes or deleted backend code as current behavior.
 - `src/mlir/`: support probing, MLIR builders, pass helpers, backend hooks,
   MPSRT dialect/metadata helpers, and generic MLIR kernel construction
 - `src/backends/metal/`: Metal plugin glue, backend compiler module, Apple
-  MSL/MPS/MPSRT source planning, shared MPSRT ABI records, Objective-C++
-  runtime, MSL compiler, memory allocator, MPSRT request encoding,
-  MPS/MPSGraph vendor primitive execution, and profiling
+  MSL/MPS/MPSRT source planning, shared MPSRT ABI records and vendor primitive
+  contracts, Objective-C++ runtime, MSL compiler, memory allocator, MPSRT
+  request encoding, MPS/MPSGraph vendor primitive execution, and profiling
 - `src/backends/opencl/`: OpenCL plugin glue, dynamic API loader, buffer manager,
   program cache, memory ops, and generic source-stage executor
 - `src/transforms/`: graph rewrites, fusions, and layout cleanup
@@ -67,7 +68,7 @@ notes or deleted backend code as current behavior.
 - backend-aware transform pipeline selection
 - `query_model()`
 - `compile_model()`
-- model import/export plumbing
+- import/export API entry points that currently reject round-trip cache use
 - remote-context creation
 
 The backend parser accepts only `metal` and `opencl`. `auto` is resolved at
@@ -219,9 +220,9 @@ operation type names.
 `src/runtime/backend_stage_factory.hpp` is the runtime-facing backend boundary.
 `BackendState` implements that interface, while
 `src/runtime/pipeline_stage_materializer.*` owns descriptor lookup,
-stage-index validation, fusion contracts, MPSGraph vendor attention artifact
-materialization, and fused attention sequence materialization. Do not recreate
-these decisions inside backend request code.
+stage-index validation, descriptor-backed backend stage creation, vendor
+primitive artifact materialization, and fused sequence materialization. Do not
+recreate these decisions inside backend request code.
 
 `src/runtime/view_only_stage.*` handles compiler-owned metadata descriptors for
 ops whose outputs can alias an input buffer without launching a backend kernel.
@@ -304,7 +305,11 @@ runtime execution. The main objects are:
 
 The compiler service currently builds an in-memory executable description and a
 cache-envelope record. It does not emit or load a native backend binary cache.
-`export_model()` still serializes the OpenVINO model.
+`export_model()` and `import_model()` are currently not implemented because
+there is no serialized `CacheEnvelope`/`ExecutableBundle` format.
+Compiled-model cache round-trip entry points fail through
+`src/plugin/compiled_model_cache_contract.hpp` until a serialized
+`CacheEnvelope`/`ExecutableBundle` path exists.
 
 Backend kernel registries are explicit. Generated and vendor routes must name a
 registered `KernelUnit`; generic catch-all ids are rejected by contract tests.
@@ -413,8 +418,11 @@ Kernel contracts are split across the current compiler and kernel IR layers:
 - `src/runtime/pipeline_stage_desc.hpp`: runtime pipeline descriptor record
   shared by compiled model, infer planning, and stateful helpers
 - `src/runtime/pipeline_stage_materializer.*`: descriptor lookup, backend stage
-  creation, vendor attention artifact materialization, and fused attention
-  sequence materialization
+  creation, vendor primitive artifact materialization, and fused sequence
+  materialization
+- `src/runtime/stage_materialization_context.hpp`: the context object that hands
+  compiler-owned `RuntimeStageExecutableDescriptor` records and source-node
+  identity to backend stage factories
 - `src/runtime/runtime_session.*`: request-local resource binding tables and
   prepared executable objects that validate tensor bindings against descriptor
   memory-region ids
@@ -443,7 +451,7 @@ The Metal backend is split into:
 - descriptor-backed vendor primitive execution in
   `src/backends/metal/runtime/mpsrt_vendor_primitive_stage.*`
 - MSL compilation in `src/backends/metal/codegen/`
-- shared MPSRT ABI and builder-plan records in
+- shared MPSRT ABI, builder-plan, and vendor primitive contract records in
   `src/backends/metal/common/mpsrt/`
 - MPSRT runtime-model construction, preparation, and request encoding in
   `src/backends/metal/runtime/mpsrt/`
@@ -490,7 +498,10 @@ runtime-parameter roles instead of request-time buffer-order inference.
 
 MPS/MPSGraph vendor routes are compiler-owned `VendorDescriptor` payloads. The
 Metal compiler policy can select descriptor-backed payloads for supported
-MatMul/GEMM, `Softmax`, Pool2D, Resize2D, and SDPA forms. At runtime,
+MatMul/GEMM, `Softmax`, Pool2D, Resize2D, and SDPA forms. The shared payload and
+contract types live in
+`src/backends/metal/common/mpsrt/gfx_mpsrt_vendor_artifact_payload.hpp` and
+`src/backends/metal/common/mpsrt/gfx_mpsrt_vendor_contract.hpp`. At runtime,
 `MpsrtVendorPrimitiveStage` validates the descriptor payload, builds a typed
 single-stage MPSRT model from the vendor contract, adapts the external-buffer
 ABI, and encodes the prepared MPSRT model with explicit input/output roles.
@@ -525,6 +536,10 @@ the OpenCL backend module. The source-stage executor is intentionally generic.
 Op-specific behavior should reach it through artifact metadata, generated chunk
 artifacts, shared runtime-value planners, static u32/f32 scalar payloads,
 constant materialization, and boolean-buffer contracts.
+Family-specific backend compiler adapters, currently including
+`opencl_range_kernel_unit.*`, `opencl_softmax_kernel_unit.*`, and
+`opencl_tile_kernel_unit.*`, resolve generated `KernelUnit` records and
+materialize operation payloads before runtime descriptor construction.
 
 OpenCL support is reported through explicit generated-kernel routes in the
 current registry. Source execution still requires a matching artifact payload,
@@ -541,13 +556,15 @@ and element types match their contracts.
 
 OpenCL source coverage is mostly generated-kernel based. Softmax uses generated
 f32/f16 units, including dynamic-output static-rank variants whose scalar ABI
-carries runtime shape metadata. Pool2D uses generated f32/f16 units for static
-4D NCHW MaxPool and AvgPool. Interpolate uses embedded f32/f16 generated kernel
-units with explicit scalar metadata for resize mode, coordinate transform,
-nearest rounding, and NCHW spatial dimensions. ShapeOf, Tile, logical-bool
-elementwise, compare/select, boolean reduction, and generated Concat/Split
-helpers and Transpose also use explicit `opencl/generated/*` source ids. The
-current OpenCL kernel registry has no active handwritten kernel-unit exception.
+carries runtime shape metadata. Range uses generated f32/f16/i64 units,
+including a specialized i64 unit-step source. Pool2D uses generated f32/f16
+units for static 4D NCHW MaxPool and AvgPool. Interpolate uses embedded f32/f16
+generated kernel units with explicit scalar metadata for resize mode,
+coordinate transform, nearest rounding, and NCHW spatial dimensions. ShapeOf,
+Tile, logical-bool elementwise, compare/select, boolean reduction, generated
+Concat/Split helpers, and Transpose also use explicit `opencl/generated/*`
+source ids. The current OpenCL kernel registry has no active handwritten
+kernel-unit exception.
 Keep those distinctions in the artifact contract rather than duplicating them
 in the OpenCL stage executor.
 Routes that require runtime shape arguments must mark the `KernelUnit`; the

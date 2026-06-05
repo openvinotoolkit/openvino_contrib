@@ -23,9 +23,10 @@ void execute_metal_infer_request(InferRequest& request,
 namespace {
 
 std::unique_ptr<BackendState> create_metal_backend_state_provider(
+    const compiler::BackendTarget& target,
     const ov::AnyMap& properties,
     const ov::SoPtr<ov::IRemoteContext>& context) {
-    return create_metal_backend_state(properties, context);
+    return create_metal_backend_state(target, properties, context);
 }
 
 const BackendRuntimeProviderRegistration kMetalRuntimeProviderRegistration({
@@ -37,10 +38,15 @@ const BackendRuntimeProviderRegistration kMetalRuntimeProviderRegistration({
 
 }  // namespace
 
-std::unique_ptr<MetalBackendState> create_metal_backend_state(const ov::AnyMap& properties,
+std::unique_ptr<MetalBackendState> create_metal_backend_state(const compiler::BackendTarget& target,
+                                                              const ov::AnyMap& properties,
                                                               const ov::SoPtr<ov::IRemoteContext>& context) {
+    OPENVINO_ASSERT(target.backend() == GpuBackend::Metal,
+                    "GFX Metal: backend state target mismatch: ",
+                    target.debug_string());
     auto state = std::make_unique<MetalBackendState>();
-    register_metal_profiling_trace_sinks();
+    state->runtime_target = target;
+    register_metal_profiling_trace_sinks(target);
     ensure_metal_memory_ops_registered();
     ensure_metal_stage_factory_registered();
 
@@ -48,8 +54,8 @@ std::unique_ptr<MetalBackendState> create_metal_backend_state(const ov::AnyMap& 
     if (context) {
         auto gfx_ctx = std::dynamic_pointer_cast<GfxRemoteContext>(context._ptr);
         OPENVINO_ASSERT(gfx_ctx, "GFX: remote context type mismatch");
-        OPENVINO_ASSERT(gfx_ctx->backend() == GpuBackend::Metal,
-                        "GFX: remote context backend mismatch (expected Metal)");
+        OPENVINO_ASSERT(gfx_ctx->target().is_compatible_with_fingerprint(target.fingerprint()),
+                        "GFX Metal: remote context target mismatch");
         dev = gfx_ctx->device_handle();
     }
     if (!dev) {
@@ -81,7 +87,7 @@ std::unique_ptr<GfxProfiler> MetalBackendState::create_profiler(const GfxProfile
     return std::make_unique<MetalProfiler>(cfg, caps, device);
 }
 
-void register_metal_profiling_trace_sinks() {
+void register_metal_profiling_trace_sinks(const compiler::BackendTarget&) {
     register_metal_signpost_trace_sink();
 }
 

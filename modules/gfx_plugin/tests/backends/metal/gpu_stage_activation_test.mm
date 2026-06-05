@@ -54,6 +54,7 @@ RuntimeStageExecutableDescriptor make_metal_test_descriptor(
     descriptor.backend_domain = "metal";
     descriptor.kernel_id = "metal/generated/activation";
     descriptor.op_family = node ? node->get_type_name() : "null";
+    descriptor.stage_name = node ? node->get_friendly_name() : "null";
     descriptor.origin = KernelArtifactOrigin::Generated;
     descriptor.payload_kind = KernelArtifactPayloadKind::MslSource;
     descriptor.entry_point = source_plan.source.entry_point;
@@ -84,6 +85,7 @@ RuntimeStageExecutableDescriptor make_legacy_descriptor_without_payload(
     descriptor.kernel_id =
         std::string("metal/generated/") + (node ? node->get_type_name() : "null");
     descriptor.op_family = node ? node->get_type_name() : "null";
+    descriptor.stage_name = node ? node->get_friendly_name() : "null";
     descriptor.origin = KernelArtifactOrigin::Generated;
     descriptor.payload_kind = KernelArtifactPayloadKind::None;
     descriptor.entry_point = descriptor.kernel_id;
@@ -133,7 +135,9 @@ void run_activation(const ActivationCase& tc) {
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{tc.in.size()});
     auto node = OpFactory::make_node(param);
     const auto descriptor = make_metal_test_descriptor(node);
-    auto stage = GpuStageFactory::create(node, &descriptor, GpuBackend::Metal, device, queue);
+    auto stage = GpuStageFactory::create(
+        RuntimeStageMaterializationContext{node, descriptor},
+        GpuBackend::Metal, device, queue);
     ASSERT_NE(stage, nullptr);
     stage->set_inputs({&input});
     stage->set_output(&output);
@@ -234,8 +238,9 @@ TEST(GpuStageActivation, RejectsRuntimeSourcePlanWithoutCompilerPayload) {
         ov::element::f32, ov::Shape{values.size()});
     auto node = std::make_shared<ov::op::v0::Relu>(param);
     const auto descriptor = make_legacy_descriptor_without_payload(node);
-    auto stage = GpuStageFactory::create(node, &descriptor, GpuBackend::Metal,
-                                         device, queue);
+    auto stage = GpuStageFactory::create(
+        RuntimeStageMaterializationContext{node, descriptor},
+        GpuBackend::Metal, device, queue);
     ASSERT_NE(stage, nullptr);
     stage->set_inputs({&input});
     stage->set_output(&output);

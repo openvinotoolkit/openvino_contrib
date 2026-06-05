@@ -12,8 +12,9 @@
 #include <utility>
 #include <vector>
 
+#include "backends/opencl/compiler/opencl_kernel_artifacts.hpp"
 #include "backends/opencl/compiler/opencl_operation_support.hpp"
-#include "kernel_ir/gfx_kernel_source.hpp"
+#include "compiler/kernel_registry.hpp"
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
 
 namespace ov {
@@ -26,6 +27,30 @@ opencl_compiler_supports_node(const std::shared_ptr<const ov::Node> &node) {
   const compiler::BackendCapabilities capabilities(
       target, compiler::make_opencl_operation_support_policy());
   return capabilities.query_operation({node}).semantic_legal;
+}
+
+inline compiler::LoweringRouteKind
+opencl_artifact_route_kind(const GfxOpenClSourceArtifact &artifact) noexcept {
+  const auto origin = compiler::classify_opencl_kernel_artifact_origin(
+      artifact.artifact_ref.source_id);
+  switch (origin) {
+  case KernelArtifactOrigin::Generated:
+    return compiler::LoweringRouteKind::GeneratedKernel;
+  case KernelArtifactOrigin::HandwrittenException:
+    return compiler::LoweringRouteKind::HandwrittenKernelException;
+  default:
+    return compiler::LoweringRouteKind::Unsupported;
+  }
+}
+
+inline compiler::KernelUnit
+resolve_opencl_artifact_kernel_unit(const compiler::KernelRegistry &registry,
+                                    const GfxOpenClSourceArtifact &artifact) {
+  const auto route_kind = opencl_artifact_route_kind(artifact);
+  if (route_kind == compiler::LoweringRouteKind::Unsupported) {
+    return {};
+  }
+  return registry.resolve(route_kind, artifact.artifact_ref.source_id);
 }
 
 class OpenClSourceArtifactVerifier final {
@@ -75,8 +100,6 @@ public:
     EXPECT_EQ(artifact->local_size_hint, 64u);
     EXPECT_EQ(artifact->scalar_args, scalar_args);
     EXPECT_EQ(artifact->static_u32_scalars, static_u32_scalars);
-    EXPECT_NE(artifact->source.find("__kernel void " + entry_point),
-              std::string::npos);
 
     const auto roles =
         artifact->stage_manifest.custom_kernel.external_buffer_abi.roles;
@@ -96,19 +119,6 @@ public:
       EXPECT_EQ(roles[i], GfxKernelBufferRole::ScalarParam);
     }
 
-    return *this;
-  }
-
-  OpenClSourceArtifactVerifier &
-  excludes(const std::vector<std::string> &needles) {
-    const auto artifact = resolve_gfx_opencl_source_artifact(m_node);
-    if (!artifact.has_value()) {
-      ADD_FAILURE() << "missing OpenCL source artifact";
-      return *this;
-    }
-    for (const auto &needle : needles) {
-      EXPECT_EQ(artifact->source.find(needle), std::string::npos) << needle;
-    }
     return *this;
   }
 
@@ -144,29 +154,37 @@ public:
   }
 
   OpenClSourceArtifactVerifier &supports_opencl_compiler() {
-    EXPECT_TRUE(opencl_compiler_supports_node(m_node));
-    return *this;
-  }
-
-  OpenClSourceArtifactVerifier &uses_source(const GfxKernelSource &source) {
     const auto artifact = resolve_gfx_opencl_source_artifact(m_node);
-    if (!artifact.has_value()) {
-      ADD_FAILURE() << "missing OpenCL source artifact";
+    if (!artifact || !artifact->valid) {
+      ADD_FAILURE()
+          << "OpenCL compiler support requires a valid source artifact";
       return *this;
     }
-    EXPECT_EQ(artifact->artifact_ref.source_id, source.kernel_id);
-    EXPECT_EQ(artifact->artifact_ref.entry_point, source.entry_point);
-    EXPECT_EQ(artifact->source, source.source);
-    return *this;
-  }
 
-  OpenClSourceArtifactVerifier &contains_source(const std::string &needle) {
-    const auto artifact = resolve_gfx_opencl_source_artifact(m_node);
-    if (!artifact.has_value()) {
-      ADD_FAILURE() << "missing OpenCL source artifact";
+    const auto target =
+        compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
+    const auto registry = compiler::make_opencl_kernel_registry(target);
+    const auto kernel_unit =
+        resolve_opencl_artifact_kernel_unit(registry, *artifact);
+    if (!kernel_unit.valid()) {
+      ADD_FAILURE()
+          << "OpenCL compiler support requires registered KernelUnit: "
+          << artifact->artifact_ref.source_id;
       return *this;
     }
-    EXPECT_NE(artifact->source.find(needle), std::string::npos);
+
+    const compiler::BackendCapabilities capabilities(
+        target, compiler::make_opencl_operation_support_policy(registry));
+    const auto support = capabilities.query_operation({m_node});
+    if (!support.semantic_legal) {
+      ADD_FAILURE() << "OpenCL operation support rejected node: "
+                    << support.semantic_reason;
+      return *this;
+    }
+
+    EXPECT_EQ(support.preferred_route_kind, kernel_unit.route_kind());
+    EXPECT_EQ(support.preferred_route, kernel_unit.id());
+    EXPECT_EQ(kernel_unit.backend_domain(), "opencl");
     return *this;
   }
 

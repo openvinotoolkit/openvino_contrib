@@ -6,51 +6,20 @@
 #include <memory>
 #include <string>
 #include <string_view>
-#include <vector>
 
 #include "backends/metal/common/mpsrt/gfx_mpsrt_abi.hpp"
 #include "backends/metal/common/mpsrt/gfx_mpsrt_program.hpp"
+#include "backends/metal/common/mpsrt/gfx_mpsrt_vendor_contract.hpp"
 #include "openvino/core/shape.hpp"
 #include "openvino/core/type/element_type.hpp"
 #include "common/gfx_activation.hpp"
 #include "common/gfx_bias.hpp"
-#include "compiler/stage_policy.hpp"
+#include "compiler/stage_placement.hpp"
 
 namespace ov {
 class Node;
 
 namespace gfx_plugin {
-
-enum class GfxAppleMpsVendorPrimitiveKind {
-  None,
-  Gemm,
-  Conv2D,
-  Pool2D,
-  Resize2D,
-  Softmax,
-  TopK,
-  Sdpa,
-};
-
-struct GfxAppleMpsVendorPrimitiveDescriptor {
-  GfxAppleMpsVendorPrimitiveKind kind = GfxAppleMpsVendorPrimitiveKind::None;
-  GfxMpsrtGemmAbiDesc gemm{};
-  GfxMpsrtConv2DAbiDesc conv2d{};
-  GfxMpsrtPool2DAbiDesc pool2d{};
-  GfxMpsrtResize2DAbiDesc resize2d{};
-  GfxMpsrtSoftmaxAbiDesc softmax{};
-  GfxMpsrtTopKAbiDesc topk{};
-  GfxMpsrtSdpaAbiDesc sdpa{};
-};
-
-struct GfxAppleMpsVendorPrimitiveContract {
-  bool valid = false;
-  GfxAppleMpsVendorPrimitiveDescriptor descriptor;
-  std::vector<GfxKernelBufferRole> semantic_input_roles;
-  GfxMpsrtExternalBufferAbiPlan external_buffer_abi{};
-  std::vector<GfxMpsrtTensorDesc> input_descs;
-  std::vector<GfxMpsrtTensorDesc> output_descs;
-};
 
 uint32_t gfx_apple_mps_conv_fused_activation_code(ActivationKind kind);
 bool gfx_apple_mps_conv_supports_fused_activation(ActivationKind kind);

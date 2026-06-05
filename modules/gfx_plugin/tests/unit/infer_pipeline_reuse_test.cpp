@@ -193,6 +193,7 @@ make_test_runtime_descriptor(size_t stage_count,
         stage.backend_domain = "test";
         stage.kernel_id = "test/kernel/" + std::to_string(i);
         stage.op_family = "test";
+        stage.stage_name = "test/stage/" + std::to_string(i);
         stage.origin = KernelArtifactOrigin::Metadata;
         stage.payload_kind = KernelArtifactPayloadKind::None;
         RuntimeTensorBindingContract output_binding;
@@ -354,6 +355,33 @@ TEST(InferPipelineReuseTest, BuildPipelineRejectsMissingRuntimeStageIndex) {
                                                 make_test_runtime_descriptor(1)));
 }
 
+TEST(InferPipelineReuseTest, RemoteTensorValidationRejectsTargetProfileMismatch) {
+    const auto generic_target =
+        compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
+    const auto v3d_target = compiler::BackendTarget::from_backend_device_family(
+        GpuBackend::OpenCL,
+        GpuDeviceFamily::BroadcomV3D);
+
+    GpuTensor tensor;
+    tensor.buf.backend = GpuBackend::OpenCL;
+    tensor.buf.buffer = reinterpret_cast<GpuBufferHandle>(0x1);
+    tensor.buf.size = sizeof(float);
+    tensor.buf.type = ov::element::f32;
+    tensor.shape = {1};
+    tensor.expected_type = ov::element::f32;
+
+    GfxRemoteTensor remote(ov::element::f32,
+                           {1},
+                           {},
+                           "GFX",
+                           v3d_target,
+                           tensor,
+                           nullptr);
+    EXPECT_THROW(normalize_remote_tensor(remote, generic_target, "test"),
+                 ov::Exception);
+    EXPECT_NO_THROW(normalize_remote_tensor(remote, v3d_target, "test"));
+}
+
 TEST(InferPipelineReuseTest, ReusesClonedPipelineAndOutputHandlesAcrossPreparations) {
     CountingStage::reset_counters();
 
@@ -390,6 +418,7 @@ TEST(InferPipelineReuseTest, ReusesClonedPipelineAndOutputHandlesAcrossPreparati
                                       error_prefix);
     };
 
+    const auto target = compiler::BackendTarget::from_backend(GpuBackend::Metal);
     InferRuntimeExecutionConfig config;
     config.state = &runtime_state;
     config.descs = &descs;
@@ -399,7 +428,7 @@ TEST(InferPipelineReuseTest, ReusesClonedPipelineAndOutputHandlesAcrossPreparati
     config.param_map = &param_map;
     config.remote_outputs = &remote_outputs;
     config.remote_inputs = &remote_inputs;
-    config.expected_backend = GpuBackend::Metal;
+    config.expected_target = &target;
     config.runtime_descriptor = runtime_descriptor;
     config.pool = &pool;
     config.post_prepare = [](std::vector<InferStage>&) {};
@@ -468,6 +497,7 @@ TEST(InferPipelineReuseTest, RuntimeMemoryPlanExtendsWorkspaceOutputLifetime) {
                                       error_prefix);
     };
 
+    const auto target = compiler::BackendTarget::from_backend(GpuBackend::Metal);
     InferRuntimeExecutionConfig config;
     config.state = &runtime_state;
     config.descs = &descs;
@@ -477,7 +507,7 @@ TEST(InferPipelineReuseTest, RuntimeMemoryPlanExtendsWorkspaceOutputLifetime) {
     config.param_map = &param_map;
     config.remote_outputs = &remote_outputs;
     config.remote_inputs = &remote_inputs;
-    config.expected_backend = GpuBackend::Metal;
+    config.expected_target = &target;
     config.runtime_descriptor = runtime_descriptor;
     config.pool = &pool;
     config.post_prepare = [](std::vector<InferStage>&) {};

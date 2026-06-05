@@ -31,6 +31,16 @@ TEST(GfxOpenClDeviceProfileContractTest,
     expect_opencl_profile_contract_unavailable();
 }
 
+TEST(GfxOpenClDeviceProfileContractTest,
+     AndroidAdrenoExecutionInfoUsesOpenClAdrenoProfile) {
+    expect_opencl_profile_contract_unavailable();
+}
+
+TEST(GfxOpenClDeviceProfileContractTest,
+     RaspberryPiV3dExecutionInfoUsesOpenClBroadcomV3dProfile) {
+    expect_opencl_profile_contract_unavailable();
+}
+
 }  // namespace
 }  // namespace gfx_plugin
 }  // namespace ov

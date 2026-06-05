@@ -12,8 +12,8 @@
 #include <unordered_set>
 #include <utility>
 
-#include "compiler/pipeline_stage_builder.hpp"
 #include "openvino/core/except.hpp"
+#include "runtime/pipeline_stage_plan.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -107,6 +107,7 @@ RuntimeStageExecutableDescriptor make_stage_descriptor(
   descriptor.backend_domain = artifact.kernel.backend_domain;
   descriptor.kernel_id = artifact.kernel.kernel_id;
   descriptor.op_family = artifact.kernel.op_family;
+  descriptor.stage_name = manifest_stage.source_node_name;
   descriptor.origin = artifact.kernel.origin;
   descriptor.payload_kind = artifact.payload_kind;
   descriptor.entry_point = artifact.entry_point;
@@ -267,6 +268,134 @@ bool tensor_binding_matches(const RuntimeTensorBindingContract &binding,
          binding.host_visible == region->host_visible;
 }
 
+bool runtime_binding_complete(const RuntimeTensorBindingContract &binding) {
+  return !binding.logical_name.empty() && !binding.memory_region_id.empty() &&
+         !binding.role.empty() && !binding.element_type.empty() &&
+         !binding.partial_shape.empty() && !binding.layout.empty() &&
+         !binding.storage_kind.empty() && !binding.lifetime_class.empty() &&
+         !binding.alias_group.empty();
+}
+
+bool runtime_stage_identity_complete(
+    const RuntimeStageExecutableDescriptor &stage) {
+  return stage.stage_record_key != 0 && !stage.manifest_ref.empty() &&
+         !stage.abi_fingerprint.empty() && !stage.artifact_key.empty() &&
+         !stage.backend_domain.empty() && !stage.kernel_id.empty() &&
+         !stage.op_family.empty() && !stage.stage_name.empty() &&
+         !stage.runtime_shape_rule.empty() &&
+         stage.submission_stage_weight != 0u;
+}
+
+void append_materialized_binding_diagnostics(
+    RuntimeExecutableDescriptorVerificationResult &result,
+    const std::vector<RuntimeTensorBindingContract> &bindings,
+    std::string_view direction, size_t materialized_stage_index) {
+  for (size_t i = 0; i < bindings.size(); ++i) {
+    if (!runtime_binding_complete(bindings[i])) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor materialized " +
+          std::string(direction) + " binding incomplete at " +
+          std::to_string(materialized_stage_index) + ":" +
+          std::to_string(i));
+    }
+  }
+}
+
+void append_materialized_descriptor_diagnostics(
+    RuntimeExecutableDescriptorVerificationResult &result,
+    const PipelineStageMaterializationPlan &materialized_stage,
+    const RuntimeStageExecutableDescriptor &descriptor_stage,
+    size_t materialized_stage_index) {
+  if (!materialized_stage.materialized_descriptor_valid) {
+    result.diagnostics.push_back(
+        "runtime executable descriptor stage plan materialized descriptor "
+        "missing at " +
+        std::to_string(materialized_stage_index));
+    return;
+  }
+
+  const auto &materialized = materialized_stage.materialized_descriptor;
+  if (materialized.stage_record_key != descriptor_stage.stage_record_key ||
+      materialized.stage_index != descriptor_stage.stage_index) {
+    result.diagnostics.push_back(
+        "runtime executable descriptor stage plan materialized descriptor "
+        "stage identity drift at " +
+        std::to_string(materialized_stage_index));
+  }
+  if (!runtime_stage_identity_complete(materialized)) {
+    result.diagnostics.push_back(
+        "runtime executable descriptor stage plan materialized descriptor "
+        "identity incomplete at " +
+        std::to_string(materialized_stage_index));
+  }
+
+  if (materialized_stage.kind != PipelineStageMaterializationKind::SingleStage) {
+    if (materialized.input_bindings.size() !=
+        materialized_stage.io_plan.inputs.size()) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor stage plan materialized input "
+          "binding count drift at " +
+          std::to_string(materialized_stage_index));
+    }
+    if (materialized.output_bindings.size() !=
+        materialized_stage.io_plan.outputs.size()) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor stage plan materialized output "
+          "binding count drift at " +
+          std::to_string(materialized_stage_index));
+    }
+  }
+
+  if (materialized.abi_arg_count != materialized.input_bindings.size()) {
+    result.diagnostics.push_back(
+        "runtime executable descriptor stage plan materialized input ABI "
+        "count drift at " +
+        std::to_string(materialized_stage_index));
+  }
+  if (materialized.abi_output_arg_count !=
+      materialized.output_bindings.size()) {
+    result.diagnostics.push_back(
+        "runtime executable descriptor stage plan materialized output ABI "
+        "count drift at " +
+        std::to_string(materialized_stage_index));
+  }
+
+  append_materialized_binding_diagnostics(
+      result, materialized.input_bindings, "input", materialized_stage_index);
+  append_materialized_binding_diagnostics(
+      result, materialized.output_bindings, "output", materialized_stage_index);
+
+  if (materialized_stage.kind ==
+      PipelineStageMaterializationKind::VendorAttention) {
+    if (!materialized_stage.vendor_attention.valid()) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor stage plan vendor descriptor missing "
+          "at " +
+          std::to_string(materialized_stage_index));
+    }
+    if (materialized.payload_kind !=
+            KernelArtifactPayloadKind::VendorDescriptor ||
+        !materialized.payload) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor stage plan vendor materialized "
+          "payload missing at " +
+          std::to_string(materialized_stage_index));
+    }
+  }
+
+  if (materialized_stage.kind ==
+      PipelineStageMaterializationKind::FusedAttentionSequence) {
+    if (materialized.origin != KernelArtifactOrigin::Common ||
+        materialized.payload_kind != KernelArtifactPayloadKind::None ||
+        materialized.payload) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor stage plan fused materialized "
+          "descriptor carries backend payload at " +
+          std::to_string(materialized_stage_index));
+    }
+  }
+}
+
 void append_tensor_binding_diagnostics(
     RuntimeExecutableDescriptorVerificationResult &result,
     const RuntimeStageExecutableDescriptor &stage,
@@ -377,6 +506,75 @@ void append_memory_plan_diagnostics(
   }
 }
 
+void append_stage_plan_diagnostics(
+    RuntimeExecutableDescriptorVerificationResult &result,
+    const RuntimeExecutableDescriptor &descriptor) {
+  if (!descriptor.stage_plan) {
+    result.diagnostics.emplace_back(
+        "runtime executable descriptor is missing compiler-owned stage plan");
+    return;
+  }
+
+  const auto &stage_plan = *descriptor.stage_plan;
+  if (stage_plan.ordered_ops.size() != descriptor.stages.size()) {
+    result.diagnostics.emplace_back(
+        "runtime executable descriptor stage plan ordered-op count drift");
+  }
+  const size_t ordered_count =
+      std::min(stage_plan.ordered_ops.size(), descriptor.stages.size());
+  for (size_t i = 0; i < ordered_count; ++i) {
+    const auto &node = stage_plan.ordered_ops[i];
+    const auto &stage = descriptor.stages[i];
+    if (!node) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor stage plan null ordered op at " +
+          std::to_string(i));
+      continue;
+    }
+    if (stage.stage_index != i || stage.op_family != node->get_type_name() ||
+        stage.stage_name != node->get_friendly_name()) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor stage plan ordered-op drift at " +
+          std::to_string(i));
+    }
+  }
+
+  for (size_t i = 0; i < stage_plan.stage_plans.size(); ++i) {
+    const auto &materialized_stage = stage_plan.stage_plans[i];
+    const auto runtime_stage_index =
+        materialized_stage.io_plan.runtime_stage_index;
+    if (runtime_stage_index == PipelineStageIoPlan::npos ||
+        runtime_stage_index >= descriptor.stages.size()) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor stage plan materialized stage has "
+          "invalid descriptor index at " +
+          std::to_string(i));
+      continue;
+    }
+    const auto &descriptor_stage = descriptor.stages[runtime_stage_index];
+    if (!materialized_stage.io_plan.node ||
+        descriptor_stage.op_family !=
+            materialized_stage.io_plan.node->get_type_name() ||
+        descriptor_stage.stage_name !=
+            materialized_stage.io_plan.node->get_friendly_name()) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor stage plan materialized stage drift "
+          "at " +
+          std::to_string(i));
+    }
+    append_materialized_descriptor_diagnostics(
+        result, materialized_stage, descriptor_stage, i);
+  }
+
+  for (const auto &entry : stage_plan.node_to_stage) {
+    if (entry.second >= stage_plan.stage_plans.size()) {
+      result.diagnostics.emplace_back(
+          "runtime executable descriptor stage plan node-to-stage index drift");
+      break;
+    }
+  }
+}
+
 } // namespace
 
 namespace compiler {
@@ -456,6 +654,7 @@ verify_runtime_executable_descriptor(
         stage.backend_domain != artifact.kernel.backend_domain ||
         stage.kernel_id != artifact.kernel.kernel_id ||
         stage.op_family != artifact.kernel.op_family ||
+        stage.stage_name != executable.manifest.stages[i].source_node_name ||
         stage.origin != artifact.kernel.origin ||
         stage.payload_kind != artifact.payload_kind ||
         stage.entry_point != artifact.entry_point ||
@@ -496,6 +695,7 @@ verify_runtime_executable_descriptor(
     if (stage.manifest_ref.empty() || stage.abi_fingerprint.empty() ||
         stage.artifact_key.empty() || stage.backend_domain.empty() ||
         stage.kernel_id.empty() || stage.op_family.empty() ||
+        stage.stage_name.empty() ||
         stage.runtime_shape_rule.empty() ||
         stage.submission_stage_weight == 0u) {
       result.diagnostics.push_back(
@@ -569,6 +769,19 @@ bool runtime_executable_descriptor_valid(
   return verify_runtime_executable_descriptor(descriptor, executable).valid();
 }
 
+RuntimeExecutableDescriptorVerificationResult
+verify_runtime_executable_stage_plan(
+    const RuntimeExecutableDescriptor &descriptor) {
+  RuntimeExecutableDescriptorVerificationResult result;
+  append_stage_plan_diagnostics(result, descriptor);
+  return result;
+}
+
+bool runtime_executable_stage_plan_valid(
+    const RuntimeExecutableDescriptor &descriptor) {
+  return verify_runtime_executable_stage_plan(descriptor).valid();
+}
+
 RuntimeExecutableDescriptor
 RuntimeExecutableDescriptorBuilder::build(const ExecutableBundle &executable)
     const {
@@ -598,30 +811,6 @@ RuntimeExecutableDescriptorBuilder::build(const ExecutableBundle &executable)
         executable.memory_plan, artifact,
         executable.find_artifact_payload(artifact.artifact_key)));
   }
-  return descriptor;
-}
-
-RuntimeExecutableDescriptor RuntimeExecutableDescriptorBuilder::build(
-    const RuntimeExecutableDescriptorBuildRequest &request) const {
-  OPENVINO_ASSERT(request.executable,
-                  "GFX: runtime executable descriptor build requires "
-                  "ExecutableBundle");
-  RuntimeExecutableDescriptor descriptor = build(*request.executable);
-  if (!request.runtime_model) {
-    return descriptor;
-  }
-
-  PipelineStageBuildRequest stage_request;
-  stage_request.runtime_model = request.runtime_model;
-  stage_request.runtime_descriptor = &descriptor;
-  stage_request.backend = request.backend;
-  stage_request.backend_name = request.backend_name;
-  stage_request.enable_fusion = request.enable_fusion;
-  stage_request.compile_trace = request.compile_trace;
-  auto stage_result = build_pipeline_stage_plan(stage_request);
-  auto stage_plan = std::make_shared<PipelineStageRuntimePlan>(
-      std::move(stage_result.runtime_plan));
-  descriptor.stage_plan = std::move(stage_plan);
   return descriptor;
 }
 

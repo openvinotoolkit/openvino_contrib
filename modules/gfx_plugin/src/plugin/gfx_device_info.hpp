@@ -8,6 +8,7 @@
 
 #include "openvino/runtime/properties.hpp"
 #include "common/gfx_backend_utils.hpp"
+#include "compiler/backend_target.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -28,6 +29,8 @@ GfxDeviceInfo query_device_info_from_properties(const ov::AnyMap& properties,
                                                 const char* log_tag);
 
 GfxDeviceInfo query_device_info(GpuBackend backend, const ov::AnyMap& properties);
+GfxDeviceInfo query_device_info(const compiler::BackendTarget& target,
+                                const ov::AnyMap& properties);
 
 }  // namespace gfx_plugin
 }  // namespace ov

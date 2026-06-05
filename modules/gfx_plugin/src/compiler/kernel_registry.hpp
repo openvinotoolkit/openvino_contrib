@@ -36,7 +36,7 @@ public:
         return m_units;
     }
 
-    KernelUnit resolve(LoweringRouteKind route_kind, std::string_view unit_id = {}) const;
+    KernelUnit resolve(LoweringRouteKind route_kind, std::string_view unit_id) const;
     KernelRegistryAudit audit() const;
     size_t route_count(LoweringRouteKind route_kind) const;
     size_t handwritten_exception_count() const;

@@ -49,17 +49,18 @@ PostOpFusionCapabilities make_metal_post_op_fusion_capabilities() {
 
 BackendExecutionCapabilities make_metal_execution_capabilities() {
   BackendExecutionCapabilities capabilities;
-  capabilities.fallback_parallelism = make_metal_parallelism_profile();
+  capabilities.custom_kernel_dispatch_profile = make_metal_parallelism_profile();
   return capabilities;
 }
 
 } // namespace
 
-std::shared_ptr<const BackendModule> make_metal_backend_module() {
+std::shared_ptr<const BackendModule>
+make_metal_backend_module(BackendTarget target) {
   ensure_apple_mlir_stage_backend_hooks_registered();
 
   StaticBackendModuleConfig config;
-  config.target = BackendTarget::from_backend(GpuBackend::Metal);
+  config.target = std::move(target);
   config.operation_policy = make_metal_operation_support_policy();
   config.kernel_registry = make_metal_kernel_registry(config.target);
   config.pipeline_options = make_metal_pipeline_options();
@@ -72,6 +73,11 @@ std::shared_ptr<const BackendModule> make_metal_backend_module() {
   config.vendor_attention_artifact_resolver =
       make_metal_vendor_attention_artifact_resolver();
   return make_static_backend_module(std::move(config));
+}
+
+std::shared_ptr<const BackendModule> make_metal_backend_module() {
+  return make_metal_backend_module(
+      BackendTarget::from_backend(GpuBackend::Metal));
 }
 
 } // namespace compiler

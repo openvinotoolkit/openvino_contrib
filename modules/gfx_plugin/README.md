@@ -38,7 +38,8 @@ Read these files first:
 - Explicit default backend requests are strict: CMake fails when the requested
   backend is unavailable instead of selecting another backend.
 - `query_model()` uses the same backend-aware support path as compilation.
-- `export_model()` serializes the OpenVINO model, not a backend binary cache.
+- `export_model()` and `import_model()` are currently not implemented; they fail
+  because there is no serialized `CacheEnvelope`/`ExecutableBundle` format yet.
 - `GfxRemoteContext` and `GfxRemoteTensor` exist; practical capabilities depend
   on the selected backend.
 
@@ -59,8 +60,9 @@ Read these files first:
   build/verification, backend-module construction, and artifact payload routing
   used by query and compilation
 - `src/plugin/`: OpenVINO-facing `Plugin`, `CompiledModel`, infer-request
-  API glue, properties, model serialization, backend selection, backend-access
-  helpers, and variable-state OpenVINO API objects
+  API glue, properties, disabled compiled-model cache/import/export entry
+  points, backend selection, backend-access helpers, and variable-state OpenVINO
+  API objects
 - `src/runtime/`: backend-neutral stage interfaces, submission planning,
   profiling report assembly, runtime executable descriptor records, runtime
   pipeline-stage plans, runtime sessions, backend runtime/provider interfaces,
@@ -78,16 +80,16 @@ Read these files first:
   construction used by backend compiler routes
 - `src/backends/metal/`: Metal plugin glue, Objective-C++ runtime, memory
   management, profiling, backend compiler module, Apple MSL/MPS/MPSRT source
-  planning, shared MPSRT ABI records, MSL compilation, runtime kernel loading,
-  MPSRT preparation, descriptor-backed vendor primitive stages, and
-  MPS/MPSGraph vendor primitive execution
+  planning, shared MPSRT ABI records, MPSRT vendor primitive contracts, MSL
+  compilation, runtime kernel loading, MPSRT preparation, descriptor-backed
+  vendor primitive stages, and MPS/MPSGraph vendor primitive execution
 - `src/backends/opencl/`: OpenCL plugin glue, dynamic API loader, buffer
   manager, backend compiler policy, backend-owned source-artifact payload
   materialization, program cache, memory ops, runtime kernel loading, and
   generic source-artifact execution
 - `src/transforms/`: OpenVINO graph rewrites, fusion passes, and layout cleanup
-- `tests/`: unit, functional, backend, integration, compare, source-contract,
-  gtest-registration, and microbench coverage
+- `tests/`: unit, functional, backend, integration, compare,
+  executable gtest-matrix, and microbench coverage
 - `bench/`: optional local/remote evaluation helpers
 - `tools/`: profiling and microbench post-processing helpers
 - `third_party/llvm-project/`: vendored LLVM/MLIR used by the build
@@ -115,7 +117,10 @@ The high-level path is:
    `src/compiler/runtime_executable_descriptor_builder.*` to build and verify a
    `RuntimeExecutableDescriptor` from the compiler executable bundle. The
    descriptor also carries the runtime `PipelineStageRuntimePlan` used for
-   stage materialization.
+   stage materialization. Native compiled-model cache round-trip APIs require a
+   serialized `CacheEnvelope`/`ExecutableBundle`; the old OpenVINO-model
+   serialization path is disabled by
+   `src/plugin/compiled_model_cache_contract.hpp`.
 5. `CompiledModel::build_op_pipeline()` consumes the descriptor-owned runtime
    plan and delegates concrete stage materialization to
    `src/runtime/pipeline_stage_materializer.*`. The compiler stage builder uses
@@ -228,10 +233,16 @@ Backend operation support and kernel-unit registration live under
 Embedded OpenCL source units live under `src/kernel_ir/opencl_kernels/`.
 Current generated units include activation, elementwise, f32 MatMul, f32/f16
 Interpolate, f32 reduction, boolean reduction, f32/f16 Softmax,
-dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D, ShapeOf, Tile, Transpose,
-logical-bool elementwise, compare/select, and generated Concat/Split helpers.
+dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D, f32/f16/i64 Range,
+ShapeOf, Tile, Transpose, logical-bool elementwise, compare/select, and
+generated Concat/Split helpers.
 There is no active handwritten OpenCL kernel-unit exception in the current
 registry.
+Family-specific OpenCL compiler adapters such as
+`opencl_range_kernel_unit.*`, `opencl_softmax_kernel_unit.*`, and
+`opencl_tile_kernel_unit.*` resolve generated `KernelUnit` records and
+materialize source payloads. Keep new family routes in those backend compiler
+adapters instead of adding special cases to request-time execution.
 The OpenCL compiler registry requires an explicit kernel unit for generated
 routes; there is no generic MLIR fallback for OpenCL operation support.
 Unsupported modes, axes, padding, shapes, or element types fail during support
@@ -290,6 +301,8 @@ planning, runtime binding, and tests on the same contract.
 The current compiler service does not serialize a native backend executable
 cache. It constructs an in-memory manifest/executable bundle for the selected
 backend and the runtime consumes that descriptor during stage creation.
+`export_model()` and `import_model()` are currently not implemented until that
+cache envelope has a persisted format.
 Compiler-owned tensor layout classification lives in
 `src/compiler/tensor_layout.*`; shared stage policy consumes the resulting
 layout contract instead of reclassifying view-only or materialized layout ops.
@@ -370,9 +383,11 @@ DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
 Use `ov_gfx_compare_runner` for accuracy triage and `ov_gfx_microbench` for
 profiling/microbench triage. Do not use microbench output as correctness
 evidence, and do not use compare-runner timing as performance evidence.
-The test CMake flow also uses `tests/tools/gfx_gtest_source_contract.py` and
-`tests/tools/gfx_gtest_matrix.py` to guard native/unavailable-adapter source
-parity, duplicate registrations, and forbidden `DISABLED_` registrations.
+The test CMake flow uses `tests/tools/gfx_gtest_matrix.py` to capture
+`--gtest_list_tests` from real GFX test binaries and compare executable test
+matrices. Do not use source/file/string-presence checks as test readiness or
+architecture evidence; use executed contract coverage, route coverage,
+conformance tests, and profiling evidence instead.
 
 ## Adding A New Operation
 

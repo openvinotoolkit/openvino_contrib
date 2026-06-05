@@ -73,7 +73,8 @@ ResourceBindingTable ResourceBindingTable::for_stage(
 bool ResourceBindingTable::compatible_with(
     const RuntimeStageExecutableDescriptor &descriptor) const noexcept {
   if (descriptor.stage_record_key == 0 || descriptor.kernel_id.empty() ||
-      descriptor.abi_fingerprint.empty() || descriptor.artifact_key.empty()) {
+      descriptor.stage_name.empty() || descriptor.abi_fingerprint.empty() ||
+      descriptor.artifact_key.empty()) {
     return false;
   }
   if (descriptor.payload_kind != KernelArtifactPayloadKind::None &&

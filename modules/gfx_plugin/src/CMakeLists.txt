@@ -86,6 +86,22 @@ gfx_embed_kernel_source(
     "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/shapeof_kernel_source.hpp"
     "kOpenClGeneratedShapeOfKernelSource")
 gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/range_f32_kernel.cl"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/range_f32_kernel_source.hpp"
+    "kOpenClGeneratedRangeF32KernelSource")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/range_f16_kernel.cl"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/range_f16_kernel_source.hpp"
+    "kOpenClGeneratedRangeF16KernelSource")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/range_i64_kernel.cl"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/range_i64_kernel_source.hpp"
+    "kOpenClGeneratedRangeI64KernelSource")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/range_i64_unit_kernel.cl"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/range_i64_unit_kernel_source.hpp"
+    "kOpenClGeneratedRangeI64UnitKernelSource")
+gfx_embed_kernel_source(
     "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/tile_kernel.cl"
     "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/tile_kernel_source.hpp"
     "kOpenClGeneratedTileKernelSource")
@@ -160,7 +176,6 @@ else()
         ${GFX_PLUGIN_METAL_STUB_SOURCES})
     list(APPEND GFX_RUNTIME_COMMON_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/stage_factory_stub.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/op_support_stub.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/runtime_stub.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/profiling/profiler_stub.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/profiling/gpu_timestamps_stub.cpp)

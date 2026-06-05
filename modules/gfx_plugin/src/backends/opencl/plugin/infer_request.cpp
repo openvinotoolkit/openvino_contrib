@@ -222,7 +222,7 @@ void execute_opencl_infer_request(
   std::vector<GpuTensor> input_tensors;
   InferRequestBackendAccess::bind_inputs_before_infer(
       request,
-      GpuBackend::OpenCL,
+      cm->target(),
       input_tensors,
       [&](size_t /*idx*/, const ov::Tensor &host, BufferHandle *device_handle) {
         return bind_host_input_opencl(host, &pool, device_handle, profiler,
@@ -259,7 +259,7 @@ void execute_opencl_infer_request(
   execution_config.param_map = &param_map;
   execution_config.remote_outputs = &state.bound_remote_outputs;
   execution_config.remote_inputs = &state.bound_remote_inputs;
-  execution_config.expected_backend = GpuBackend::OpenCL;
+  execution_config.expected_target = &cm->target();
   execution_config.runtime_descriptor = cm->runtime_descriptor();
   execution_config.pool = &pool;
   execution_config.post_prepare = [](std::vector<InferStage> &) {};

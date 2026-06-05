@@ -4,9 +4,14 @@
 
 #include "unit/gfx_backend_contracts.hpp"
 
+#include "common/gpu_device_profile.hpp"
+#include "compiler/backend_registry.hpp"
 #include "compiler/cache_envelope.hpp"
 #include "compiler/executable_bundle.hpp"
 #include "compiler/manifest.hpp"
+#include "compiler/pipeline_stage_builder.hpp"
+#include "compiler/runtime_executable_descriptor_builder.hpp"
+#include "runtime/executable_descriptor.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/result.hpp"
@@ -33,8 +38,27 @@ bool BackendTargetContract::has_concrete_oop_identity() const {
     return !m_target.backend_id().empty() &&
            !m_target.runtime_api().empty() &&
            !m_target.device_family().empty() &&
+           !m_target.device_profile().empty() &&
+           !m_target.device_name().empty() &&
+           !m_target.vendor_id().empty() &&
+           !m_target.driver_id().empty() &&
            !m_target.compiler_id().empty() &&
+           !m_target.cache_compatibility_id().empty() &&
            m_target.is_compatible_with_fingerprint(m_target.fingerprint());
+}
+
+bool BackendTargetContract::has_profiled_cache_identity() const {
+    const auto fingerprint = m_target.fingerprint();
+    return contains(fingerprint, "backend=" + m_target.backend_id()) &&
+           contains(fingerprint, "runtime=" + m_target.runtime_api()) &&
+           contains(fingerprint, "family=" + m_target.device_family()) &&
+           contains(fingerprint, "profile=" + m_target.device_profile()) &&
+           contains(fingerprint, "device=" + m_target.device_name()) &&
+           contains(fingerprint, "vendor=" + m_target.vendor_id()) &&
+           contains(fingerprint, "driver=" + m_target.driver_id()) &&
+           contains(fingerprint, "compiler=" + m_target.compiler_id()) &&
+           contains(fingerprint,
+                    "cache=" + m_target.cache_compatibility_id());
 }
 
 bool BackendTargetContract::avoids_inverse_apple_bucket() const {
@@ -86,6 +110,24 @@ compiler::GfxCompileResult BackendModuleContract::compile_without_graph_pipeline
         compiler::CacheEnvelopeBuilder{}.build(compile_result.executable,
                                                cache_options);
     compile_result.unsupported = compile_result.lowering_plan.unsupported;
+    if (compile_result.lowering_plan.executable() &&
+        compile_result.manifest.valid() && compile_result.executable.valid()) {
+        auto runtime_descriptor =
+            compiler::RuntimeExecutableDescriptorBuilder{}.build(
+                compile_result.executable);
+        compiler::PipelineStageBuildRequest stage_request;
+        stage_request.runtime_model = compile_result.transformed_model;
+        stage_request.runtime_descriptor = &runtime_descriptor;
+        const compiler::BackendRegistry registry({m_module});
+        stage_request.backend_registry = &registry;
+        stage_request.target = compile_result.target;
+        stage_request.backend_name = compile_result.target.backend_id();
+        runtime_descriptor.stage_plan =
+            compiler::build_pipeline_stage_runtime_plan(stage_request);
+        compile_result.runtime_descriptor =
+            std::make_shared<const RuntimeExecutableDescriptor>(
+                std::move(runtime_descriptor));
+    }
     return compile_result;
 }
 
@@ -105,6 +147,11 @@ bool BackendModuleContract::compile_result_obeys_manifest_contract(
             compile_result.manifest.memory_plan) !=
             compiler::make_memory_plan_fingerprint(
                 compile_result.executable.memory_plan)) {
+        return false;
+    }
+    if (!compile_result.runtime_descriptor ||
+        !compiler::runtime_executable_stage_plan_valid(
+            *compile_result.runtime_descriptor)) {
         return false;
     }
     if (compile_result.manifest.route_count(compiler::LoweringRouteKind::Common) !=
@@ -149,7 +196,13 @@ BackendContractCatalog::known_target_contracts() const {
     return {BackendTargetContract{
                 compiler::BackendTarget::from_backend(GpuBackend::Metal)},
             BackendTargetContract{
-                compiler::BackendTarget::from_backend(GpuBackend::OpenCL)}};
+                compiler::BackendTarget::from_backend(GpuBackend::OpenCL)},
+            BackendTargetContract{
+                compiler::BackendTarget::from_backend_device_family(
+                    GpuBackend::OpenCL, GpuDeviceFamily::QualcommAdreno)},
+            BackendTargetContract{
+                compiler::BackendTarget::from_backend_device_family(
+                    GpuBackend::OpenCL, GpuDeviceFamily::BroadcomV3D)}};
 }
 
 std::vector<BackendModuleContract>

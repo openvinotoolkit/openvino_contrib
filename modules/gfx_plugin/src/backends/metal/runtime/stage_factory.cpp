@@ -14,27 +14,21 @@ namespace ov {
 namespace gfx_plugin {
 
 std::unique_ptr<GpuStage>
-create_metal_stage(const std::shared_ptr<const ov::Node> &node,
-                   const RuntimeStageExecutableDescriptor *descriptor,
+create_metal_stage(const RuntimeStageMaterializationContext &context,
                    void *device, void *queue) {
-  if (auto stateful = create_stateful_stage(node, descriptor)) {
+  const auto &descriptor = context.require_descriptor();
+  const auto &node = context.source_node;
+  if (auto stateful = create_stateful_stage(descriptor)) {
     return stateful;
   }
-  if (auto view = create_view_only_stage(node, descriptor)) {
+  if (auto view = create_view_only_stage(descriptor)) {
     return view;
   }
-  if (descriptor && is_metal_mpsrt_vendor_primitive_descriptor(*descriptor)) {
+  if (is_metal_mpsrt_vendor_primitive_descriptor(descriptor)) {
     return create_metal_mpsrt_vendor_primitive_stage(node, device, queue,
-                                                     *descriptor);
+                                                     descriptor);
   }
-  OPENVINO_ASSERT(
-      descriptor,
-      "GFX Metal: runtime stage materialization requires a compiler-owned "
-      "executable descriptor and artifact payload for op ",
-      node ? node->get_type_name() : "<null>",
-      ". Add or fix the route in compiler manifest/artifact packaging; runtime "
-      "is not allowed to infer MLIR layout or rebuild source-plan metadata.");
-  return std::make_unique<MetalStage>(node, device, queue, descriptor);
+  return std::make_unique<MetalStage>(node, device, queue, &descriptor);
 }
 
 void ensure_metal_stage_factory_registered() {

@@ -18,6 +18,10 @@
 #include "backends/metal/compiler/msl_codegen_attention.hpp"
 #include "backends/metal/compiler/msl_codegen_compressed_matmul.hpp"
 #include "backends/metal/compiler/msl_codegen_matmul_metal.hpp"
+#include "openvino/op/convolution.hpp"
+#include "openvino/op/matmul.hpp"
+#include "openvino/runtime/tensor.hpp"
+#include "transformations/rt_info/disable_fp16_compression.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -26,6 +30,13 @@ namespace {
 bool is_apple_conv_like_stage(std::string_view stage_type) {
   return stage_type == "Convolution" || stage_type == "GroupConvolution" ||
          stage_type == "GroupConv2D";
+}
+
+bool apple_requires_scalar_fp32_convolution_path(
+    const std::shared_ptr<const ov::Node> &node) {
+  return node && node->get_output_size() > 0 &&
+         node->get_output_element_type(0) == ov::element::f32 &&
+         ov::fp16_compression_is_disabled(node);
 }
 
 MlirStageBackendSourcePlan
@@ -67,6 +78,60 @@ to_backend_runtime_params_plan(const GfxSdpaMslRuntimeParamsPlan &plan) {
 
 class AppleMlirStageBackendHooks final : public MlirStageBackendHooks {
 public:
+  GfxKernelBackendDomain custom_kernel_backend_domain() const override {
+    return GfxKernelBackendDomain::AppleMsl;
+  }
+
+  bool should_pack_matmul_const_input_as_f16(
+      const std::shared_ptr<const ov::Node> &node, size_t input_idx,
+      const ov::Tensor &tensor) const override {
+    auto matmul = ov::as_type_ptr<const ov::op::v0::MatMul>(node);
+    return matmul && input_idx == 1 &&
+           (!matmul->get_input_partial_shape(0).is_static() ||
+            !matmul->get_output_partial_shape(0).is_static()) &&
+           tensor.get_element_type() == ov::element::f32 &&
+           matmul->get_output_element_type(0) == ov::element::f32;
+  }
+
+  bool should_pack_conv2d_const_weights_oc4(
+      const std::shared_ptr<const ov::Node> &node, size_t input_idx,
+      const ov::Tensor &tensor) const override {
+    auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(node);
+    if (!conv || input_idx != 1 || tensor.get_shape().size() != 4) {
+      return false;
+    }
+    if (apple_requires_scalar_fp32_convolution_path(node)) {
+      return false;
+    }
+    const auto et = tensor.get_element_type();
+    if (et != ov::element::f16 && et != ov::element::f32) {
+      return false;
+    }
+    if (!conv->get_input_partial_shape(0).is_static() ||
+        !conv->get_input_partial_shape(1).is_static() ||
+        !conv->get_output_partial_shape(0).is_static()) {
+      return false;
+    }
+    const auto in_shape = conv->get_input_shape(0);
+    const auto w_shape = conv->get_input_shape(1);
+    const auto out_shape = conv->get_output_shape(0);
+    if (in_shape.size() != 4 || w_shape.size() != 4 ||
+        out_shape.size() != 4) {
+      return false;
+    }
+    Conv2DCodegenDesc desc{};
+    desc.input_type = conv->get_input_element_type(0);
+    desc.weight_type = conv->get_input_element_type(1);
+    desc.output_type = conv->get_output_element_type(0);
+    desc.C_out = static_cast<uint32_t>(w_shape[0]);
+    desc.kH = static_cast<uint32_t>(w_shape[2]);
+    desc.kW = static_cast<uint32_t>(w_shape[3]);
+    const uint32_t cin_pg = static_cast<uint32_t>(w_shape[1]);
+    const uint32_t c_in = static_cast<uint32_t>(in_shape[1]);
+    desc.groups = (cin_pg != 0 && c_in % cin_pg == 0) ? (c_in / cin_pg) : 1;
+    return gfx_conv2d_output_channel_block(desc) >= 4;
+  }
+
   void attach_const_tensor_sources(
       KernelSource &source,
       const std::shared_ptr<const ov::Node> &node) const override {

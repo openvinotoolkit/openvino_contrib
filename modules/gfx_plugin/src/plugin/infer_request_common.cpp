@@ -94,10 +94,7 @@ void InferRequest::set_input_tensor(size_t idx, const ov::Tensor& tensor) {
         OPENVINO_ASSERT(remote, "GFX: remote tensor type mismatch");
         auto cm = get_compiled_model_typed();
         OPENVINO_ASSERT(cm, "CompiledModel is null");
-        const auto backend = cm->backend();
-        const char* backend_name = backend_to_string(backend);
-        OPENVINO_ASSERT(remote->backend() == backend,
-                        "GFX: remote tensor backend mismatch (expected ", backend_name, ")");
+        normalize_remote_tensor(*remote, cm->target(), "GFX");
         ov::ISyncInferRequest::set_tensor(get_inputs().at(idx), impl);
         state.bound_inputs[idx] = {};
         state.bound_remote_inputs[idx] = remote;
@@ -118,10 +115,7 @@ void InferRequest::set_tensor(const ov::Output<const ov::Node>& port, const ov::
         OPENVINO_ASSERT(gfx_remote, "GFX: remote tensor type mismatch");
         auto cm = get_compiled_model_typed();
         OPENVINO_ASSERT(cm, "CompiledModel is null");
-        const auto backend = cm->backend();
-        const char* backend_name = backend_to_string(backend);
-        OPENVINO_ASSERT(gfx_remote->backend() == backend,
-                        "GFX: remote tensor backend mismatch (expected ", backend_name, ")");
+        normalize_remote_tensor(*gfx_remote, cm->target(), "GFX");
         ov::ISyncInferRequest::set_tensor(port, tensor);
     } else {
         ov::ISyncInferRequest::set_tensor(port, tensor);
@@ -207,7 +201,7 @@ ov::Tensor InferRequest::get_output_tensor(size_t idx) const {
 void InferRequest::infer() {
     auto cm = get_compiled_model_typed();
     OPENVINO_ASSERT(cm, "CompiledModel is null");
-    execute_backend_infer(cm->backend(), *this, cm);
+    execute_backend_infer(cm->target(), *this, cm);
 }
 
 std::vector<ov::ProfilingInfo> InferRequest::get_profiling_info() const {
@@ -251,13 +245,13 @@ ov::Tensor InferRequest::resolve_host_input_tensor(size_t idx) {
 }
 
 GpuTensor InferRequest::resolve_remote_input_tensor(size_t idx,
-                                                    GpuBackend expected_backend,
+                                                    const compiler::BackendTarget& expected_target,
                                                     const char* error_prefix) const {
     const auto& state = *m_state;
     OPENVINO_ASSERT(idx < state.bound_remote_inputs.size() && state.bound_remote_inputs[idx],
                     error_prefix, ": remote input is not bound");
     const auto& remote = state.bound_remote_inputs[idx];
-    normalize_remote_tensor(*remote, expected_backend, error_prefix);
+    normalize_remote_tensor(*remote, expected_target, error_prefix);
     return remote->gpu_tensor();
 }
 
@@ -310,7 +304,7 @@ void InferRequest::ensure_input_handles(size_t count, bool with_staging, const c
 }
 
 void InferRequest::bind_inputs_for_infer(
-    GpuBackend expected_backend,
+    const compiler::BackendTarget& expected_target,
     const std::function<void(size_t, const GpuTensor&)>& remote_handler,
     const std::function<void(size_t, const ov::Tensor&)>& host_handler,
     const char* error_prefix) {
@@ -319,7 +313,7 @@ void InferRequest::bind_inputs_for_infer(
         get_inputs().size(),
         state.bound_remote_inputs,
         [&](size_t idx) {
-            return resolve_remote_input_tensor(idx, expected_backend, error_prefix);
+            return resolve_remote_input_tensor(idx, expected_target, error_prefix);
         },
         [&](size_t idx) {
             return resolve_host_input_tensor(idx);
@@ -329,7 +323,7 @@ void InferRequest::bind_inputs_for_infer(
 }
 
 void InferRequest::bind_inputs_before_infer(
-    GpuBackend expected_backend,
+    const compiler::BackendTarget& expected_target,
     std::vector<GpuTensor>& input_tensors,
     const std::function<GpuTensor(size_t, const ov::Tensor&, BufferHandle*)>& host_binder,
     const std::function<void(size_t, const GpuTensor&)>& device_result_handler,
@@ -349,7 +343,7 @@ void InferRequest::bind_inputs_before_infer(
         profiling ? std::chrono::steady_clock::now()
                   : std::chrono::steady_clock::time_point{};
     bind_inputs_for_infer(
-        expected_backend,
+        expected_target,
         [&](size_t idx, const GpuTensor& dev) {
             input_tensors[idx] = dev;
             if (device_result_handler) {

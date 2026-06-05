@@ -2,12 +2,14 @@
 #pragma once
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "openvino/core/any.hpp"
 #include "openvino/core/shape.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/runtime/iremote_tensor.hpp"
+#include "compiler/backend_target.hpp"
 #include "runtime/gpu_tensor.hpp"
 
 namespace ov {
@@ -21,6 +23,7 @@ public:
                     const ov::Shape& shape,
                     const ov::AnyMap& params,
                     const std::string& dev,
+                    compiler::BackendTarget target,
                     const GpuTensor& tensor,
                     RemoteTensorReleaseFn release_fn);
 
@@ -48,6 +51,7 @@ public:
     const GpuTensor& gpu_tensor() const { return m_tensor; }
     GpuTensor& gpu_tensor() { return m_tensor; }
     GpuBackend backend() const { return m_tensor.buf.backend; }
+    const compiler::BackendTarget& target() const { return m_target; }
     bool owns_buffer() const { return m_tensor.buf.owned; }
 
 private:
@@ -65,6 +69,7 @@ private:
     Strides m_strides{};
     ov::AnyMap m_params;
     std::string m_device;
+    compiler::BackendTarget m_target;
     GpuTensor m_tensor{};
     RemoteTensorReleaseFn m_release_fn = nullptr;
 };

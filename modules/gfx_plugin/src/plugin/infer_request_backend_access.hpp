@@ -22,7 +22,7 @@ struct InferRequestBackendAccess final {
 
     static void bind_inputs_before_infer(
         InferRequest& request,
-        GpuBackend expected_backend,
+        const compiler::BackendTarget& expected_target,
         std::vector<GpuTensor>& input_tensors,
         const std::function<GpuTensor(size_t, const ov::Tensor&, BufferHandle*)>& host_binder,
         const std::function<void(size_t, const GpuTensor&)>& device_result_handler,
@@ -30,7 +30,7 @@ struct InferRequestBackendAccess final {
         bool profiling,
         bool with_staging,
         const char* error_prefix) {
-        request.bind_inputs_before_infer(expected_backend,
+        request.bind_inputs_before_infer(expected_target,
                                          input_tensors,
                                          host_binder,
                                          device_result_handler,

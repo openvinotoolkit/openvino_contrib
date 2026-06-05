@@ -46,22 +46,16 @@ KernelRegistry make_common_kernel_registry(const BackendTarget &target) {
 
 KernelUnit KernelRegistry::resolve(LoweringRouteKind route_kind,
                                    std::string_view unit_id) const {
-  KernelUnit route_match;
-  size_t route_match_count = 0;
+  if (unit_id.empty()) {
+    return {};
+  }
   for (const auto &unit : m_units) {
     if (unit.route_kind() != route_kind) {
       continue;
     }
-    if (!unit_id.empty() && unit.id() == unit_id) {
+    if (unit.id() == unit_id) {
       return unit;
     }
-    if (unit_id.empty()) {
-      route_match = unit;
-      ++route_match_count;
-    }
-  }
-  if (route_match_count == 1) {
-    return route_match;
   }
   return {};
 }

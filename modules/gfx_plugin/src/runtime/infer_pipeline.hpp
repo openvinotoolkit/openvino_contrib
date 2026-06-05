@@ -15,6 +15,7 @@
 #include "openvino/core/except.hpp"
 #include "openvino/core/model.hpp"
 #include "openvino/core/shape_util.hpp"
+#include "compiler/backend_target.hpp"
 #include "runtime/gfx_remote_context.hpp"
 #include "runtime/gpu_buffer_pool.hpp"
 #include "runtime/infer_pipeline_state.hpp"
@@ -47,11 +48,11 @@ ov::element::Type resolve_stage_output_type(const InferStage& stage,
                                             const char* error_prefix = "GFX");
 
 void normalize_remote_tensor(GfxRemoteTensor& remote,
-                             GpuBackend expected_backend,
+                             const compiler::BackendTarget& expected_target,
                              const char* error_prefix);
 
 void normalize_remote_outputs(std::vector<std::shared_ptr<GfxRemoteTensor>>& remote_outputs,
-                              GpuBackend expected_backend,
+                              const compiler::BackendTarget& expected_target,
                               const char* error_prefix);
 
 std::vector<InferStage> build_bound_pipeline(
@@ -65,7 +66,7 @@ std::vector<InferStage> build_bound_pipeline(
     const std::unordered_map<const ov::Node*, size_t>& param_map,
     std::vector<std::shared_ptr<GfxRemoteTensor>>& remote_outputs,
     const std::vector<std::shared_ptr<GfxRemoteTensor>>& remote_inputs,
-    GpuBackend expected_backend,
+    const compiler::BackendTarget& expected_target,
     std::shared_ptr<const RuntimeExecutableDescriptor> runtime_descriptor,
     const char* error_prefix = "GFX");
 
@@ -116,6 +117,9 @@ GpuTensor* find_pipeline_output(std::vector<InferStage>& pipeline,
 
 inline const RuntimeStageExecutableDescriptor*
 runtime_stage_descriptor_or_null(const InferStage& stage) {
+    if (stage.runtime_stage_descriptor) {
+        return stage.runtime_stage_descriptor.get();
+    }
     if (!stage.runtime_session ||
         stage.runtime_stage_index == PipelineStageDesc::npos) {
         return nullptr;
@@ -462,10 +466,10 @@ inline void execute_pipeline(std::vector<InferStage>& pipeline,
         if (!stage.runtime_session || !stage.prepared_executable) {
             return;
         }
-        auto bindings = stage.runtime_session->make_binding_table(
-            stage.prepared_executable->descriptor().stage_index,
-            resolved,
-            output_refs(stage));
+        auto bindings =
+            ResourceBindingTable::for_stage(resolved,
+                                            output_refs(stage),
+                                            stage.prepared_executable->descriptor());
         stage.prepared_executable->bind(std::move(bindings));
     };
     auto resolve_prepared_inputs = [&](PreparedStageExecution& prepared) -> std::vector<GpuTensor*>& {

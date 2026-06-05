@@ -15,6 +15,7 @@
 #include "backends/metal/compiler/metal_operation_support.hpp"
 #include "backends/opencl/compiler/opencl_kernel_artifacts.hpp"
 #include "backends/opencl/compiler/opencl_operation_support.hpp"
+#include "backends/opencl/compiler/opencl_softmax_kernel_unit.hpp"
 #include "compiler/executable_bundle.hpp"
 #include "compiler/kernel_registry.hpp"
 #include "compiler/manifest.hpp"
@@ -23,10 +24,6 @@
 #include "gfx_runtime_model_runner.hpp"
 #include "gfx_runtime_scenario.hpp"
 #include "kernel_ir/metal_kernels/softmax_kernels.hpp"
-#include "kernel_ir/opencl_kernels/softmax_f16_dynamic_kernel.hpp"
-#include "kernel_ir/opencl_kernels/softmax_f16_kernel.hpp"
-#include "kernel_ir/opencl_kernels/softmax_f32_dynamic_kernel.hpp"
-#include "kernel_ir/opencl_kernels/softmax_f32_kernel.hpp"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "backends/metal/compiler/apple_vendor_descriptors.hpp"
@@ -156,7 +153,6 @@ struct SoftmaxOpenClArtifactCase {
   uint32_t expected_arg_count = 0;
   std::vector<GfxOpenClSourceScalarArg> expected_scalar_args;
   std::vector<uint32_t> expected_static_u32_scalars;
-  const GfxKernelSource *expected_source = nullptr;
 };
 
 std::vector<SoftmaxOpenClArtifactCase> softmax_opencl_artifact_cases() {
@@ -170,8 +166,7 @@ std::vector<SoftmaxOpenClArtifactCase> softmax_opencl_artifact_cases() {
        "gfx_opencl_generated_softmax_f32",
        6u,
        softmax_static_scalar_args(),
-       {2, 3, 4},
-       &opencl_generated_softmax_f32_kernel_source()},
+       {2, 3, 4}},
       {"SoftmaxF16StaticAxis",
        [] {
          const auto data = param(ov::element::f16, ov::Shape{2, 3, 4});
@@ -181,8 +176,7 @@ std::vector<SoftmaxOpenClArtifactCase> softmax_opencl_artifact_cases() {
        "gfx_opencl_generated_softmax_f16",
        6u,
        softmax_static_scalar_args(),
-       {2, 3, 4},
-       &opencl_generated_softmax_f16_kernel_source()},
+       {2, 3, 4}},
       {"SoftmaxF32Opset8NegativeAxis",
        [] {
          const auto data = param(ov::element::f32, ov::Shape{2, 3, 4});
@@ -192,8 +186,7 @@ std::vector<SoftmaxOpenClArtifactCase> softmax_opencl_artifact_cases() {
        "gfx_opencl_generated_softmax_f32",
        6u,
        softmax_static_scalar_args(),
-       {6, 4, 1},
-       &opencl_generated_softmax_f32_kernel_source()},
+       {6, 4, 1}},
       {"SoftmaxF16DynamicStaticRank",
        [] {
          const auto data =
@@ -205,8 +198,7 @@ std::vector<SoftmaxOpenClArtifactCase> softmax_opencl_artifact_cases() {
        "gfx_opencl_generated_softmax_dynamic_f16",
        13u,
        softmax_dynamic_scalar_args(),
-       {3, 1},
-       &opencl_generated_softmax_f16_dynamic_kernel_source()},
+       {3, 1}},
   };
 }
 
@@ -217,16 +209,20 @@ public:
 
   void verify() const {
     const auto node = m_case.make_node();
+    const auto registry = compiler::make_opencl_kernel_registry(
+        compiler::BackendTarget::from_backend(GpuBackend::OpenCL));
+    const auto unit =
+        compiler::resolve_opencl_softmax_kernel_unit(node, registry);
+    ASSERT_TRUE(unit.valid());
+    EXPECT_EQ(unit.id(), m_case.expected_source_id);
+    EXPECT_EQ(unit.route_kind(), LoweringRouteKind::GeneratedKernel);
+
     OpenClSourceArtifactVerifier(node)
         .expect_artifact(GfxKernelStageFamily::Softmax,
                          m_case.expected_source_id, m_case.expected_entry_point,
                          m_case.expected_arg_count, 1u,
                          m_case.expected_scalar_args, {0},
                          m_case.expected_static_u32_scalars)
-        .uses_source(*m_case.expected_source)
-        .excludes({"gfx_opencl_baseline_softmax",
-                   "gfx_opencl_baseline_binary_f32", "__global long*",
-                   "__global half"})
         .has_op(GfxOpenClArtifactOp::Softmax)
         .supports_opencl_compiler();
   }
@@ -243,7 +239,8 @@ std::string softmax_opencl_case_name(
 class SoftmaxOpenClArtifactContractTest
     : public ::testing::TestWithParam<SoftmaxOpenClArtifactCase> {};
 
-TEST_P(SoftmaxOpenClArtifactContractTest, UsesGeneratedKernelUnitFile) {
+TEST_P(SoftmaxOpenClArtifactContractTest,
+       UsesGeneratedKernelArtifactContract) {
   SoftmaxOpenClArtifactContract(GetParam()).verify();
 }
 

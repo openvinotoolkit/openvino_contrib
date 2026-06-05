@@ -34,27 +34,48 @@ PostOpFusionCapabilities make_opencl_post_op_fusion_capabilities() {
   return capabilities;
 }
 
-BackendExecutionCapabilities make_opencl_execution_capabilities() {
+GpuParallelismProfile
+make_opencl_parallelism_profile_for_target(const BackendTarget &target) {
+  if (target.device_profile() == "opencl_adreno") {
+    return ov::gfx_plugin::make_opencl_adreno_parallelism_profile();
+  }
+  if (target.device_profile() == "opencl_broadcom_v3d") {
+    return ov::gfx_plugin::make_opencl_broadcom_v3d_parallelism_profile();
+  }
+  return ov::gfx_plugin::make_opencl_parallelism_profile();
+}
+
+BackendExecutionCapabilities
+make_opencl_execution_capabilities(const BackendTarget &target) {
   BackendExecutionCapabilities capabilities;
-  capabilities.source_kernel_dispatch_enabled = true;
-  capabilities.fallback_parallelism = make_opencl_parallelism_profile();
+  capabilities.custom_kernel_dispatch_enabled = true;
+  capabilities.custom_kernel_dispatch_profile =
+      make_opencl_parallelism_profile_for_target(target);
   return capabilities;
 }
 
 } // namespace
 
-std::shared_ptr<const BackendModule> make_opencl_backend_module() {
+std::shared_ptr<const BackendModule>
+make_opencl_backend_module(BackendTarget target) {
   StaticBackendModuleConfig config;
-  config.target = BackendTarget::from_backend(GpuBackend::OpenCL);
-  config.operation_policy = make_opencl_operation_support_policy();
+  config.target = std::move(target);
   config.kernel_registry = make_opencl_kernel_registry(config.target);
+  config.operation_policy =
+      make_opencl_operation_support_policy(config.kernel_registry);
   config.post_op_fusion_capabilities =
       make_opencl_post_op_fusion_capabilities();
   config.stage_placement_policy = make_opencl_stage_placement_policy();
-  config.execution_capabilities = make_opencl_execution_capabilities();
+  config.execution_capabilities =
+      make_opencl_execution_capabilities(config.target);
   config.artifact_payload_resolver =
       make_opencl_kernel_artifact_payload_resolver();
   return make_static_backend_module(std::move(config));
+}
+
+std::shared_ptr<const BackendModule> make_opencl_backend_module() {
+  return make_opencl_backend_module(
+      BackendTarget::from_backend(GpuBackend::OpenCL));
 }
 
 } // namespace compiler

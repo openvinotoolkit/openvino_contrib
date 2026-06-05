@@ -12,18 +12,18 @@
 namespace ov {
 namespace gfx_plugin {
 
-std::unique_ptr<GpuStage> create_opencl_stage(const std::shared_ptr<const ov::Node>& node,
-                                              const RuntimeStageExecutableDescriptor* descriptor,
+std::unique_ptr<GpuStage> create_opencl_stage(const RuntimeStageMaterializationContext& context,
                                               void*,
                                               void*) {
-    if (auto stateful = create_stateful_stage(node, descriptor)) {
+    const auto& descriptor = context.require_descriptor();
+    if (auto stateful = create_stateful_stage(descriptor)) {
         return stateful;
     }
-    if (auto view = create_view_only_stage(node, descriptor)) {
+    if (auto view = create_view_only_stage(descriptor)) {
         return view;
     }
     OPENVINO_THROW("GFX OpenCL: runtime stage materialization requires a compiler-owned executable descriptor and artifact payload for op ",
-                   node ? node->get_type_name() : "<null>",
+                   context.op_type_name(),
                    ". Add or fix the route in compiler manifest/artifact packaging; runtime is not allowed to resolve OpenCL source artifacts.");
 }
 

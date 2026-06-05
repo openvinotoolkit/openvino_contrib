@@ -28,11 +28,9 @@
 #include "kernel_ir/opencl_kernels/pool2d_f32_kernel.hpp"
 #include "kernel_ir/opencl_kernels/reduction_f32_kernel.hpp"
 #include "kernel_ir/opencl_kernels/reduction_logical_bool_kernel.hpp"
+#include "kernel_ir/opencl_kernels/range_kernel.hpp"
 #include "kernel_ir/opencl_kernels/shapeof_kernel.hpp"
-#include "kernel_ir/opencl_kernels/softmax_f16_dynamic_kernel.hpp"
-#include "kernel_ir/opencl_kernels/softmax_f16_kernel.hpp"
-#include "kernel_ir/opencl_kernels/softmax_f32_dynamic_kernel.hpp"
-#include "kernel_ir/opencl_kernels/softmax_f32_kernel.hpp"
+#include "kernel_ir/opencl_kernels/softmax_kernel.hpp"
 #include "kernel_ir/opencl_kernels/tile_kernel.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/core/type/element_type.hpp"
@@ -75,7 +73,6 @@
 #include "openvino/op/multiply.hpp"
 #include "openvino/op/negative.hpp"
 #include "openvino/op/power.hpp"
-#include "openvino/op/range.hpp"
 #include "openvino/op/reduce_l1.hpp"
 #include "openvino/op/reduce_l2.hpp"
 #include "openvino/op/reduce_logical_and.hpp"
@@ -298,36 +295,6 @@ __kernel void gfx_opencl_baseline_slice_f32(__global const float* src,
         src_offset += (begin[axis] + coord[axis] * step[axis]) * in_stride[axis];
     }
     dst[gid] = src[src_offset];
-}
-)CLC";
-
-constexpr const char *kOpenClRangeF32Source = R"CLC(
-__kernel void gfx_opencl_baseline_range_f32(__global const float* start,
-                                            __global const float* stop,
-                                            __global const float* step,
-                                            __global float* dst,
-                                            uint count) {
-    const uint gid = (uint)get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    (void)stop;
-    dst[gid] = start[0] + (float)gid * step[0];
-}
-)CLC";
-
-constexpr const char *kOpenClRangeI64Source = R"CLC(
-__kernel void gfx_opencl_baseline_range_i64(__global const long* start,
-                                            __global const long* stop,
-                                            __global const long* step,
-                                            __global long* dst,
-                                            uint count) {
-    const uint gid = (uint)get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    (void)stop;
-    dst[gid] = start[0] + (long)gid * step[0];
 }
 )CLC";
 
@@ -1555,27 +1522,6 @@ __kernel void gfx_opencl_baseline_broadcast_f16_i64shape(__global const uint* sr
     GFX_STORE_F16_PAIR(dst, word_idx, lo, hi);
 }
 
-__kernel void gfx_opencl_baseline_range_f16(__global const uint* start_words,
-                                            __global const uint* stop_words,
-                                            __global const uint* step_words,
-                                            __global uint* dst,
-                                            uint count) {
-    const uint word_idx = (uint)get_global_id(0);
-    const uint elem0 = word_idx * 2u;
-    if (elem0 >= count) {
-        return;
-    }
-    (void)stop_words;
-    const float start = gfx_f16_bits_to_f32(GFX_LOAD_F16_BITS(start_words, 0u));
-    const float step = gfx_f16_bits_to_f32(GFX_LOAD_F16_BITS(step_words, 0u));
-    const uint lo = gfx_f32_to_f16_bits(start + (float)elem0 * step);
-    uint hi = 0u;
-    if (elem0 + 1u < count) {
-        hi = gfx_f32_to_f16_bits(start + (float)(elem0 + 1u) * step);
-    }
-    GFX_STORE_F16_PAIR(dst, word_idx, lo, hi);
-}
-
 __kernel void gfx_opencl_baseline_slice_f16(__global const uint* src,
                                             __global const uint* end_words,
                                             __global uint* dst,
@@ -1740,18 +1686,6 @@ __kernel void gfx_opencl_baseline_slice_v8_f16(__global const uint* src,
     GFX_STORE_F16_PAIR(dst, word_idx, lo, hi);
 }
 
-__kernel void gfx_opencl_baseline_range_i64_unit(__global const uint* stop_words,
-                                                 __global uint* dst,
-                                                 uint count) {
-    (void)stop_words;
-    const uint gid = (uint)get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint word = gid * 2u;
-    dst[word] = gid;
-    dst[word + 1u] = 0u;
-}
 )CLC";
 
 constexpr const char *kOpenClBinaryBroadcastF32Source = R"CLC(
@@ -2219,11 +2153,6 @@ bool is_i64_tensor_type(const ov::element::Type &type) {
   return type == ov::element::i64;
 }
 
-bool is_opencl_range_tensor_type(const ov::element::Type &type) {
-  return is_f16_tensor_type(type) || is_f32_tensor_type(type) ||
-         is_i32_tensor_type(type) || is_i64_tensor_type(type);
-}
-
 bool is_opencl_convert_tensor_type(const ov::element::Type &type) {
   return is_f32_tensor_type(type) || is_i32_tensor_type(type) ||
          is_i64_tensor_type(type);
@@ -2248,10 +2177,6 @@ const char *opencl_scalar_type_suffix(const ov::element::Type &type) {
     return "i64";
   }
   return "unknown";
-}
-
-const char *opencl_range_type_suffix(const ov::element::Type &type) {
-  return opencl_scalar_type_suffix(type);
 }
 
 bool same_static_shape(const std::shared_ptr<const ov::Node> &node,
@@ -3597,35 +3522,6 @@ bool append_strides_u32(const ov::Shape &shape, size_t max_rank,
   return true;
 }
 
-bool is_static_single_element_input(const std::shared_ptr<const ov::Node> &node,
-                                    size_t input_idx) {
-  return node && input_idx < node->get_input_size() &&
-         node->get_input_partial_shape(input_idx).is_static() &&
-         ov::shape_size(node->get_input_shape(input_idx)) == 1;
-}
-
-bool range_has_baseline_source_artifact(
-    const std::shared_ptr<const ov::Node> &node) {
-  if (!node || node->get_input_size() != 3 || node->get_output_size() != 1 ||
-      !node->get_output_partial_shape(0).is_static() ||
-      !is_static_single_element_input(node, 0) ||
-      !is_static_single_element_input(node, 1) ||
-      !is_static_single_element_input(node, 2)) {
-    return false;
-  }
-  const auto output_type = node->get_output_element_type(0);
-  if (!is_opencl_range_tensor_type(output_type)) {
-    return false;
-  }
-  if (node->get_input_element_type(0) != output_type ||
-      node->get_input_element_type(1) != output_type ||
-      node->get_input_element_type(2) != output_type) {
-    return false;
-  }
-  const auto &output_shape = node->get_output_shape(0);
-  return output_shape.size() == 1 && ov::shape_size(output_shape) > 0;
-}
-
 std::optional<ov::Shape> matmul_broadcast_batch_prefix(const ov::Shape &lhs,
                                                        const ov::Shape &rhs) {
   if (lhs.size() < 2 || rhs.size() < 2) {
@@ -3836,205 +3732,6 @@ std::vector<GfxOpenClSourceScalarArg> pool2d_static_scalar_args() {
       GfxOpenClSourceScalarArg::ElementCount};
   scalar_args.insert(scalar_args.end(), 18,
                      GfxOpenClSourceScalarArg::StaticU32);
-  return scalar_args;
-}
-
-std::optional<std::vector<uint32_t>>
-softmax_static_u32_scalars(const std::shared_ptr<const ov::Node> &node) {
-  int64_t raw_axis = 0;
-  if (auto softmax_v8 = ov::as_type_ptr<const ov::op::v8::Softmax>(node)) {
-    raw_axis = softmax_v8->get_axis();
-  } else if (auto softmax_v1 =
-                 ov::as_type_ptr<const ov::op::v1::Softmax>(node)) {
-    raw_axis = static_cast<int64_t>(softmax_v1->get_axis());
-  } else {
-    return std::nullopt;
-  }
-
-  const auto element_type = node->get_input_element_type(0);
-  if (node->get_input_size() != 1 || node->get_output_size() != 1 ||
-      !node->get_input_partial_shape(0).is_static() ||
-      !node->get_output_partial_shape(0).is_static() ||
-      element_type != node->get_output_element_type(0) ||
-      (!is_f32_tensor_type(element_type) &&
-       !is_f16_tensor_type(element_type))) {
-    return std::nullopt;
-  }
-
-  const auto &input_shape = node->get_input_shape(0);
-  const auto &output_shape = node->get_output_shape(0);
-  const size_t rank = input_shape.size();
-  if (rank == 0 || output_shape != input_shape ||
-      ov::shape_size(output_shape) == 0) {
-    return std::nullopt;
-  }
-  const auto axis = normalize_axis(raw_axis, rank);
-  if (!axis || input_shape[*axis] == 0) {
-    return std::nullopt;
-  }
-
-  uint32_t outer = 0;
-  uint32_t axis_dim = 0;
-  uint32_t inner = 0;
-  uint32_t output_count = 0;
-  if (!checked_u32(shape_product_range(input_shape, 0, *axis), outer) ||
-      !checked_u32(input_shape[*axis], axis_dim) ||
-      !checked_u32(shape_product_range(input_shape, *axis + 1, rank), inner) ||
-      !checked_u32(ov::shape_size(output_shape), output_count)) {
-    return std::nullopt;
-  }
-  (void)output_count;
-
-  return std::vector<uint32_t>{outer, axis_dim, inner};
-}
-
-std::optional<std::vector<uint32_t>> softmax_dynamic_static_rank_scalars(
-    const std::shared_ptr<const ov::Node> &node) {
-  int64_t raw_axis = 0;
-  if (auto softmax_v8 = ov::as_type_ptr<const ov::op::v8::Softmax>(node)) {
-    raw_axis = softmax_v8->get_axis();
-  } else if (auto softmax_v1 =
-                 ov::as_type_ptr<const ov::op::v1::Softmax>(node)) {
-    raw_axis = static_cast<int64_t>(softmax_v1->get_axis());
-  } else {
-    return std::nullopt;
-  }
-
-  const auto element_type = node->get_input_element_type(0);
-  if (node->get_input_size() != 1 || node->get_output_size() != 1 ||
-      element_type != node->get_output_element_type(0) ||
-      (!is_f32_tensor_type(element_type) &&
-       !is_f16_tensor_type(element_type))) {
-    return std::nullopt;
-  }
-  const auto input_rank = node->get_input_partial_shape(0).rank();
-  const auto output_rank = node->get_output_partial_shape(0).rank();
-  if (!input_rank.is_static() || !output_rank.is_static() ||
-      input_rank.get_length() != output_rank.get_length() ||
-      input_rank.get_length() <= 0 || input_rank.get_length() > 8) {
-    return std::nullopt;
-  }
-  if (node->get_output_partial_shape(0).is_static()) {
-    return std::nullopt;
-  }
-
-  const auto rank = static_cast<size_t>(input_rank.get_length());
-  const auto axis = normalize_axis(raw_axis, rank);
-  if (!axis) {
-    return std::nullopt;
-  }
-
-  return std::vector<uint32_t>{
-      static_cast<uint32_t>(rank),
-      static_cast<uint32_t>(*axis),
-  };
-}
-
-std::vector<GfxOpenClSourceScalarArg> softmax_dynamic_shape_scalar_args() {
-  std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-      GfxOpenClSourceScalarArg::ElementCount,
-      GfxOpenClSourceScalarArg::StaticU32, GfxOpenClSourceScalarArg::StaticU32};
-  scalar_args.reserve(11);
-  for (uint32_t axis = 0; axis < 8; ++axis) {
-    scalar_args.push_back(static_cast<GfxOpenClSourceScalarArg>(
-        static_cast<uint32_t>(GfxOpenClSourceScalarArg::Input0Dim0) + axis));
-  }
-  return scalar_args;
-}
-
-std::optional<std::vector<uint32_t>>
-tile_static_u32_scalars(const std::shared_ptr<const ov::Node> &node) {
-  auto tile = ov::as_type_ptr<const ov::op::v0::Tile>(node);
-  if (!tile || tile->get_input_size() != 2 || tile->get_output_size() != 1 ||
-      !tile->get_input_partial_shape(0).is_static() ||
-      !tile->get_output_partial_shape(0).is_static() ||
-      tile->get_input_element_type(0) != tile->get_output_element_type(0) ||
-      (!is_f32_tensor_type(tile->get_input_element_type(0)) &&
-       !is_f16_tensor_type(tile->get_input_element_type(0)))) {
-    return std::nullopt;
-  }
-  const auto &input_shape = tile->get_input_shape(0);
-  const auto &output_shape = tile->get_output_shape(0);
-  const size_t rank = input_shape.size();
-  if (rank == 0 || rank > 4 || output_shape.size() != rank ||
-      ov::shape_size(input_shape) == 0 || ov::shape_size(output_shape) == 0) {
-    return std::nullopt;
-  }
-  const auto repeats = constant_i64_vector_input(node, 1);
-  if (!repeats || repeats->size() != rank) {
-    return std::nullopt;
-  }
-  for (size_t axis = 0; axis < rank; ++axis) {
-    if (input_shape[axis] == 0 || (*repeats)[axis] <= 0 ||
-        static_cast<uint64_t>(input_shape[axis]) *
-                static_cast<uint64_t>((*repeats)[axis]) !=
-            output_shape[axis]) {
-      return std::nullopt;
-    }
-  }
-  uint32_t total = 0;
-  if (!checked_u32(ov::shape_size(output_shape), total)) {
-    return std::nullopt;
-  }
-  (void)total;
-
-  std::vector<uint32_t> scalars;
-  scalars.reserve(17);
-  scalars.push_back(static_cast<uint32_t>(rank));
-  if (!append_shape_u32(output_shape, 4, scalars) ||
-      !append_shape_u32(input_shape, 4, scalars) ||
-      !append_strides_u32(output_shape, 4, scalars) ||
-      !append_strides_u32(input_shape, 4, scalars)) {
-    return std::nullopt;
-  }
-  return scalars;
-}
-
-std::optional<uint32_t>
-tile_dynamic_static_rank(const std::shared_ptr<const ov::Node> &node) {
-  if (!node || node->get_input_size() != 2 || node->get_output_size() != 1 ||
-      node->get_input_element_type(0) != node->get_output_element_type(0) ||
-      (!is_f32_tensor_type(node->get_input_element_type(0)) &&
-       !is_f16_tensor_type(node->get_input_element_type(0)))) {
-    return std::nullopt;
-  }
-  const auto input_rank = node->get_input_partial_shape(0).rank();
-  if (!input_rank.is_static() || input_rank.get_length() <= 0 ||
-      input_rank.get_length() > 4) {
-    return std::nullopt;
-  }
-  const auto output_rank = node->get_output_partial_shape(0).rank();
-  if (output_rank.is_static() &&
-      output_rank.get_length() != input_rank.get_length()) {
-    return std::nullopt;
-  }
-  const auto repeats_shape = node->get_input_partial_shape(1);
-  if (repeats_shape.is_static()) {
-    const auto repeats_count = ov::shape_size(repeats_shape.to_shape());
-    if (repeats_count != static_cast<size_t>(input_rank.get_length())) {
-      return std::nullopt;
-    }
-  }
-  if (node->get_output_partial_shape(0).is_static() &&
-      ov::shape_size(node->get_output_shape(0)) == 0) {
-    return std::nullopt;
-  }
-  return static_cast<uint32_t>(input_rank.get_length());
-}
-
-std::vector<GfxOpenClSourceScalarArg> tile_dynamic_shape_scalar_args() {
-  std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-      GfxOpenClSourceScalarArg::ElementCount,
-      GfxOpenClSourceScalarArg::StaticU32};
-  scalar_args.reserve(10);
-  for (uint32_t axis = 0; axis < 4; ++axis) {
-    scalar_args.push_back(static_cast<GfxOpenClSourceScalarArg>(
-        static_cast<uint32_t>(GfxOpenClSourceScalarArg::Output0Dim0) + axis));
-  }
-  for (uint32_t axis = 0; axis < 4; ++axis) {
-    scalar_args.push_back(static_cast<GfxOpenClSourceScalarArg>(
-        static_cast<uint32_t>(GfxOpenClSourceScalarArg::Input0Dim0) + axis));
-  }
   return scalar_args;
 }
 
@@ -5079,26 +4776,6 @@ strided_slice_dynamic_f16_scalars(const std::shared_ptr<const ov::Node> &node) {
   return metadata;
 }
 
-bool range_dynamic_i64_unit_supported(
-    const std::shared_ptr<const ov::Node> &node) {
-  if (!node || node->get_type_name() != std::string("Range") ||
-      node->get_input_size() != 3 || node->get_output_size() != 1 ||
-      node->get_output_partial_shape(0).is_static() ||
-      node->get_output_element_type(0) != ov::element::i64 ||
-      node->get_input_element_type(1) != ov::element::i64 ||
-      !is_static_single_element_input(node, 1)) {
-    return false;
-  }
-  const auto rank = static_rank(node->get_output_partial_shape(0));
-  if (!rank || *rank != 1) {
-    return false;
-  }
-  const auto start = constant_i64_vector_input(node, 0);
-  const auto step = constant_i64_vector_input(node, 2);
-  return start && step && start->size() == 1 && step->size() == 1 &&
-         (*start)[0] == 0 && (*step)[0] == 1;
-}
-
 struct SplitStaticU32Scalars {
   uint32_t output_count = 0;
   std::string type_suffix;
@@ -5825,12 +5502,6 @@ GfxOpenClSourceArtifact make_opencl_source_artifact(
              "gfx_opencl_baseline_slice_f32") {
     artifact.source = kOpenClSliceF32Source;
   } else if (artifact.artifact_ref.entry_point ==
-             "gfx_opencl_baseline_range_f32") {
-    artifact.source = kOpenClRangeF32Source;
-  } else if (artifact.artifact_ref.entry_point ==
-             "gfx_opencl_baseline_range_i64") {
-    artifact.source = kOpenClRangeI64Source;
-  } else if (artifact.artifact_ref.entry_point ==
                  "gfx_opencl_baseline_gather_i32_f32" ||
              artifact.artifact_ref.entry_point ==
                  "gfx_opencl_baseline_gather_elements_i32_f32" ||
@@ -5874,13 +5545,9 @@ GfxOpenClSourceArtifact make_opencl_source_artifact(
   } else if (artifact.artifact_ref.entry_point ==
                  "gfx_opencl_baseline_broadcast_f16_i64shape" ||
              artifact.artifact_ref.entry_point ==
-                 "gfx_opencl_baseline_range_f16" ||
-             artifact.artifact_ref.entry_point ==
                  "gfx_opencl_baseline_slice_f16" ||
              artifact.artifact_ref.entry_point ==
-                 "gfx_opencl_baseline_slice_v8_f16" ||
-             artifact.artifact_ref.entry_point ==
-                 "gfx_opencl_baseline_range_i64_unit") {
+                 "gfx_opencl_baseline_slice_v8_f16") {
     artifact.source = kOpenClDynamicDataMovementF16Source;
   } else if (artifact.artifact_ref.entry_point ==
              "gfx_opencl_generated_reduction_f32") {
@@ -6031,6 +5698,10 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
   }
 
   const std::string type = node->get_type_name();
+  if (type == "Range") {
+    return make_opencl_range_source_artifact(node);
+  }
+
   if (type == "Concat") {
     auto dynamic_scalars = concat_dynamic_f16_scalars(node);
     if (dynamic_scalars) {
@@ -6185,52 +5856,8 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
     }
   }
 
-  if (type == "Range" && range_dynamic_i64_unit_supported(node)) {
-    auto manifest =
-        make_opencl_source_manifest(GfxKernelStageFamily::GatherScatter,
-                                    "opencl:baseline:Range:i64:dynamic_unit",
-                                    "gfx_opencl_baseline_range_i64_unit",
-                                    /*direct_inputs=*/1,
-                                    /*scalar_arg_count=*/1);
-    return make_opencl_source_artifact(std::move(manifest),
-                                       "opencl/baseline/range_i64_unit_dynamic",
-                                       {GfxOpenClSourceScalarArg::ElementCount},
-                                       {1}, GfxOpenClArtifactOp::Identity);
-  }
-
   if (type == "Tile") {
-    auto static_u32_scalars = tile_static_u32_scalars(node);
-    const bool f16 = is_f16_tensor_type(node->get_input_element_type(0));
-    const std::string type_suffix = f16 ? "f16" : "f32";
-    if (!static_u32_scalars) {
-      auto rank = tile_dynamic_static_rank(node);
-      if (!rank) {
-        return std::nullopt;
-      }
-      auto scalar_args = tile_dynamic_shape_scalar_args();
-      auto manifest = make_opencl_source_manifest(
-          GfxKernelStageFamily::Layout,
-          "opencl:generated:Tile:" + type_suffix + ":dynamic_static_rank",
-          "gfx_opencl_generated_tile_dynamic_" + type_suffix,
-          /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
-      return make_opencl_source_artifact(
-          std::move(manifest), "opencl/generated/tile_dynamic_" + type_suffix,
-          std::move(scalar_args), {0}, GfxOpenClArtifactOp::Identity,
-          GfxOpenClArtifactInputMode::Direct, 0.0f, {*rank});
-    }
-    std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-        GfxOpenClSourceScalarArg::ElementCount};
-    scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
-                       GfxOpenClSourceScalarArg::StaticU32);
-    auto manifest = make_opencl_source_manifest(
-        GfxKernelStageFamily::Layout, "opencl:generated:Tile:" + type_suffix,
-        "gfx_opencl_generated_tile_" + type_suffix,
-        /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
-    return make_opencl_source_artifact(
-        std::move(manifest), "opencl/generated/tile_" + type_suffix,
-        std::move(scalar_args), {0}, GfxOpenClArtifactOp::Identity,
-        GfxOpenClArtifactInputMode::Direct, 0.0f,
-        std::move(*static_u32_scalars));
+    return make_opencl_tile_source_artifact(node);
   }
 
   if (type == "MaxPool" || type == "AvgPool") {
@@ -6260,43 +5887,7 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
   }
 
   if (type == "Softmax") {
-    const auto element_type = node->get_input_element_type(0);
-    if (!is_f32_tensor_type(element_type) &&
-        !is_f16_tensor_type(element_type)) {
-      return std::nullopt;
-    }
-    const std::string type_suffix = opencl_scalar_type_suffix(element_type);
-    if (auto static_u32_scalars = softmax_static_u32_scalars(node)) {
-      std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-          GfxOpenClSourceScalarArg::ElementCount};
-      scalar_args.insert(scalar_args.end(), static_u32_scalars->size(),
-                         GfxOpenClSourceScalarArg::StaticU32);
-      auto manifest = make_opencl_source_manifest(
-          GfxKernelStageFamily::Softmax,
-          "opencl:generated:Softmax:" + type_suffix,
-          "gfx_opencl_generated_softmax_" + type_suffix,
-          /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
-      return make_opencl_source_artifact(
-          std::move(manifest), "opencl/generated/softmax_" + type_suffix,
-          std::move(scalar_args), {0}, GfxOpenClArtifactOp::Softmax,
-          GfxOpenClArtifactInputMode::Direct, 0.0f,
-          std::move(*static_u32_scalars));
-    }
-    if (auto dynamic_static_rank = softmax_dynamic_static_rank_scalars(node)) {
-      auto scalar_args = softmax_dynamic_shape_scalar_args();
-      auto manifest = make_opencl_source_manifest(
-          GfxKernelStageFamily::Softmax,
-          "opencl:generated:Softmax:" + type_suffix + ":dynamic_static_rank",
-          "gfx_opencl_generated_softmax_dynamic_" + type_suffix,
-          /*direct_inputs=*/1, static_cast<uint32_t>(scalar_args.size()));
-      return make_opencl_source_artifact(
-          std::move(manifest),
-          "opencl/generated/softmax_" + type_suffix + "_dynamic_static_rank",
-          std::move(scalar_args), {0}, GfxOpenClArtifactOp::Softmax,
-          GfxOpenClArtifactInputMode::Direct, 0.0f,
-          std::move(*dynamic_static_rank));
-    }
-    return std::nullopt;
+    return make_opencl_softmax_source_artifact(node);
   }
 
   if (type == "Interpolate") {
@@ -6452,24 +6043,6 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
         std::move(scalar_args), {0}, GfxOpenClArtifactOp::Identity,
         GfxOpenClArtifactInputMode::Direct, 0.0f,
         std::move(*static_u32_scalars));
-  }
-
-  if (type == "Range") {
-    if (!range_has_baseline_source_artifact(node)) {
-      return std::nullopt;
-    }
-    const auto output_type = node->get_output_element_type(0);
-    const std::string type_suffix = opencl_range_type_suffix(output_type);
-    const std::string entry_point = "gfx_opencl_baseline_range_" + type_suffix;
-    auto manifest = make_opencl_source_manifest(
-        GfxKernelStageFamily::GatherScatter,
-        "opencl:baseline:Range:" + type_suffix, entry_point,
-        /*direct_inputs=*/3,
-        /*scalar_arg_count=*/1);
-    return make_opencl_source_artifact(
-        std::move(manifest), "opencl/baseline/range_" + type_suffix,
-        {GfxOpenClSourceScalarArg::ElementCount}, {0, 1, 2},
-        GfxOpenClArtifactOp::Identity, GfxOpenClArtifactInputMode::Direct);
   }
 
   if (type == "Gather") {

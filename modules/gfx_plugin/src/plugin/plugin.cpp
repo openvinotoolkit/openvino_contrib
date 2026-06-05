@@ -24,7 +24,7 @@
 #include "plugin/gfx_profiling_utils.hpp"
 #include "plugin/gfx_property_lists.hpp"
 #include "plugin/gfx_property_utils.hpp"
-#include "plugin/model_serialization.hpp"
+#include "plugin/compiled_model_cache_contract.hpp"
 #include "plugin/remote_context_support.hpp"
 #include "common/gfx_backend_utils.hpp"
 #include "runtime/gfx_logger.hpp"
@@ -113,70 +113,66 @@ Plugin::compile_model_impl(const std::shared_ptr<const ov::Model> &model,
   }
   const auto resolved = resolve_backend_for_properties(
       compile_properties, /*log_fallback=*/true, "Plugin");
-  const auto backend_kind = resolved.backend;
-  const auto backend_module =
-      compiler::BackendRegistry::default_registry().resolve(backend_kind);
-  if (!backend_module) {
-    OPENVINO_THROW("GFX: backend target is not registered: ",
-                   resolved.backend_name);
+  auto compile_target = resolved.target;
+  if (context) {
+    auto gfx_ctx = std::dynamic_pointer_cast<GfxRemoteContext>(context._ptr);
+    OPENVINO_ASSERT(gfx_ctx, "GFX: remote context type mismatch");
+    if (resolved.explicit_request &&
+        resolved.backend != gfx_ctx->target().backend()) {
+      OPENVINO_THROW("GFX: backend mismatch between properties (",
+                     backend_to_string(resolved.backend),
+                     ") and remote context (",
+                     backend_to_string(gfx_ctx->target().backend()), ")");
+    }
+    compile_target = gfx_ctx->target();
   }
-  gfx_log_info("Plugin") << "Selected GFX backend: " << resolved.backend_name;
+  gfx_log_info("Plugin") << "Selected GFX backend target: "
+                         << compile_target.debug_string();
   const compiler::GfxCompilerService compiler_service;
-  const auto compile_result =
-      compiler_service.compile({model, backend_module->target()});
+  compiler::GfxCompileRequest compile_request;
+  compile_request.model = model;
+  compile_request.target = compile_target;
+  compile_request.backend_name = compile_target.backend_id();
+  if (auto it = compile_properties.find(kGfxEnableFusionProperty);
+      it != compile_properties.end()) {
+    compile_request.enable_fusion =
+        parse_bool_property(it->second, kGfxEnableFusionProperty);
+  }
+  const auto compile_result = compiler_service.compile(compile_request);
   if (!compile_result.supported()) {
     OPENVINO_THROW(compile_result.unsupported_message());
   }
 
   return std::make_shared<CompiledModel>(compile_result.transformed_model,
                                          shared_from_this(),
-                                         compile_result.executable, model,
+                                         compile_result.executable,
+                                         compile_result.runtime_descriptor,
+                                         compile_result.target, model,
                                          compile_properties, context);
 }
 
 std::shared_ptr<ov::ICompiledModel>
-Plugin::import_model(std::istream &model, const ov::AnyMap &properties) const {
-  auto ov_model = read_model_from_stream(get_core_checked(), model);
-  return import_model_impl(ov_model, properties, {});
+Plugin::import_model(std::istream &, const ov::AnyMap &) const {
+  throw_compiled_model_cache_roundtrip_unavailable("import_model(stream)");
 }
 
 std::shared_ptr<ov::ICompiledModel>
-Plugin::import_model(std::istream &model,
-                     const ov::SoPtr<ov::IRemoteContext> &context,
-                     const ov::AnyMap &properties) const {
-  auto ov_model = read_model_from_stream(get_core_checked(), model);
-  return import_model_impl(ov_model, properties, context);
+Plugin::import_model(std::istream &, const ov::SoPtr<ov::IRemoteContext> &,
+                     const ov::AnyMap &) const {
+  throw_compiled_model_cache_roundtrip_unavailable(
+      "import_model(stream, remote_context)");
 }
 
 std::shared_ptr<ov::ICompiledModel>
-Plugin::import_model(const ov::Tensor &model,
-                     const ov::AnyMap &properties) const {
-  auto ov_model = read_model_from_buffer(get_core_checked(), model);
-  return import_model_impl(ov_model, properties, {});
+Plugin::import_model(const ov::Tensor &, const ov::AnyMap &) const {
+  throw_compiled_model_cache_roundtrip_unavailable("import_model(tensor)");
 }
 
 std::shared_ptr<ov::ICompiledModel>
-Plugin::import_model(const ov::Tensor &model,
-                     const ov::SoPtr<ov::IRemoteContext> &context,
-                     const ov::AnyMap &properties) const {
-  auto ov_model = read_model_from_buffer(get_core_checked(), model);
-  return import_model_impl(ov_model, properties, context);
-}
-
-std::shared_ptr<ov::ICompiledModel>
-Plugin::import_model_impl(const std::shared_ptr<const ov::Model> &model,
-                          const ov::AnyMap &properties,
-                          const ov::SoPtr<ov::IRemoteContext> &context) const {
-  if (context) {
-    return compile_model(model, properties, context);
-  }
-  return compile_model(model, properties);
-}
-
-std::shared_ptr<ov::ICore> Plugin::get_core_checked() const {
-  auto core = get_core();
-  OPENVINO_ASSERT(core, "GFX: core is null");
-  return core;
+Plugin::import_model(const ov::Tensor &, const ov::SoPtr<ov::IRemoteContext> &,
+                     const ov::AnyMap &) const {
+  throw_compiled_model_cache_roundtrip_unavailable(
+      "import_model(tensor, remote_context)");
 }
 
 ov::SupportedOpsMap
@@ -188,25 +184,17 @@ Plugin::query_model(const std::shared_ptr<const ov::Model> &model,
     merged[kv.first] = kv.second;
   }
   const auto request = get_backend_request(merged);
-  const auto& registry = compiler::BackendRegistry::default_registry();
   if (request.explicit_request && !backend_supported(request.kind)) {
     gfx_log_warn("Plugin") << "query_model: requested backend '"
                            << request.requested << "' is not supported";
     return {};
   }
-  const auto backend_kind = resolve_backend_kind_from_properties(
-      merged, /*log_fallback=*/false, "Plugin");
-  const auto backend_module = registry.resolve(backend_kind);
-  if (!backend_module) {
-    gfx_log_warn("Plugin") << "query_model: backend '"
-                           << backend_to_string(backend_kind)
-                           << "' is not supported";
-    return {};
-  }
+  const auto resolved =
+      resolve_backend_for_properties(merged, /*log_fallback=*/false, "Plugin");
   ov::SupportedOpsMap res;
   const compiler::GfxCompilerService compiler_service;
   const auto compile_result =
-      compiler_service.compile({model, backend_module->target()});
+      compiler_service.compile({model, resolved.target});
   if (!compile_result.supported()) {
     // No partial fallback to CPU/HETERO: all-or-nothing support.
     return res;

@@ -5,14 +5,52 @@
 #include "backends/opencl/compiler/opencl_kernel_artifacts.hpp"
 
 #include <memory>
+#include <string_view>
 #include <utility>
 
+#include "backends/opencl/compiler/opencl_range_kernel_unit.hpp"
+#include "backends/opencl/compiler/opencl_softmax_kernel_unit.hpp"
+#include "backends/opencl/compiler/opencl_tile_kernel_unit.hpp"
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 namespace compiler {
 namespace {
+
+bool starts_with(std::string_view value, std::string_view prefix) noexcept {
+  return value.size() >= prefix.size() &&
+         value.substr(0, prefix.size()) == prefix;
+}
+
+bool source_artifact_matches_descriptor(
+    const KernelArtifactDescriptor &descriptor,
+    const GfxOpenClSourceArtifact &artifact) noexcept {
+  return artifact.valid && artifact.artifact_ref.valid &&
+         artifact.artifact_ref.kind == GfxKernelArtifactKind::OpenClSource &&
+         artifact.artifact_ref.backend_domain ==
+             GfxKernelBackendDomain::OpenCl &&
+         descriptor.kernel.backend_domain == "opencl" &&
+         descriptor.payload_kind == KernelArtifactPayloadKind::OpenClSource &&
+         descriptor.kernel.kernel_id == artifact.artifact_ref.source_id &&
+         descriptor.kernel.origin == classify_opencl_kernel_artifact_origin(
+                                         artifact.artifact_ref.source_id);
+}
+
+std::shared_ptr<const KernelArtifactPayload>
+materialize_descriptor_owned_opencl_payload(
+    KernelArtifactDescriptor &descriptor, GfxOpenClSourceArtifact artifact) {
+  if (!source_artifact_matches_descriptor(descriptor, artifact)) {
+    return {};
+  }
+
+  descriptor.entry_point = artifact.artifact_ref.entry_point;
+  descriptor.compile_options_key =
+      gfx_opencl_source_artifact_build_options(artifact);
+  descriptor.abi_arg_count = artifact.arg_count;
+  descriptor.abi_output_arg_count = artifact.direct_output_count;
+  return std::make_shared<GfxOpenClSourceArtifactPayload>(std::move(artifact));
+}
 
 std::shared_ptr<const KernelArtifactPayload>
 resolve_opencl_payload(KernelArtifactDescriptor &descriptor,
@@ -23,21 +61,49 @@ resolve_opencl_payload(KernelArtifactDescriptor &descriptor,
     return {};
   }
 
+  if (auto range_payload =
+          build_opencl_range_kernel_artifact_payload(descriptor, op)) {
+    return range_payload;
+  }
+  if (is_opencl_range_node(op.source_node)) {
+    return {};
+  }
+  if (auto tile_payload =
+          build_opencl_tile_kernel_artifact_payload(descriptor, op)) {
+    return tile_payload;
+  }
+  if (is_opencl_tile_node(op.source_node)) {
+    return {};
+  }
+  if (auto softmax_payload =
+          build_opencl_softmax_kernel_artifact_payload(descriptor, op)) {
+    return softmax_payload;
+  }
+  if (is_opencl_softmax_node(op.source_node)) {
+    return {};
+  }
+
   auto source_artifact = resolve_gfx_opencl_source_artifact(op.source_node);
   if (!source_artifact || !source_artifact->valid) {
     return {};
   }
 
-  descriptor.entry_point = source_artifact->artifact_ref.entry_point;
-  descriptor.compile_options_key =
-      gfx_opencl_source_artifact_build_options(*source_artifact);
-  descriptor.abi_arg_count = source_artifact->arg_count;
-  descriptor.abi_output_arg_count = source_artifact->direct_output_count;
-  return std::make_shared<GfxOpenClSourceArtifactPayload>(
-      std::move(*source_artifact));
+  return materialize_descriptor_owned_opencl_payload(
+      descriptor, std::move(*source_artifact));
 }
 
 } // namespace
+
+::ov::gfx_plugin::KernelArtifactOrigin classify_opencl_kernel_artifact_origin(
+    std::string_view kernel_unit_id) noexcept {
+  if (starts_with(kernel_unit_id, "opencl/generated/")) {
+    return KernelArtifactOrigin::Generated;
+  }
+  if (starts_with(kernel_unit_id, "opencl/")) {
+    return KernelArtifactOrigin::HandwrittenException;
+  }
+  return KernelArtifactOrigin::Unknown;
+}
 
 KernelArtifactPayloadResolver make_opencl_kernel_artifact_payload_resolver() {
   return [](KernelArtifactDescriptor &descriptor, const PlannedOperation &op) {

@@ -7,7 +7,9 @@
 #include "openvino/core/except.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <sstream>
+#include <string_view>
 
 namespace ov {
 namespace gfx_plugin {
@@ -22,7 +24,64 @@ cl_command_queue resolve_queue(const std::shared_ptr<OpenClRuntimeContext>& cont
     return context->queue();
 }
 
+uint64_t fnv1a64(std::string_view value) noexcept {
+    uint64_t hash = 14695981039346656037ull;
+    for (const unsigned char byte : value) {
+        hash ^= static_cast<uint64_t>(byte);
+        hash *= 1099511628211ull;
+    }
+    return hash;
+}
+
+std::string hex_u64(uint64_t value) {
+    constexpr char kDigits[] = "0123456789abcdef";
+    std::string result(16, '0');
+    for (size_t i = 0; i < result.size(); ++i) {
+        const auto shift = static_cast<unsigned>((result.size() - 1 - i) * 4);
+        result[i] = kDigits[(value >> shift) & 0xfu];
+    }
+    return result;
+}
+
+void verify_opencl_program_build_request(const OpenClProgramBuildRequest& request) {
+    OPENVINO_ASSERT(!request.manifest_ref.empty(),
+                    "GFX OpenCL: program cache request is missing manifest ref");
+    OPENVINO_ASSERT(!request.abi_fingerprint.empty(),
+                    "GFX OpenCL: program cache request is missing ABI fingerprint");
+    OPENVINO_ASSERT(!request.artifact_key.empty(),
+                    "GFX OpenCL: program cache request is missing artifact key");
+    OPENVINO_ASSERT(request.backend_domain == "opencl",
+                    "GFX OpenCL: program cache request backend domain drift");
+    OPENVINO_ASSERT(!request.kernel_id.empty(),
+                    "GFX OpenCL: program cache request is missing kernel id");
+    OPENVINO_ASSERT(request.stage_record_key != 0,
+                    "GFX OpenCL: program cache request is missing stage record key");
+    OPENVINO_ASSERT(!request.source_id.empty(),
+                    "GFX OpenCL: program cache request is missing source id");
+    OPENVINO_ASSERT(!request.source.empty(),
+                    "GFX OpenCL: program cache request is missing source payload");
+    OPENVINO_ASSERT(!request.entry_point.empty(),
+                    "GFX OpenCL: program cache request is missing entry point");
+}
+
 }  // namespace
+
+std::string opencl_program_cache_key(const OpenClProgramBuildRequest& request) {
+    verify_opencl_program_build_request(request);
+    std::ostringstream key;
+    key << "manifest=" << request.manifest_ref
+        << "\nabi=" << request.abi_fingerprint
+        << "\nartifact=" << request.artifact_key
+        << "\ndomain=" << request.backend_domain
+        << "\nkernel=" << request.kernel_id
+        << "\nstage_record=" << request.stage_record_key
+        << "\nsource_id=" << request.source_id
+        << "\nentry=" << request.entry_point
+        << "\ncompile_options_key=" << request.compile_options_key
+        << "\nbuild_options=" << request.build_options
+        << "\nsource_fingerprint=fnv1a64:" << hex_u64(fnv1a64(request.source));
+    return key.str();
+}
 
 OpenClKernel::OpenClKernel(std::shared_ptr<OpenClRuntimeContext> context,
                            cl_program program,
@@ -141,11 +200,8 @@ std::string OpenClProgramCache::build_log(cl_program program) const {
     return log;
 }
 
-std::shared_ptr<OpenClKernel> OpenClProgramCache::get_or_create(const std::string& source_id,
-                                                                const std::string& source,
-                                                                const std::string& entry_point,
-                                                                const std::string& build_options) {
-    const std::string key = source_id + "\n" + entry_point + "\n" + build_options + "\n" + source;
+std::shared_ptr<OpenClKernel> OpenClProgramCache::get_or_create(const OpenClProgramBuildRequest& request) {
+    const std::string key = opencl_program_cache_key(request);
     std::lock_guard<std::mutex> lock(m_mutex);
     if (auto it = m_cache.find(key); it != m_cache.end()) {
         if (auto cached = it->second.lock()) {
@@ -153,8 +209,8 @@ std::shared_ptr<OpenClKernel> OpenClProgramCache::get_or_create(const std::strin
         }
     }
 
-    const char* source_ptr = source.c_str();
-    const size_t source_size = source.size();
+    const char* source_ptr = request.source.c_str();
+    const size_t source_size = request.source.size();
     cl_int status = CL_SUCCESS;
     cl_program program = m_context->api().fn().clCreateProgramWithSource(m_context->context(),
                                                                          1,
@@ -165,27 +221,34 @@ std::shared_ptr<OpenClKernel> OpenClProgramCache::get_or_create(const std::strin
     status = m_context->api().fn().clBuildProgram(program,
                                                   1,
                                                   &m_context->selection().device,
-                                                  build_options.empty() ? nullptr : build_options.c_str(),
+                                                  request.build_options.empty() ? nullptr : request.build_options.c_str(),
                                                   nullptr,
                                                   nullptr);
     if (status != CL_SUCCESS) {
         const auto log = build_log(program);
         m_context->api().fn().clReleaseProgram(program);
-        OPENVINO_THROW("GFX OpenCL: clBuildProgram failed for ",
-                       entry_point,
+        OPENVINO_THROW("GFX OpenCL: clBuildProgram failed for artifact ",
+                       request.artifact_key,
+                       " source ",
+                       request.source_id,
+                       " entry ",
+                       request.entry_point,
                        ": ",
                        opencl_error_string(status),
                        log.empty() ? "" : "\n",
                        log);
     }
-    cl_kernel kernel = m_context->api().fn().clCreateKernel(program, entry_point.c_str(), &status);
+    cl_kernel kernel = m_context->api().fn().clCreateKernel(program, request.entry_point.c_str(), &status);
     if (status != CL_SUCCESS || !kernel) {
         m_context->api().fn().clReleaseProgram(program);
         opencl_check(status, "clCreateKernel");
-        OPENVINO_THROW("GFX OpenCL: clCreateKernel returned null for ", entry_point);
+        OPENVINO_THROW("GFX OpenCL: clCreateKernel returned null for ",
+                       request.entry_point,
+                       " in artifact ",
+                       request.artifact_key);
     }
 
-    auto compiled = std::make_shared<OpenClKernel>(m_context, program, kernel, entry_point);
+    auto compiled = std::make_shared<OpenClKernel>(m_context, program, kernel, request.entry_point);
     m_cache[key] = compiled;
     return compiled;
 }

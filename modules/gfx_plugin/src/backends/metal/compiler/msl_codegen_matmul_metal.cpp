@@ -60,7 +60,8 @@ GfxMpsrtKernelSourcePlan lower_matmul_node_to_metal_kernel_source_plan(
   desc.output_type = output_type;
 
   const auto stage_compiler_policy =
-      compiler::resolve_stage_compiler_policy(GpuBackend::Metal);
+      compiler::resolve_stage_compiler_policy(
+          compiler::BackendTarget::from_backend(GpuBackend::Metal));
   const auto placement = select_stage_optimization_plan(
       GpuBackend::Metal, "MatMul", node, desc.output_type,
       desc.has_bias, desc.has_activation,

@@ -132,6 +132,24 @@ bool is_linear_shape_view_op(std::string_view type) {
     return type == "Reshape" || type == "Squeeze" || type == "Unsqueeze";
 }
 
+OpenClProgramBuildRequest make_opencl_program_build_request(
+    const RuntimeStageExecutableDescriptor& descriptor,
+    const GfxOpenClSourceArtifact& artifact) {
+    OpenClProgramBuildRequest request;
+    request.manifest_ref = descriptor.manifest_ref;
+    request.abi_fingerprint = descriptor.abi_fingerprint;
+    request.artifact_key = descriptor.artifact_key;
+    request.backend_domain = descriptor.backend_domain;
+    request.kernel_id = descriptor.kernel_id;
+    request.stage_record_key = descriptor.stage_record_key;
+    request.source_id = artifact.artifact_ref.source_id;
+    request.source = artifact.source;
+    request.entry_point = artifact.artifact_ref.entry_point;
+    request.compile_options_key = descriptor.compile_options_key;
+    request.build_options = gfx_opencl_source_artifact_build_options(artifact);
+    return request;
+}
+
 class OpenClSourceStage final : public GpuStage {
 public:
     OpenClSourceStage(std::shared_ptr<const ov::Node> node,
@@ -142,7 +160,6 @@ public:
           m_context(std::move(context)),
           m_descriptor(std::move(descriptor)),
           m_artifact(std::move(artifact)) {
-        OPENVINO_ASSERT(m_node, "GFX OpenCL: source stage requires a node");
         OPENVINO_ASSERT(m_context, "GFX OpenCL: source stage requires a runtime context");
         OPENVINO_ASSERT(m_descriptor.payload_kind == KernelArtifactPayloadKind::OpenClSource,
                         "GFX OpenCL: source stage requires OpenCL source runtime descriptor");
@@ -151,8 +168,14 @@ public:
         OPENVINO_ASSERT(m_descriptor.entry_point == m_artifact.artifact_ref.entry_point,
                         "GFX OpenCL: source stage descriptor entry point drift");
         m_program_cache = std::make_shared<OpenClProgramCache>(m_context);
-        m_name = m_node->get_friendly_name();
-        m_type = m_node->get_type_name();
+        m_name = !m_descriptor.stage_name.empty()
+                     ? m_descriptor.stage_name
+                     : (m_node ? m_node->get_friendly_name()
+                               : std::string("opencl_source_stage"));
+        m_type = !m_descriptor.op_family.empty()
+                     ? m_descriptor.op_family
+                     : (m_node ? m_node->get_type_name()
+                               : std::string("Unknown"));
     }
 
     void init(GpuBufferManager* buffer_manager) override {
@@ -175,10 +198,8 @@ public:
             prepare_planned_chunk_kernels(m_split_chunk_kernels);
             return;
         }
-        m_kernel = m_program_cache->get_or_create(m_artifact.artifact_ref.source_id,
-                                                  m_artifact.source,
-                                                  m_artifact.artifact_ref.entry_point,
-                                                  gfx_opencl_source_artifact_build_options(m_artifact));
+        m_kernel = m_program_cache->get_or_create(
+            make_opencl_program_build_request(m_descriptor, m_artifact));
         m_kernel->set_args_count(m_artifact.arg_count);
     }
 
@@ -590,10 +611,7 @@ private:
         auto& kernel = kernels[chunk_slot];
         if (!kernel) {
             kernel = m_program_cache->get_or_create(
-                chunk_artifact.artifact_ref.source_id,
-                chunk_artifact.source,
-                chunk_artifact.artifact_ref.entry_point,
-                gfx_opencl_source_artifact_build_options(chunk_artifact));
+                make_opencl_program_build_request(m_descriptor, chunk_artifact));
             kernel->set_args_count(chunk_artifact.arg_count);
         }
         return kernel;

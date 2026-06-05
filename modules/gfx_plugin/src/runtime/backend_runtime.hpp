@@ -13,6 +13,7 @@
 #include "openvino/runtime/itensor.hpp"
 #include "openvino/runtime/so_ptr.hpp"
 
+#include "compiler/backend_target.hpp"
 #include "runtime/backend_stage_factory.hpp"
 #include "runtime/backend_request_state.hpp"
 #include "runtime/gfx_profiler.hpp"
@@ -30,6 +31,7 @@ struct BackendResources {
 
 struct BackendState : BackendStageFactory {
     virtual ~BackendState() = default;
+    virtual const compiler::BackendTarget& target() const = 0;
     virtual BackendResources resources() const = 0;
     // Return true only for backends that require a const buffer manager to build/compile stages.
     virtual bool requires_const_manager() const { return false; }
@@ -38,8 +40,7 @@ struct BackendState : BackendStageFactory {
     virtual void init_infer_state(BackendRequestState& /*state*/) const {}
     virtual std::unique_ptr<GfxProfiler> create_profiler(const GfxProfilerConfig& /*cfg*/) const { return {}; }
     virtual std::unique_ptr<GpuStage> create_stage(
-        const std::shared_ptr<const ov::Node>& node,
-        const RuntimeStageExecutableDescriptor* descriptor) const override = 0;
+        const RuntimeStageMaterializationContext& context) const override = 0;
     virtual ov::SoPtr<ov::ITensor> get_tensor_override(
         const BackendRequestState& /*state*/,
         size_t /*idx*/,

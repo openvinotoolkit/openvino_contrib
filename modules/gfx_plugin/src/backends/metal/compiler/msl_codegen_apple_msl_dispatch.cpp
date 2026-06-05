@@ -480,7 +480,8 @@ static GfxMpsrtKernelSourcePlan configure_msl_kernel_source_plan_for_node(
   }
 
   const auto stage_compiler_policy =
-      compiler::resolve_stage_compiler_policy(GpuBackend::Metal);
+      compiler::resolve_stage_compiler_policy(
+          compiler::BackendTarget::from_backend(GpuBackend::Metal));
   auto plan = select_stage_optimization_plan(
       GpuBackend::Metal, std::string(stage_type), node,
       node->get_output_element_type(0), has_bias, has_activation, has_batchnorm,

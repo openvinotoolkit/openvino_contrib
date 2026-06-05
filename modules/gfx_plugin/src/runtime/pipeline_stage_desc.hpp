@@ -6,6 +6,7 @@
 #include <memory>
 #include <vector>
 
+#include "runtime/executable_descriptor.hpp"
 #include "runtime/gpu_stage.hpp"
 #include "runtime/output_lifetime.hpp"
 #include "runtime/pipeline_stage_plan.hpp"
@@ -22,6 +23,7 @@ struct PipelineStageDesc : PipelineStageIoPlan {
   using InputLink = PipelineStageInputLink;
   using OutputAlias = PipelineStageOutputAlias;
   using OutputLifetime = RuntimeOutputLifetime;
+  std::shared_ptr<const RuntimeStageExecutableDescriptor> runtime_descriptor;
   std::vector<OutputLifetime> output_lifetimes;
 };
 

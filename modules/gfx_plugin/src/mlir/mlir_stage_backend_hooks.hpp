@@ -12,6 +12,7 @@
 #include "compiler/stage_policy.hpp"
 #include "kernel_ir/gfx_codegen_desc.hpp"
 #include "kernel_ir/gfx_codegen_backend.hpp"
+#include "kernel_ir/gfx_kernel_manifest.hpp"
 #include "mlir/gfx_mlir_kernel_metadata.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -23,6 +24,7 @@
 #include "common/gpu_parallelism_plan.hpp"
 
 namespace ov {
+class Tensor;
 namespace gfx_plugin {
 
 class GpuBufferManager;
@@ -65,6 +67,22 @@ struct MlirStageBackendReductionPlan {
 
 struct MlirStageBackendHooks {
   virtual ~MlirStageBackendHooks() = default;
+
+  virtual GfxKernelBackendDomain custom_kernel_backend_domain() const {
+    return GfxKernelBackendDomain::Unknown;
+  }
+
+  virtual bool should_pack_matmul_const_input_as_f16(
+      const std::shared_ptr<const ov::Node> & /*node*/,
+      size_t /*input_idx*/, const ov::Tensor & /*tensor*/) const {
+    return false;
+  }
+
+  virtual bool should_pack_conv2d_const_weights_oc4(
+      const std::shared_ptr<const ov::Node> & /*node*/,
+      size_t /*input_idx*/, const ov::Tensor & /*tensor*/) const {
+    return false;
+  }
 
   virtual void
   attach_const_tensor_sources(KernelSource & /*source*/,

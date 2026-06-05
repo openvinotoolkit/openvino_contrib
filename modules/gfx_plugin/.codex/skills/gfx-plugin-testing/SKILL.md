@@ -21,14 +21,14 @@ validation in `modules/gfx_plugin/`.
   ownership.
 - The task changes backend stage-placement policy.
 - The task changes Metal placement, MPSRT metadata, MSL kernel-family routing,
-  MPS/MPSGraph vendor descriptors, resource tables, storage bridges, or request
-  binding.
+  MPS/MPSGraph vendor descriptors, shared MPSRT vendor contracts, resource
+  tables, storage bridges, or request binding.
 - The task changes OpenCL source artifacts, dynamic OpenCL runtime selection,
   source-stage execution, OpenCL runtime-bundle discovery, generated
-  activation/elementwise/MatMul units, generated ShapeOf/Tile/Transpose,
-  generated compare/select or logical-bool elementwise units, runtime-shape
-  allocation, chunked Concat/Split, boolean-buffer behavior, constant
-  materialization, or OpenCL op coverage.
+  activation/elementwise/MatMul units, generated Range/ShapeOf/Tile/Transpose,
+  generated compare/select or logical-bool elementwise units, family-specific
+  OpenCL kernel-unit adapters, runtime-shape allocation, chunked Concat/Split,
+  boolean-buffer behavior, constant materialization, or OpenCL op coverage.
 - The user wants compare-runner, microbench, profiling-runbook, Android, Linux,
   or Raspberry Pi validation guidance.
 
@@ -59,9 +59,6 @@ validation in `modules/gfx_plugin/`.
 - `tests/tools/gfx_gtest_matrix.py`: compares captured `--gtest_list_tests`
   output across production test targets and rejects duplicates, `DISABLED_`
   registrations, and matrix drift
-- `tests/tools/gfx_gtest_source_contract.py`: compares native backend test
-  source registrations with backend-unavailable adapter registrations for
-  covered source groups
 
 ## Test Selection Rules
 
@@ -179,9 +176,9 @@ For OpenCL source-artifact changes:
   source ids, static 4D NCHW window metadata, or backend kernel-unit routes
   change
 - include `tests/unit/gfx_backend_architecture_contract_test.cpp` and
-  `tests/unit/gfx_opencl_source_artifacts_test.cpp` when generated ShapeOf,
-  Tile, Transpose, compare/select, logical-bool elementwise, boolean reduction,
-  or generated Concat/Split routes move
+  `tests/unit/gfx_opencl_source_artifacts_test.cpp` when generated Range,
+  ShapeOf, Tile, Transpose, compare/select, logical-bool elementwise, boolean
+  reduction, or generated Concat/Split routes move
 - add `tests/unit/gpu_backend_base_test.cpp` coverage when the artifact should
   be present in the compiler executable bundle
 - add architecture-contract coverage when the common compiler should require
@@ -215,10 +212,11 @@ For docs-only or documentation/security publication changes, `git diff --check`
 plus stale-reference/security grep and staged diff review are the expected gate
 unless the user explicitly requests build or test targets.
 
-When changing test target composition, use the source-contract tool for
-native/unavailable-adapter parity and the gtest matrix tool for registration
-capture or comparison. The CMake `gfx_gtest_matrix_capture` target runs the
-matrix tool in `--check-only` mode when host execution is possible.
+When changing test target composition, use the gtest matrix tool for
+registration capture or comparison. The CMake `gfx_gtest_matrix_capture` target
+runs the matrix tool in `--check-only` mode when host execution is possible.
+Keep native backend and backend-unavailable coverage aligned through executable
+registration, contract tests, and route coverage, not source parsing.
 
 ## Compare And Profiling Tools
 

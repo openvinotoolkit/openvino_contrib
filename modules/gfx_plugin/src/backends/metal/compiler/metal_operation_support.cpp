@@ -13,6 +13,7 @@
 #include "backends/metal/compiler/msl_codegen_apple_msl_eltwise.hpp"
 #include "backends/metal/compiler/msl_codegen_apple_msl_reduction.hpp"
 #include "backends/metal/compiler/msl_codegen_apple_msl_softmax.hpp"
+#include "mlir/mlir_support.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/avg_pool.hpp"
 #include "openvino/op/concat.hpp"
@@ -33,8 +34,6 @@
 
 namespace ov {
 namespace gfx_plugin {
-
-bool metal_supports_node(const std::shared_ptr<const ov::Node> &node);
 
 namespace compiler {
 namespace {
@@ -157,11 +156,54 @@ bool supports_static_f32_transpose_generated_msl(
   return true;
 }
 
+bool supports_metal_compiler_probe(
+    const std::shared_ptr<const ov::Node> &node) {
+  if (ov::is_type<const ov::op::v1::Split>(node) ||
+      ov::is_type<const ov::op::v1::VariadicSplit>(node)) {
+    return node->get_input_size() >= 2 &&
+           ov::is_type<const ov::op::v0::Constant>(
+               node->input_value(1).get_node_shared_ptr()) &&
+           (ov::is_type<const ov::op::v1::Split>(node) ||
+            (node->get_input_size() >= 3 &&
+             ov::is_type<const ov::op::v0::Constant>(
+                 node->input_value(2).get_node_shared_ptr())));
+  }
+  if (ov::is_type<const ov::op::v13::ScaledDotProductAttention>(node)) {
+    const auto et = node->get_output_element_type(0);
+    const auto q_rank = node->get_input_partial_shape(0).rank();
+    const auto k_rank = node->get_input_partial_shape(1).rank();
+    const auto v_rank = node->get_input_partial_shape(2).rank();
+    return (et == ov::element::f16 || et == ov::element::f32) &&
+           q_rank.is_static() && q_rank.get_length() == 4 &&
+           k_rank.is_static() && k_rank.get_length() == 4 &&
+           v_rank.is_static() && v_rank.get_length() == 4 &&
+           node->get_input_size() >= 3 && node->get_input_size() <= 5;
+  }
+  if (ov::is_type<const ov::gfx_plugin::op::GfxSDPAWithCausalMask>(node)) {
+    const auto et = node->get_output_element_type(0);
+    const auto q_rank = node->get_input_partial_shape(0).rank();
+    const auto k_rank = node->get_input_partial_shape(1).rank();
+    const auto v_rank = node->get_input_partial_shape(2).rank();
+    const auto mask_rank = node->get_input_partial_shape(3).rank();
+    const auto pos_rank = node->get_input_partial_shape(4).rank();
+    return (et == ov::element::f16 || et == ov::element::f32) &&
+           q_rank.is_static() && q_rank.get_length() == 4 &&
+           k_rank.is_static() && k_rank.get_length() == 4 &&
+           v_rank.is_static() && v_rank.get_length() == 4 &&
+           mask_rank.is_static() && mask_rank.get_length() == 2 &&
+           pos_rank.is_static() && pos_rank.get_length() == 1 &&
+           node->get_input_element_type(3) == ov::element::i64 &&
+           node->get_input_element_type(4) == ov::element::i64 &&
+           node->get_input_size() == 6;
+  }
+  return mlir_supports_node(node);
+}
+
 bool supports_causal_sdpa_generated_msl(
     const std::shared_ptr<const ov::Node> &node) {
   return ov::as_type_ptr<const ov::gfx_plugin::op::GfxSDPAWithCausalMask>(
              node) &&
-         metal_supports_node(node);
+         supports_metal_compiler_probe(node);
 }
 
 bool supports_mps_softmax_vendor(const std::shared_ptr<const ov::Node> &node) {
@@ -329,7 +371,7 @@ query_metal_operation(const std::shared_ptr<const ov::Node> &node) {
           kind ? std::string(reduction_msl_kernel_unit_id(*kind))
                : "metal/generated/reduction_f32");
     }
-    if (node && metal_supports_node(node)) {
+    if (node && supports_metal_compiler_probe(node)) {
       return make_unsupported_operation("missing_metal_explicit_kernel_unit");
     }
     return make_unsupported_operation("unsupported_by_metal_capabilities");

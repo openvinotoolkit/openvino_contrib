@@ -15,16 +15,6 @@ BackendRegistry::BackendRegistry(
     : m_modules(std::move(modules)) {}
 
 std::shared_ptr<const BackendModule>
-BackendRegistry::resolve(GpuBackend backend) const {
-  for (const auto &module : m_modules) {
-    if (module && module->target().backend() == backend) {
-      return module;
-    }
-  }
-  return {};
-}
-
-std::shared_ptr<const BackendModule>
 BackendRegistry::resolve(const BackendTarget &target) const {
   const auto fingerprint = target.fingerprint();
   for (const auto &module : m_modules) {

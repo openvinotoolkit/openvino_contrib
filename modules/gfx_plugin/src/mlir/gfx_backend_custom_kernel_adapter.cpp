@@ -429,13 +429,9 @@ bool configure_backend_custom_kernel_source_signature(
 size_t infer_backend_custom_kernel_arg_count(
     mlir::ModuleOp module, GfxKernelBackendDomain backend_domain,
     size_t fallback, std::string_view entry_point) {
-  GfxKernelStageManifest manifest{};
-  if (!read_backend_custom_kernel_stage_manifest_from_module(
-          module, backend_domain, manifest)) {
-    return fallback;
-  }
-  return infer_kernel_arg_count_from_module(module, fallback, entry_point,
-                                            backend_domain);
+  (void)fallback;
+  return require_backend_manifest_arg_count(
+      module, backend_domain, entry_point, "backend custom-kernel");
 }
 
 size_t require_backend_manifest_arg_count(

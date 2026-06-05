@@ -11,6 +11,8 @@ namespace ov {
 namespace gfx_plugin {
 namespace compiler {
 
+std::shared_ptr<const BackendModule>
+make_metal_backend_module(BackendTarget target);
 std::shared_ptr<const BackendModule> make_metal_backend_module();
 
 } // namespace compiler

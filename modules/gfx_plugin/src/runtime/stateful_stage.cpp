@@ -12,6 +12,25 @@ namespace ov {
 namespace gfx_plugin {
 namespace {
 
+std::string descriptor_stage_name(
+    const RuntimeStageExecutableDescriptor& descriptor,
+    std::string fallback) {
+    if (!descriptor.output_bindings.empty() &&
+        !descriptor.output_bindings.front().logical_name.empty()) {
+        return descriptor.output_bindings.front().logical_name;
+    }
+    if (!descriptor.stage_name.empty()) {
+        return descriptor.stage_name;
+    }
+    if (!descriptor.manifest_ref.empty()) {
+        return descriptor.manifest_ref;
+    }
+    if (!descriptor.kernel_id.empty()) {
+        return descriptor.kernel_id;
+    }
+    return fallback;
+}
+
 class StatefulReadValueStage final : public GpuStage {
 public:
     explicit StatefulReadValueStage(std::string name)
@@ -82,15 +101,14 @@ std::unique_ptr<GpuStage> StatefulAssignStage::clone() const {
 }
 
 std::unique_ptr<GpuStage> create_stateful_stage(
-    const std::shared_ptr<const ov::Node>& node,
-    const RuntimeStageExecutableDescriptor* descriptor) {
-    if (descriptor && descriptor->stateful_effect == "assign") {
+    const RuntimeStageExecutableDescriptor& descriptor) {
+    if (descriptor.stateful_effect == "assign") {
         return std::make_unique<StatefulAssignStage>(
-            node ? node->get_friendly_name() : std::string{"Assign"});
+            descriptor_stage_name(descriptor, "Assign"));
     }
-    if (descriptor && descriptor->stateful_effect == "read_value") {
+    if (descriptor.stateful_effect == "read_value") {
         return std::make_unique<StatefulReadValueStage>(
-            node ? node->get_friendly_name() : std::string{"ReadValue"});
+            descriptor_stage_name(descriptor, "ReadValue"));
     }
     return {};
 }

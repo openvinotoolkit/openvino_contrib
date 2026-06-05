@@ -68,8 +68,8 @@ Then inspect the relevant code path:
   manifests, executable bundles, runtime executable descriptor
   build/verification, tensor-layout plans, stage-placement value objects, and
   artifact descriptors in `src/compiler/`.
-- Keep descriptor-backed stage creation, `PipelineStageDesc`, vendor attention
-  artifact materialization, and fused attention sequence materialization in
+- Keep descriptor-backed stage creation, `PipelineStageDesc`, vendor primitive
+  artifact materialization, and fused sequence materialization in
   `src/runtime/backend_stage_factory.hpp`,
   `src/runtime/pipeline_stage_desc.hpp`, and
   `src/runtime/pipeline_stage_materializer.*`.
@@ -152,6 +152,8 @@ For Metal placement, MPSRT, or MSL source changes, keep these aligned:
 - `src/backends/metal/compiler/msl_codegen_matmul_*`
 - `src/backends/metal/compiler/msl_codegen_attention.*`
 - `src/backends/metal/compiler/msl_codegen_compressed_matmul.*`
+- `src/backends/metal/common/mpsrt/gfx_mpsrt_vendor_contract.hpp`
+- `src/backends/metal/common/mpsrt/gfx_mpsrt_vendor_artifact_payload.hpp`
 - `src/backends/metal/runtime/metal_runtime_kernel_loader.*`
 - `src/backends/metal/runtime/mpsrt_vendor_primitive_stage.*`
 - `src/backends/metal/runtime/mpsrt/`
@@ -214,10 +216,11 @@ For OpenCL source-artifact work:
 
 Current generated OpenCL routes include activation, elementwise, f32 MatMul,
 f32/f16 Interpolate, f32 reduction, boolean reduction, f32/f16 Softmax,
-dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D, ShapeOf, Tile,
-Transpose, compare/select, logical-bool elementwise, and generated Concat/Split
-helpers. The current OpenCL kernel registry has no active handwritten
-kernel-unit exception.
+dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D, f32/f16/i64 Range,
+ShapeOf, Tile, Transpose, compare/select, logical-bool elementwise, and
+generated Concat/Split helpers. Range, Softmax, and Tile have family-specific
+OpenCL kernel-unit adapters under `src/backends/opencl/compiler/`. The current
+OpenCL kernel registry has no active handwritten kernel-unit exception.
 
 Standalone OpenCL Conv2D microbench tools are experiments. A result there is
 not plugin support until it is promoted through support probing, source
@@ -281,9 +284,9 @@ Before publication, run `git diff --check` and the relevant GFX tests for normal
 source changes. For documentation/security publication tasks, do not run build
 or test targets unless the user explicitly asks; use source inspection,
 security grep, stale-reference grep, and staged diff review. Use
-`tests/tools/gfx_gtest_source_contract.py` for native/unavailable-adapter source
-parity and `tests/tools/gfx_gtest_matrix.py` for production gtest registration
-checks when test source layout changes.
+`tests/tools/gfx_gtest_matrix.py` for production gtest registration checks when
+test target composition changes; do not use source parsing as architecture
+readiness evidence.
 
 ## Output Expectations
 

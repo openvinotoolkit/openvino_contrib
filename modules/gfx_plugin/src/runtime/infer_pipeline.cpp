@@ -98,14 +98,15 @@ void prepare_stage_runtime_executable(InferStage& stage,
     }
 
     stage.runtime_session = runtime_session;
-    auto bindings = runtime_session->make_binding_table(stage_index,
-                                                        placeholder_inputs,
-                                                        outputs);
-    auto prepared = runtime_session->prepare_stage(
-        stage_index,
-        *stage.stage,
-        buffer_manager,
-        std::move(bindings));
+    const auto* descriptor = runtime_stage_descriptor_or_null(stage);
+    OPENVINO_ASSERT(descriptor,
+                    "GFX: compiler-owned runtime stage descriptor is required "
+                    "to prepare pipeline stage ",
+                    stage_index);
+    auto bindings =
+        ResourceBindingTable::for_stage(placeholder_inputs, outputs, *descriptor);
+    PreparedKernelExecutable prepared(*descriptor);
+    prepared.prepare(*stage.stage, buffer_manager, std::move(bindings));
     stage.prepared_executable =
         std::make_unique<PreparedKernelExecutable>(std::move(prepared));
 }
@@ -278,11 +279,14 @@ ov::element::Type resolve_stage_output_type(const InferStage& stage,
 }
 
 void normalize_remote_tensor(GfxRemoteTensor& remote,
-                             GpuBackend expected_backend,
+                             const compiler::BackendTarget& expected_target,
                              const char* error_prefix) {
-    OPENVINO_ASSERT(remote.backend() == expected_backend,
+    OPENVINO_ASSERT(remote.backend() == expected_target.backend(),
                     error_prefix,
                     ": remote tensor backend mismatch");
+    OPENVINO_ASSERT(remote.target().is_compatible_with_fingerprint(expected_target.fingerprint()),
+                    error_prefix,
+                    ": remote tensor target mismatch");
     auto& tensor = remote.gpu_tensor();
     OPENVINO_ASSERT(tensor.buf.buffer, error_prefix, ": remote tensor buffer is null");
     if (tensor.shape.empty()) {
@@ -302,13 +306,13 @@ void normalize_remote_tensor(GfxRemoteTensor& remote,
 }
 
 void normalize_remote_outputs(std::vector<std::shared_ptr<GfxRemoteTensor>>& remote_outputs,
-                              GpuBackend expected_backend,
+                              const compiler::BackendTarget& expected_target,
                               const char* error_prefix) {
     for (auto& remote : remote_outputs) {
         if (!remote) {
             continue;
         }
-        normalize_remote_tensor(*remote, expected_backend, error_prefix);
+        normalize_remote_tensor(*remote, expected_target, error_prefix);
     }
 }
 
@@ -341,6 +345,11 @@ std::vector<InferStage> build_infer_pipeline(const std::vector<PipelineStageDesc
         stage.stage = desc.stage->clone();
         OPENVINO_ASSERT(stage.stage, "GFX: failed to clone stage for ", desc.node->get_friendly_name());
         stage.runtime_stage_index = runtime_stage_index;
+        stage.runtime_stage_descriptor =
+            desc.runtime_descriptor
+                ? desc.runtime_descriptor
+                : std::make_shared<RuntimeStageExecutableDescriptor>(
+                      runtime_session->stage_descriptor(runtime_stage_index));
         stage.inputs = desc.inputs;
         stage.output_aliases = desc.output_aliases;
         stage.output_lifetimes = desc.output_lifetimes;
@@ -449,7 +458,7 @@ std::vector<InferStage> build_bound_pipeline(
     const std::unordered_map<const ov::Node*, size_t>& param_map,
     std::vector<std::shared_ptr<GfxRemoteTensor>>& remote_outputs,
     const std::vector<std::shared_ptr<GfxRemoteTensor>>& remote_inputs,
-    GpuBackend expected_backend,
+    const compiler::BackendTarget& expected_target,
     std::shared_ptr<const RuntimeExecutableDescriptor> runtime_descriptor,
     const char* error_prefix) {
     auto pipeline = build_infer_pipeline(descs,
@@ -464,7 +473,7 @@ std::vector<InferStage> build_bound_pipeline(
                                  node_map,
                                  param_map,
                                  error_prefix);
-    normalize_remote_outputs(remote_outputs, expected_backend, error_prefix);
+    normalize_remote_outputs(remote_outputs, expected_target, error_prefix);
     bind_remote_outputs(outputs,
                         runtime_model,
                         node_map,

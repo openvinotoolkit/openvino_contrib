@@ -11,7 +11,7 @@
 
 #include "openvino/core/shape.hpp"
 #include "openvino/core/type/element_type.hpp"
-#include "compiler/stage_policy.hpp"
+#include "compiler/stage_placement.hpp"
 
 namespace ov {
 namespace gfx_plugin {

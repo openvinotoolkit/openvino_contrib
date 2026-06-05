@@ -5,16 +5,13 @@
 
 #include <memory>
 
-#include "openvino/core/node.hpp"
 #include "runtime/gpu_stage.hpp"
+#include "runtime/stage_materialization_context.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 
-struct RuntimeStageExecutableDescriptor;
-
-std::unique_ptr<GpuStage> create_metal_stage(const std::shared_ptr<const ov::Node>& node,
-                                             const RuntimeStageExecutableDescriptor* descriptor,
+std::unique_ptr<GpuStage> create_metal_stage(const RuntimeStageMaterializationContext& context,
                                              void* device,
                                              void* queue);
 void ensure_metal_stage_factory_registered();

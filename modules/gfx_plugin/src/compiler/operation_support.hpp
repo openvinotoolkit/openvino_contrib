@@ -60,12 +60,12 @@ struct PrecisionCapabilities {
 };
 
 struct ArtifactFormatCapabilities {
-  bool supports_compiled_model_export_import = true;
+  bool supports_compiled_model_export_import = false;
 };
 
 struct BackendExecutionCapabilities {
-  bool source_kernel_dispatch_enabled = false;
-  GpuParallelismProfile fallback_parallelism{};
+  bool custom_kernel_dispatch_enabled = false;
+  GpuParallelismProfile custom_kernel_dispatch_profile{};
 };
 
 struct PostOpFusionCapabilities {
@@ -96,7 +96,7 @@ struct PostOpFusionCapabilities {
 std::string_view lowering_route_kind_to_string(LoweringRouteKind kind) noexcept;
 OperationSupportResult make_supported_operation(
     std::string semantic_reason, LoweringRouteKind route_kind,
-    double profitability_score, std::string preferred_route = {});
+    double profitability_score, std::string preferred_route);
 OperationSupportResult make_unsupported_operation(std::string semantic_reason);
 
 class OperationSupportPolicy {
@@ -165,14 +165,6 @@ private:
   PrecisionCapabilities m_precision_capabilities;
   ArtifactFormatCapabilities m_artifact_format_capabilities;
 };
-
-bool is_supported_node(const std::shared_ptr<const ov::Node> &node,
-                       GpuBackend backend);
-bool model_supported_by_backend(const std::shared_ptr<const ov::Model> &model,
-                                GpuBackend backend);
-UnsupportedSummary
-collect_unsupported(const std::shared_ptr<const ov::Model> &model,
-                    GpuBackend backend, size_t max_nodes = 8);
 
 } // namespace compiler
 } // namespace gfx_plugin

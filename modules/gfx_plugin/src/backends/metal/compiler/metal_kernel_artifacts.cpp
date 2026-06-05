@@ -8,6 +8,7 @@
 #include <string>
 #include <utility>
 
+#include "backends/metal/compiler/apple_vendor_descriptors.hpp"
 #include "compiler/pipeline_stage_fusion.hpp"
 #include "kernel_ir/gfx_kernel_source.hpp"
 #include "kernel_ir/metal_kernels/reduction_kernels.hpp"
@@ -342,39 +343,6 @@ resolve_metal_payload(KernelArtifactDescriptor &descriptor,
 }
 
 } // namespace
-
-GfxMetalVendorPrimitiveArtifactPayload::GfxMetalVendorPrimitiveArtifactPayload(
-    std::string kernel_id, std::string backend_domain, std::string entry_point,
-    GfxAppleMpsVendorPrimitiveContract contract)
-    : m_kernel_id(std::move(kernel_id)),
-      m_backend_domain(std::move(backend_domain)),
-      m_entry_point(std::move(entry_point)), m_contract(std::move(contract)) {}
-
-KernelArtifactPayloadKind
-GfxMetalVendorPrimitiveArtifactPayload::payload_kind() const noexcept {
-  return KernelArtifactPayloadKind::VendorDescriptor;
-}
-
-std::string_view
-GfxMetalVendorPrimitiveArtifactPayload::backend_domain() const noexcept {
-  return m_backend_domain;
-}
-
-std::string_view
-GfxMetalVendorPrimitiveArtifactPayload::source_id() const noexcept {
-  return m_kernel_id;
-}
-
-std::string_view
-GfxMetalVendorPrimitiveArtifactPayload::entry_point() const noexcept {
-  return m_entry_point;
-}
-
-bool GfxMetalVendorPrimitiveArtifactPayload::valid() const noexcept {
-  return !m_kernel_id.empty() && !m_backend_domain.empty() &&
-         !m_entry_point.empty() && m_contract.valid &&
-         m_contract.descriptor.kind != GfxAppleMpsVendorPrimitiveKind::None;
-}
 
 KernelArtifactPayloadResolver make_metal_kernel_artifact_payload_resolver() {
   return [](KernelArtifactDescriptor &descriptor, const PlannedOperation &op) {

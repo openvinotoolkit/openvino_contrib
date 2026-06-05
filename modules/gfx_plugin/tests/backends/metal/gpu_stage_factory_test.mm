@@ -34,6 +34,7 @@ RuntimeStageExecutableDescriptor make_metal_test_descriptor(
     descriptor.kernel_id =
         std::string("metal/generated/") + (node ? node->get_type_name() : "null");
     descriptor.op_family = node ? node->get_type_name() : "null";
+    descriptor.stage_name = node ? node->get_friendly_name() : "null";
     descriptor.origin = KernelArtifactOrigin::Generated;
     descriptor.payload_kind = KernelArtifactPayloadKind::None;
     descriptor.entry_point = descriptor.kernel_id;
@@ -49,7 +50,9 @@ TEST(GpuStageFactory, CreatesStubForRelu) {
     auto relu = std::make_shared<ov::op::v0::Relu>(p);
     const auto descriptor = make_metal_test_descriptor(relu);
 
-    auto stage = GpuStageFactory::create(relu, &descriptor, default_backend_kind());
+    auto stage = GpuStageFactory::create(
+        RuntimeStageMaterializationContext{relu, descriptor},
+        default_backend_kind());
 
     ASSERT_NE(stage, nullptr);
     EXPECT_EQ(stage->type(), std::string("Relu"));
@@ -61,7 +64,9 @@ TEST(GpuStageFactory, ReturnsNullForUnsupportedParameter) {
     auto p = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
     const auto descriptor = make_metal_test_descriptor(p);
 
-    auto stage = GpuStageFactory::create(p, &descriptor, default_backend_kind());
+    auto stage = GpuStageFactory::create(
+        RuntimeStageMaterializationContext{p, descriptor},
+        default_backend_kind());
 
     ASSERT_NE(stage, nullptr);
     EXPECT_EQ(stage->type(), std::string("Parameter"));
@@ -85,16 +90,24 @@ TEST(GpuStageFactory, MetalFactoryUsesSharedViewOnlyStageForMetadataDescriptor) 
     descriptor.backend_domain = "metal";
     descriptor.kernel_id = "metadata";
     descriptor.op_family = reshape->get_type_name();
+    descriptor.stage_name = reshape->get_friendly_name();
     descriptor.origin = KernelArtifactOrigin::Metadata;
     descriptor.payload_kind = KernelArtifactPayloadKind::None;
     descriptor.layout_contract = "view_only";
     descriptor.tensor_view_only = true;
+    RuntimeTensorBindingContract output_binding;
+    output_binding.logical_name = "reshape.output0";
+    output_binding.element_type = "f32";
+    output_binding.partial_shape = "{6}";
+    descriptor.output_bindings.push_back(output_binding);
 
-    auto stage = GpuStageFactory::create(reshape, &descriptor, default_backend_kind());
+    auto stage = GpuStageFactory::create(
+        RuntimeStageMaterializationContext{reshape, descriptor},
+        default_backend_kind());
 
     ASSERT_NE(stage, nullptr);
     EXPECT_EQ(stage->type(), std::string("Reshape"));
-    EXPECT_EQ(stage->name(), reshape->get_friendly_name());
+    EXPECT_EQ(stage->name(), std::string("reshape.output0"));
 }
 
 TEST(GpuStageFactory, MpsrtMslKernelLoaderBuildsStageFromKernelSourceDescriptor) {
@@ -121,6 +134,8 @@ TEST(GpuStageFactory, MetalRuntimeKernelLoaderUsesDescriptorAbiForMslPayload) {
     descriptor.artifact_key = "test_artifact";
     descriptor.backend_domain = source.backend_domain;
     descriptor.kernel_id = source.kernel_id;
+    descriptor.op_family = "MpsrtMslBridge";
+    descriptor.stage_name = "mpsrt_msl_bridge";
     descriptor.origin = KernelArtifactOrigin::HandwrittenException;
     descriptor.payload_kind = KernelArtifactPayloadKind::MslSource;
     descriptor.entry_point = source.entry_point;

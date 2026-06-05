@@ -8,10 +8,11 @@
 #include <chrono>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
-#include "backends/metal/compiler/metal_kernel_artifacts.hpp"
+#include "backends/metal/common/mpsrt/gfx_mpsrt_vendor_artifact_payload.hpp"
 #include "backends/metal/runtime/mpsrt/mpsrt_context.hpp"
 #include "backends/metal/runtime/mpsrt/mpsrt_request.hpp"
 #include "common/constant_tensor_evaluator.hpp"
@@ -30,7 +31,7 @@ namespace {
 
 namespace runtime_mpsrt = ::ov::gfx_plugin::mpsrt;
 
-const compiler::GfxMetalVendorPrimitiveArtifactPayload*
+const GfxMetalVendorPrimitiveArtifactPayload*
 vendor_payload_from_descriptor(
     const RuntimeStageExecutableDescriptor& descriptor) noexcept {
   if (descriptor.payload_kind !=
@@ -39,18 +40,18 @@ vendor_payload_from_descriptor(
       descriptor.backend_domain != "metal" || !descriptor.payload) {
     return nullptr;
   }
-  return dynamic_cast<const compiler::GfxMetalVendorPrimitiveArtifactPayload*>(
+  return dynamic_cast<const GfxMetalVendorPrimitiveArtifactPayload*>(
       descriptor.payload.get());
 }
 
 GfxMpsrtStageKind stage_kind_from_vendor_kind(
     GfxAppleMpsVendorPrimitiveKind kind,
-    const std::shared_ptr<const ov::Node>& node) noexcept {
+    std::string_view op_family) noexcept {
   switch (kind) {
     case GfxAppleMpsVendorPrimitiveKind::Gemm:
       return GfxMpsrtStageKind::MPSGemm;
     case GfxAppleMpsVendorPrimitiveKind::Conv2D:
-      return node && node->get_type_name() == std::string("GroupConvolution")
+      return op_family == "GroupConvolution"
                  ? GfxMpsrtStageKind::MPSGroupConv2D
                  : GfxMpsrtStageKind::MPSConv2D;
     case GfxAppleMpsVendorPrimitiveKind::Pool2D:
@@ -71,12 +72,12 @@ GfxMpsrtStageKind stage_kind_from_vendor_kind(
 
 GfxKernelStageFamily stage_family_from_vendor_kind(
     GfxAppleMpsVendorPrimitiveKind kind,
-    const std::shared_ptr<const ov::Node>& node) noexcept {
+    std::string_view op_family) noexcept {
   switch (kind) {
     case GfxAppleMpsVendorPrimitiveKind::Gemm:
       return GfxKernelStageFamily::Gemm;
     case GfxAppleMpsVendorPrimitiveKind::Conv2D:
-      return node && node->get_type_name() == std::string("GroupConvolution")
+      return op_family == "GroupConvolution"
                  ? GfxKernelStageFamily::GroupConvolution
                  : GfxKernelStageFamily::Convolution;
     case GfxAppleMpsVendorPrimitiveKind::Pool2D:
@@ -158,7 +159,8 @@ GfxMpsrtStageDesc make_stage_desc_from_contract(
     const std::shared_ptr<const ov::Node>& node,
     const GfxAppleMpsVendorPrimitiveContract& contract) {
   GfxMpsrtStageDesc stage{};
-  stage.kind = stage_kind_from_vendor_kind(contract.descriptor.kind, node);
+  stage.kind =
+      stage_kind_from_vendor_kind(contract.descriptor.kind, descriptor.op_family);
   stage.domain = GfxStageBackendDomain::AppleMps;
   stage.input_storage = first_storage_or_unknown(contract.input_descs);
   stage.output_storage = first_storage_or_unknown(contract.output_descs);
@@ -170,7 +172,8 @@ GfxMpsrtStageDesc make_stage_desc_from_contract(
                           ? std::string(gfx_mpsrt_stage_kind_name(stage.kind))
                           : descriptor.entry_point;
   const auto family =
-      stage_family_from_vendor_kind(contract.descriptor.kind, node);
+      stage_family_from_vendor_kind(contract.descriptor.kind,
+                                    descriptor.op_family);
   const auto storage = kernel_storage_from_mpsrt_storage(stage.output_storage);
   if (family != GfxKernelStageFamily::Unknown &&
       storage != GfxKernelStorageKind::Unknown) {
@@ -465,13 +468,17 @@ public:
         m_device(device),
         m_queue(queue),
         m_descriptor(descriptor),
-        m_name(node ? node->get_friendly_name() : descriptor.kernel_id) {
+        m_name(!descriptor.stage_name.empty()
+                   ? descriptor.stage_name
+                   : (node ? node->get_friendly_name()
+                           : descriptor.kernel_id)) {
     const auto* payload = vendor_payload_from_descriptor(descriptor);
     OPENVINO_ASSERT(payload && payload->valid(),
                     "GFX Metal MPSRT: invalid vendor primitive descriptor for ",
                     descriptor.kernel_id);
     m_contract = payload->contract();
-    m_type = "MpsrtVendorPrimitive";
+    m_type = descriptor.op_family.empty() ? std::string("MpsrtVendorPrimitive")
+                                          : descriptor.op_family;
   }
 
   void init(GpuBufferManager* buffer_manager) override {

@@ -34,10 +34,13 @@ MetalStage::MetalStage(const std::shared_ptr<const ov::Node> &node,
   OPENVINO_ASSERT(descriptor,
                   "MetalStage: compiler-owned runtime descriptor is required");
   m_descriptor = *descriptor;
-  if (m_node) {
-    m_name = m_node->get_friendly_name();
-    m_type = m_node->get_type_name();
-  }
+  m_name = !m_descriptor.stage_name.empty()
+               ? m_descriptor.stage_name
+               : (m_node ? m_node->get_friendly_name()
+                         : std::string("metal_stage"));
+  m_type = !m_descriptor.op_family.empty()
+               ? m_descriptor.op_family
+               : (m_node ? m_node->get_type_name() : std::string("Unknown"));
 }
 
 namespace {

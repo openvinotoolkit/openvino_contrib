@@ -27,7 +27,7 @@ public:
     OpenClRemoteContext(const std::string& device, const RemoteContextParams& params)
         : GfxRemoteContext(device,
                            params.device_id,
-                           GpuBackend::OpenCL,
+                           params.target,
                            nullptr,
                            params.backend_name,
                            params.merged) {}
@@ -64,8 +64,14 @@ std::string get_remote_backend(const ov::SoPtr<ov::IRemoteContext>& context) {
 ov::SoPtr<ov::IRemoteContext> make_gfx_remote_context(const std::string& device_name,
                                                       const ov::AnyMap& remote_properties) {
     auto params = normalize_remote_context_params(remote_properties);
-    if (!compiler::BackendRegistry::default_registry().resolve(params.backend)) {
-        OPENVINO_THROW("GFX: backend '", params.backend_name, "' is not available for remote context");
+    const auto module =
+        compiler::BackendRegistry::default_registry().resolve(params.target);
+    if (!module ||
+        !module->target().is_compatible_with_fingerprint(
+            params.target.fingerprint())) {
+        OPENVINO_THROW("GFX: backend target '",
+                       params.target.debug_string(),
+                       "' is not available for remote context");
     }
     const std::string resolved_name = device_name.empty() ? "GFX" : device_name;
     switch (params.backend) {

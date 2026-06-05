@@ -22,23 +22,24 @@ bool is_vendor_image_placement(const GfxStagePlacementPlan &placement) {
 
 } // namespace
 
-StageSourceKernelDispatchPolicy
-make_stage_source_kernel_dispatch_policy(
+StageCustomKernelDispatchPolicy
+make_stage_custom_kernel_dispatch_policy(
     const BackendExecutionCapabilities &execution) {
-  StageSourceKernelDispatchPolicy policy{};
-  policy.enabled = execution.source_kernel_dispatch_enabled;
-  policy.fallback_parallelism = execution.fallback_parallelism;
+  StageCustomKernelDispatchPolicy policy{};
+  policy.enabled = execution.custom_kernel_dispatch_enabled;
+  policy.profile = execution.custom_kernel_dispatch_profile;
   return policy;
 }
 
 StageCompilerPolicy make_stage_compiler_policy_from_capabilities(
     const BackendCapabilities &capabilities) {
   StageCompilerPolicy policy{};
+  policy.target = capabilities.target();
   policy.backend = capabilities.backend();
   policy.placement = capabilities.stage_placement();
   policy.post_ops = &capabilities.post_ops();
-  policy.source_kernel_dispatch =
-      make_stage_source_kernel_dispatch_policy(capabilities.execution());
+  policy.custom_kernel_dispatch =
+      make_stage_custom_kernel_dispatch_policy(capabilities.execution());
   return policy;
 }
 

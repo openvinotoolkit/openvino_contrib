@@ -3,6 +3,7 @@
 //
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -13,6 +14,22 @@
 
 namespace ov {
 namespace gfx_plugin {
+
+struct OpenClProgramBuildRequest {
+    std::string manifest_ref;
+    std::string abi_fingerprint;
+    std::string artifact_key;
+    std::string backend_domain;
+    std::string kernel_id;
+    uint64_t stage_record_key = 0;
+    std::string source_id;
+    std::string source;
+    std::string entry_point;
+    std::string compile_options_key;
+    std::string build_options;
+};
+
+std::string opencl_program_cache_key(const OpenClProgramBuildRequest& request);
 
 class OpenClKernel final : public ICompiledKernel {
 public:
@@ -43,10 +60,7 @@ private:
 class OpenClProgramCache {
 public:
     explicit OpenClProgramCache(std::shared_ptr<OpenClRuntimeContext> context);
-    std::shared_ptr<OpenClKernel> get_or_create(const std::string& source_id,
-                                                const std::string& source,
-                                                const std::string& entry_point,
-                                                const std::string& build_options);
+    std::shared_ptr<OpenClKernel> get_or_create(const OpenClProgramBuildRequest& request);
 
 private:
     std::string build_log(cl_program program) const;

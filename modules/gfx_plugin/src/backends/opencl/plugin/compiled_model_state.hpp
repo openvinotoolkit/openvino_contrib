@@ -17,10 +17,12 @@ namespace ov {
 namespace gfx_plugin {
 
 struct OpenClBackendState final : BackendState {
+    compiler::BackendTarget runtime_target;
     std::shared_ptr<OpenClRuntimeContext> context;
     std::shared_ptr<OpenClBufferManager> const_manager;
 
-    GpuBackend backend() const override { return GpuBackend::OpenCL; }
+    const compiler::BackendTarget& target() const override { return runtime_target; }
+    GpuBackend backend() const override { return runtime_target.backend(); }
     BackendResources resources() const override {
         return {reinterpret_cast<GpuDeviceHandle>(context ? context->device() : nullptr),
                 reinterpret_cast<GpuCommandQueueHandle>(context ? context->queue() : nullptr),
@@ -30,24 +32,24 @@ struct OpenClBackendState final : BackendState {
     bool has_const_manager() const override { return const_manager != nullptr; }
     void init_infer_state(BackendRequestState& state) const override;
     std::unique_ptr<GpuStage> create_stage(
-        const std::shared_ptr<const ov::Node>& node,
-        const RuntimeStageExecutableDescriptor* descriptor) const override {
-        if (descriptor && descriptor->payload_kind == KernelArtifactPayloadKind::OpenClSource &&
-            descriptor->backend_domain == "opencl") {
-            OPENVINO_ASSERT(descriptor->payload,
+        const RuntimeStageMaterializationContext& materialization) const override {
+        const auto& descriptor = materialization.require_descriptor();
+        if (descriptor.payload_kind == KernelArtifactPayloadKind::OpenClSource &&
+            descriptor.backend_domain == "opencl") {
+            OPENVINO_ASSERT(descriptor.payload,
                             "GFX OpenCL: runtime descriptor is missing compiler-owned OpenCL source payload for ",
-                            node ? node->get_type_name() : "<null>");
+                            materialization.op_type_name());
             if (const auto* payload =
                     dynamic_cast<const GfxOpenClSourceArtifactPayload*>(
-                        descriptor->payload.get())) {
+                        descriptor.payload.get())) {
                 return OpenClRuntimeKernelLoader(context ? context : OpenClRuntimeContext::instance())
-                    .load_source_stage(node, *descriptor, payload->artifact());
+                    .load_source_stage(materialization.source_node, descriptor, payload->artifact());
             }
             OPENVINO_THROW("GFX OpenCL: runtime descriptor has non-OpenCL source payload for ",
-                           node ? node->get_type_name() : "<null>");
+                           materialization.op_type_name());
         }
         return create_opencl_stage(
-            node, descriptor,
+            materialization,
             reinterpret_cast<GpuDeviceHandle>(context ? context->device() : nullptr),
             reinterpret_cast<GpuCommandQueueHandle>(context ? context->queue() : nullptr));
     }

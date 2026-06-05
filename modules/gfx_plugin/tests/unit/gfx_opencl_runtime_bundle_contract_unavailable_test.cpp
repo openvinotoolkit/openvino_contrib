@@ -31,6 +31,16 @@ TEST(GfxOpenClRuntimeBundleContractTest,
     expect_opencl_runtime_bundle_contract_unavailable();
 }
 
+TEST(GfxOpenClRuntimeBundleContractTest,
+     ProgramCacheKeyUsesCompilerOwnedDescriptorIdentity) {
+    expect_opencl_runtime_bundle_contract_unavailable();
+}
+
+TEST(GfxOpenClRuntimeBundleContractTest,
+     ProgramCacheKeyRejectsIncompleteDescriptorIdentity) {
+    expect_opencl_runtime_bundle_contract_unavailable();
+}
+
 }  // namespace
 }  // namespace gfx_plugin
 }  // namespace ov

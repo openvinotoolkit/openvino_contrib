@@ -11,6 +11,7 @@
 
 #include "kernel_ir/gfx_codegen_backend.hpp"
 #include "kernel_ir/gfx_kernel_dispatch.hpp"
+#include "kernel_ir/gfx_kernel_manifest.hpp"
 #include "mlir/gfx_mlir_kernel_metadata.hpp"
 #include "openvino/core/node.hpp"
 #include "openvino/core/type/float16.hpp"
@@ -27,6 +28,7 @@ namespace gfx_plugin {
 
 struct MlirKernelPlanContext;
 struct MatMulCodegenDesc;
+struct MlirStageBackendHooks;
 struct MlirStageBackendSourcePlan;
 struct RuntimeStageExecutableDescriptor;
 
@@ -96,6 +98,11 @@ protected:
   void apply_source_plan_kernel_runtime_binding_state(
       KernelRuntimeBindingState binding);
   void prepare_constant_input_buffers(bool skip_matmul_weight_const);
+  const MlirStageBackendHooks *backend_hooks() const;
+  const MlirStageBackendHooks &
+  require_backend_hooks(std::string_view reason) const;
+  GfxKernelBackendDomain
+  require_custom_kernel_backend_domain(std::string_view reason) const;
 
   void *profiler_handle() const { return m_profiler; }
   uint32_t profile_node_id() const { return m_profile_node_id; }

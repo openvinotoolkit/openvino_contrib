@@ -133,6 +133,8 @@ size_t require_backend_manifest_arg_count(
     mlir::ModuleOp module, GfxKernelBackendDomain backend_domain,
     std::string_view entry_point, std::string_view stage_name);
 
+// Backend custom-kernel ABI is compiler-owned. The fallback parameter is kept
+// only for call-site migration and is not used as an ABI source.
 size_t infer_backend_custom_kernel_arg_count(
     mlir::ModuleOp module, GfxKernelBackendDomain backend_domain,
     size_t fallback, std::string_view entry_point = {});

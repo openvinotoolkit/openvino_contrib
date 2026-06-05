@@ -7,6 +7,9 @@
 #include <cstdint>
 #include <string>
 
+#include "common/gpu_device_profile.hpp"
+#include "openvino/core/except.hpp"
+
 namespace ov {
 namespace gfx_plugin {
 
@@ -63,7 +66,7 @@ struct GpuParallelismProfile {
 };
 
 inline GpuParallelismProfile
-make_opencl_parallelism_profile(std::string profile_key = "opencl:default") {
+make_opencl_parallelism_profile(std::string profile_key = "opencl:generic") {
   GpuParallelismProfile profile{};
   profile.profile_key = profile_key;
   profile.preferred_simd_width = 32;
@@ -72,6 +75,47 @@ make_opencl_parallelism_profile(std::string profile_key = "opencl:default") {
   profile.max_threads_per_group = {128, 128, 64};
   profile.chunk_dispatch = make_opencl_chunk_dispatch_profile();
   return profile;
+}
+
+inline GpuParallelismProfile
+make_opencl_adreno_parallelism_profile() {
+  auto profile = make_opencl_parallelism_profile("opencl:adreno");
+  profile.max_total_threads_per_group = 256;
+  profile.max_threads_per_group = {256, 256, 64};
+  profile.supports_conv_output_channel_blocking = true;
+  profile.supports_conv_channel_block_spatial_tiling = true;
+  return profile;
+}
+
+inline GpuParallelismProfile
+make_opencl_broadcom_v3d_parallelism_profile() {
+  auto profile = make_opencl_parallelism_profile("opencl:broadcom_v3d");
+  profile.preferred_simd_width = 16;
+  profile.subgroup_size = 16;
+  profile.max_total_threads_per_group = 64;
+  profile.max_threads_per_group = {64, 64, 16};
+  profile.enable_skinny_matmul_tiles = true;
+  profile.chunk_dispatch.retune_threads_to_workload = true;
+  profile.scale_conv_threads_for_large_spatial = true;
+  profile.scale_conv_threads_for_dense_reduction = true;
+  profile.scale_conv_threads_for_pointwise_reduction = true;
+  profile.conv_spatial_micro_tile_requires_large_output_area = true;
+  return profile;
+}
+
+inline GpuParallelismProfile
+make_opencl_parallelism_profile(GpuDeviceFamily family) {
+  switch (family) {
+  case GpuDeviceFamily::QualcommAdreno:
+    return make_opencl_adreno_parallelism_profile();
+  case GpuDeviceFamily::BroadcomV3D:
+    return make_opencl_broadcom_v3d_parallelism_profile();
+  case GpuDeviceFamily::Apple:
+    OPENVINO_THROW("GFX: Apple device family is not an OpenCL-family profile");
+  case GpuDeviceFamily::Generic:
+  default:
+    return make_opencl_parallelism_profile();
+  }
 }
 
 inline GpuParallelismProfile

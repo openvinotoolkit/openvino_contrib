@@ -91,6 +91,9 @@ void prepare_stage_output_handles(
 std::vector<InferStage>& prepare_reusable_pipeline_for_runtime(
     const InferRuntimeExecutionConfig& config) {
     auto& reusable_pipeline = config.state->reusable_pipeline;
+    OPENVINO_ASSERT(config.expected_target,
+                    config.error_prefix,
+                    ": runtime execution requires compiler BackendTarget");
     if (reusable_pipeline.empty()) {
         reusable_pipeline = build_bound_pipeline(*config.descs,
                                                  config.buffer_manager,
@@ -102,7 +105,7 @@ std::vector<InferStage>& prepare_reusable_pipeline_for_runtime(
                                                  *config.param_map,
                                                  *config.remote_outputs,
                                                  *config.remote_inputs,
-                                                 config.expected_backend,
+                                                 *config.expected_target,
                                                  config.runtime_descriptor,
                                                  config.error_prefix);
     }
@@ -112,7 +115,7 @@ std::vector<InferStage>& prepare_reusable_pipeline_for_runtime(
                                  config.profiling_enabled);
     reset_reusable_pipeline_outputs(reusable_pipeline);
     normalize_remote_outputs(*config.remote_outputs,
-                             config.expected_backend,
+                             *config.expected_target,
                              config.error_prefix);
     bind_remote_outputs(*config.public_outputs,
                         *config.runtime_model,

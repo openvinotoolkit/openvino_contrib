@@ -60,7 +60,7 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
    - `query_model()` or compile behavior
    - MLIR support/lowering/backend hooks and backend-owned source planning
    - Metal placement, MPSRT records, MPS/MPSGraph descriptors,
-     vendor attention artifact materialization,
+     vendor primitive artifact materialization, shared MPSRT vendor contracts,
      `VendorDescriptor` payloads, generated activation/elementwise/reduction/
      Softmax/LogSoftmax MSL routes, `Swish` static/runtime beta contracts,
      Pool2D vendor-route-only behavior, or MSL binding
@@ -68,10 +68,11 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
      scalars, constants, generated activation/elementwise/MatMul units,
      generated f32 and boolean reduction units, generated f32/f16 Softmax
      units, dynamic-static-rank Softmax units, generated f32/f16 Pool2D units,
-     generated ShapeOf/Tile/Transpose units, generated compare/select and
-     logical-bool elementwise units, generated Concat/Split helpers, `Swish`
-     default/static/runtime beta artifacts, chunking, or boolean-buffer
-     behavior
+     generated f32/f16/i64 Range units, generated ShapeOf/Tile/Transpose units,
+     generated compare/select and logical-bool elementwise units, generated
+     Concat/Split helpers, family-specific OpenCL kernel-unit adapters,
+     `Swish` default/static/runtime beta artifacts, chunking, or
+     boolean-buffer behavior
    - CLVK/CLSPV Raspberry OpenCL bundle wiring, OpenCL dynamic-loader search
      order, or third-party submodule publication
    - OpenCL runtime-bundle candidate ordering or bundled tool-path setup
@@ -90,8 +91,7 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
    - compare-runner, profiling, trace sinks, microbench, or target-profile
      output
    - test layout, controlled test `plugins.xml`, gtest matrix checks,
-     native/unavailable-adapter source-contract checks, disabled-pattern hooks,
-     or validation workflow
+     disabled-pattern hooks, or validation workflow
 3. Patch only docs/skills whose contract changed.
 4. Keep wording concrete and tied to actual files that exist.
 

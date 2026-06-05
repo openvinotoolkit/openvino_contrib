@@ -465,17 +465,6 @@ ov::Shape topk_row_dispatch_shape(const std::shared_ptr<const ov::Node> &node) {
 
 namespace {
 
-bool should_pack_matmul_const_input_as_f16(
-    const std::shared_ptr<const ov::Node> &node, size_t input_idx,
-    const ov::Tensor &tensor) {
-  auto matmul = ov::as_type_ptr<const ov::op::v0::MatMul>(node);
-  return matmul && input_idx == 1 &&
-         (!matmul->get_input_partial_shape(0).is_static() ||
-          !matmul->get_output_partial_shape(0).is_static()) &&
-         tensor.get_element_type() == ov::element::f32 &&
-         matmul->get_output_element_type(0) == ov::element::f32;
-}
-
 std::vector<ov::float16> pack_f32_tensor_as_f16(const ov::Tensor &tensor) {
   const auto elements = tensor.get_size();
   const auto *src = tensor.data<const float>();
@@ -491,44 +480,6 @@ bool requires_scalar_fp32_convolution_path(
   return node && node->get_output_size() > 0 &&
          node->get_output_element_type(0) == ov::element::f32 &&
          ov::fp16_compression_is_disabled(node);
-}
-
-bool should_pack_conv2d_const_weights_oc4(
-    const std::shared_ptr<const ov::Node> &node, size_t input_idx,
-    const ov::Tensor &tensor) {
-  auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(node);
-  if (!conv || input_idx != 1 || tensor.get_shape().size() != 4) {
-    return false;
-  }
-  if (requires_scalar_fp32_convolution_path(node)) {
-    return false;
-  }
-  const auto et = tensor.get_element_type();
-  if (et != ov::element::f16 && et != ov::element::f32) {
-    return false;
-  }
-  if (!conv->get_input_partial_shape(0).is_static() ||
-      !conv->get_input_partial_shape(1).is_static() ||
-      !conv->get_output_partial_shape(0).is_static()) {
-    return false;
-  }
-  const auto in_shape = conv->get_input_shape(0);
-  const auto w_shape = conv->get_input_shape(1);
-  const auto out_shape = conv->get_output_shape(0);
-  if (in_shape.size() != 4 || w_shape.size() != 4 || out_shape.size() != 4) {
-    return false;
-  }
-  Conv2DCodegenDesc desc{};
-  desc.input_type = conv->get_input_element_type(0);
-  desc.weight_type = conv->get_input_element_type(1);
-  desc.output_type = conv->get_output_element_type(0);
-  desc.C_out = static_cast<uint32_t>(w_shape[0]);
-  desc.kH = static_cast<uint32_t>(w_shape[2]);
-  desc.kW = static_cast<uint32_t>(w_shape[3]);
-  const uint32_t cin_pg = static_cast<uint32_t>(w_shape[1]);
-  const uint32_t c_in = static_cast<uint32_t>(in_shape[1]);
-  desc.groups = (cin_pg != 0 && c_in % cin_pg == 0) ? (c_in / cin_pg) : 1;
-  return gfx_conv2d_output_channel_block(desc) >= 4;
 }
 
 template <typename T>
@@ -778,6 +729,30 @@ MlirStage::MlirStage(const std::shared_ptr<const ov::Node> &node,
     m_output_shape = node->get_output_shape(0);
   }
   m_is_view_op = m_runtime_descriptor->tensor_view_only;
+}
+
+const MlirStageBackendHooks *MlirStage::backend_hooks() const {
+  return mlir_stage_backend_hooks_for(backend_kind());
+}
+
+const MlirStageBackendHooks &
+MlirStage::require_backend_hooks(std::string_view reason) const {
+  const auto *hooks = backend_hooks();
+  OPENVINO_ASSERT(hooks, "GFX MLIR: ", reason,
+                  " requires backend hooks for stage ", m_name, " (", m_type,
+                  ")");
+  return *hooks;
+}
+
+GfxKernelBackendDomain MlirStage::require_custom_kernel_backend_domain(
+    std::string_view reason) const {
+  const auto &hooks = require_backend_hooks(reason);
+  const auto domain = hooks.custom_kernel_backend_domain();
+  OPENVINO_ASSERT(domain != GfxKernelBackendDomain::Unknown,
+                  "GFX MLIR: ", reason,
+                  " requires a backend-owned custom-kernel domain for stage ",
+                  m_name, " (", m_type, ")");
+  return domain;
 }
 
 void MlirStage::apply_kernel_metadata(const KernelRuntimeMetadata &meta,
@@ -1056,7 +1031,7 @@ void MlirStage::compile_from_plan(MlirKernelPlanContext &plan_ctx,
   if (!has_custom_kernel_signature) {
     src.signature.output_arg_count = static_cast<uint32_t>(output_arg_count);
   }
-  if (const auto *hooks = mlir_stage_backend_hooks_for(backend_kind())) {
+  if (const auto *hooks = backend_hooks()) {
     hooks->attach_const_tensor_sources(src, m_node);
   }
   if (src.module) {
@@ -1090,10 +1065,16 @@ void MlirStage::compile_from_plan(MlirKernelPlanContext &plan_ctx,
     return;
   }
   if (src.module) {
-    (void)runtime_metadata_entry_point;
+    const auto custom_domain =
+        require_custom_kernel_backend_domain("custom-kernel metadata");
     auto runtime_meta = extract_kernel_runtime_metadata(
         src.module, output_arg_count, buffer_inputs, std::string{},
-        GfxKernelBackendDomain::AppleMsl);
+        custom_domain);
+    OPENVINO_ASSERT(runtime_meta.valid, "GFX MLIR: stage ", m_name, " (",
+                    m_type,
+                    ") is missing compiler-owned custom-kernel manifest ABI for ",
+                    custom_domain == GfxKernelBackendDomain::OpenCl ? "OpenCL"
+                                                                     : "Apple MSL");
     apply_kernel_metadata(runtime_meta, scalar_inputs);
   } else if (module) {
     auto runtime_meta =
@@ -1132,6 +1113,7 @@ void MlirStage::prepare_constant_input_buffers(bool skip_matmul_weight_const) {
   }
 
   const bool use_const_cache = true;
+  const auto *hooks = backend_hooks();
   bool const_cache_checked = false;
   for (size_t i = 0; i < in_count; ++i) {
     if (skip_matmul_weight_const && i == 1) {
@@ -1161,8 +1143,9 @@ void MlirStage::prepare_constant_input_buffers(bool skip_matmul_weight_const) {
     const void *const_data = const_tensor->data();
     size_t bytes = const_tensor->get_byte_size();
     auto et = const_tensor->get_element_type();
-    if (backend_kind() == GpuBackend::Metal &&
-        should_pack_matmul_const_input_as_f16(m_node, i, *const_tensor)) {
+    if (hooks &&
+        hooks->should_pack_matmul_const_input_as_f16(m_node, i,
+                                                     *const_tensor)) {
       const size_t original_bytes = bytes;
       packed_f16 = pack_f32_tensor_as_f16(*const_tensor);
       const_data = packed_f16.data();
@@ -1173,8 +1156,9 @@ void MlirStage::prepare_constant_input_buffers(bool skip_matmul_weight_const) {
                                 original_bytes);
       increment_compile_counter("matmul_const_f32_to_f16_packed_bytes", bytes);
     }
-    if (backend_kind() == GpuBackend::Metal &&
-        should_pack_conv2d_const_weights_oc4(m_node, i, *const_tensor)) {
+    if (hooks &&
+        hooks->should_pack_conv2d_const_weights_oc4(m_node, i,
+                                                    *const_tensor)) {
       const size_t original_bytes = bytes;
       packed_conv_weights = pack_conv2d_weights_oc4(*const_tensor);
       et = const_tensor->get_element_type();
@@ -1246,7 +1230,15 @@ void MlirStage::prepare_runtime_handle(GpuBufferManager *buffer_manager) {
   m_conv_weights_packed_oc4 = false;
   m_rms_reduction_threads = 1;
   m_rms_hidden = 0;
-  const auto *backend_hooks = mlir_stage_backend_hooks_for(backend_kind());
+  const auto *backend_hooks = this->backend_hooks();
+  std::optional<GfxKernelBackendDomain> custom_kernel_backend_domain;
+  const auto require_custom_domain = [&]() {
+    if (!custom_kernel_backend_domain.has_value()) {
+      custom_kernel_backend_domain = require_custom_kernel_backend_domain(
+          "custom-kernel manifest binding");
+    }
+    return *custom_kernel_backend_domain;
+  };
   if (backend_hooks) {
     const auto reduction_threads = backend_hooks->static_matmul_reduction_threads(
         m_node, m_has_activation, m_activation, m_activation_alpha);
@@ -1494,8 +1486,8 @@ void MlirStage::prepare_runtime_handle(GpuBufferManager *buffer_manager) {
     const auto shapeof_scalars = shapeof_payload.scalar_args;
     m_kernel_extra_inputs = std::move(shapeof_payload.extra_inputs);
     auto shapeof_plan = require_backend_custom_kernel_binding_plan(
-        GfxKernelBackendDomain::AppleMsl, "ShapeOf", "shapeof_kernel",
-        shapeof_scalars, m_name);
+        require_custom_domain(), "ShapeOf", "shapeof_kernel", shapeof_scalars,
+        m_name);
     apply_kernel_runtime_binding_state(shapeof_plan.runtime_binding);
     OPENVINO_ASSERT(backend_hooks,
                     "GFX MLIR: ShapeOf source plan requires backend hooks");
@@ -1587,12 +1579,10 @@ void MlirStage::prepare_runtime_handle(GpuBufferManager *buffer_manager) {
     const auto input_rank = m_node->get_input_shape(0).size();
     if (m_type == "Convolution" && input_rank == 5) {
       (void)annotate_required_backend_custom_kernel_abi_binding(
-          module, GfxKernelBackendDomain::AppleMsl, "Conv3D", "conv3d_kernel",
-          m_name);
+          module, require_custom_domain(), "Conv3D", "conv3d_kernel", m_name);
     } else if (input_rank == 4) {
       (void)annotate_required_backend_custom_kernel_abi_binding(
-          module, GfxKernelBackendDomain::AppleMsl, m_type, "conv2d_kernel",
-          m_name);
+          module, require_custom_domain(), m_type, "conv2d_kernel", m_name);
     }
   }
   if (m_type == "Range" && m_node && module) {
@@ -1650,7 +1640,7 @@ void MlirStage::prepare_runtime_handle(GpuBufferManager *buffer_manager) {
     m_kernel_extra_inputs = std::move(gather_elements_payload.extra_inputs);
     const std::vector<int32_t> gather_elements_scalars;
     (void)annotate_required_backend_custom_kernel_binding(
-        module, GfxKernelBackendDomain::AppleMsl, "GatherElements",
+        module, require_custom_domain(), "GatherElements",
         "gather_elements_kernel",
         gather_elements_scalars, m_name);
   }
@@ -1669,8 +1659,8 @@ void MlirStage::prepare_runtime_handle(GpuBufferManager *buffer_manager) {
         m_node->get_input_shape(1), m_node->get_output_shape(0));
     m_kernel_extra_inputs = std::move(gather_nd_payload.extra_inputs);
     auto gather_nd_plan = annotate_required_backend_custom_kernel_binding(
-        module, GfxKernelBackendDomain::AppleMsl, "GatherND", "gathernd_kernel",
-        {}, m_name);
+        module, require_custom_domain(), "GatherND", "gathernd_kernel", {},
+        m_name);
     apply_kernel_runtime_binding_state(gather_nd_plan.runtime_binding);
   }
   if (auto gather = ov::as_type_ptr<const ov::op::util::GatherBase>(m_node)) {
@@ -1698,7 +1688,7 @@ void MlirStage::prepare_runtime_handle(GpuBufferManager *buffer_manager) {
         static_cast<uint32_t>(axis_norm));
     m_kernel_extra_inputs = std::move(gather_payload.extra_inputs);
     auto gather_plan = annotate_required_backend_custom_kernel_binding(
-        module, GfxKernelBackendDomain::AppleMsl, "Gather", "gather_kernel", {},
+        module, require_custom_domain(), "Gather", "gather_kernel", {},
         m_name);
     apply_kernel_runtime_binding_state(gather_plan.runtime_binding);
   }
@@ -1729,13 +1719,13 @@ void MlirStage::prepare_runtime_handle(GpuBufferManager *buffer_manager) {
   if ((m_type == "MaxPool" || m_type == "AvgPool") && module) {
     const std::vector<int32_t> pool_scalars;
     (void)annotate_required_backend_custom_kernel_binding(
-        module, GfxKernelBackendDomain::AppleMsl, m_type, "pool2d_kernel",
-        pool_scalars, m_name);
+        module, require_custom_domain(), m_type, "pool2d_kernel", pool_scalars,
+        m_name);
   }
   if (m_type == "Concat" && module) {
     auto concat_binding_plan =
         annotate_required_backend_custom_kernel_direct_io_binding(
-            module, GfxKernelBackendDomain::AppleMsl, "Concat", "concat_kernel",
+            module, require_custom_domain(), "Concat", "concat_kernel",
             m_node ? m_node->get_input_size() : 0,
             m_node ? m_node->get_output_size() : 0, m_name);
     apply_source_plan_kernel_runtime_binding_state(
@@ -1752,7 +1742,7 @@ void MlirStage::prepare_runtime_handle(GpuBufferManager *buffer_manager) {
             info, m_node ? m_node->get_output_size() : 0);
         return use_msl_stage_manifest_arg_count
                    ? require_backend_manifest_arg_count(
-                         module, GfxKernelBackendDomain::AppleMsl,
+                         module, require_custom_domain(),
                          std::string_view{}, m_name)
                    : fallback;
       });
@@ -1766,7 +1756,7 @@ void MlirStage::prepare_runtime_handle(GpuBufferManager *buffer_manager) {
               info, info.output_args, m_kernel_extra_inputs.size());
           return use_msl_stage_manifest_arg_count
                      ? require_backend_manifest_arg_count(
-                           module, GfxKernelBackendDomain::AppleMsl,
+                           module, require_custom_domain(),
                            std::string_view{}, m_name)
                      : fallback;
         });
@@ -1797,7 +1787,7 @@ void MlirStage::prepare_runtime_handle(GpuBufferManager *buffer_manager) {
   }
   if (m_has_residual_add && m_type == "RMS" && module) {
     (void)annotate_required_backend_custom_kernel_binding(
-        module, GfxKernelBackendDomain::AppleMsl, "RMSResidual", "rms_kernel", {},
+        module, require_custom_domain(), "RMSResidual", "rms_kernel", {},
         m_name);
   }
   compile_from_plan(plan_ctx, module, "stage");
@@ -1944,7 +1934,8 @@ void MlirStage::prepare_prewarm_kernel_runtime_state(
             {GfxKernelBufferRole::TensorInput,
              GfxKernelBufferRole::RuntimeParams,
              GfxKernelBufferRole::TensorOutput},
-            GfxKernelBackendDomain::AppleMsl);
+            require_custom_kernel_backend_domain(
+                "Interpolate runtime-param binding"));
         OPENVINO_ASSERT(
             binding.valid &&
                 annotate_backend_custom_kernel_module_with_binding_plan(
@@ -1960,8 +1951,10 @@ void MlirStage::prepare_prewarm_kernel_runtime_state(
           [&](const KernelArgMappingInfo &info) -> size_t {
             (void)info;
             return require_backend_manifest_arg_count(
-                module, GfxKernelBackendDomain::AppleMsl, std::string_view{},
-                m_name);
+                module,
+                require_custom_kernel_backend_domain(
+                    "Interpolate manifest arg count"),
+                std::string_view{}, m_name);
           });
       compile_from_plan(plan_ctx, module, "interpolate");
       m_last_input_shape = interpolate_plan.input_shape;
@@ -2048,6 +2041,15 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
 
   std::optional<KernelRuntimeBindingState> kernel_binding_override;
   std::optional<std::vector<int32_t>> kernel_scalar_args_override;
+  std::optional<GfxKernelBackendDomain> custom_kernel_backend_domain;
+
+  const auto require_custom_domain = [&]() {
+    if (!custom_kernel_backend_domain.has_value()) {
+      custom_kernel_backend_domain = require_custom_kernel_backend_domain(
+          "runtime custom-kernel binding");
+    }
+    return *custom_kernel_backend_domain;
+  };
 
   auto set_kernel_binding_override = [&](KernelRuntimeBindingState binding) {
     kernel_binding_override = std::move(binding);
@@ -2061,8 +2063,8 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
         }
         set_kernel_binding_override(
             require_stage_backend_custom_kernel_runtime_binding(
-                GfxKernelBackendDomain::AppleMsl, stage_type, entry_point,
-                scalar_args, m_name));
+                require_custom_domain(), stage_type, entry_point, scalar_args,
+                m_name));
       };
   auto bind_small_i64_const_outputs = [&](std::string_view suffix) -> bool {
     return bind_small_i64_const_stage_outputs(
@@ -2460,9 +2462,15 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
           apply_source_plan_kernel_runtime_binding_state(
               source_plan.runtime_binding);
         } else {
+          const auto custom_domain = require_custom_domain();
           auto runtime_meta = extract_kernel_runtime_metadata(
               src.module, src.signature.output_arg_count, m_node->get_input_size(),
-              src.entry_point, GfxKernelBackendDomain::AppleMsl);
+              src.entry_point, custom_domain);
+          OPENVINO_ASSERT(
+              runtime_meta.valid, "GFX MLIR: MatMul stage ", m_name,
+              " is missing compiler-owned custom-kernel manifest ABI for ",
+              custom_domain == GfxKernelBackendDomain::OpenCl ? "OpenCL"
+                                                               : "Apple MSL");
           apply_kernel_metadata(runtime_meta, /*scalar_inputs=*/0);
         }
         m_kernel_extra_inputs.clear();
@@ -2633,8 +2641,8 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
         if (module) {
           if (slice_plan.use_runtime_args) {
             (void)annotate_required_backend_custom_kernel_binding(
-                module, GfxKernelBackendDomain::AppleMsl, "Slice", "slice_kernel",
-                {}, m_name);
+                module, require_custom_domain(), "Slice", "slice_kernel", {},
+                m_name);
           }
         }
         auto plan_ctx = build_mlir_kernel_plan(
@@ -2643,8 +2651,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
             [&](const KernelArgMappingInfo &info) -> size_t {
               (void)info;
               return require_backend_manifest_arg_count(
-                  module, GfxKernelBackendDomain::AppleMsl, std::string_view{},
-                  m_name);
+                  module, require_custom_domain(), std::string_view{}, m_name);
             });
         compile_from_plan(plan_ctx, module, "slice");
       }
@@ -2671,7 +2678,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
             {GfxKernelBufferRole::TensorInput,
              GfxKernelBufferRole::RuntimeParams,
              GfxKernelBufferRole::TensorOutput},
-            GfxKernelBackendDomain::AppleMsl);
+            require_custom_domain());
         OPENVINO_ASSERT(
             binding.valid &&
                 annotate_backend_custom_kernel_module_with_binding_plan(module,
@@ -2687,8 +2694,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
           [&](const KernelArgMappingInfo &info) -> size_t {
             (void)info;
             return require_backend_manifest_arg_count(
-                module, GfxKernelBackendDomain::AppleMsl, std::string_view{},
-                m_name);
+                module, require_custom_domain(), std::string_view{}, m_name);
           });
       compile_from_plan(plan_ctx, module, "interpolate");
       m_last_input_shape = interpolate_plan.input_shape;
@@ -2722,7 +2728,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
             {GfxKernelBufferRole::TensorInput,
              GfxKernelBufferRole::TensorOutput,
              GfxKernelBufferRole::RuntimeParams},
-            GfxKernelBackendDomain::AppleMsl);
+            require_custom_domain());
         OPENVINO_ASSERT(
             binding.valid &&
                 annotate_backend_custom_kernel_module_with_binding_plan(module,
@@ -2737,8 +2743,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
           [&](const KernelArgMappingInfo &info) -> size_t {
             (void)info;
             return require_backend_manifest_arg_count(
-                module, GfxKernelBackendDomain::AppleMsl, std::string_view{},
-                m_name);
+                module, require_custom_domain(), std::string_view{}, m_name);
           });
       compile_from_plan(plan_ctx, module, "softmax");
       m_last_input_shape = softmax_plan.values.output_shape;
@@ -3025,7 +3030,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
            GfxKernelBufferRole::RuntimeParams,
            GfxKernelBufferRole::RuntimeParams,
            GfxKernelBufferRole::RuntimeParams},
-          GfxKernelBackendDomain::AppleMsl);
+          require_custom_domain());
       OPENVINO_ASSERT(binding_plan.valid && binding_plan.scalar_arg_count ==
                                                 broadcast_scalars.size(),
                       "GFX MLIR: Broadcast dynamic target-shape binding is "
@@ -3677,10 +3682,10 @@ void MlirStage::set_input_transform(size_t input_idx,
 void MlirStage::set_runtime_options(const GpuStageRuntimeOptions &options) {
   m_runtime_traits.diagnostic_f32_vendor_image =
       options.diagnostic_f32_vendor_image;
-  m_compiler_policy.source_kernel_dispatch.enabled =
-      options.source_kernel_dispatch_enabled;
-  m_compiler_policy.source_kernel_dispatch.fallback_parallelism =
-      options.source_kernel_fallback_parallelism;
+  m_compiler_policy.custom_kernel_dispatch.enabled =
+      options.custom_kernel_dispatch_enabled;
+  m_compiler_policy.custom_kernel_dispatch.profile =
+      options.custom_kernel_dispatch_profile;
 }
 
 void MlirStage::enable_profiling(bool enable) { m_profiling_enabled = enable; }

@@ -6,7 +6,6 @@
 
 #include <memory>
 
-#include "openvino/core/node.hpp"
 #include "runtime/executable_descriptor.hpp"
 #include "runtime/gpu_stage.hpp"
 
@@ -14,8 +13,7 @@ namespace ov {
 namespace gfx_plugin {
 
 std::unique_ptr<GpuStage> create_view_only_stage(
-    const std::shared_ptr<const ov::Node>& node,
-    const RuntimeStageExecutableDescriptor* descriptor);
+    const RuntimeStageExecutableDescriptor& descriptor);
 
 }  // namespace gfx_plugin
 }  // namespace ov

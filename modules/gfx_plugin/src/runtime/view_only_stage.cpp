@@ -4,6 +4,7 @@
 
 #include "runtime/view_only_stage.hpp"
 
+#include <cctype>
 #include <string>
 #include <utility>
 #include <vector>
@@ -17,24 +18,135 @@ namespace gfx_plugin {
 namespace {
 
 bool is_compiler_owned_view_descriptor(
-    const RuntimeStageExecutableDescriptor* descriptor) {
-    return descriptor &&
-           descriptor->origin == KernelArtifactOrigin::Metadata &&
-           descriptor->payload_kind == KernelArtifactPayloadKind::None &&
-           descriptor->kernel_id == "metadata" &&
-           descriptor->tensor_view_only;
+    const RuntimeStageExecutableDescriptor& descriptor) {
+    return descriptor.origin == KernelArtifactOrigin::Metadata &&
+           descriptor.payload_kind == KernelArtifactPayloadKind::None &&
+           descriptor.kernel_id == "metadata" &&
+           descriptor.tensor_view_only;
+}
+
+std::string descriptor_stage_name(
+    const RuntimeStageExecutableDescriptor& descriptor) {
+    if (!descriptor.output_bindings.empty() &&
+        !descriptor.output_bindings.front().logical_name.empty()) {
+        return descriptor.output_bindings.front().logical_name;
+    }
+    if (!descriptor.stage_name.empty()) {
+        return descriptor.stage_name;
+    }
+    if (!descriptor.manifest_ref.empty()) {
+        return descriptor.manifest_ref;
+    }
+    if (!descriptor.kernel_id.empty()) {
+        return descriptor.kernel_id;
+    }
+    return "view_only";
+}
+
+std::string descriptor_stage_type(
+    const RuntimeStageExecutableDescriptor& descriptor) {
+    return descriptor.op_family.empty() ? std::string{"ViewOnly"}
+                                        : descriptor.op_family;
+}
+
+ov::element::Type element_type_from_contract(const std::string& name) {
+    if (name == "f32" || name == "float32") {
+        return ov::element::f32;
+    }
+    if (name == "f16" || name == "float16") {
+        return ov::element::f16;
+    }
+    if (name == "bf16") {
+        return ov::element::bf16;
+    }
+    if (name == "i64") {
+        return ov::element::i64;
+    }
+    if (name == "i32") {
+        return ov::element::i32;
+    }
+    if (name == "i16") {
+        return ov::element::i16;
+    }
+    if (name == "i8") {
+        return ov::element::i8;
+    }
+    if (name == "u64") {
+        return ov::element::u64;
+    }
+    if (name == "u32") {
+        return ov::element::u32;
+    }
+    if (name == "u16") {
+        return ov::element::u16;
+    }
+    if (name == "u8") {
+        return ov::element::u8;
+    }
+    if (name == "boolean" || name == "bool") {
+        return ov::element::boolean;
+    }
+    return ov::element::dynamic;
+}
+
+bool consume_whitespace(const std::string& text, size_t& pos) {
+    while (pos < text.size() &&
+           std::isspace(static_cast<unsigned char>(text[pos]))) {
+        ++pos;
+    }
+    return pos < text.size();
+}
+
+bool parse_static_shape_contract(const std::string& text, ov::Shape& shape) {
+    shape.clear();
+    size_t pos = 0;
+    if (!consume_whitespace(text, pos) || text[pos] != '{') {
+        return false;
+    }
+    ++pos;
+    consume_whitespace(text, pos);
+    if (pos < text.size() && text[pos] == '}') {
+        ++pos;
+        consume_whitespace(text, pos);
+        return pos == text.size();
+    }
+    while (pos < text.size()) {
+        consume_whitespace(text, pos);
+        if (pos >= text.size() ||
+            !std::isdigit(static_cast<unsigned char>(text[pos]))) {
+            return false;
+        }
+        size_t next = pos;
+        while (next < text.size() &&
+               std::isdigit(static_cast<unsigned char>(text[next]))) {
+            ++next;
+        }
+        shape.push_back(static_cast<size_t>(std::stoull(text.substr(pos, next - pos))));
+        pos = next;
+        consume_whitespace(text, pos);
+        if (pos >= text.size()) {
+            return false;
+        }
+        if (text[pos] == '}') {
+            ++pos;
+            consume_whitespace(text, pos);
+            return pos == text.size();
+        }
+        if (text[pos] != ',') {
+            return false;
+        }
+        ++pos;
+    }
+    return false;
 }
 
 class ViewOnlyStage final : public GpuStage {
 public:
-    ViewOnlyStage(std::shared_ptr<const ov::Node> node,
-                  RuntimeStageExecutableDescriptor descriptor)
-        : m_node(std::move(node)),
-          m_descriptor(std::move(descriptor)),
-          m_name(m_node ? m_node->get_friendly_name() : std::string{}),
-          m_type(m_node ? m_node->get_type_name() : std::string{}) {
-        OPENVINO_ASSERT(m_node, "GFX view-only stage requires a node");
-        OPENVINO_ASSERT(is_compiler_owned_view_descriptor(&m_descriptor),
+    explicit ViewOnlyStage(RuntimeStageExecutableDescriptor descriptor)
+        : m_descriptor(std::move(descriptor)),
+          m_name(descriptor_stage_name(m_descriptor)),
+          m_type(descriptor_stage_type(m_descriptor)) {
+        OPENVINO_ASSERT(is_compiler_owned_view_descriptor(m_descriptor),
                         "GFX view-only stage requires a compiler-owned metadata descriptor");
     }
 
@@ -100,14 +212,18 @@ public:
     }
 
     std::unique_ptr<GpuStage> clone() const override {
-        return std::make_unique<ViewOnlyStage>(m_node, m_descriptor);
+        return std::make_unique<ViewOnlyStage>(m_descriptor);
     }
 
 private:
     ov::Shape output_shape(size_t output_idx) const {
-        if (output_idx < m_node->get_output_size() &&
-            m_node->get_output_partial_shape(output_idx).is_static()) {
-            return m_node->get_output_shape(output_idx);
+        if (output_idx < m_descriptor.output_bindings.size()) {
+            ov::Shape shape;
+            if (parse_static_shape_contract(
+                    m_descriptor.output_bindings[output_idx].partial_shape,
+                    shape)) {
+                return shape;
+            }
         }
         if (output_idx == 0 && !m_inputs.empty() && m_inputs.front()) {
             return m_inputs.front()->shape;
@@ -116,13 +232,13 @@ private:
     }
 
     ov::element::Type output_type(size_t output_idx) const {
-        if (output_idx < m_node->get_output_size()) {
-            return m_node->get_output_element_type(output_idx);
+        if (output_idx < m_descriptor.output_bindings.size()) {
+            return element_type_from_contract(
+                m_descriptor.output_bindings[output_idx].element_type);
         }
         return ov::element::dynamic;
     }
 
-    std::shared_ptr<const ov::Node> m_node;
     RuntimeStageExecutableDescriptor m_descriptor;
     std::string m_name;
     std::string m_type;
@@ -133,12 +249,11 @@ private:
 }  // namespace
 
 std::unique_ptr<GpuStage> create_view_only_stage(
-    const std::shared_ptr<const ov::Node>& node,
-    const RuntimeStageExecutableDescriptor* descriptor) {
-    if (!node || !is_compiler_owned_view_descriptor(descriptor)) {
+    const RuntimeStageExecutableDescriptor& descriptor) {
+    if (!is_compiler_owned_view_descriptor(descriptor)) {
         return {};
     }
-    return std::make_unique<ViewOnlyStage>(node, *descriptor);
+    return std::make_unique<ViewOnlyStage>(descriptor);
 }
 
 }  // namespace gfx_plugin

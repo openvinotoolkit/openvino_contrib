@@ -12,6 +12,7 @@
 #include "openvino/gfx_plugin/profiling.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "common/gfx_backend_utils.hpp"
+#include "compiler/backend_target.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -24,6 +25,7 @@ struct BackendRequest {
 
 struct ResolvedBackendInfo {
     GpuBackend backend = GpuBackend::Unknown;
+    compiler::BackendTarget target;
     std::string backend_name;
     bool explicit_request = false;
     std::string requested;
@@ -32,8 +34,23 @@ struct ResolvedBackendInfo {
 struct RemoteContextParams {
     ov::AnyMap merged;
     GpuBackend backend = GpuBackend::Unknown;
+    compiler::BackendTarget target;
     std::string backend_name;
     int device_id = 0;
+};
+
+using BackendTargetResolverFn =
+    compiler::BackendTarget (*)(const ov::AnyMap& properties,
+                                const BackendRequest& request);
+
+struct BackendTargetResolverProvider {
+    GpuBackend backend = GpuBackend::Unknown;
+    BackendTargetResolverFn resolve = nullptr;
+};
+
+class BackendTargetResolverRegistration final {
+public:
+    explicit BackendTargetResolverRegistration(BackendTargetResolverProvider provider);
 };
 
 BackendRequest get_backend_request(const ov::AnyMap& properties);
@@ -45,6 +62,11 @@ GpuBackend resolve_backend_kind_from_properties(const ov::AnyMap& properties,
 std::string resolve_backend_name_from_properties(const ov::AnyMap& properties,
                                                  bool log_fallback,
                                                  const char* log_tag);
+
+compiler::BackendTarget resolve_backend_target_from_properties(
+    const ov::AnyMap& properties,
+    bool log_fallback,
+    const char* log_tag);
 
 ResolvedBackendInfo resolve_backend_for_properties(ov::AnyMap& properties,
                                                    bool log_fallback,

@@ -301,8 +301,9 @@ make_backend_capabilities_fingerprint(const BackendCapabilities &capabilities) {
   append_bool(material, post_ops.enable_abs_activation_fusion);
   append_bool(material, post_ops.enable_sign_activation_fusion);
   const auto &execution = capabilities.execution();
-  append_bool(material, execution.source_kernel_dispatch_enabled);
-  append_parallelism_profile(material, execution.fallback_parallelism);
+  append_bool(material, execution.custom_kernel_dispatch_enabled);
+  append_parallelism_profile(material,
+                             execution.custom_kernel_dispatch_profile);
   append_bool(material, capabilities.stage_placement() != nullptr);
   return hash_material(material.str());
 }

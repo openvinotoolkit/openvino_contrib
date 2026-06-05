@@ -4,9 +4,14 @@
 
 #include "compiler/gfx_compiler_service.hpp"
 
+#include <memory>
 #include <sstream>
+#include <utility>
 
 #include "openvino/core/except.hpp"
+#include "compiler/pipeline_stage_builder.hpp"
+#include "compiler/runtime_executable_descriptor_builder.hpp"
+#include "runtime/executable_descriptor.hpp"
 #include "transforms/pipeline.hpp"
 
 namespace ov {
@@ -24,6 +29,11 @@ bool GfxCompileResult::supported() const {
            lowering_plan.executable() &&
            manifest.valid() &&
            executable.valid() &&
+           runtime_descriptor &&
+           runtime_descriptor->stage_plan &&
+           runtime_executable_descriptor_valid(*runtime_descriptor,
+                                               executable) &&
+           runtime_executable_stage_plan_valid(*runtime_descriptor) &&
            cache_envelope.valid(executable);
 }
 
@@ -61,6 +71,13 @@ GfxCompileResult GfxCompilerService::compile(const GfxCompileRequest& request) c
     OPENVINO_ASSERT(backend_module,
                     "GFX: backend target is not registered: ",
                     request.target.debug_string());
+    OPENVINO_ASSERT(
+        backend_module->target().is_compatible_with_fingerprint(
+            request.target.fingerprint()),
+        "GFX: compiler registry returned non-exact target ",
+        backend_module->target().debug_string(),
+        " for requested ",
+        request.target.debug_string());
 
     GfxCompileResult result;
     result.target = backend_module->target();
@@ -85,6 +102,26 @@ GfxCompileResult GfxCompilerService::compile(const GfxCompileRequest& request) c
     result.cache_envelope =
         CacheEnvelopeBuilder{}.build(result.executable, cache_options);
     result.unsupported = result.lowering_plan.unsupported;
+    if (result.lowering_plan.executable() && result.manifest.valid() &&
+        result.executable.valid()) {
+        auto runtime_descriptor =
+            RuntimeExecutableDescriptorBuilder{}.build(result.executable);
+        PipelineStageBuildRequest stage_request;
+        stage_request.runtime_model = result.transformed_model;
+        stage_request.runtime_descriptor = &runtime_descriptor;
+        stage_request.backend_registry = m_registry;
+        stage_request.target = result.target;
+        stage_request.backend_name = request.backend_name.empty()
+                                         ? result.target.backend_id()
+                                         : request.backend_name;
+        stage_request.enable_fusion = request.enable_fusion;
+        stage_request.compile_trace = request.compile_trace;
+        runtime_descriptor.stage_plan =
+            build_pipeline_stage_runtime_plan(stage_request);
+        result.runtime_descriptor =
+            std::make_shared<const RuntimeExecutableDescriptor>(
+                std::move(runtime_descriptor));
+    }
     return result;
 }
 

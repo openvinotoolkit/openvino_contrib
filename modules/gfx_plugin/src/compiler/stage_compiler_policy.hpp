@@ -20,16 +20,17 @@ namespace compiler {
 
 using StageParallelismProfile = GpuParallelismProfile;
 
-struct StageSourceKernelDispatchPolicy {
+struct StageCustomKernelDispatchPolicy {
   bool enabled = false;
-  StageParallelismProfile fallback_parallelism{};
+  StageParallelismProfile profile{};
 };
 
 struct StageCompilerPolicy {
+  BackendTarget target;
   GpuBackend backend = GpuBackend::Unknown;
   const StagePlacementPolicy *placement = nullptr;
   const PostOpFusionCapabilities *post_ops = nullptr;
-  StageSourceKernelDispatchPolicy source_kernel_dispatch{};
+  StageCustomKernelDispatchPolicy custom_kernel_dispatch{};
 };
 
 struct PrecisionSensitiveFusionQuery {
@@ -47,11 +48,11 @@ struct PrecisionSensitiveFusionQuery {
 StageCompilerPolicy make_stage_compiler_policy_from_capabilities(
     const BackendCapabilities &capabilities);
 
-StageSourceKernelDispatchPolicy
-make_stage_source_kernel_dispatch_policy(
+StageCustomKernelDispatchPolicy
+make_stage_custom_kernel_dispatch_policy(
     const BackendExecutionCapabilities &execution);
 
-StageCompilerPolicy resolve_stage_compiler_policy(GpuBackend backend);
+StageCompilerPolicy resolve_stage_compiler_policy(const BackendTarget &target);
 
 bool allow_precision_sensitive_arithmetic_fusion(
     const StageCompilerPolicy &policy,

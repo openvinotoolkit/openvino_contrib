@@ -50,7 +50,6 @@ public:
 
   static const BackendRegistry &default_registry();
 
-  std::shared_ptr<const BackendModule> resolve(GpuBackend backend) const;
   std::shared_ptr<const BackendModule>
   resolve(const BackendTarget &target) const;
   std::vector<BackendTarget> available_targets() const;

@@ -17,6 +17,10 @@
 namespace ov {
 namespace gfx_plugin {
 
+namespace compiler {
+class BackendTarget;
+}  // namespace compiler
+
 class CompiledModel;
 class GfxRemoteTensor;
 struct GpuTensor;
@@ -50,7 +54,7 @@ private:
     const std::shared_ptr<const CompiledModel> get_compiled_model_typed() const;
     ov::Tensor resolve_host_input_tensor(size_t idx);
     GpuTensor resolve_remote_input_tensor(size_t idx,
-                                          GpuBackend expected_backend,
+                                          const compiler::BackendTarget& expected_target,
                                           const char* error_prefix) const;
     const ov::Tensor* get_host_output_override(size_t idx,
                                                const ov::element::Type& type,
@@ -59,12 +63,12 @@ private:
     void ensure_input_handles(size_t count, bool with_staging, const char* error_prefix);
     void ensure_output_staging_handles(size_t count, const char* error_prefix);
     void bind_inputs_for_infer(
-        GpuBackend expected_backend,
+        const compiler::BackendTarget& expected_target,
         const std::function<void(size_t, const GpuTensor&)>& remote_handler,
         const std::function<void(size_t, const ov::Tensor&)>& host_handler,
         const char* error_prefix);
     void bind_inputs_before_infer(
-        GpuBackend expected_backend,
+        const compiler::BackendTarget& expected_target,
         std::vector<GpuTensor>& input_tensors,
         const std::function<GpuTensor(size_t, const ov::Tensor&, BufferHandle*)>& host_binder,
         const std::function<void(size_t, const GpuTensor&)>& device_result_handler,

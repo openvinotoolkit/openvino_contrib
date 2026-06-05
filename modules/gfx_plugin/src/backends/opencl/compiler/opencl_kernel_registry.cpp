@@ -78,6 +78,14 @@ KernelRegistry make_opencl_kernel_registry(const BackendTarget &target) {
   units.push_back(make_opencl_generated_kernel_unit(
       target, "opencl/generated/shapeof_i64", "ShapeOf"));
   units.push_back(make_opencl_generated_kernel_unit(
+      target, "opencl/generated/range_f32", "Range"));
+  units.push_back(make_opencl_generated_kernel_unit(
+      target, "opencl/generated/range_f16", "Range"));
+  units.push_back(make_opencl_generated_kernel_unit(
+      target, "opencl/generated/range_i64", "Range"));
+  units.push_back(make_opencl_generated_kernel_unit(
+      target, "opencl/generated/range_i64_unit_dynamic", "Range"));
+  units.push_back(make_opencl_generated_kernel_unit(
       target, "opencl/generated/tile_f32", "Tile"));
   units.push_back(make_opencl_generated_kernel_unit(
       target, "opencl/generated/tile_dynamic_f32", "Tile"));

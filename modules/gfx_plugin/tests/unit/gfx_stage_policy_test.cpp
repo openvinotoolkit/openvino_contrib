@@ -99,16 +99,16 @@ GfxStageCompilerPolicy test_stage_compiler_policy(
   policy.post_ops = test_post_op_fusion_capabilities(backend);
   if (backend_known(backend)) {
     compiler::BackendExecutionCapabilities execution;
-    execution.source_kernel_dispatch_enabled = backend == GpuBackend::OpenCL;
-    execution.fallback_parallelism =
+    execution.custom_kernel_dispatch_enabled = backend == GpuBackend::OpenCL;
+    execution.custom_kernel_dispatch_profile =
         backend == GpuBackend::Metal
             ? make_metal_parallelism_profile("metal:test")
             : make_opencl_parallelism_profile("opencl:test");
     if (parallelism_profile) {
-      execution.fallback_parallelism = *parallelism_profile;
+      execution.custom_kernel_dispatch_profile = *parallelism_profile;
     }
-    policy.source_kernel_dispatch =
-        compiler::make_stage_source_kernel_dispatch_policy(execution);
+    policy.custom_kernel_dispatch =
+        compiler::make_stage_custom_kernel_dispatch_policy(execution);
   }
   return policy;
 }

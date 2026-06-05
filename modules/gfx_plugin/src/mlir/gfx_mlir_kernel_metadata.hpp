@@ -912,6 +912,10 @@ extract_kernel_runtime_metadata(mlir::ModuleOp module, size_t output_arg_count,
     meta.valid = false;
     return meta;
   }
+  if (expected_backend_domain) {
+    meta.valid = false;
+    return meta;
+  }
   meta.operands = {};
   meta.kernel_input_arg_count = fallback_input_arg_count;
   return meta;

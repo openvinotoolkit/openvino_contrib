@@ -9,12 +9,13 @@
 namespace ov {
 namespace gfx_plugin {
 
-std::unique_ptr<MetalBackendState> create_metal_backend_state(const ov::AnyMap&,
+std::unique_ptr<MetalBackendState> create_metal_backend_state(const compiler::BackendTarget&,
+                                                              const ov::AnyMap&,
                                                               const ov::SoPtr<ov::IRemoteContext>&) {
     OPENVINO_THROW("GFX Metal backend is not available in this build");
 }
 
-void register_metal_profiling_trace_sinks() {}
+void register_metal_profiling_trace_sinks(const compiler::BackendTarget&) {}
 
 }  // namespace gfx_plugin
 }  // namespace ov

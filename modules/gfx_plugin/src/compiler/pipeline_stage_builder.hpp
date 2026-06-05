@@ -6,10 +6,9 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
-#include "common/gpu_backend.hpp"
+#include "compiler/backend_target.hpp"
 #include "openvino/core/model.hpp"
 #include "compiler/pipeline_stage_fusion.hpp"
 #include "compiler/pipeline_stage_plan.hpp"
@@ -23,10 +22,13 @@ struct RuntimeExecutableDescriptor;
 
 namespace compiler {
 
+class BackendRegistry;
+
 struct PipelineStageBuildRequest {
   std::shared_ptr<const ov::Model> runtime_model;
   const RuntimeExecutableDescriptor *runtime_descriptor = nullptr;
-  GpuBackend backend = GpuBackend::Unknown;
+  const BackendRegistry *backend_registry = nullptr;
+  BackendTarget target;
   std::string backend_name;
   bool enable_fusion = true;
   GfxProfilingTrace *compile_trace = nullptr;
@@ -94,17 +96,8 @@ struct PipelineStageMaterializationPlan {
   PipelineStagePostOpFusionPlan post_ops;
 };
 
-struct PipelineStageBuildResult {
-  std::vector<std::shared_ptr<ov::Node>> ordered_ops;
-  std::vector<PipelineStageMaterializationPlan> stage_plans;
-  PipelineStageRuntimePlan runtime_plan;
-  StageCompilerPolicy stage_compiler_policy;
-  std::unordered_map<const ov::Node *, size_t> node_to_stage;
-  std::unordered_map<const ov::Node *, size_t> param_index;
-};
-
-PipelineStageBuildResult
-build_pipeline_stage_plan(const PipelineStageBuildRequest &request);
+std::shared_ptr<const PipelineStageRuntimePlan>
+build_pipeline_stage_runtime_plan(const PipelineStageBuildRequest &request);
 
 } // namespace compiler
 } // namespace gfx_plugin

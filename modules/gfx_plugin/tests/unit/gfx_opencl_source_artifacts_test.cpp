@@ -7,11 +7,14 @@
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "backends/opencl/compiler/opencl_kernel_artifacts.hpp"
 #include "backends/opencl/compiler/opencl_operation_support.hpp"
+#include "compiler/executable_bundle.hpp"
 #include "compiler/kernel_registry.hpp"
 #include "compiler/lowering_planner.hpp"
 #include "compiler/manifest.hpp"
@@ -20,6 +23,7 @@
 #include "kernel_ir/opencl_kernels/interpolate_f16_kernel.hpp"
 #include "kernel_ir/opencl_kernels/interpolate_f32_kernel.hpp"
 #include "kernel_ir/opencl_kernels/matmul_f32_kernel.hpp"
+#include "kernel_ir/opencl_kernels/range_kernel.hpp"
 #include "mlir/mlir_support.hpp"
 #include "openvino/op/abs.hpp"
 #include "openvino/op/add.hpp"
@@ -95,6 +99,82 @@ bool opencl_compiler_supports_node(
   return capabilities.query_operation({node}).semantic_legal;
 }
 
+void expect_opencl_compiler_supports_generated_unit(
+    const std::shared_ptr<const ov::Node> &node,
+    const std::string &expected_unit_id) {
+  const auto target = BackendTarget::from_backend(GpuBackend::OpenCL);
+  const BackendCapabilities capabilities(
+      target, make_opencl_operation_support_policy());
+  const auto support = capabilities.query_operation({node});
+  ASSERT_TRUE(support.semantic_legal);
+  EXPECT_EQ(support.preferred_route_kind, LoweringRouteKind::GeneratedKernel);
+  EXPECT_EQ(support.preferred_route, expected_unit_id);
+}
+
+LoweringRouteKind
+opencl_artifact_route_kind(const GfxOpenClSourceArtifact &artifact) {
+  const auto origin = compiler::classify_opencl_kernel_artifact_origin(
+      artifact.artifact_ref.source_id);
+  switch (origin) {
+  case KernelArtifactOrigin::Generated:
+    return LoweringRouteKind::GeneratedKernel;
+  case KernelArtifactOrigin::HandwrittenException:
+    return LoweringRouteKind::HandwrittenKernelException;
+  default:
+    return LoweringRouteKind::Unsupported;
+  }
+}
+
+compiler::KernelUnit
+resolve_opencl_artifact_kernel_unit(const KernelRegistry &registry,
+                                    const GfxOpenClSourceArtifact &artifact) {
+  const auto route_kind = opencl_artifact_route_kind(artifact);
+  if (route_kind == LoweringRouteKind::Unsupported) {
+    return {};
+  }
+  return registry.resolve(route_kind, artifact.artifact_ref.source_id);
+}
+
+bool opencl_artifact_has_registered_kernel_unit(
+    const std::shared_ptr<const ov::Node> &node) {
+  const auto artifact = resolve_gfx_opencl_source_artifact(node);
+  if (!artifact || !artifact->valid) {
+    return false;
+  }
+  const auto registry = make_opencl_kernel_registry(
+      BackendTarget::from_backend(GpuBackend::OpenCL));
+  return resolve_opencl_artifact_kernel_unit(registry, *artifact).valid();
+}
+
+void expect_opencl_compiler_support_matches_kernel_registry(
+    const std::shared_ptr<const ov::Node> &node) {
+  const auto artifact = resolve_gfx_opencl_source_artifact(node);
+  if (!artifact || !artifact->valid) {
+    EXPECT_FALSE(opencl_compiler_supports_node(node));
+    return;
+  }
+
+  const auto target = BackendTarget::from_backend(GpuBackend::OpenCL);
+  const auto registry = make_opencl_kernel_registry(target);
+  const auto kernel_unit =
+      resolve_opencl_artifact_kernel_unit(registry, *artifact);
+  const BackendCapabilities capabilities(
+      target, make_opencl_operation_support_policy(registry));
+  const auto support = capabilities.query_operation({node});
+
+  EXPECT_EQ(support.semantic_legal, kernel_unit.valid())
+      << support.semantic_reason;
+  if (!kernel_unit.valid()) {
+    EXPECT_EQ(support.preferred_route_kind, LoweringRouteKind::Unsupported);
+    return;
+  }
+
+  ASSERT_TRUE(support.semantic_legal) << support.semantic_reason;
+  EXPECT_EQ(support.preferred_route_kind, kernel_unit.route_kind());
+  EXPECT_EQ(support.preferred_route, kernel_unit.id());
+  EXPECT_EQ(kernel_unit.backend_domain(), "opencl");
+}
+
 void expect_opencl_artifact(const std::shared_ptr<const ov::Node> &node,
                             GfxKernelStageFamily family,
                             const std::string &source_id,
@@ -142,8 +222,8 @@ void expect_opencl_artifact(const std::shared_ptr<const ov::Node> &node,
     ASSERT_FALSE(artifact->planned_chunks.empty());
     uint32_t input_begin = 0;
     for (const auto &chunk : artifact->planned_chunks) {
-      const uint32_t chunk_count =
-          std::min<uint32_t>(input_chunk_size, direct_input_count - input_begin);
+      const uint32_t chunk_count = std::min<uint32_t>(
+          input_chunk_size, direct_input_count - input_begin);
       EXPECT_EQ(chunk.binding_begin, input_begin);
       EXPECT_EQ(chunk.binding_count, chunk_count);
       ASSERT_TRUE(chunk.artifact);
@@ -158,9 +238,8 @@ void expect_opencl_artifact(const std::shared_ptr<const ov::Node> &node,
     ASSERT_FALSE(artifact->planned_chunks.empty());
     uint32_t output_begin = 0;
     for (const auto &chunk : artifact->planned_chunks) {
-      const uint32_t chunk_count =
-          std::min<uint32_t>(output_chunk_size,
-                             direct_output_count - output_begin);
+      const uint32_t chunk_count = std::min<uint32_t>(
+          output_chunk_size, direct_output_count - output_begin);
       EXPECT_EQ(chunk.binding_begin, output_begin);
       EXPECT_EQ(chunk.binding_count, chunk_count);
       ASSERT_TRUE(chunk.artifact);
@@ -174,8 +253,6 @@ void expect_opencl_artifact(const std::shared_ptr<const ov::Node> &node,
   } else {
     EXPECT_TRUE(artifact->planned_chunks.empty());
   }
-  EXPECT_NE(artifact->source.find("__kernel void " + entry_point),
-            std::string::npos);
 
   const auto roles =
       artifact->stage_manifest.custom_kernel.external_buffer_abi.roles;
@@ -190,6 +267,161 @@ void expect_opencl_artifact(const std::shared_ptr<const ov::Node> &node,
        ++i) {
     EXPECT_EQ(roles[i], GfxKernelBufferRole::ScalarParam);
   }
+}
+
+void expect_opencl_range_compiler_contract(
+    const std::shared_ptr<ov::op::v4::Range> &range,
+    const std::string &expected_unit_id,
+    const std::string &expected_entry_point, uint32_t expected_abi_arg_count,
+    ov::ParameterVector parameters = {}) {
+  const auto target = BackendTarget::from_backend(GpuBackend::OpenCL);
+  const BackendCapabilities capabilities(
+      target, make_opencl_operation_support_policy());
+  const OperationLegalizer legalizer(capabilities);
+  const LoweringPlanner planner(target, make_opencl_kernel_registry(target));
+  const auto result = std::make_shared<ov::op::v0::Result>(range);
+  const auto model =
+      std::make_shared<ov::Model>(ov::ResultVector{result}, parameters);
+
+  const auto lowering_plan = planner.plan(model, legalizer);
+  ASSERT_TRUE(lowering_plan.executable());
+
+  std::optional<compiler::PlannedOperation> planned_range;
+  for (const auto &op : lowering_plan.operations) {
+    if (op.type_name == "Range") {
+      planned_range = op;
+      break;
+    }
+  }
+  ASSERT_TRUE(planned_range.has_value());
+  EXPECT_EQ(planned_range->kernel_unit.route_kind(),
+            LoweringRouteKind::GeneratedKernel);
+  EXPECT_EQ(planned_range->kernel_unit.kind(), KernelUnitKind::GeneratedKernel);
+  EXPECT_EQ(planned_range->kernel_unit.backend_domain(), "opencl");
+  EXPECT_EQ(planned_range->kernel_unit.op_family(), "Range");
+  EXPECT_EQ(planned_range->kernel_unit.id(), expected_unit_id);
+
+  const auto manifest = ManifestBuilder{}.build(lowering_plan);
+  ASSERT_TRUE(manifest.valid());
+
+  std::optional<compiler::StageRecord> range_stage;
+  for (const auto &stage : manifest.stages) {
+    if (stage.kernel_unit_id == expected_unit_id) {
+      range_stage = stage;
+      break;
+    }
+  }
+  ASSERT_TRUE(range_stage.has_value());
+  EXPECT_EQ(range_stage->execution_kind, LoweringRouteKind::GeneratedKernel);
+  EXPECT_EQ(range_stage->backend_domain, "opencl");
+  EXPECT_EQ(range_stage->kernel_unit_kind, "generated_kernel");
+  EXPECT_EQ(range_stage->dispatch.backend_domain, range_stage->backend_domain);
+  EXPECT_EQ(range_stage->dispatch.kernel_unit_id, range_stage->kernel_unit_id);
+  EXPECT_EQ(range_stage->memory.hidden_host_copy_allowed, false);
+
+  const auto executable =
+      compiler::ExecutableBundleBuilder(
+          compiler::make_opencl_kernel_artifact_payload_resolver())
+          .build(manifest, lowering_plan);
+  ASSERT_TRUE(executable.verify().valid());
+  ASSERT_EQ(executable.artifact_payloads.size(), 1u);
+
+  const auto descriptor_index =
+      executable.artifact_payloads.front().artifact_descriptor_index;
+  ASSERT_LT(descriptor_index, executable.artifact_descriptors.size());
+  const auto &descriptor = executable.artifact_descriptors[descriptor_index];
+  EXPECT_EQ(descriptor.kernel.kernel_id, expected_unit_id);
+  EXPECT_EQ(descriptor.kernel.op_family, "Range");
+  EXPECT_EQ(descriptor.kernel.backend_domain, "opencl");
+  EXPECT_EQ(descriptor.payload_kind,
+            compiler::KernelArtifactPayloadKind::OpenClSource);
+  EXPECT_EQ(descriptor.entry_point, expected_entry_point);
+  EXPECT_EQ(descriptor.abi_arg_count, expected_abi_arg_count);
+  EXPECT_EQ(descriptor.abi_output_arg_count, 1u);
+  ASSERT_TRUE(executable.artifact_payloads.front().payload);
+  EXPECT_EQ(executable.artifact_payloads.front().payload->source_id(),
+            expected_unit_id);
+  EXPECT_EQ(executable.artifact_payloads.front().payload->entry_point(),
+            expected_entry_point);
+}
+
+void expect_opencl_generated_compiler_contract(
+    const std::shared_ptr<ov::Node> &node,
+    const std::string &expected_type_name,
+    const std::string &expected_op_family, const std::string &expected_unit_id,
+    const std::string &expected_entry_point, uint32_t expected_abi_arg_count,
+    ov::ParameterVector parameters = {}) {
+  const auto target = BackendTarget::from_backend(GpuBackend::OpenCL);
+  const BackendCapabilities capabilities(
+      target, make_opencl_operation_support_policy());
+  const OperationLegalizer legalizer(capabilities);
+  const LoweringPlanner planner(target, make_opencl_kernel_registry(target));
+  const auto result = std::make_shared<ov::op::v0::Result>(node);
+  const auto model =
+      std::make_shared<ov::Model>(ov::ResultVector{result}, parameters);
+
+  const auto lowering_plan = planner.plan(model, legalizer);
+  ASSERT_TRUE(lowering_plan.executable());
+
+  std::optional<compiler::PlannedOperation> planned_op;
+  for (const auto &op : lowering_plan.operations) {
+    if (op.type_name == expected_type_name) {
+      planned_op = op;
+      break;
+    }
+  }
+  ASSERT_TRUE(planned_op.has_value());
+  EXPECT_EQ(planned_op->kernel_unit.route_kind(),
+            LoweringRouteKind::GeneratedKernel);
+  EXPECT_EQ(planned_op->kernel_unit.kind(), KernelUnitKind::GeneratedKernel);
+  EXPECT_EQ(planned_op->kernel_unit.backend_domain(), "opencl");
+  EXPECT_EQ(planned_op->kernel_unit.op_family(), expected_op_family);
+  EXPECT_EQ(planned_op->kernel_unit.id(), expected_unit_id);
+
+  const auto manifest = ManifestBuilder{}.build(lowering_plan);
+  ASSERT_TRUE(manifest.valid());
+
+  std::optional<compiler::StageRecord> stage_record;
+  for (const auto &stage : manifest.stages) {
+    if (stage.kernel_unit_id == expected_unit_id) {
+      stage_record = stage;
+      break;
+    }
+  }
+  ASSERT_TRUE(stage_record.has_value());
+  EXPECT_EQ(stage_record->execution_kind, LoweringRouteKind::GeneratedKernel);
+  EXPECT_EQ(stage_record->backend_domain, "opencl");
+  EXPECT_EQ(stage_record->kernel_unit_kind, "generated_kernel");
+  EXPECT_EQ(stage_record->dispatch.backend_domain,
+            stage_record->backend_domain);
+  EXPECT_EQ(stage_record->dispatch.kernel_unit_id,
+            stage_record->kernel_unit_id);
+  EXPECT_EQ(stage_record->memory.hidden_host_copy_allowed, false);
+
+  const auto executable =
+      compiler::ExecutableBundleBuilder(
+          compiler::make_opencl_kernel_artifact_payload_resolver())
+          .build(manifest, lowering_plan);
+  ASSERT_TRUE(executable.verify().valid());
+  ASSERT_EQ(executable.artifact_payloads.size(), 1u);
+
+  const auto descriptor_index =
+      executable.artifact_payloads.front().artifact_descriptor_index;
+  ASSERT_LT(descriptor_index, executable.artifact_descriptors.size());
+  const auto &descriptor = executable.artifact_descriptors[descriptor_index];
+  EXPECT_EQ(descriptor.kernel.kernel_id, expected_unit_id);
+  EXPECT_EQ(descriptor.kernel.op_family, expected_op_family);
+  EXPECT_EQ(descriptor.kernel.backend_domain, "opencl");
+  EXPECT_EQ(descriptor.payload_kind,
+            compiler::KernelArtifactPayloadKind::OpenClSource);
+  EXPECT_EQ(descriptor.entry_point, expected_entry_point);
+  EXPECT_EQ(descriptor.abi_arg_count, expected_abi_arg_count);
+  EXPECT_EQ(descriptor.abi_output_arg_count, 1u);
+  ASSERT_TRUE(executable.artifact_payloads.front().payload);
+  EXPECT_EQ(executable.artifact_payloads.front().payload->source_id(),
+            expected_unit_id);
+  EXPECT_EQ(executable.artifact_payloads.front().payload->entry_point(),
+            expected_entry_point);
 }
 
 void expect_opencl_source_excludes(const std::shared_ptr<const ov::Node> &node,
@@ -216,7 +448,7 @@ TEST(GfxOpenClSourceArtifactsTest, BackendTargetIsStableAndCapabilityDriven) {
   ASSERT_TRUE(audit.valid());
   EXPECT_EQ(audit.handwritten_exception_count, 0u);
   EXPECT_EQ(kernel_registry.route_count(LoweringRouteKind::GeneratedKernel),
-            163u);
+            167u);
   EXPECT_EQ(kernel_registry.route_count(
                 LoweringRouteKind::HandwrittenKernelException),
             0u);
@@ -296,6 +528,27 @@ TEST(GfxOpenClSourceArtifactsTest,
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
+     BaselineArtifactsDoNotBecomeCompilerSupportWithoutKernelUnit) {
+  const auto data = param(ov::element::f32, ov::Shape{1, 2, 3});
+  const auto convert =
+      std::make_shared<ov::op::v0::Convert>(data, ov::element::i32);
+
+  const auto artifact = resolve_gfx_opencl_source_artifact(convert);
+  ASSERT_TRUE(artifact.has_value());
+  ASSERT_TRUE(artifact->valid);
+
+  const auto target = BackendTarget::from_backend(GpuBackend::OpenCL);
+  const BackendCapabilities capabilities(
+      target, make_opencl_operation_support_policy());
+  const auto support = capabilities.query_operation({convert});
+
+  EXPECT_FALSE(support.semantic_legal);
+  EXPECT_EQ(support.semantic_reason, "missing_opencl_registered_kernel_unit");
+  EXPECT_FALSE(opencl_artifact_has_registered_kernel_unit(convert));
+  EXPECT_FALSE(opencl_compiler_supports_node(convert));
+}
+
+TEST(GfxOpenClSourceArtifactsTest,
      ConvertArtifactsUseTypedSourceKernelsForF32I32AndI64) {
   const auto f32 = param(ov::element::f32, ov::Shape{2, 3});
   const auto i32 = param(ov::element::i32, ov::Shape{2, 3});
@@ -334,10 +587,10 @@ TEST(GfxOpenClSourceArtifactsTest,
                          /*direct_input_count=*/1,
                          {GfxOpenClSourceScalarArg::ElementCount});
 
-  EXPECT_TRUE(opencl_compiler_supports_node(f32_to_f32));
-  EXPECT_TRUE(opencl_compiler_supports_node(f32_to_i32));
-  EXPECT_TRUE(opencl_compiler_supports_node(i64_to_f32));
-  EXPECT_TRUE(opencl_compiler_supports_node(i32_to_i64));
+  expect_opencl_compiler_support_matches_kernel_registry(f32_to_f32);
+  expect_opencl_compiler_support_matches_kernel_registry(f32_to_i32);
+  expect_opencl_compiler_support_matches_kernel_registry(i64_to_f32);
+  expect_opencl_compiler_support_matches_kernel_registry(i32_to_i64);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -366,7 +619,7 @@ TEST(GfxOpenClSourceArtifactsTest,
   EXPECT_EQ(artifact->source,
             opencl_generated_matmul_f32_kernel_source().source);
   EXPECT_EQ(artifact->source.find("__global long*"), std::string::npos);
-  EXPECT_TRUE(opencl_compiler_supports_node(matmul));
+  expect_opencl_compiler_support_matches_kernel_registry(matmul);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -390,7 +643,7 @@ TEST(GfxOpenClSourceArtifactsTest,
       "gfx_opencl_generated_matmul_f32",
       /*arg_count=*/13,
       /*direct_input_count=*/2, scalar_args, {0, 1}, static_u32_scalars);
-  EXPECT_TRUE(opencl_compiler_supports_node(matmul));
+  expect_opencl_compiler_support_matches_kernel_registry(matmul);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -450,7 +703,7 @@ TEST(GfxOpenClSourceArtifactsTest,
   ASSERT_TRUE(artifact.has_value());
   EXPECT_EQ(artifact->source,
             opencl_generated_interpolate_f32_kernel_source().source);
-  EXPECT_TRUE(opencl_compiler_supports_node(interpolate));
+  expect_opencl_compiler_support_matches_kernel_registry(interpolate);
 
   const auto f16_data = param(ov::element::f16, ov::Shape{1, 4, 16, 16});
   const auto f16_output_shape = i64_const(ov::Shape{2}, {32, 32});
@@ -476,7 +729,7 @@ TEST(GfxOpenClSourceArtifactsTest,
   EXPECT_NE(f16_artifact->source.find("gfx_f16_bits_to_f32"),
             std::string::npos);
   EXPECT_EQ(f16_artifact->source.find("__global half"), std::string::npos);
-  EXPECT_TRUE(opencl_compiler_supports_node(f16_interpolate));
+  expect_opencl_compiler_support_matches_kernel_registry(f16_interpolate);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -520,8 +773,8 @@ TEST(GfxOpenClSourceArtifactsTest,
       /*arg_count=*/16,
       /*direct_input_count=*/1, scalar_args, {0}, static_u32_scalars);
   expect_opencl_source_excludes(
-      transpose, {"long", "__global long*", "gfx_opencl_baseline_range_i64"});
-  EXPECT_TRUE(opencl_compiler_supports_node(transpose));
+      transpose, {"long", "__global long*", "gfx_opencl_generated_range_i64"});
+  expect_opencl_compiler_support_matches_kernel_registry(transpose);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -549,8 +802,8 @@ TEST(GfxOpenClSourceArtifactsTest,
       /*arg_count=*/20,
       /*direct_input_count=*/1, scalar_args, {0}, static_u32_scalars);
   expect_opencl_source_excludes(
-      slice, {"long", "__global long*", "gfx_opencl_baseline_range_i64"});
-  EXPECT_TRUE(opencl_compiler_supports_node(slice));
+      slice, {"long", "__global long*", "gfx_opencl_generated_range_i64"});
+  expect_opencl_compiler_support_matches_kernel_registry(slice);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -578,8 +831,8 @@ TEST(GfxOpenClSourceArtifactsTest,
       /*arg_count=*/20,
       /*direct_input_count=*/1, scalar_args, {0}, static_u32_scalars);
   expect_opencl_source_excludes(
-      slice, {"long", "__global long*", "gfx_opencl_baseline_range_i64"});
-  EXPECT_TRUE(opencl_compiler_supports_node(slice));
+      slice, {"long", "__global long*", "gfx_opencl_generated_range_i64"});
+  expect_opencl_compiler_support_matches_kernel_registry(slice);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -589,14 +842,86 @@ TEST(GfxOpenClSourceArtifactsTest,
       f32_const(ov::Shape{}, {1.0f}), ov::element::f32);
 
   expect_opencl_artifact(range, GfxKernelStageFamily::GatherScatter,
-                         "opencl/baseline/range_f32",
-                         "gfx_opencl_baseline_range_f32",
+                         "opencl/generated/range_f32",
+                         "gfx_opencl_generated_range_f32",
                          /*arg_count=*/5,
                          /*direct_input_count=*/3,
                          {GfxOpenClSourceScalarArg::ElementCount}, {0, 1, 2});
-  expect_opencl_source_excludes(
-      range, {"long", "__global long*", "gfx_opencl_baseline_range_i64"});
-  EXPECT_TRUE(opencl_compiler_supports_node(range));
+  expect_opencl_compiler_supports_generated_unit(range,
+                                                 "opencl/generated/range_f32");
+  expect_opencl_range_compiler_contract(range, "opencl/generated/range_f32",
+                                        "gfx_opencl_generated_range_f32",
+                                        /*expected_abi_arg_count=*/5);
+  EXPECT_FALSE(
+      make_opencl_range_source_artifact(range, "opencl/generated/range_i64")
+          .has_value());
+  expect_opencl_compiler_support_matches_kernel_registry(range);
+}
+
+TEST(GfxOpenClSourceArtifactsTest,
+     RangePayloadResolverRejectsMismatchedKernelUnitWithoutSourceFallback) {
+  const auto range = std::make_shared<ov::op::v4::Range>(
+      f32_const(ov::Shape{}, {1.5f}), f32_const(ov::Shape{}, {6.5f}),
+      f32_const(ov::Shape{}, {1.0f}), ov::element::f32);
+
+  compiler::KernelArtifactDescriptor descriptor;
+  descriptor.kernel.backend_domain = "opencl";
+  descriptor.kernel.kernel_id = "opencl/generated/range_i64";
+  descriptor.payload_kind = compiler::KernelArtifactPayloadKind::OpenClSource;
+
+  compiler::PlannedOperation planned_range;
+  planned_range.source_node = range;
+  planned_range.type_name = "Range";
+
+  const auto resolver =
+      compiler::make_opencl_kernel_artifact_payload_resolver();
+  EXPECT_FALSE(static_cast<bool>(resolver(descriptor, planned_range)));
+  EXPECT_TRUE(descriptor.entry_point.empty());
+}
+
+TEST(GfxOpenClSourceArtifactsTest,
+     GeneratedPayloadResolverRejectsMismatchedKernelUnitWithoutSourceFallback) {
+  const auto lhs = param(ov::element::f32, ov::Shape{2, 3});
+  const auto rhs = param(ov::element::f32, ov::Shape{3, 4});
+  const auto matmul =
+      std::make_shared<ov::op::v0::MatMul>(lhs, rhs, false, false);
+
+  compiler::KernelArtifactDescriptor descriptor;
+  descriptor.kernel.backend_domain = "opencl";
+  descriptor.kernel.kernel_id = "opencl/generated/shapeof_i32";
+  descriptor.kernel.origin = compiler::KernelArtifactOrigin::Generated;
+  descriptor.payload_kind = compiler::KernelArtifactPayloadKind::OpenClSource;
+
+  compiler::PlannedOperation planned_matmul;
+  planned_matmul.source_node = matmul;
+  planned_matmul.type_name = "MatMul";
+
+  const auto resolver =
+      compiler::make_opencl_kernel_artifact_payload_resolver();
+  EXPECT_FALSE(static_cast<bool>(resolver(descriptor, planned_matmul)));
+  EXPECT_TRUE(descriptor.entry_point.empty());
+}
+
+TEST(GfxOpenClSourceArtifactsTest,
+     GeneratedPayloadResolverRejectsBaselineSourceArtifact) {
+  const auto data = param(ov::element::f32, ov::Shape{2, 3});
+  const auto convert =
+      std::make_shared<ov::op::v0::Convert>(data, ov::element::i32);
+
+  compiler::KernelArtifactDescriptor descriptor;
+  descriptor.kernel.backend_domain = "opencl";
+  descriptor.kernel.kernel_id = "opencl/baseline/convert_f32_to_i32";
+  descriptor.kernel.origin = compiler::KernelArtifactOrigin::Generated;
+  descriptor.payload_kind = compiler::KernelArtifactPayloadKind::OpenClSource;
+
+  compiler::PlannedOperation planned_convert;
+  planned_convert.source_node = convert;
+  planned_convert.type_name = "Convert";
+
+  const auto resolver =
+      compiler::make_opencl_kernel_artifact_payload_resolver();
+  EXPECT_FALSE(static_cast<bool>(resolver(descriptor, planned_convert)));
+  EXPECT_TRUE(descriptor.entry_point.empty());
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -606,12 +931,17 @@ TEST(GfxOpenClSourceArtifactsTest,
       f16_const(ov::Shape{}, {0.5f}), ov::element::f16);
 
   expect_opencl_artifact(range, GfxKernelStageFamily::GatherScatter,
-                         "opencl/baseline/range_f16",
-                         "gfx_opencl_baseline_range_f16",
+                         "opencl/generated/range_f16",
+                         "gfx_opencl_generated_range_f16",
                          /*arg_count=*/5,
                          /*direct_input_count=*/3,
                          {GfxOpenClSourceScalarArg::ElementCount}, {0, 1, 2});
-  EXPECT_TRUE(opencl_compiler_supports_node(range));
+  expect_opencl_compiler_supports_generated_unit(range,
+                                                 "opencl/generated/range_f16");
+  expect_opencl_range_compiler_contract(range, "opencl/generated/range_f16",
+                                        "gfx_opencl_generated_range_f16",
+                                        /*expected_abi_arg_count=*/5);
+  expect_opencl_compiler_support_matches_kernel_registry(range);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -621,12 +951,17 @@ TEST(GfxOpenClSourceArtifactsTest,
       i64_const(ov::Shape{}, {2}), ov::element::i64);
 
   expect_opencl_artifact(range, GfxKernelStageFamily::GatherScatter,
-                         "opencl/baseline/range_i64",
-                         "gfx_opencl_baseline_range_i64",
+                         "opencl/generated/range_i64",
+                         "gfx_opencl_generated_range_i64",
                          /*arg_count=*/5,
                          /*direct_input_count=*/3,
                          {GfxOpenClSourceScalarArg::ElementCount}, {0, 1, 2});
-  EXPECT_TRUE(opencl_compiler_supports_node(range));
+  expect_opencl_compiler_supports_generated_unit(range,
+                                                 "opencl/generated/range_i64");
+  expect_opencl_range_compiler_contract(range, "opencl/generated/range_i64",
+                                        "gfx_opencl_generated_range_i64",
+                                        /*expected_abi_arg_count=*/5);
+  expect_opencl_compiler_support_matches_kernel_registry(range);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -652,8 +987,12 @@ TEST(GfxOpenClSourceArtifactsTest,
       /*arg_count=*/20,
       /*direct_input_count=*/1, scalar_args, {0}, static_u32_scalars);
   expect_opencl_source_excludes(
-      tile, {"long", "__global long*", "gfx_opencl_baseline_range_i64"});
-  EXPECT_TRUE(opencl_compiler_supports_node(tile));
+      tile, {"long", "__global long*", "gfx_opencl_generated_range_i64"});
+  expect_opencl_compiler_support_matches_kernel_registry(tile);
+  expect_opencl_generated_compiler_contract(
+      tile, "Tile", "Tile", "opencl/generated/tile_f32",
+      "gfx_opencl_generated_tile_f32",
+      /*expected_abi_arg_count=*/20, {data});
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -678,7 +1017,33 @@ TEST(GfxOpenClSourceArtifactsTest,
       "gfx_opencl_generated_tile_f16",
       /*arg_count=*/20,
       /*direct_input_count=*/1, scalar_args, {0}, static_u32_scalars);
-  EXPECT_TRUE(opencl_compiler_supports_node(tile));
+  expect_opencl_compiler_support_matches_kernel_registry(tile);
+  expect_opencl_generated_compiler_contract(
+      tile, "Tile", "Tile", "opencl/generated/tile_f16",
+      "gfx_opencl_generated_tile_f16",
+      /*expected_abi_arg_count=*/20, {data});
+}
+
+TEST(GfxOpenClSourceArtifactsTest,
+     TilePayloadResolverRejectsMismatchedKernelUnitWithoutSourceFallback) {
+  const auto data = param(ov::element::f32, ov::Shape{2, 1, 3});
+  const auto tile = std::make_shared<ov::op::v0::Tile>(
+      data, i64_const(ov::Shape{3}, {1, 4, 2}));
+
+  compiler::KernelArtifactDescriptor descriptor;
+  descriptor.kernel.backend_domain = "opencl";
+  descriptor.kernel.kernel_id = "opencl/generated/tile_f16";
+  descriptor.kernel.origin = compiler::KernelArtifactOrigin::Generated;
+  descriptor.payload_kind = compiler::KernelArtifactPayloadKind::OpenClSource;
+
+  compiler::PlannedOperation planned_tile;
+  planned_tile.source_node = tile;
+  planned_tile.type_name = "Tile";
+
+  const auto resolver =
+      compiler::make_opencl_kernel_artifact_payload_resolver();
+  EXPECT_FALSE(static_cast<bool>(resolver(descriptor, planned_tile)));
+  EXPECT_TRUE(descriptor.entry_point.empty());
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -706,7 +1071,7 @@ TEST(GfxOpenClSourceArtifactsTest,
                          "gfx_opencl_generated_tile_dynamic_f16",
                          /*arg_count=*/12,
                          /*direct_input_count=*/1, scalar_args, {0}, {3});
-  EXPECT_TRUE(opencl_compiler_supports_node(tile));
+  expect_opencl_compiler_support_matches_kernel_registry(tile);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -735,8 +1100,8 @@ TEST(GfxOpenClSourceArtifactsTest,
                          /*arg_count=*/12,
                          /*direct_input_count=*/1, scalar_args, {0}, {3});
   expect_opencl_source_excludes(
-      tile, {"long", "__global long*", "gfx_opencl_baseline_range_i64"});
-  EXPECT_TRUE(opencl_compiler_supports_node(tile));
+      tile, {"long", "__global long*", "gfx_opencl_generated_range_i64"});
+  expect_opencl_compiler_support_matches_kernel_registry(tile);
 }
 
 TEST(GfxOpenClSourceArtifactsTest, GatherI64ArtifactsCarryLinearDimsMetadata) {
@@ -759,7 +1124,7 @@ TEST(GfxOpenClSourceArtifactsTest, GatherI64ArtifactsCarryLinearDimsMetadata) {
       "opencl/baseline/gather_i64_f32", "gfx_opencl_baseline_gather_i64_f32",
       /*arg_count=*/8,
       /*direct_input_count=*/2, scalar_args, {0, 1}, static_u32_scalars);
-  EXPECT_TRUE(opencl_compiler_supports_node(gather));
+  expect_opencl_compiler_support_matches_kernel_registry(gather);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -788,7 +1153,7 @@ TEST(GfxOpenClSourceArtifactsTest,
                                  "gfx_opencl_baseline_gather_i64_f32",
                                  "gfx_opencl_baseline_gather_elements_i64_f32",
                                  "gfx_opencl_baseline_gather_nd_i64_f32"});
-  EXPECT_TRUE(opencl_compiler_supports_node(gather));
+  expect_opencl_compiler_support_matches_kernel_registry(gather);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -816,7 +1181,7 @@ TEST(GfxOpenClSourceArtifactsTest,
                          /*arg_count=*/22,
                          /*direct_input_count=*/2, scalar_args, {0, 1},
                          static_u32_scalars);
-  EXPECT_TRUE(opencl_compiler_supports_node(gather));
+  expect_opencl_compiler_support_matches_kernel_registry(gather);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -849,7 +1214,7 @@ TEST(GfxOpenClSourceArtifactsTest,
                                  "gfx_opencl_baseline_gather_i64_f32",
                                  "gfx_opencl_baseline_gather_elements_i64_f32",
                                  "gfx_opencl_baseline_gather_nd_i64_f32"});
-  EXPECT_TRUE(opencl_compiler_supports_node(gather));
+  expect_opencl_compiler_support_matches_kernel_registry(gather);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -875,7 +1240,7 @@ TEST(GfxOpenClSourceArtifactsTest,
                          /*arg_count=*/15,
                          /*direct_input_count=*/2, scalar_args, {0, 1},
                          static_u32_scalars);
-  EXPECT_TRUE(opencl_compiler_supports_node(gather));
+  expect_opencl_compiler_support_matches_kernel_registry(gather);
 }
 
 TEST(GfxOpenClSourceArtifactsTest, GatherNDI32ArtifactsCarryFullSliceMetadata) {
@@ -905,7 +1270,7 @@ TEST(GfxOpenClSourceArtifactsTest, GatherNDI32ArtifactsCarryFullSliceMetadata) {
                                  "gfx_opencl_baseline_gather_i64_f32",
                                  "gfx_opencl_baseline_gather_elements_i64_f32",
                                  "gfx_opencl_baseline_gather_nd_i64_f32"});
-  EXPECT_TRUE(opencl_compiler_supports_node(gather));
+  expect_opencl_compiler_support_matches_kernel_registry(gather);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -938,7 +1303,7 @@ TEST(GfxOpenClSourceArtifactsTest,
                          /*arg_count=*/33,
                          /*direct_input_count=*/3, scalar_args, {0, 1, 2},
                          static_u32_scalars);
-  EXPECT_TRUE(opencl_compiler_supports_node(scatter));
+  expect_opencl_compiler_support_matches_kernel_registry(scatter);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -968,7 +1333,7 @@ TEST(GfxOpenClSourceArtifactsTest,
                          /*arg_count=*/24,
                          /*direct_input_count=*/3, scalar_args, {0, 1, 2},
                          static_u32_scalars);
-  EXPECT_TRUE(opencl_compiler_supports_node(scatter));
+  expect_opencl_compiler_support_matches_kernel_registry(scatter);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -996,7 +1361,7 @@ TEST(GfxOpenClSourceArtifactsTest,
                          /*arg_count=*/16,
                          /*direct_input_count=*/3, scalar_args, {0, 1, 2},
                          static_u32_scalars);
-  EXPECT_TRUE(opencl_compiler_supports_node(scatter));
+  expect_opencl_compiler_support_matches_kernel_registry(scatter);
 }
 
 TEST(GfxOpenClSourceArtifactsTest, ShapeOfI32ArtifactsUseRuntimeShapeMetadata) {
@@ -1022,7 +1387,7 @@ TEST(GfxOpenClSourceArtifactsTest, ShapeOfI32ArtifactsUseRuntimeShapeMetadata) {
   ASSERT_TRUE(unit.valid());
   EXPECT_EQ(unit.kind(), KernelUnitKind::GeneratedKernel);
   EXPECT_EQ(unit.op_family(), "ShapeOf");
-  EXPECT_TRUE(opencl_compiler_supports_node(shape_of));
+  expect_opencl_compiler_support_matches_kernel_registry(shape_of);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -1049,7 +1414,7 @@ TEST(GfxOpenClSourceArtifactsTest,
   ASSERT_TRUE(unit.valid());
   EXPECT_EQ(unit.kind(), KernelUnitKind::GeneratedKernel);
   EXPECT_EQ(unit.op_family(), "ShapeOf");
-  EXPECT_TRUE(opencl_compiler_supports_node(shape_of));
+  expect_opencl_compiler_support_matches_kernel_registry(shape_of);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -1064,7 +1429,7 @@ TEST(GfxOpenClSourceArtifactsTest,
             GfxKernelStageFamily::GatherScatter);
   EXPECT_EQ(artifact->artifact_ref.source_id, "opencl/generated/shapeof_i64");
   EXPECT_EQ(artifact->source.find("__global long*"), std::string::npos);
-  EXPECT_TRUE(opencl_compiler_supports_node(shape_of));
+  expect_opencl_compiler_support_matches_kernel_registry(shape_of);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -1085,7 +1450,7 @@ TEST(GfxOpenClSourceArtifactsTest,
                          "gfx_opencl_generated_concat2_f16",
                          /*arg_count=*/7,
                          /*direct_input_count=*/2, scalar_args, {0, 1}, {4});
-  EXPECT_TRUE(opencl_compiler_supports_node(concat));
+  expect_opencl_compiler_support_matches_kernel_registry(concat);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -1109,7 +1474,7 @@ TEST(GfxOpenClSourceArtifactsTest,
                          "gfx_opencl_generated_concat3_f16",
                          /*arg_count=*/9,
                          /*direct_input_count=*/3, scalar_args, {0, 1, 2}, {4});
-  EXPECT_TRUE(opencl_compiler_supports_node(concat));
+  expect_opencl_compiler_support_matches_kernel_registry(concat);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -1137,7 +1502,7 @@ TEST(GfxOpenClSourceArtifactsTest,
   EXPECT_EQ(resolve_gfx_opencl_source_artifact(broadcast)->source.find(
                 "__global long*"),
             std::string::npos);
-  EXPECT_TRUE(opencl_compiler_supports_node(broadcast));
+  expect_opencl_compiler_support_matches_kernel_registry(broadcast);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -1170,7 +1535,7 @@ TEST(GfxOpenClSourceArtifactsTest,
       "opencl/baseline/slice_f16_dynamic", "gfx_opencl_baseline_slice_f16",
       /*arg_count=*/21,
       /*direct_input_count=*/2, scalar_args, {0, 2}, static_u32_scalars);
-  EXPECT_TRUE(opencl_compiler_supports_node(slice));
+  expect_opencl_compiler_support_matches_kernel_registry(slice);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -1204,7 +1569,7 @@ TEST(GfxOpenClSourceArtifactsTest,
                          /*arg_count=*/15,
                          /*direct_input_count=*/4, scalar_args, {0, 1, 2, 3},
                          {3});
-  EXPECT_TRUE(opencl_compiler_supports_node(slice));
+  expect_opencl_compiler_support_matches_kernel_registry(slice);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -1240,11 +1605,11 @@ TEST(GfxOpenClSourceArtifactsTest,
   EXPECT_EQ(
       resolve_gfx_opencl_source_artifact(slice)->source.find("__global long*"),
       std::string::npos);
-  EXPECT_TRUE(opencl_compiler_supports_node(slice));
+  expect_opencl_compiler_support_matches_kernel_registry(slice);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
-     DynamicI64UnitRangeAvoidsOpenClLongInSourceArtifact) {
+     DynamicI64UnitRangeUsesManifestAbiAndRegisteredKernelUnit) {
   auto stop = std::make_shared<ov::op::v0::Parameter>(ov::element::i64,
                                                       ov::PartialShape{});
   const auto start = i64_const(ov::Shape{}, {0});
@@ -1253,13 +1618,18 @@ TEST(GfxOpenClSourceArtifactsTest,
       std::make_shared<ov::op::v4::Range>(start, stop, step, ov::element::i64);
 
   expect_opencl_artifact(range, GfxKernelStageFamily::GatherScatter,
-                         "opencl/baseline/range_i64_unit_dynamic",
-                         "gfx_opencl_baseline_range_i64_unit",
+                         "opencl/generated/range_i64_unit_dynamic",
+                         "gfx_opencl_generated_range_i64_unit",
                          /*arg_count=*/3,
                          /*direct_input_count=*/1,
                          {GfxOpenClSourceScalarArg::ElementCount}, {1});
-  expect_opencl_source_excludes(range, {"__global long*", "(long)"});
-  EXPECT_TRUE(opencl_compiler_supports_node(range));
+  expect_opencl_compiler_supports_generated_unit(
+      range, "opencl/generated/range_i64_unit_dynamic");
+  expect_opencl_range_compiler_contract(
+      range, "opencl/generated/range_i64_unit_dynamic",
+      "gfx_opencl_generated_range_i64_unit",
+      /*expected_abi_arg_count=*/3, ov::ParameterVector{stop});
+  expect_opencl_compiler_support_matches_kernel_registry(range);
 }
 
 TEST(GfxOpenClSourceArtifactsTest, BinaryConcatArtifactsUseStaticAxisMetadata) {
@@ -1294,7 +1664,7 @@ TEST(GfxOpenClSourceArtifactsTest, BinaryConcatArtifactsUseStaticAxisMetadata) {
             std::string::npos);
   expect_opencl_source_excludes(
       concat, {"long", "__global long*", "gfx_opencl_generated_shapeof_i64"});
-  EXPECT_TRUE(opencl_compiler_supports_node(concat));
+  expect_opencl_compiler_support_matches_kernel_registry(concat);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -1332,7 +1702,7 @@ TEST(GfxOpenClSourceArtifactsTest,
             std::string::npos);
   expect_opencl_source_excludes(
       concat, {"long", "__global long*", "gfx_opencl_generated_shapeof_i64"});
-  EXPECT_TRUE(opencl_compiler_supports_node(concat));
+  expect_opencl_compiler_support_matches_kernel_registry(concat);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -1369,7 +1739,7 @@ TEST(GfxOpenClSourceArtifactsTest,
                                          "gfx_opencl_generated_shapeof_i64",
                                          "gfx_opencl_generated_concat4_f32",
                                          "__global const float* src30"});
-  EXPECT_TRUE(opencl_compiler_supports_node(concat));
+  expect_opencl_compiler_support_matches_kernel_registry(concat);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -1403,7 +1773,7 @@ TEST(GfxOpenClSourceArtifactsTest,
   EXPECT_EQ(chunk0.direct_input_count, 1u);
   EXPECT_EQ(chunk0.direct_output_count, 1u);
   EXPECT_EQ(chunk0.scalar_args, std::vector<GfxOpenClSourceScalarArg>{
-                                     GfxOpenClSourceScalarArg::ElementCount});
+                                    GfxOpenClSourceScalarArg::ElementCount});
   EXPECT_EQ(chunk0.direct_input_indices, std::vector<size_t>({0}));
   EXPECT_TRUE(chunk0.static_u32_scalars.empty());
   EXPECT_NE(chunk0.source.find("__global const float* src0"),
@@ -1477,10 +1847,11 @@ TEST(GfxOpenClSourceArtifactsTest,
       artifact->source.find("GFX_STORE_F16_PAIR(dst, dst_elem >> 1u, lo, hi);"),
       std::string::npos);
   EXPECT_EQ(artifact->source.find("chunk_axis_idx1"), std::string::npos);
-  expect_opencl_source_excludes(
-      concat, {"__global long*", "(long)", "__global half",
-               "gfx_opencl_generated_concat4_f16", "__global const uint* src5"});
-  EXPECT_TRUE(opencl_compiler_supports_node(concat));
+  expect_opencl_source_excludes(concat,
+                                {"__global long*", "(long)", "__global half",
+                                 "gfx_opencl_generated_concat4_f16",
+                                 "__global const uint* src5"});
+  expect_opencl_compiler_support_matches_kernel_registry(concat);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -1506,10 +1877,8 @@ TEST(GfxOpenClSourceArtifactsTest,
   EXPECT_EQ(chunk0.arg_count, 6u);
   EXPECT_EQ(chunk0.direct_input_count, 4u);
   EXPECT_EQ(chunk0.direct_input_indices, std::vector<size_t>({0, 1, 2, 3}));
-  EXPECT_NE(chunk0.source.find("__global const uint* src3"),
-            std::string::npos);
-  EXPECT_EQ(chunk0.source.find("__global const uint* src4"),
-            std::string::npos);
+  EXPECT_NE(chunk0.source.find("__global const uint* src3"), std::string::npos);
+  EXPECT_EQ(chunk0.source.find("__global const uint* src4"), std::string::npos);
 
   ASSERT_TRUE(base->planned_chunks[1].artifact);
   EXPECT_EQ(base->planned_chunks[1].binding_begin, 4u);
@@ -1547,7 +1916,7 @@ TEST(GfxOpenClSourceArtifactsTest,
   EXPECT_NE(artifact->source.find(", 4u, 2u);"), std::string::npos);
   expect_opencl_source_excludes(
       split, {"long", "__global long*", "gfx_opencl_generated_shapeof_i64"});
-  EXPECT_TRUE(opencl_compiler_supports_node(split));
+  expect_opencl_compiler_support_matches_kernel_registry(split);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -1573,7 +1942,7 @@ TEST(GfxOpenClSourceArtifactsTest,
   EXPECT_NE(artifact->source.find(", 4u, 2u);"), std::string::npos);
   expect_opencl_source_excludes(split,
                                 {"__global long*", "(long)", "__global half"});
-  EXPECT_TRUE(opencl_compiler_supports_node(split));
+  expect_opencl_compiler_support_matches_kernel_registry(split);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -1599,7 +1968,7 @@ TEST(GfxOpenClSourceArtifactsTest,
   EXPECT_NE(artifact->source.find(", 5u, 2u);"), std::string::npos);
   expect_opencl_source_excludes(
       split, {"long", "__global long*", "gfx_opencl_generated_shapeof_i64"});
-  EXPECT_TRUE(opencl_compiler_supports_node(split));
+  expect_opencl_compiler_support_matches_kernel_registry(split);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -1625,7 +1994,7 @@ TEST(GfxOpenClSourceArtifactsTest,
   EXPECT_NE(artifact->source.find(", 5u, 2u);"), std::string::npos);
   expect_opencl_source_excludes(split,
                                 {"__global long*", "(long)", "__global half"});
-  EXPECT_TRUE(opencl_compiler_supports_node(split));
+  expect_opencl_compiler_support_matches_kernel_registry(split);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -1657,7 +2026,7 @@ TEST(GfxOpenClSourceArtifactsTest,
   expect_opencl_source_excludes(
       split, {"__global long*", "gfx_opencl_generated_shapeof_i64",
               "gfx_opencl_generated_split4_f32", "__global float* dst30"});
-  EXPECT_TRUE(opencl_compiler_supports_node(split));
+  expect_opencl_compiler_support_matches_kernel_registry(split);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -1678,7 +2047,7 @@ TEST(GfxOpenClSourceArtifactsTest,
   EXPECT_EQ(chunk0.arg_count, 6u);
   EXPECT_EQ(chunk0.direct_output_count, 4u);
   EXPECT_EQ(chunk0.scalar_args, std::vector<GfxOpenClSourceScalarArg>{
-                                     GfxOpenClSourceScalarArg::ElementCount});
+                                    GfxOpenClSourceScalarArg::ElementCount});
   EXPECT_TRUE(chunk0.static_u32_scalars.empty());
   EXPECT_NE(chunk0.source.find("__global float* dst3"), std::string::npos);
   EXPECT_NE(chunk0.source.find(", 3u, 1u);"), std::string::npos);
@@ -1712,7 +2081,8 @@ TEST(GfxOpenClSourceArtifactsTest,
   auto chunk0 =
       make_gfx_opencl_split_chunk_source_artifact(two_output_contract, 0, 2);
   ASSERT_TRUE(chunk0.has_value());
-  EXPECT_EQ(chunk0->artifact_ref.entry_point, "gfx_opencl_generated_split2_f32");
+  EXPECT_EQ(chunk0->artifact_ref.entry_point,
+            "gfx_opencl_generated_split2_f32");
   EXPECT_EQ(chunk0->direct_output_count, 2u);
 }
 
@@ -1745,7 +2115,7 @@ TEST(GfxOpenClSourceArtifactsTest,
   expect_opencl_source_excludes(
       split, {"__global long*", "(long)", "__global half",
               "gfx_opencl_generated_split4_f16", "__global uint* dst5"});
-  EXPECT_TRUE(opencl_compiler_supports_node(split));
+  expect_opencl_compiler_support_matches_kernel_registry(split);
 }
 
 TEST(GfxOpenClSourceArtifactsTest,

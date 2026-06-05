@@ -104,8 +104,11 @@ Build-system notes:
 - `src/runtime/pipeline_stage_desc.hpp` owns the pipeline descriptor record
   shared by compiled model, infer planning, and stateful helpers.
 - `src/runtime/pipeline_stage_materializer.*` owns runtime descriptor lookup,
-  descriptor-backed backend stage creation, vendor attention artifact
-  materialization, and fused attention sequence materialization.
+  descriptor-backed backend stage creation, vendor primitive artifact
+  materialization, and fused sequence materialization.
+- `src/runtime/stage_materialization_context.hpp` is the runtime handoff object
+  for compiler-owned `RuntimeStageExecutableDescriptor` records and source-node
+  identity.
 - `src/runtime/output_lifetime.hpp` and
   `src/runtime/fused_output_lifetime_plan.*` own fused-stage output lifetime and
   alias-storage planning from runtime memory descriptors.
@@ -133,11 +136,11 @@ Build-system notes:
   `TBBROOT`, or `TBB_DIR` into `GFX_RASPBERRY_OPENCL_BUNDLE_DIR`.
 - `cmake/WriteGfxTestPluginsXml.cmake` writes the controlled test
   `plugins.xml` used by GFX test binaries.
-- `tests/tools/gfx_gtest_source_contract.py` is executed at configure time to
-  keep native backend tests and backend-unavailable adapter tests in source
-  parity for the covered groups.
 - `tests/tools/gfx_gtest_matrix.py` can capture `--gtest_list_tests` from the
   production test binaries and reject duplicate or disabled registrations.
+  Architecture readiness must not be proven through source/file/string-presence
+  checks; use executed contract coverage, route coverage, backend conformance
+  tests, and profiling evidence.
 - Android and generic cross builds forward toolchain settings into the vendored
   LLVM/MLIR configure step.
 - The build treats warnings as errors through `-Werror` on Clang/GCC and `/WX`
@@ -232,6 +235,8 @@ For Metal placement, MPSRT, or MSL source planning, also inspect:
 - `src/backends/metal/common/mpsrt/gfx_mpsrt_plan.hpp`
 - `src/backends/metal/common/mpsrt/gfx_mpsrt_program.hpp`
 - `src/backends/metal/common/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp`
+- `src/backends/metal/common/mpsrt/gfx_mpsrt_vendor_contract.hpp`
+- `src/backends/metal/common/mpsrt/gfx_mpsrt_vendor_artifact_payload.hpp`
 - `src/backends/metal/runtime/metal_runtime_kernel_loader.*`
 - `src/backends/metal/runtime/mpsrt_vendor_primitive_stage.*`
 - `src/backends/metal/runtime/mpsrt/gfx_mpsrt_model.*`
@@ -244,6 +249,9 @@ For OpenCL source execution, start with:
 - `src/backends/opencl/compiler/`
 - `src/backends/opencl/compiler/opencl_stage_placement.*`
 - `src/backends/opencl/compiler/opencl_kernel_artifacts.*`
+- `src/backends/opencl/compiler/opencl_range_kernel_unit.*`
+- `src/backends/opencl/compiler/opencl_softmax_kernel_unit.*`
+- `src/backends/opencl/compiler/opencl_tile_kernel_unit.*`
 - `src/backends/opencl/plugin/`
 - `src/backends/opencl/runtime/opencl_api.*`
 - `src/backends/opencl/runtime/opencl_runtime_bundle.*`
@@ -326,9 +334,9 @@ Common operation families that need extra care:
   `src/backends/opencl/compiler/opencl_kernel_artifacts.*`
 - OpenCL generated kernel units such as activation, elementwise, f32 MatMul,
   bounded f32/f16 Interpolate, f32 reduction, boolean reduction, f32/f16
-  Softmax, dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D, ShapeOf, Tile,
-  Transpose, compare/select, logical-bool elementwise, and generated
-  Concat/Split
+  Softmax, dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D, f32/f16/i64
+  Range, ShapeOf, Tile, Transpose, compare/select, logical-bool elementwise, and
+  generated Concat/Split
 - OpenCL reduction routes, where numeric f32 reductions and logical boolean
   reductions use separate generated source ids but the same static axis
   metadata contract
@@ -482,7 +490,8 @@ reintroducing large inline MSL strings in request encoders.
 Compiler-owned Metal payloads now include both generated MSL sources and
 MPS/MPSGraph `VendorDescriptor` payloads. When adding a vendor primitive route,
 update the Metal operation policy, `metal_kernel_artifacts.*`, the typed vendor
-descriptor helpers in `src/backends/metal/compiler/apple_vendor_descriptors.*`, and
+descriptor helpers in `src/backends/metal/compiler/apple_vendor_descriptors.*`,
+the shared contract/payload headers in `src/backends/metal/common/mpsrt/`, and
 `mpsrt_vendor_primitive_stage.*` only if the existing runtime contract cannot
 express the new primitive. Do not rebuild vendor descriptors from request-time
 node checks.
@@ -558,12 +567,12 @@ For OpenCL runtime loader or plugin-local bundle changes, include
 `tests/unit/gfx_opencl_runtime_bundle_contract_test.cpp` when OpenCL is enabled
 or the matching `*_unavailable_test.cpp` adapter when it is not.
 
-Use `tests/tools/gfx_gtest_source_contract.py` when native backend test sources
-must stay mirrored by unavailable-adapter sources. Use
-`tests/tools/gfx_gtest_matrix.py` to capture or compare
+Use `tests/tools/gfx_gtest_matrix.py` to capture or compare
 `--gtest_list_tests` output across production test targets. It detects
 duplicates, forbidden `DISABLED_` registrations, and matrix drift; it does not
-skip or filter tests.
+skip or filter tests. Native backend and unavailable-adapter coverage must be
+kept aligned through executable test registration, contract coverage, and route
+coverage rather than source parsing.
 
 ## Public Repository Hygiene
 

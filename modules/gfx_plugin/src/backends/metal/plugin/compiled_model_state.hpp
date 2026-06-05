@@ -13,6 +13,7 @@ namespace ov {
 namespace gfx_plugin {
 
 struct MetalBackendState final : BackendState {
+    compiler::BackendTarget runtime_target;
     MetalDeviceHandle device = nullptr;
     MetalCommandQueueHandle command_queue = nullptr;
     MetalDeviceCaps caps{};
@@ -26,7 +27,8 @@ struct MetalBackendState final : BackendState {
     MetalMemoryStats dummy_stats{};
     mutable MetalMemoryStats last_stats{};
 
-    GpuBackend backend() const override { return GpuBackend::Metal; }
+    const compiler::BackendTarget& target() const override { return runtime_target; }
+    GpuBackend backend() const override { return runtime_target.backend(); }
     BackendResources resources() const override {
         return {device, command_queue, const_manager.get()};
     }
@@ -40,9 +42,8 @@ struct MetalBackendState final : BackendState {
     }
     void init_infer_state(BackendRequestState& state) const override;
     std::unique_ptr<GpuStage> create_stage(
-        const std::shared_ptr<const ov::Node>& node,
-        const RuntimeStageExecutableDescriptor* descriptor) const override {
-        return create_metal_stage(node, descriptor, device, command_queue);
+        const RuntimeStageMaterializationContext& context) const override {
+        return create_metal_stage(context, device, command_queue);
     }
     ov::SoPtr<ov::ITensor> get_tensor_override(
         const BackendRequestState& state,

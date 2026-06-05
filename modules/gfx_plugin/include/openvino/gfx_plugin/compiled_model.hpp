@@ -12,6 +12,7 @@
 #include "openvino/runtime/icompiled_model.hpp"
 
 #include "common/gpu_backend.hpp"
+#include "compiler/backend_target.hpp"
 #include "openvino/gfx_plugin/profiling.hpp"
 #include "runtime/gfx_precision.hpp"
 #include "runtime/pipeline_stage_desc.hpp"
@@ -37,6 +38,8 @@ public:
       const std::shared_ptr<const ov::Model> &model,
       const std::shared_ptr<const ov::IPlugin> &plugin,
       const compiler::ExecutableBundle &executable,
+      std::shared_ptr<const RuntimeExecutableDescriptor> runtime_descriptor,
+      const compiler::BackendTarget &target,
       const std::shared_ptr<const ov::Model> &original_model = nullptr,
       const ov::AnyMap &properties = {},
       const ov::SoPtr<ov::IRemoteContext> &context = {});
@@ -53,6 +56,7 @@ public:
   ov::element::Type get_inference_precision() const {
     return m_inference_precision;
   }
+  const compiler::BackendTarget &target() const { return m_target; }
   GpuBackend backend() const { return m_backend; }
   const std::string &backend_name() const { return m_backend_name; }
   BackendState *backend_state() { return m_backend_state.get(); }
@@ -89,8 +93,9 @@ private:
   std::shared_ptr<const ov::Model> m_runtime_model;
   std::shared_ptr<const ov::Model> m_original_model;
   ov::AnyMap m_config;
-  GpuBackend m_backend = GpuBackend::Metal;
-  std::string m_backend_name{"metal"};
+  compiler::BackendTarget m_target;
+  GpuBackend m_backend = GpuBackend::Unknown;
+  std::string m_backend_name;
   ov::element::Type m_inference_precision{gfx_default_inference_precision()};
   bool m_enable_profiling = false;
   ProfilingLevel m_profiling_level = ProfilingLevel::Standard;

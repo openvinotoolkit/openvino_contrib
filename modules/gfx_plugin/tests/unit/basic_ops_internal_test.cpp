@@ -118,14 +118,14 @@ test_stage_compiler_policy(ov::gfx_plugin::GpuBackend backend) {
   }
   if (ov::gfx_plugin::backend_known(backend)) {
     ov::gfx_plugin::compiler::BackendExecutionCapabilities execution;
-    execution.source_kernel_dispatch_enabled =
+    execution.custom_kernel_dispatch_enabled =
         backend == ov::gfx_plugin::GpuBackend::OpenCL;
-    execution.fallback_parallelism =
+    execution.custom_kernel_dispatch_profile =
         backend == ov::gfx_plugin::GpuBackend::Metal
             ? ov::gfx_plugin::make_metal_parallelism_profile("metal:test")
             : ov::gfx_plugin::make_opencl_parallelism_profile("opencl:test");
-    policy.source_kernel_dispatch =
-        ov::gfx_plugin::compiler::make_stage_source_kernel_dispatch_policy(
+    policy.custom_kernel_dispatch =
+        ov::gfx_plugin::compiler::make_stage_custom_kernel_dispatch_policy(
             execution);
   }
   return policy;
@@ -3315,7 +3315,7 @@ TEST(GfxMlir,
             8u);
 }
 
-TEST(GfxMlir, OpenClMetadataReaderIgnoresAppleMslStageManifest) {
+TEST(GfxMlir, OpenClMetadataReaderRejectsAppleMslStageManifestAsFallbackAbi) {
   mlir::MLIRContext ctx;
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
@@ -3344,8 +3344,7 @@ TEST(GfxMlir, OpenClMetadataReaderIgnoresAppleMslStageManifest) {
       /*output_arg_count=*/1,
       /*fallback_input_arg_count=*/2, "eltwise_fused_buffer",
       ov::gfx_plugin::GfxKernelBackendDomain::OpenCl);
-  ASSERT_TRUE(metadata.valid);
-  EXPECT_EQ(metadata.kernel_input_arg_count, 2u);
+  ASSERT_FALSE(metadata.valid);
   EXPECT_TRUE(metadata.operands.operand_kinds.empty());
   EXPECT_TRUE(metadata.operands.operand_arg_indices.empty());
 }
@@ -5085,14 +5084,20 @@ TEST(GfxMlir, AppleMslStructuralArgCountsComeFromStageManifest) {
   }
 }
 
-TEST(GfxMlir, BackendManifestArgCountRejectsMissingManifestAbi) {
+TEST(GfxMlir, BackendCustomKernelArgCountRejectsMissingManifestAbi) {
   mlir::MLIRContext ctx;
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
-  EXPECT_THROW(
-      (void)ov::gfx_plugin::require_backend_manifest_arg_count(
-          module, ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl,
-          "missing_kernel", "MissingManifest"),
-      ov::Exception);
+  const std::vector<ov::gfx_plugin::GfxKernelBackendDomain> domains = {
+      ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl,
+      ov::gfx_plugin::GfxKernelBackendDomain::OpenCl};
+  for (const auto domain : domains) {
+    EXPECT_THROW((void)ov::gfx_plugin::require_backend_manifest_arg_count(
+                     module, domain, "missing_kernel", "MissingManifest"),
+                 ov::Exception);
+    EXPECT_THROW((void)ov::gfx_plugin::infer_backend_custom_kernel_arg_count(
+                     module, domain, /*fallback=*/7, "missing_kernel"),
+                 ov::Exception);
+  }
 }
 
 TEST(GfxMlir, MslKernelSourceSignatureCanBeConfiguredFromModuleManifest) {

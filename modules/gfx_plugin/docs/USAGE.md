@@ -102,7 +102,9 @@ There is no partial CPU fallback for unsupported stages.
 Internally the selected backend is compiled through an in-memory compiler
 service that builds a lowering plan, manifest, executable bundle, and runtime
 descriptor. That descriptor is not a public cache format and is not exported by
-`export_model()`.
+`export_model()`. `export_model()` and `import_model()` are currently not
+implemented until the cache envelope has a persisted
+`CacheEnvelope`/`ExecutableBundle` format.
 
 The compiler registry contains the production backend compiler modules available
 in the configured build, while runtime state creation is checked through the
@@ -187,8 +189,9 @@ the artifact contracts.
 
 Generated activation, elementwise, f32 MatMul, f32/f16 Interpolate, f32
 reduction, boolean reduction, f32/f16 Softmax, dynamic-static-rank f32/f16
-Softmax, f32/f16 Pool2D, ShapeOf, Tile, Transpose, logical-bool elementwise,
-compare/select, and Concat/Split helper sources are embedded under
+Softmax, f32/f16 Pool2D, f32/f16/i64 Range, ShapeOf, Tile, Transpose,
+logical-bool elementwise, compare/select, and Concat/Split helper sources are
+embedded under
 `src/kernel_ir/opencl_kernels/`. The current Transpose route is
 `opencl/generated/transpose_f32`; there is no active handwritten OpenCL
 kernel-unit exception in the current registry. Interpolate is limited to f32/f16

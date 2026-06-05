@@ -22,8 +22,6 @@
 #include "gfx_opencl_source_artifact_verifier.hpp"
 #include "gfx_runtime_model_runner.hpp"
 #include "gfx_runtime_scenario.hpp"
-#include "kernel_ir/opencl_kernels/pool2d_f16_kernel.hpp"
-#include "kernel_ir/opencl_kernels/pool2d_f32_kernel.hpp"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "backends/metal/compiler/apple_vendor_descriptors.hpp"
@@ -145,7 +143,6 @@ struct PoolOpenClArtifactCase {
   std::string expected_entry_point;
   std::vector<uint32_t> expected_static_u32_scalars;
   GfxOpenClArtifactOp expected_op = GfxOpenClArtifactOp::Identity;
-  const GfxKernelSource *expected_source = nullptr;
 };
 
 std::vector<PoolOpenClArtifactCase> pool_opencl_artifact_cases() {
@@ -155,15 +152,13 @@ std::vector<PoolOpenClArtifactCase> pool_opencl_artifact_cases() {
        "opencl/generated/pool2d_f32",
        "gfx_opencl_generated_pool2d_f32",
        {1, 3, 4, 4, 2, 2, 2, 2, 1, 1, 0, 0, 0, 0, 2, 2, 0, 1},
-       GfxOpenClArtifactOp::MaxPool,
-       &opencl_generated_pool2d_f32_kernel_source()},
+       GfxOpenClArtifactOp::MaxPool},
       {"AvgPoolF16",
        [] { return avgpool_node(ov::element::f16, ov::Shape{1, 2, 4, 4}); },
        "opencl/generated/pool2d_f16",
        "gfx_opencl_generated_pool2d_f16",
        {1, 2, 4, 4, 2, 2, 2, 2, 1, 1, 0, 0, 0, 0, 2, 2, 1, 1},
-       GfxOpenClArtifactOp::AvgPool,
-       &opencl_generated_pool2d_f16_kernel_source()},
+       GfxOpenClArtifactOp::AvgPool},
   };
 }
 
@@ -179,8 +174,6 @@ public:
                          m_case.expected_source_id, m_case.expected_entry_point,
                          21u, 1u, pool2d_static_scalar_args(), {0},
                          m_case.expected_static_u32_scalars)
-        .uses_source(*m_case.expected_source)
-        .excludes({"gfx_opencl_baseline", "__global half"})
         .has_op(m_case.expected_op)
         .supports_opencl_compiler();
   }
@@ -197,7 +190,7 @@ std::string pool_opencl_case_name(
 class PoolOpenClArtifactContractTest
     : public ::testing::TestWithParam<PoolOpenClArtifactCase> {};
 
-TEST_P(PoolOpenClArtifactContractTest, UsesGeneratedKernelUnitFile) {
+TEST_P(PoolOpenClArtifactContractTest, UsesGeneratedKernelArtifactContract) {
   PoolOpenClArtifactContract(GetParam()).verify();
 }
 

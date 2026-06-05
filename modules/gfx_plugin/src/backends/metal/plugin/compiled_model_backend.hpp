@@ -16,9 +16,10 @@
 namespace ov {
 namespace gfx_plugin {
 
-std::unique_ptr<MetalBackendState> create_metal_backend_state(const ov::AnyMap& properties,
+std::unique_ptr<MetalBackendState> create_metal_backend_state(const compiler::BackendTarget& target,
+                                                              const ov::AnyMap& properties,
                                                               const ov::SoPtr<ov::IRemoteContext>& context);
-void register_metal_profiling_trace_sinks();
+void register_metal_profiling_trace_sinks(const compiler::BackendTarget& target);
 
 }  // namespace gfx_plugin
 }  // namespace ov

@@ -77,7 +77,6 @@ set(GFX_PLUGIN_SOURCES
     ${_gfx_src_dir}/plugin/infer_request_common.cpp
     ${_gfx_src_dir}/plugin/infer_request_variable_state.cpp
     ${_gfx_src_dir}/plugin/infer_io_utils.cpp
-    ${_gfx_src_dir}/plugin/model_serialization.cpp
     ${_gfx_src_dir}/plugin/plugin.cpp
     ${_gfx_src_dir}/plugin/remote_context_support.cpp
     ${_gfx_src_dir}/runtime/backend_runtime_provider.cpp
@@ -101,7 +100,7 @@ set(GFX_PLUGIN_HEADERS
     ${_gfx_src_dir}/plugin/infer_request_backend_access.hpp
     ${_gfx_src_dir}/plugin/infer_request_state.hpp
     ${_gfx_src_dir}/plugin/infer_request_variable_state.hpp
-    ${_gfx_src_dir}/plugin/model_serialization.hpp
+    ${_gfx_src_dir}/plugin/compiled_model_cache_contract.hpp
     ${_gfx_src_dir}/plugin/remote_context_support.hpp
     ${_gfx_src_dir}/transforms/gfx_layout_cleanup.hpp
     ${_gfx_src_dir}/transforms/gfx_llm_ops.hpp
@@ -151,6 +150,9 @@ set(GFX_OPENCL_BACKEND_COMPILER_HEADERS
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_backend_module.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_artifacts.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_operation_support.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_range_kernel_unit.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_softmax_kernel_unit.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_tile_kernel_unit.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_stage_placement.hpp
 )
 
@@ -159,6 +161,9 @@ set(GFX_OPENCL_BACKEND_COMPILER_SOURCES
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_artifacts.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_registry.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_operation_support.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_range_kernel_unit.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_softmax_kernel_unit.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_tile_kernel_unit.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_stage_placement.cpp
 )
 
@@ -274,6 +279,7 @@ set(GFX_OPENCL_KERNEL_ARTIFACT_HEADERS
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f32_dynamic_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_dynamic_kernel.cl
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_dynamic_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_f32_kernel.cl
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_f32_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_f16_kernel.cl
@@ -286,6 +292,11 @@ set(GFX_OPENCL_KERNEL_ARTIFACT_HEADERS
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/matmul_f32_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/shapeof_kernel.cl
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/shapeof_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/range_f32_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/range_f16_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/range_i64_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/range_i64_unit_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/range_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/tile_kernel.cl
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/tile_kernel.hpp
 )
@@ -302,12 +313,14 @@ set(GFX_OPENCL_KERNEL_ARTIFACT_SOURCES
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f32_dynamic_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_dynamic_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_f32_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_f16_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f32_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f16_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/matmul_f32_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/shapeof_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/range_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/tile_kernel.cpp
 )
 
@@ -318,6 +331,8 @@ set(GFX_METAL_MPSRT_CONTRACT_HEADERS
     ${_gfx_src_dir}/backends/metal/common/mpsrt/gfx_mpsrt_plan.hpp
     ${_gfx_src_dir}/backends/metal/common/mpsrt/gfx_mpsrt_program.hpp
     ${_gfx_src_dir}/backends/metal/common/mpsrt/gfx_mpsrt_storage_bridge.hpp
+    ${_gfx_src_dir}/backends/metal/common/mpsrt/gfx_mpsrt_vendor_artifact_payload.hpp
+    ${_gfx_src_dir}/backends/metal/common/mpsrt/gfx_mpsrt_vendor_contract.hpp
     ${_gfx_src_dir}/backends/metal/runtime/mpsrt/gfx_mpsrt_model.hpp
 )
 
@@ -452,7 +467,6 @@ set(GFX_RUNTIME_METAL_SOURCES
     ${_gfx_src_dir}/backends/metal/codegen/metal_codegen_backend.mm
     ${_gfx_src_dir}/backends/metal/runtime/dtype.cpp
     ${_gfx_src_dir}/backends/metal/runtime/metal_memory.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_support.cpp
     ${_gfx_src_dir}/backends/metal/runtime/memory/allocator.mm
     ${_gfx_src_dir}/backends/metal/runtime/memory/allocator_core.mm
     ${_gfx_src_dir}/backends/metal/runtime/memory/const_cache.mm

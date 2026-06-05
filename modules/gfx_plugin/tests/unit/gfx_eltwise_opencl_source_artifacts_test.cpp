@@ -152,12 +152,9 @@ TEST(EltwiseOpenClSourceArtifactsTest,
       .expect_artifact(GfxKernelStageFamily::Eltwise,
                        "opencl/generated/eltwise_binary_f32",
                        "gfx_opencl_generated_eltwise_binary_f32", 5u, 2u)
-      .excludes({"long", "gfx_opencl_baseline_binary_broadcast_f32",
-                 "gfx_opencl_baseline_binary_scalar_f32",
-                 "gfx_opencl_baseline_binary_const_f32",
-                 "gfx_opencl_generated_eltwise_compare_f32",
-                 "gfx_opencl_generated_eltwise_select_f32"})
       .supports_opencl_compiler();
+  expect_generated_opencl_kernel_unit(
+      multiply, "opencl/generated/eltwise_binary_f32", {lhs, rhs});
 }
 
 TEST(EltwiseOpenClSourceArtifactsTest,
@@ -167,6 +164,7 @@ TEST(EltwiseOpenClSourceArtifactsTest,
     std::shared_ptr<ov::Node> node;
     std::string suffix;
     GfxOpenClArtifactOp op;
+    ov::ParameterVector parameters;
   };
 
   const auto f16_lhs = param(ov::element::f16, ov::Shape{2, 3, 4});
@@ -177,37 +175,29 @@ TEST(EltwiseOpenClSourceArtifactsTest,
   const std::vector<Case> cases = {
       {"f16 SquaredDifference",
        std::make_shared<ov::op::v0::SquaredDifference>(f16_lhs, f16_rhs), "f16",
-       GfxOpenClArtifactOp::SquaredDifference},
+       GfxOpenClArtifactOp::SquaredDifference, {f16_lhs, f16_rhs}},
       {"i32 Divide", std::make_shared<ov::op::v1::Divide>(i32_lhs, i32_rhs),
-       "i32", GfxOpenClArtifactOp::Divide},
+       "i32", GfxOpenClArtifactOp::Divide, {i32_lhs, i32_rhs}},
       {"i32 Mod", std::make_shared<ov::op::v1::Mod>(i32_lhs, i32_rhs), "i32",
-       GfxOpenClArtifactOp::Mod},
+       GfxOpenClArtifactOp::Mod, {i32_lhs, i32_rhs}},
       {"i32 FloorMod", std::make_shared<ov::op::v1::FloorMod>(i32_lhs, i32_rhs),
-       "i32", GfxOpenClArtifactOp::FloorMod},
+       "i32", GfxOpenClArtifactOp::FloorMod, {i32_lhs, i32_rhs}},
       {"i32 Power", std::make_shared<ov::op::v1::Power>(i32_lhs, i32_rhs),
-       "i32", GfxOpenClArtifactOp::Power},
+       "i32", GfxOpenClArtifactOp::Power, {i32_lhs, i32_rhs}},
   };
 
   for (const auto &test_case : cases) {
     SCOPED_TRACE(test_case.name);
-    auto verifier =
-        OpenClSourceArtifactVerifier(test_case.node)
-            .expect_artifact(
-                GfxKernelStageFamily::Eltwise,
-                "opencl/generated/eltwise_binary_" + test_case.suffix,
-                "gfx_opencl_generated_eltwise_binary_" + test_case.suffix, 5u,
-                2u)
-            .excludes({"long", "__global const long*",
-                       "gfx_opencl_baseline_binary_f32",
-                       "gfx_opencl_baseline_binary_broadcast_f32",
-                       "gfx_opencl_baseline_binary_scalar_f32",
-                       "gfx_opencl_baseline_binary_const_f32"})
-            .has_op(test_case.op)
-            .supports_opencl_compiler();
-    if (test_case.name == "i32 Power") {
-      verifier.contains_source("gfx_pow_i32_exact")
-          .excludes({"(int)pow((float)lhs, (float)rhs)"});
-    }
+    OpenClSourceArtifactVerifier(test_case.node)
+        .expect_artifact(
+            GfxKernelStageFamily::Eltwise,
+            "opencl/generated/eltwise_binary_" + test_case.suffix,
+            "gfx_opencl_generated_eltwise_binary_" + test_case.suffix, 5u, 2u)
+        .has_op(test_case.op)
+        .supports_opencl_compiler();
+    expect_generated_opencl_kernel_unit(
+        test_case.node, "opencl/generated/eltwise_binary_" + test_case.suffix,
+        test_case.parameters);
   }
 }
 
@@ -225,10 +215,10 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                        "opencl/generated/eltwise_scalar_f16",
                        "gfx_opencl_generated_eltwise_scalar_f16", 6u, 2u,
                        scalar_input_args(), {0, 1})
-      .excludes({"long", "__global const long*",
-                 "gfx_opencl_baseline_binary_const_f32"})
       .has_input_mode(GfxOpenClArtifactInputMode::RhsScalar)
       .supports_opencl_compiler();
+  expect_generated_opencl_kernel_unit(
+      f16_multiply, "opencl/generated/eltwise_scalar_f16", {f16_tensor});
 
   const auto i32_floor_mod =
       std::make_shared<ov::op::v1::FloorMod>(i32_scalar, i32_tensor);
@@ -237,11 +227,11 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                        "opencl/generated/eltwise_scalar_i32",
                        "gfx_opencl_generated_eltwise_scalar_i32", 6u, 2u,
                        scalar_input_args(), {0, 1})
-      .excludes({"long", "__global const long*",
-                 "gfx_opencl_baseline_binary_const_f32"})
       .has_input_mode(GfxOpenClArtifactInputMode::LhsScalar)
       .has_op(GfxOpenClArtifactOp::FloorMod)
       .supports_opencl_compiler();
+  expect_generated_opencl_kernel_unit(
+      i32_floor_mod, "opencl/generated/eltwise_scalar_i32", {i32_tensor});
 }
 
 TEST(EltwiseOpenClSourceArtifactsTest,
@@ -255,10 +245,10 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                        "gfx_opencl_generated_eltwise_broadcast_i32", 18u, 2u,
                        op_and_broadcast_scalar_args(), {0, 1},
                        rhs_31_broadcast_to_234_strides())
-      .excludes({"long", "__global const long*",
-                 "gfx_opencl_baseline_binary_broadcast_f32"})
       .has_op(GfxOpenClArtifactOp::Mod)
       .supports_opencl_compiler();
+  expect_generated_opencl_kernel_unit(
+      i32_mod, "opencl/generated/eltwise_broadcast_i32", {i32_lhs, i32_rhs});
 
   const auto f16_lhs = param(ov::element::f16, ov::Shape{3, 1});
   const auto f16_rhs = param(ov::element::f16, ov::Shape{2, 3, 4});
@@ -269,10 +259,10 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                        "gfx_opencl_generated_eltwise_broadcast_f16", 18u, 2u,
                        op_and_broadcast_scalar_args(), {0, 1},
                        lhs_31_broadcast_to_234_strides())
-      .excludes({"long", "__global const long*",
-                 "gfx_opencl_baseline_binary_broadcast_f32"})
       .has_op(GfxOpenClArtifactOp::Subtract)
       .supports_opencl_compiler();
+  expect_generated_opencl_kernel_unit(
+      f16_sub, "opencl/generated/eltwise_broadcast_f16", {f16_lhs, f16_rhs});
 }
 
 TEST(EltwiseOpenClSourceArtifactsTest,
@@ -295,6 +285,8 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                         GfxOpenClSourceScalarArg::OpCode},
                        {0, 1})
       .supports_opencl_compiler();
+  expect_generated_opencl_kernel_unit(
+      multiply_same_shape, "opencl/generated/eltwise_binary_f32", {tensor});
 
   OpenClSourceArtifactVerifier(multiply_broadcast)
       .expect_artifact(GfxKernelStageFamily::Eltwise,
@@ -303,6 +295,8 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                        op_and_broadcast_scalar_args(), {0, 1},
                        rhs_31_broadcast_to_234_strides())
       .supports_opencl_compiler();
+  expect_generated_opencl_kernel_unit(
+      multiply_broadcast, "opencl/generated/eltwise_broadcast_f32", {tensor});
 }
 
 TEST(EltwiseOpenClSourceArtifactsTest,
@@ -317,10 +311,9 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                        "gfx_opencl_generated_eltwise_broadcast_f32", 18u, 2u,
                        op_and_broadcast_scalar_args(), {0, 1},
                        rhs_31_broadcast_to_234_strides())
-      .excludes({"long", "out_dim[4]", "lhs_stride[4]",
-                 "gfx_opencl_baseline_binary_scalar_f32",
-                 "gfx_opencl_generated_eltwise_select_f32"})
       .supports_opencl_compiler();
+  expect_generated_opencl_kernel_unit(
+      multiply, "opencl/generated/eltwise_broadcast_f32", {lhs, rhs});
 }
 
 TEST(EltwiseOpenClSourceArtifactsTest,
@@ -337,6 +330,8 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                        lhs_31_broadcast_to_234_strides())
       .has_op(GfxOpenClArtifactOp::Subtract)
       .supports_opencl_compiler();
+  expect_generated_opencl_kernel_unit(
+      sub, "opencl/generated/eltwise_broadcast_f32", {lhs, rhs});
 }
 
 TEST(EltwiseOpenClSourceArtifactsTest,
@@ -357,13 +352,10 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                        "opencl/generated/eltwise_scalar_f32",
                        "gfx_opencl_generated_eltwise_scalar_f32", 6u, 2u,
                        scalar_input_args(), {0, 1})
-      .excludes({"long", "gfx_opencl_baseline_binary_f32",
-                 "gfx_opencl_baseline_binary_broadcast_f32",
-                 "gfx_opencl_baseline_binary_const_f32",
-                 "gfx_opencl_generated_eltwise_compare_f32",
-                 "gfx_opencl_generated_eltwise_select_f32"})
       .has_input_mode(GfxOpenClArtifactInputMode::RhsScalar)
       .supports_opencl_compiler();
+  expect_generated_opencl_kernel_unit(
+      rhs_scalar, "opencl/generated/eltwise_scalar_f32", {tensor, scalar});
 
   OpenClSourceArtifactVerifier(lhs_scalar)
       .expect_artifact(GfxKernelStageFamily::Eltwise,
@@ -372,20 +364,19 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                        scalar_input_args(), {0, 1})
       .has_input_mode(GfxOpenClArtifactInputMode::LhsScalar)
       .supports_opencl_compiler();
+  expect_generated_opencl_kernel_unit(
+      lhs_scalar, "opencl/generated/eltwise_scalar_f32", {tensor, scalar});
 
   OpenClSourceArtifactVerifier(rhs_const)
       .expect_artifact(GfxKernelStageFamily::Eltwise,
                        "opencl/generated/eltwise_const_f32",
                        "gfx_opencl_generated_eltwise_const_f32", 6u, 1u,
                        scalar_constant_args(), {0})
-      .excludes({"long", "gfx_opencl_baseline_binary_f32",
-                 "gfx_opencl_baseline_binary_broadcast_f32",
-                 "gfx_opencl_baseline_binary_scalar_f32",
-                 "gfx_opencl_generated_eltwise_compare_f32",
-                 "gfx_opencl_generated_eltwise_select_f32"})
       .has_input_mode(GfxOpenClArtifactInputMode::RhsScalarConstant)
       .has_scalar_constant(2.0f)
       .supports_opencl_compiler();
+  expect_generated_opencl_kernel_unit(
+      rhs_const, "opencl/generated/eltwise_const_f32", {tensor});
 
   OpenClSourceArtifactVerifier(lhs_const)
       .expect_artifact(GfxKernelStageFamily::Eltwise,
@@ -394,6 +385,8 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                        scalar_constant_args(), {1})
       .has_input_mode(GfxOpenClArtifactInputMode::LhsScalarConstant)
       .supports_opencl_compiler();
+  expect_generated_opencl_kernel_unit(
+      lhs_const, "opencl/generated/eltwise_const_f32", {tensor});
 }
 
 TEST(EltwiseOpenClSourceArtifactsTest,
@@ -408,10 +401,6 @@ TEST(EltwiseOpenClSourceArtifactsTest,
       .expect_artifact(GfxKernelStageFamily::Eltwise,
                        "opencl/generated/eltwise_compare_f32",
                        "gfx_opencl_generated_eltwise_compare_f32", 5u, 2u)
-      .excludes({"long", "gfx_opencl_baseline_binary_f32",
-                 "gfx_opencl_baseline_binary_broadcast_f32",
-                 "gfx_opencl_baseline_binary_scalar_f32",
-                 "gfx_opencl_baseline_binary_const_f32"})
       .has_op(GfxOpenClArtifactOp::Greater)
       .supports_opencl_compiler();
   expect_generated_opencl_kernel_unit(
@@ -422,10 +411,6 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                        "opencl/generated/eltwise_select_f32",
                        "gfx_opencl_generated_eltwise_select_f32", 5u, 3u,
                        {GfxOpenClSourceScalarArg::ElementCount}, {0, 1, 2})
-      .excludes({"long", "gfx_opencl_baseline_binary_f32",
-                 "gfx_opencl_baseline_binary_broadcast_f32",
-                 "gfx_opencl_baseline_binary_scalar_f32",
-                 "gfx_opencl_baseline_binary_const_f32"})
       .supports_opencl_compiler();
   expect_generated_opencl_kernel_unit(
       select, "opencl/generated/eltwise_select_f32", {condition, lhs, rhs});
@@ -451,10 +436,6 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                        "gfx_opencl_generated_eltwise_compare_broadcast_f32",
                        18u, 2u, compare_args, {0, 1},
                        compare_static_u32_scalars)
-      .excludes({"long", "gfx_opencl_baseline_binary_f32",
-                 "gfx_opencl_baseline_binary_broadcast_f32",
-                 "gfx_opencl_baseline_binary_scalar_f32",
-                 "gfx_opencl_baseline_binary_const_f32"})
       .has_op(GfxOpenClArtifactOp::Greater)
       .supports_opencl_compiler();
   expect_generated_opencl_kernel_unit(
@@ -479,10 +460,6 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                        "opencl/generated/eltwise_select_broadcast_f32",
                        "gfx_opencl_generated_eltwise_select_broadcast_f32", 22u,
                        3u, select_args, {0, 1, 2}, select_static_u32_scalars)
-      .excludes({"long", "gfx_opencl_baseline_binary_f32",
-                 "gfx_opencl_baseline_binary_broadcast_f32",
-                 "gfx_opencl_baseline_binary_scalar_f32",
-                 "gfx_opencl_baseline_binary_const_f32"})
       .supports_opencl_compiler();
   expect_generated_opencl_kernel_unit(
       select, "opencl/generated/eltwise_select_broadcast_f32",
@@ -500,10 +477,6 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                        "opencl/generated/eltwise_logical_unary_bool",
                        "gfx_opencl_generated_eltwise_logical_unary_bool", 4u,
                        1u)
-      .excludes({"float", "long", "gfx_opencl_generated_eltwise_compare_f32",
-                 "gfx_opencl_generated_eltwise_compare_broadcast_f32",
-                 "gfx_opencl_generated_eltwise_select_f32",
-                 "gfx_opencl_generated_eltwise_select_broadcast_f32"})
       .has_op(GfxOpenClArtifactOp::LogicalNot)
       .supports_opencl_compiler();
   expect_generated_opencl_kernel_unit(
@@ -530,10 +503,6 @@ TEST(EltwiseOpenClSourceArtifactsTest,
                          "opencl/generated/eltwise_logical_binary_bool",
                          "gfx_opencl_generated_eltwise_logical_binary_bool", 5u,
                          2u)
-        .excludes({"float", "long", "gfx_opencl_generated_eltwise_compare_f32",
-                   "gfx_opencl_generated_eltwise_compare_broadcast_f32",
-                   "gfx_opencl_generated_eltwise_select_f32",
-                   "gfx_opencl_generated_eltwise_select_broadcast_f32"})
         .has_op(test_case.op)
         .supports_opencl_compiler();
     expect_generated_opencl_kernel_unit(
@@ -562,10 +531,6 @@ TEST(EltwiseOpenClSourceArtifactsTest,
           "opencl/generated/eltwise_logical_binary_broadcast_bool",
           "gfx_opencl_generated_eltwise_logical_binary_broadcast_bool", 18u, 2u,
           scalar_args, {0, 1}, static_u32_scalars)
-      .excludes({"float", "long", "gfx_opencl_generated_eltwise_compare_f32",
-                 "gfx_opencl_generated_eltwise_compare_broadcast_f32",
-                 "gfx_opencl_generated_eltwise_select_f32",
-                 "gfx_opencl_generated_eltwise_select_broadcast_f32"})
       .has_op(GfxOpenClArtifactOp::LogicalOr)
       .supports_opencl_compiler();
   expect_generated_opencl_kernel_unit(

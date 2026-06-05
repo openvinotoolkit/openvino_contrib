@@ -5,7 +5,11 @@
 #include "gfx_property_utils.hpp"
 
 #include <cstdint>
+#include <mutex>
+#include <utility>
+#include <vector>
 
+#include "compiler/backend_registry.hpp"
 #include "openvino/core/except.hpp"
 #include "plugin/gfx_profiling_utils.hpp"
 
@@ -13,11 +17,86 @@ namespace ov {
 namespace gfx_plugin {
 namespace {
 
+std::vector<BackendTargetResolverProvider>& target_resolver_providers() {
+    static std::vector<BackendTargetResolverProvider> providers;
+    return providers;
+}
+
+std::mutex& target_resolver_mutex() {
+    static std::mutex mutex;
+    return mutex;
+}
+
 bool backend_registered(GpuBackend backend) {
     return backend_supported(backend);
 }
 
+bool find_target_resolver_provider(GpuBackend backend,
+                                   BackendTargetResolverProvider& provider) {
+    std::lock_guard<std::mutex> lock(target_resolver_mutex());
+    for (const auto& candidate : target_resolver_providers()) {
+        if (candidate.backend == backend && candidate.resolve) {
+            provider = candidate;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool exact_target_registered(const compiler::BackendTarget& target,
+                             compiler::BackendTarget& registered_target) {
+    const auto module =
+        compiler::BackendRegistry::default_registry().resolve(target);
+    if (!module) {
+        return false;
+    }
+    registered_target = module->target();
+    return registered_target.is_compatible_with_fingerprint(target.fingerprint());
+}
+
+compiler::BackendTarget resolve_backend_target_for_request(
+    const ov::AnyMap& properties,
+    const BackendRequest& request,
+    GpuBackend backend) {
+    compiler::BackendTarget target = compiler::BackendTarget::from_backend(backend);
+    BackendTargetResolverProvider provider;
+    if (find_target_resolver_provider(backend, provider)) {
+        target = provider.resolve(properties, request);
+    }
+    if (target.backend() != backend) {
+        OPENVINO_THROW("GFX: backend target resolver for '",
+                       backend_to_string(backend),
+                       "' returned incompatible target: ",
+                       target.debug_string());
+    }
+
+    compiler::BackendTarget registered_target;
+    if (!exact_target_registered(target, registered_target)) {
+        OPENVINO_THROW("GFX: backend target is not registered: ",
+                       target.debug_string(),
+                       ". Concrete BackendTarget modules must be registered explicitly.");
+    }
+    return registered_target;
+}
+
 }  // namespace
+
+BackendTargetResolverRegistration::BackendTargetResolverRegistration(
+    BackendTargetResolverProvider provider) {
+    OPENVINO_ASSERT(backend_known(provider.backend),
+                    "GFX: BackendTarget resolver provider requires a known backend");
+    OPENVINO_ASSERT(provider.resolve,
+                    "GFX: BackendTarget resolver provider callback is null");
+    std::lock_guard<std::mutex> lock(target_resolver_mutex());
+    auto& providers = target_resolver_providers();
+    for (auto& candidate : providers) {
+        if (candidate.backend == provider.backend) {
+            candidate = provider;
+            return;
+        }
+    }
+    providers.push_back(std::move(provider));
+}
 
 BackendRequest get_backend_request(const ov::AnyMap& properties) {
     if (auto it = properties.find(kGfxBackendProperty); it != properties.end()) {
@@ -52,6 +131,16 @@ std::string resolve_backend_name_from_properties(const ov::AnyMap& properties,
     return std::string(backend_to_string(backend));
 }
 
+compiler::BackendTarget resolve_backend_target_from_properties(
+    const ov::AnyMap& properties,
+    bool log_fallback,
+    const char* log_tag) {
+    const auto request = get_backend_request(properties);
+    const auto backend =
+        resolve_backend_kind_from_properties(properties, log_fallback, log_tag);
+    return resolve_backend_target_for_request(properties, request, backend);
+}
+
 ResolvedBackendInfo resolve_backend_for_properties(ov::AnyMap& properties,
                                                    bool log_fallback,
                                                    const char* log_tag) {
@@ -59,6 +148,7 @@ ResolvedBackendInfo resolve_backend_for_properties(ov::AnyMap& properties,
     const auto backend = resolve_backend_kind_from_properties(properties, log_fallback, log_tag);
     ResolvedBackendInfo info;
     info.backend = backend;
+    info.target = resolve_backend_target_for_request(properties, request, backend);
     info.backend_name = backend_to_string(backend);
     info.explicit_request = request.explicit_request;
     info.requested = request.requested;
@@ -92,19 +182,12 @@ int parse_device_id(const ov::AnyMap& properties) {
 RemoteContextParams normalize_remote_context_params(const ov::AnyMap& remote_properties) {
     RemoteContextParams params;
     params.merged = remote_properties;
-    const auto request = get_backend_request(params.merged);
-    if (request.explicit_request && !backend_registered(request.kind)) {
-        OPENVINO_THROW("GFX: backend '", request.requested,
-                       "' is not available for remote context");
-    }
-    GpuBackend resolved_backend = request.explicit_request ? request.kind : default_backend_kind();
-    if (!backend_registered(resolved_backend)) {
-        OPENVINO_THROW("GFX: default backend '",
-                       backend_to_string(resolved_backend),
-                       "' is not available for remote context");
-    }
-    params.backend = resolved_backend;
-    params.backend_name = backend_to_string(resolved_backend);
+    const auto resolved =
+        resolve_backend_for_properties(params.merged, /*log_fallback=*/false,
+                                       "RemoteContext");
+    params.backend = resolved.backend;
+    params.target = resolved.target;
+    params.backend_name = resolved.backend_name;
     params.merged[kGfxBackendProperty] = params.backend_name;
     params.device_id = parse_device_id(params.merged);
     params.merged[ov::device::id.name()] = params.device_id;

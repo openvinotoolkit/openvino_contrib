@@ -55,48 +55,6 @@ bool is_identity_pointwise_conv(const std::shared_ptr<const ov::Node> &node) {
          in_shape[3] == out_shape[3];
 }
 
-bool has_mps_image_conv_channel_contract(
-    const std::shared_ptr<const ov::Node> &node) {
-  if (auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(node)) {
-    if (!conv->get_input_partial_shape(0).is_static() ||
-        !conv->get_input_partial_shape(1).is_static() ||
-        !conv->get_output_partial_shape(0).is_static()) {
-      return false;
-    }
-    const auto &in_shape = conv->get_input_shape(0);
-    const auto &weights_shape = conv->get_input_shape(1);
-    const auto &out_shape = conv->get_output_shape(0);
-    return in_shape.size() == 4 && weights_shape.size() == 4 &&
-           out_shape.size() == 4 && weights_shape[0] == out_shape[1] &&
-           weights_shape[1] == in_shape[1];
-  }
-  if (auto group_conv =
-          ov::as_type_ptr<const ov::op::v1::GroupConvolution>(node)) {
-    if (!group_conv->get_input_partial_shape(0).is_static() ||
-        !group_conv->get_input_partial_shape(1).is_static() ||
-        !group_conv->get_output_partial_shape(0).is_static()) {
-      return false;
-    }
-    const auto &in_shape = group_conv->get_input_shape(0);
-    const auto &weights_shape = group_conv->get_input_shape(1);
-    const auto &out_shape = group_conv->get_output_shape(0);
-    if (in_shape.size() != 4 || weights_shape.size() != 5 ||
-        out_shape.size() != 4) {
-      return false;
-    }
-    const auto groups = weights_shape[0];
-    if (groups == 0 || in_shape[1] % groups != 0 ||
-        out_shape[1] % groups != 0) {
-      return false;
-    }
-    const auto input_channels_per_group = in_shape[1] / groups;
-    const auto output_channels_per_group = out_shape[1] / groups;
-    return weights_shape[1] == output_channels_per_group &&
-           weights_shape[2] == input_channels_per_group;
-  }
-  return false;
-}
-
 bool has_input_type(const std::shared_ptr<const ov::Node> &node,
                     std::string_view type_name) {
   if (!node) {
@@ -562,9 +520,9 @@ GfxParallelismCaps make_parallelism_caps(
   return caps;
 }
 
-bool source_kernel_dispatch_enabled(
+bool custom_kernel_dispatch_enabled(
     const GfxStageCompilerPolicy *compiler_policy) {
-  return compiler_policy && compiler_policy->source_kernel_dispatch.enabled;
+  return compiler_policy && compiler_policy->custom_kernel_dispatch.enabled;
 }
 
 GfxParallelismCaps
@@ -573,7 +531,7 @@ query_stage_caps(const GfxStageCompilerPolicy *compiler_policy) {
     return {};
   }
   return make_parallelism_caps(
-      compiler_policy->source_kernel_dispatch.fallback_parallelism);
+      compiler_policy->custom_kernel_dispatch.profile);
 }
 
 } // namespace
@@ -671,7 +629,7 @@ GfxStageOptimizationPlan select_stage_optimization_plan(
                                        has_activation, has_batchnorm,
                                        compiler_policy);
   }
-  if (!source_kernel_dispatch_enabled(compiler_policy)) {
+  if (!custom_kernel_dispatch_enabled(compiler_policy)) {
     return plan;
   }
 
@@ -681,10 +639,10 @@ GfxStageOptimizationPlan select_stage_optimization_plan(
   const uint64_t out_elems = output_elements(node);
   constexpr uint64_t kLargeMobileChunkedOutputElems = 262144ull;
   constexpr uint64_t kChainableConvOutputElems = 1048576ull;
-  const bool constrained_source_submit =
+  const bool constrained_custom_submit =
       caps.max_total_threads_per_group <= 256u && wave < 32u;
   const uint64_t large_chunked_output_elems =
-      constrained_source_submit ? (kLargeMobileChunkedOutputElems * 4ull)
+      constrained_custom_submit ? (kLargeMobileChunkedOutputElems * 4ull)
                                 : kLargeMobileChunkedOutputElems;
   const bool chainable_mobile_conv = is_chainable_mobile_conv(node) &&
                                      out_elems > 0 &&
@@ -694,7 +652,7 @@ GfxStageOptimizationPlan select_stage_optimization_plan(
     plan.execution.submit.weight = wave >= 64 ? 10 : 8;
     // Keep MatMul inside the adaptive submit window so tightly-coupled
     // layout/split epilogues can stay in the same command buffer when the
-    // budget allows it. On mobile source-kernel stacks the extra cross-submit
+    // budget allows it. On mobile custom-kernel stacks the extra cross-submit
     // hop between producer chains and MatMul tends to be more expensive than a
     // slightly wider window.
     plan.execution.submit.isolate = false;
@@ -703,7 +661,7 @@ GfxStageOptimizationPlan select_stage_optimization_plan(
 
   if (traits.binary_chunked && is_attention_score_stage(node)) {
     // Attention score scaling is tightly coupled to the following Softmax
-    // and MatMul. On mobile source-kernel stacks, forcing these stages into
+    // and MatMul. On mobile custom-kernel stacks, forcing these stages into
     // separate submit windows is more fragile than a slightly wider window.
     plan.execution.submit.weight = 4;
     plan.execution.submit.isolate = false;
@@ -712,7 +670,7 @@ GfxStageOptimizationPlan select_stage_optimization_plan(
   if (traits.binary_chunked) {
     plan.execution.submit.weight = 8;
     plan.execution.submit.isolate = !is_conv_chain_elementwise_stage(node) &&
-                                    !constrained_source_submit &&
+                                    !constrained_custom_submit &&
                                     out_elems >= large_chunked_output_elems;
     return plan;
   }
@@ -726,13 +684,13 @@ GfxStageOptimizationPlan select_stage_optimization_plan(
     plan.execution.submit.weight = 6;
     plan.execution.submit.isolate =
         !(traits.unary_chunked && is_conv_chain_elementwise_stage(node)) &&
-        !constrained_source_submit && out_elems >= large_chunked_output_elems;
+        !constrained_custom_submit && out_elems >= large_chunked_output_elems;
     return plan;
   }
   if ((plan.archetype == GfxStageArchetype::Convolution ||
        plan.archetype == GfxStageArchetype::GroupConvolution) &&
       plan.conv.kind == GfxConvRouteKind::None) {
-    // Shared source-kernel convolution lowering is still a heavy stage on
+    // Shared custom-kernel convolution lowering is still a heavy stage on
     // mobile-class drivers and should not be mixed into wide multi-op submit
     // windows, except for safe pointwise 1x1 stages where extra submit/barrier
     // churn tends to dominate more than the kernel itself on mobile GPUs.
@@ -741,7 +699,7 @@ GfxStageOptimizationPlan select_stage_optimization_plan(
         is_identity_pointwise_conv(node)) {
       // Keep shared 1x1 convolutions light enough to co-reside with the
       // following unary/binary/layout epilogue stages in one submit
-      // window. Profiling on mobile source-kernel stacks shows that extra
+      // window. Profiling on mobile custom-kernel stacks shows that extra
       // cross-submit barriers are more expensive here than slightly wider
       // windows.
       plan.execution.submit.weight = 4;
@@ -785,7 +743,7 @@ select_conv_route_plan(const std::shared_ptr<const ov::Node> &node,
                        bool has_activation, bool has_batchnorm,
                        const GfxStageCompilerPolicy *compiler_policy) {
   GfxConvRoutePlan plan{};
-  if (!source_kernel_dispatch_enabled(compiler_policy) || !node) {
+  if (!custom_kernel_dispatch_enabled(compiler_policy) || !node) {
     return plan;
   }
   if (element_type != ov::element::f16 && element_type != ov::element::f32) {

@@ -20,14 +20,13 @@ startup and runtime fallback disabled so tests do not hide unsupported GFX
 routes behind another plugin. Test binaries receive `GFX_PLUGIN_PATH` through
 their CTest environment.
 
-`tests/CMakeLists.txt` also has configure-time guards for the public
-test/source tree. Pattern guards reject hidden `GTEST_SKIP`,
-uninstantiated-test allow shims, `DISABLED_` registrations, Objective-C
-`NO`/`YES` macro cleanup branches, and fixed backend-count/index matrices.
-`tests/tools/gfx_gtest_source_contract.py` compares native backend test source
-registrations with backend-unavailable adapter source registrations for the
-covered groups. Backend-unavailable coverage should be explicit, not hidden
-behind a skip helper.
+`tests/CMakeLists.txt` also wires executable matrix capture through
+`tests/tools/gfx_gtest_matrix.py`. That tool runs real GFX test binaries with
+`--gtest_list_tests` and rejects duplicate registrations, `DISABLED_` tests,
+and matrix drift. Architecture readiness must not be proven through source
+parsing, file-presence checks, grep/string checks, line counts, or deleted-symbol
+checks. Backend-unavailable coverage should be explicit executable contract
+coverage, not a skip helper or a source-registration mirror.
 
 Build:
 
@@ -60,7 +59,7 @@ DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
   coverage
 - `tests/integration/`: plugin integration checks
 - `tests/shared_tests_instances/`: OpenVINO shared-test wiring
-- `tests/tools/`: compare runner, gtest registration/source-contract helpers,
+- `tests/tools/`: compare runner, gtest matrix helper,
   microbench, Conv shape bench, and standalone OpenCL experiment tools
 - `bench/`: optional evaluation orchestration helpers
 - `tools/`: profiling and microbench post-processing helpers
@@ -77,10 +76,6 @@ through skip patterns.
 `tests/integration/gfx_basic_ops_func_test.cpp` carries the plugin-facing basic
 operation checks. Do not restore the removed Metal-only
 `tests/backends/metal/basic_ops_test.cpp` split.
-
-`tests/tools/gfx_gtest_source_contract.py` validates source-level parity between
-native backend tests and backend-unavailable adapter tests. Use it when changing
-those source groups so native coverage is not lost on unsupported platforms.
 
 `tests/tools/gfx_gtest_matrix.py` captures or compares
 `--gtest_list_tests` output from GFX production targets. Use it when changing
@@ -276,8 +271,6 @@ Use:
 - `tools/gfx_external_trace_summary.py` for trace post-processing
 - `tests/tools/gfx_gtest_matrix.py` for comparing captured gtest registration
   lists across production test targets
-- `tests/tools/gfx_gtest_source_contract.py` for native/unavailable-adapter
-  source registration parity
 
 ## Cross-Device Strategy
 

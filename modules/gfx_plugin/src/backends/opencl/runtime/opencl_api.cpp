@@ -287,12 +287,18 @@ GpuExecutionDeviceInfo make_opencl_execution_device_info(const OpenClDeviceSelec
     }
     info.device_name = selection.device_name.empty() ? "OpenCL GPU" : selection.device_name;
     info.vendor_id = selection.vendor_id;
-    info.preferred_simd_width = std::max<uint32_t>(selection.compute_units, 1);
-    info.subgroup_size = 1;
-    info.max_total_threads_per_group = static_cast<uint32_t>(std::max<size_t>(selection.max_work_group_size, 1));
+    const auto parallelism_profile =
+        make_opencl_parallelism_profile(info.device_family);
+    info.preferred_simd_width = parallelism_profile.preferred_simd_width;
+    info.subgroup_size = parallelism_profile.subgroup_size;
+    info.max_total_threads_per_group = std::min<uint32_t>(
+        parallelism_profile.max_total_threads_per_group,
+        static_cast<uint32_t>(std::max<size_t>(selection.max_work_group_size, 1)));
     for (size_t i = 0; i < info.max_threads_per_group.size(); ++i) {
         const size_t dim = i < selection.max_work_item_sizes.size() ? selection.max_work_item_sizes[i] : 1;
-        info.max_threads_per_group[i] = static_cast<uint32_t>(std::max<size_t>(dim, 1));
+        info.max_threads_per_group[i] = std::min<uint32_t>(
+            parallelism_profile.max_threads_per_group[i],
+            static_cast<uint32_t>(std::max<size_t>(dim, 1)));
     }
     info.min_storage_buffer_offset_alignment = std::max<uint64_t>(selection.mem_base_addr_align_bits / 8, 1);
     info.non_coherent_atom_size = 1;
@@ -300,22 +306,21 @@ GpuExecutionDeviceInfo make_opencl_execution_device_info(const OpenClDeviceSelec
     info.supports_storage_buffer_16bit = info.supports_shader_float16;
     info.supports_shader_int8 = true;
     info.supports_storage_buffer_8bit = true;
-    info.supports_conv_output_channel_blocking = info.device_family == GpuDeviceFamily::QualcommAdreno;
-    info.supports_conv_channel_block_spatial_tiling = info.device_family == GpuDeviceFamily::QualcommAdreno;
-    info.parallelism_profile.profile_key = info.device_key + ":parallelism";
-    info.parallelism_profile.chunk_dispatch = make_opencl_chunk_dispatch_profile();
+    info.supports_conv_output_channel_blocking =
+        parallelism_profile.supports_conv_output_channel_blocking;
+    info.supports_conv_channel_block_spatial_tiling =
+        parallelism_profile.supports_conv_channel_block_spatial_tiling;
+    info.parallelism_profile = parallelism_profile;
+    info.parallelism_profile.preferred_simd_width = info.preferred_simd_width;
+    info.parallelism_profile.subgroup_size = info.subgroup_size;
+    info.parallelism_profile.max_total_threads_per_group =
+        info.max_total_threads_per_group;
+    info.parallelism_profile.max_threads_per_group =
+        info.max_threads_per_group;
     info.parallelism_profile.supports_conv_output_channel_blocking =
         info.supports_conv_output_channel_blocking;
     info.parallelism_profile.supports_conv_channel_block_spatial_tiling =
         info.supports_conv_channel_block_spatial_tiling;
-    if (info.device_family == GpuDeviceFamily::BroadcomV3D) {
-        info.parallelism_profile.enable_skinny_matmul_tiles = true;
-        info.parallelism_profile.chunk_dispatch.retune_threads_to_workload = true;
-        info.parallelism_profile.scale_conv_threads_for_large_spatial = true;
-        info.parallelism_profile.scale_conv_threads_for_dense_reduction = true;
-        info.parallelism_profile.scale_conv_threads_for_pointwise_reduction = true;
-        info.parallelism_profile.conv_spatial_micro_tile_requires_large_output_area = true;
-    }
     return info;
 }
 

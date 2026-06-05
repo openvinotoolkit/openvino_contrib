@@ -30,10 +30,6 @@ KernelUnitKind kind_for_route(LoweringRouteKind route_kind) {
   return KernelUnitKind::Common;
 }
 
-std::string default_unit_id(LoweringRouteKind route_kind) {
-  return std::string(lowering_route_kind_to_string(route_kind));
-}
-
 } // namespace
 
 KernelUnit::KernelUnit(LoweringRouteKind route_kind, KernelUnitKind kind,
@@ -48,9 +44,6 @@ KernelUnit::KernelUnit(LoweringRouteKind route_kind, KernelUnitKind kind,
 
 KernelUnit KernelUnit::from_route(LoweringRouteKind route_kind,
                                   std::string unit_id) {
-  if (unit_id.empty() && route_kind != LoweringRouteKind::Unsupported) {
-    unit_id = default_unit_id(route_kind);
-  }
   return KernelUnit(route_kind, kind_for_route(route_kind), std::move(unit_id),
                     {}, {});
 }
@@ -60,9 +53,6 @@ KernelUnit KernelUnit::describe(LoweringRouteKind route_kind,
                                 std::string backend_domain,
                                 std::string op_family,
                                 bool requires_runtime_shape_args) {
-  if (unit_id.empty() && route_kind != LoweringRouteKind::Unsupported) {
-    unit_id = default_unit_id(route_kind);
-  }
   return KernelUnit(route_kind, kind, std::move(unit_id),
                     std::move(backend_domain), std::move(op_family), {},
                     requires_runtime_shape_args);

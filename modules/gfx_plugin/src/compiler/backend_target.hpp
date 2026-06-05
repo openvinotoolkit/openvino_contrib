@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "common/gpu_backend.hpp"
+#include "common/gpu_device_profile.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -18,6 +19,12 @@ public:
     BackendTarget();
 
     static BackendTarget from_backend(GpuBackend backend);
+    static BackendTarget from_backend_device_family(GpuBackend backend,
+                                                    GpuDeviceFamily family);
+    static BackendTarget from_backend_profile(
+        GpuBackend backend, GpuDeviceFamily family, std::string device_name,
+        std::string vendor_id, std::string driver_id,
+        std::vector<std::string> feature_bits = {});
 
     GpuBackend backend() const noexcept {
         return m_backend;
@@ -33,6 +40,10 @@ public:
 
     const std::string& device_family() const noexcept {
         return m_device_family;
+    }
+
+    const std::string& device_profile() const noexcept {
+        return m_device_profile;
     }
 
     const std::string& device_name() const noexcept {
@@ -68,6 +79,7 @@ private:
     std::string m_backend_id;
     std::string m_runtime_api;
     std::string m_device_family;
+    std::string m_device_profile;
     std::string m_device_name;
     std::string m_vendor_id;
     std::string m_driver_id;

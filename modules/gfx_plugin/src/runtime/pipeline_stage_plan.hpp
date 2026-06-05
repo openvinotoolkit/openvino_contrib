@@ -125,6 +125,8 @@ struct PipelineStageMaterializationPlan {
   PipelineStageMaterializationKind kind =
       PipelineStageMaterializationKind::SingleStage;
   PipelineStageIoPlan io_plan;
+  RuntimeStageExecutableDescriptor materialized_descriptor;
+  bool materialized_descriptor_valid = false;
   PipelineVendorAttentionStagePlan vendor_attention;
   std::vector<size_t> fused_node_indices;
   std::vector<PipelineFusedInnerStagePlan> fused_inner_stages;
@@ -134,8 +136,8 @@ struct PipelineStageMaterializationPlan {
 };
 
 struct PipelineStageRuntimeOptionsPlan {
-  bool source_kernel_dispatch_enabled = false;
-  GpuParallelismProfile source_kernel_fallback_parallelism{};
+  bool custom_kernel_dispatch_enabled = false;
+  GpuParallelismProfile custom_kernel_dispatch_profile{};
 };
 
 struct PipelineStageRuntimePlan {

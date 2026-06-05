@@ -14,6 +14,7 @@ namespace ov {
 namespace gfx_plugin {
 
 std::unique_ptr<BackendState> create_opencl_backend_state(
+    const compiler::BackendTarget& target,
     const ov::AnyMap& properties,
     const ov::SoPtr<ov::IRemoteContext>& context);
 

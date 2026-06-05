@@ -4,6 +4,8 @@
 
 #include "runtime/gfx_remote_tensor.hpp"
 
+#include <utility>
+
 namespace ov {
 namespace gfx_plugin {
 
@@ -11,12 +13,14 @@ GfxRemoteTensor::GfxRemoteTensor(const ov::element::Type& type,
                                  const ov::Shape& shape,
                                  const ov::AnyMap& params,
                                  const std::string& dev,
+                                 compiler::BackendTarget target,
                                  const GpuTensor& tensor,
                                  RemoteTensorReleaseFn release_fn)
     : m_type(type),
       m_shape(shape),
       m_params(params),
       m_device(dev),
+      m_target(std::move(target)),
       m_tensor(tensor),
       m_release_fn(release_fn) {
     recalc_strides();

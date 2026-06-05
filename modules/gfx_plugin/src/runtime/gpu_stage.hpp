@@ -20,8 +20,8 @@ namespace gfx_plugin {
 
 struct GpuStageRuntimeOptions {
   bool diagnostic_f32_vendor_image = false;
-  bool source_kernel_dispatch_enabled = false;
-  GpuParallelismProfile source_kernel_fallback_parallelism{};
+  bool custom_kernel_dispatch_enabled = false;
+  GpuParallelismProfile custom_kernel_dispatch_profile{};
 };
 
 // Backend-neutral execution stage interface.

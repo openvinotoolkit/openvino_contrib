@@ -2,11 +2,13 @@
 #pragma once
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "openvino/runtime/iremote_context.hpp"
 #include "openvino/runtime/iremote_tensor.hpp"
 #include "openvino/runtime/so_ptr.hpp"
+#include "compiler/backend_target.hpp"
 #include "runtime/gfx_remote_tensor.hpp"
 
 namespace ov {
@@ -16,13 +18,13 @@ class GfxRemoteContext : public ov::IRemoteContext {
 public:
     GfxRemoteContext(const std::string& device,
                      int device_id,
-                     GpuBackend backend,
+                     compiler::BackendTarget target,
                      GpuDeviceHandle handle,
                      std::string backend_name,
                      const ov::AnyMap& params)
         : m_device(device),
           m_device_id(device_id),
-          m_backend(backend),
+          m_target(std::move(target)),
           m_backend_name(std::move(backend_name)),
           m_handle(handle),
           m_params(params) {}
@@ -30,7 +32,8 @@ public:
     const std::string& get_device_name() const override { return m_device; }
     const ov::AnyMap& get_property() const override { return m_params; }
     int device_id() const { return m_device_id; }
-    GpuBackend backend() const { return m_backend; }
+    GpuBackend backend() const { return m_target.backend(); }
+    const compiler::BackendTarget& target() const { return m_target; }
     const std::string& backend_name() const { return m_backend_name; }
     GpuDeviceHandle device_handle() const { return m_handle; }
 
@@ -47,7 +50,7 @@ protected:
 private:
     std::string m_device;
     int m_device_id = 0;
-    GpuBackend m_backend = GpuBackend::Unknown;
+    compiler::BackendTarget m_target;
     std::string m_backend_name;
     GpuDeviceHandle m_handle = nullptr;
     ov::AnyMap m_params;

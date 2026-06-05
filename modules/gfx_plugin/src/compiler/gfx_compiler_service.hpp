@@ -16,11 +16,18 @@
 
 namespace ov {
 namespace gfx_plugin {
+
+class GfxProfilingTrace;
+struct RuntimeExecutableDescriptor;
+
 namespace compiler {
 
 struct GfxCompileRequest {
     std::shared_ptr<const ov::Model> model;
     BackendTarget target;
+    std::string backend_name;
+    bool enable_fusion = true;
+    GfxProfilingTrace* compile_trace = nullptr;
 };
 
 struct GfxCompileResult {
@@ -29,6 +36,7 @@ struct GfxCompileResult {
     LoweringPlan lowering_plan;
     ManifestBundle manifest;
     ExecutableBundle executable;
+    std::shared_ptr<const RuntimeExecutableDescriptor> runtime_descriptor;
     CacheEnvelope cache_envelope;
     UnsupportedSummary unsupported;
 

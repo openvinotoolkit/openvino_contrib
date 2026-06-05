@@ -10,8 +10,7 @@
 namespace ov {
 namespace gfx_plugin {
 
-std::unique_ptr<GpuStage> create_metal_stage(const std::shared_ptr<const ov::Node>&,
-                                             const RuntimeStageExecutableDescriptor*,
+std::unique_ptr<GpuStage> create_metal_stage(const RuntimeStageMaterializationContext&,
                                              void*,
                                              void*) {
     OPENVINO_THROW("GFX Metal backend is not available in this build");

@@ -43,6 +43,7 @@ struct RuntimeStageExecutableDescriptor {
   std::string backend_domain;
   std::string kernel_id;
   std::string op_family;
+  std::string stage_name;
   KernelArtifactOrigin origin = KernelArtifactOrigin::Unknown;
   KernelArtifactPayloadKind payload_kind = KernelArtifactPayloadKind::None;
   std::string entry_point;

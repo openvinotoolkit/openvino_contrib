@@ -24,6 +24,7 @@ struct InferStage {
     std::unique_ptr<GpuStage> stage;
     std::shared_ptr<RuntimeSession> runtime_session;
     size_t runtime_stage_index = PipelineStageDesc::npos;
+    std::shared_ptr<const RuntimeStageExecutableDescriptor> runtime_stage_descriptor;
     std::unique_ptr<PreparedKernelExecutable> prepared_executable;
     std::vector<std::unique_ptr<GpuTensor>> outputs;
     std::vector<bool> output_is_model_output;

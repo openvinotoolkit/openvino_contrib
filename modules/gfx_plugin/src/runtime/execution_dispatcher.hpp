@@ -6,26 +6,22 @@
 #include <memory>
 #include <string>
 
-#include "openvino/core/node.hpp"
 #include "runtime/gpu_stage.hpp"
+#include "runtime/stage_materialization_context.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 
-struct RuntimeStageExecutableDescriptor;
-
 class GpuStageFactory {
 public:
-    using StageFactoryFn = std::unique_ptr<GpuStage> (*)(const std::shared_ptr<const ov::Node>&,
-                                                         const RuntimeStageExecutableDescriptor*,
+    using StageFactoryFn = std::unique_ptr<GpuStage> (*)(const RuntimeStageMaterializationContext&,
                                                          void* device,
                                                          void* queue);
 
     static bool register_factory(GpuBackend backend, StageFactoryFn fn);
     static StageFactoryFn factory_for_backend(GpuBackend backend);
 
-    static std::unique_ptr<GpuStage> create(const std::shared_ptr<const ov::Node>& node,
-                                            const RuntimeStageExecutableDescriptor* descriptor,
+    static std::unique_ptr<GpuStage> create(const RuntimeStageMaterializationContext& context,
                                             GpuBackend backend,
                                             void* device = nullptr,
                                             void* queue = nullptr);
@@ -34,12 +30,11 @@ public:
 // Compatibility alias matching the execution-dispatcher naming in docs.
 class ExecutionDispatcher {
 public:
-    static std::unique_ptr<GpuStage> create(const std::shared_ptr<const ov::Node>& node,
-                                            const RuntimeStageExecutableDescriptor* descriptor,
+    static std::unique_ptr<GpuStage> create(const RuntimeStageMaterializationContext& context,
                                             GpuBackend backend,
                                             void* device = nullptr,
                                             void* queue = nullptr) {
-        return GpuStageFactory::create(node, descriptor, backend, device, queue);
+        return GpuStageFactory::create(context, backend, device, queue);
     }
 };
 

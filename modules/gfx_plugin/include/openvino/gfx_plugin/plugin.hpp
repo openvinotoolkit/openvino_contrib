@@ -51,10 +51,6 @@ private:
     std::shared_ptr<ov::ICompiledModel> compile_model_impl(const std::shared_ptr<const ov::Model>& model,
                                                            const ov::AnyMap& properties,
                                                            const ov::SoPtr<ov::IRemoteContext>& context) const;
-    std::shared_ptr<ov::ICompiledModel> import_model_impl(const std::shared_ptr<const ov::Model>& model,
-                                                          const ov::AnyMap& properties,
-                                                          const ov::SoPtr<ov::IRemoteContext>& context) const;
-    std::shared_ptr<ov::ICore> get_core_checked() const;
     std::string m_device_name;
     ov::hint::PerformanceMode m_performance_mode = ov::hint::PerformanceMode::LATENCY;
     bool m_enable_profiling = false;

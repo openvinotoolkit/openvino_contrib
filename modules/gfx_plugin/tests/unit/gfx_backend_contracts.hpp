@@ -25,6 +25,7 @@ public:
 
     const compiler::BackendTarget& target() const noexcept;
     bool has_concrete_oop_identity() const;
+    bool has_profiled_cache_identity() const;
     bool avoids_inverse_apple_bucket() const;
 
 private:

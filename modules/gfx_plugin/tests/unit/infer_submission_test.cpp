@@ -215,6 +215,7 @@ std::shared_ptr<RuntimeSession> make_submission_contract_session(
         stage.backend_domain = "test-backend";
         stage.kernel_id = "test-kernel-" + std::to_string(i);
         stage.op_family = "test-op";
+        stage.stage_name = "test-stage-" + std::to_string(i);
         stage.runtime_shape_rule = "static_or_descriptor";
         stage.submission_stage_weight =
             i < stage_weights.size() ? stage_weights[i] : 1u;

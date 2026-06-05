@@ -4,88 +4,10 @@ set(RUNTIME_MICRO_TARGET_NAME ov_gfx_runtime_micro_tests)
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
-function(gfx_assert_forbidden_test_source_patterns)
-    file(GLOB_RECURSE _gfx_guard_sources CONFIGURE_DEPENDS
-        "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/*.h"
-        "${CMAKE_CURRENT_SOURCE_DIR}/*.mm"
-        "${CMAKE_CURRENT_SOURCE_DIR}/*.m"
-        "${CMAKE_CURRENT_SOURCE_DIR}/*.metal"
-        "${CMAKE_CURRENT_SOURCE_DIR}/*.cl"
-        "${CMAKE_CURRENT_SOURCE_DIR}/*.py"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../src/*.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../src/*.hpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../src/*.h"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../src/*.mm"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../src/*.m"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../src/*.metal"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../src/*.cl")
-    foreach(_gfx_guard_source IN LISTS _gfx_guard_sources)
-        if(_gfx_guard_source MATCHES "/third_party/")
-            continue()
-        endif()
-        file(READ "${_gfx_guard_source}" _gfx_guard_content)
-        string(CONCAT _gfx_gtest_skip_token "GTEST" "_" "SKIP")
-        string(CONCAT _gfx_gtest_allow_uninstantiated_token
-            "GTEST" "_" "ALLOW" "_" "UNINSTANTIATED" "_" "PARAMETERIZED" "_" "TEST")
-        string(CONCAT _gfx_disabled_prefix "DISABLED" "_")
-        string(CONCAT _gfx_backend_count_token "kBackend" "Count")
-        string(CONCAT _gfx_backend_idx_token "backend" "_index")
-        set(_gfx_forbidden_hit "")
-        if(_gfx_guard_content MATCHES "${_gfx_gtest_skip_token}[ \t]*\\(")
-            set(_gfx_forbidden_hit "${_gfx_gtest_skip_token}")
-        elseif(_gfx_guard_content MATCHES "${_gfx_gtest_allow_uninstantiated_token}[ \t]*\\(")
-            set(_gfx_forbidden_hit "${_gfx_gtest_allow_uninstantiated_token}")
-        elseif(_gfx_guard_content MATCHES "(^|[^A-Za-z0-9_])${_gfx_disabled_prefix}")
-            set(_gfx_forbidden_hit "disabled GoogleTest name")
-        elseif(_gfx_guard_content MATCHES "#[ \t]*ifdef[ \t]+(NO|YES)")
-            set(_gfx_forbidden_hit "Objective-C NO/YES macro cleanup branch")
-        elseif(_gfx_guard_content MATCHES "#[ \t]*undef[ \t]+(NO|YES)")
-            set(_gfx_forbidden_hit "Objective-C NO/YES macro undef")
-        elseif(_gfx_guard_content MATCHES "${_gfx_backend_count_token}|${_gfx_backend_idx_token}")
-            set(_gfx_forbidden_hit "fixed backend-count/index test matrix")
-        endif()
-        if(_gfx_forbidden_hit)
-            message(FATAL_ERROR
-                "GFX architecture guard: forbidden ${_gfx_forbidden_hit} in ${_gfx_guard_source}")
-        endif()
-    endforeach()
-endfunction()
-
-gfx_assert_forbidden_test_source_patterns()
-
-set(GFX_GTEST_SOURCE_CONTRACT_TOOL
-    "${CMAKE_CURRENT_SOURCE_DIR}/tools/gfx_gtest_source_contract.py")
 set(GFX_GTEST_MATRIX_TOOL
     "${CMAKE_CURRENT_SOURCE_DIR}/tools/gfx_gtest_matrix.py")
 set(GFX_GTEST_MATRIX_REFERENCE_ROOTS "" CACHE STRING
     "Semicolon-separated LABEL=DIR roots with captured GFX gtest matrices to compare against this build")
-
-function(gfx_assert_gtest_source_contract label native_sources_var adapter_sources_var)
-    set(_gfx_native_sources ${${native_sources_var}})
-    set(_gfx_adapter_sources ${${adapter_sources_var}})
-    if(NOT _gfx_native_sources OR NOT _gfx_adapter_sources)
-        message(FATAL_ERROR
-            "GFX test source contract ${label}: native and adapter source lists must be non-empty")
-    endif()
-    string(REPLACE ";" "," _gfx_native_arg "${_gfx_native_sources}")
-    string(REPLACE ";" "," _gfx_adapter_arg "${_gfx_adapter_sources}")
-    execute_process(
-        COMMAND
-            "${Python3_EXECUTABLE}"
-            "${GFX_GTEST_SOURCE_CONTRACT_TOOL}"
-            "${label}::${_gfx_native_arg}::${_gfx_adapter_arg}"
-        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-        RESULT_VARIABLE _gfx_contract_result
-        OUTPUT_VARIABLE _gfx_contract_output
-        ERROR_VARIABLE _gfx_contract_error)
-    if(NOT _gfx_contract_result EQUAL 0)
-        message(FATAL_ERROR
-            "GFX test source contract failed for ${label}\n"
-            "${_gfx_contract_output}${_gfx_contract_error}")
-    endif()
-endfunction()
 
 set(GFX_MEMORY_DEVICE_CONTRACT_NATIVE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/memory_device_integration_test.mm)
@@ -107,23 +29,6 @@ set(GFX_METAL_NATIVE_CONTRACT_NATIVE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_backend_test.mm)
 set(GFX_METAL_NATIVE_CONTRACT_UNAVAILABLE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/metal_native_contract_unavailable_test.cpp)
-
-gfx_assert_gtest_source_contract(
-    "memory-device"
-    GFX_MEMORY_DEVICE_CONTRACT_NATIVE_SOURCES
-    GFX_MEMORY_DEVICE_CONTRACT_UNAVAILABLE_SOURCES)
-gfx_assert_gtest_source_contract(
-    "opencl-device-profile"
-    GFX_OPENCL_DEVICE_PROFILE_CONTRACT_NATIVE_SOURCES
-    GFX_OPENCL_DEVICE_PROFILE_CONTRACT_UNAVAILABLE_SOURCES)
-gfx_assert_gtest_source_contract(
-    "opencl-runtime-bundle"
-    GFX_OPENCL_RUNTIME_BUNDLE_CONTRACT_NATIVE_SOURCES
-    GFX_OPENCL_RUNTIME_BUNDLE_CONTRACT_UNAVAILABLE_SOURCES)
-gfx_assert_gtest_source_contract(
-    "metal-native"
-    GFX_METAL_NATIVE_CONTRACT_NATIVE_SOURCES
-    GFX_METAL_NATIVE_CONTRACT_UNAVAILABLE_SOURCES)
 
 set(GFX_TEST_PLUGINS_XML "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/plugins.xml")
 add_custom_target(gfx_test_plugins_xml

@@ -6,7 +6,6 @@
 
 #include <utility>
 
-#include "compiler/backend_registry.hpp"
 #include "compiler/tensor_layout.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/parameter.hpp"
@@ -58,20 +57,22 @@ query_common_operation(const std::shared_ptr<const ov::Node> &node) {
       ov::as_type_ptr<const ov::op::v0::Constant>(node) ||
       ov::as_type_ptr<const ov::op::v0::Result>(node)) {
     return make_supported_operation("common_io", LoweringRouteKind::Common,
-                                    1.0);
+                                    1.0, "common");
   }
   if (ov::as_type_ptr<const ov::op::util::ReadValueBase>(node) ||
       ov::as_type_ptr<const ov::op::util::AssignBase>(node)) {
     return make_supported_operation("stateful_metadata",
-                                    LoweringRouteKind::Metadata, 1.0);
+                                    LoweringRouteKind::Metadata, 1.0,
+                                    "metadata");
   }
   if (is_decompression_node(node)) {
     return make_supported_operation("decompression_metadata",
-                                    LoweringRouteKind::Metadata, 1.0);
+                                    LoweringRouteKind::Metadata, 1.0,
+                                    "metadata");
   }
   if (is_view_node(node)) {
     return make_supported_operation("view_only", LoweringRouteKind::Metadata,
-                                    1.0);
+                                    1.0, "metadata");
   }
   return {};
 }
@@ -228,33 +229,6 @@ bool BackendCapabilities::allow_stage_activation_fusion(
     std::string_view stage_type, ActivationKind kind) const {
   return m_post_op_fusion_capabilities.allow_stage_activation_fusion(stage_type,
                                                                      kind);
-}
-
-bool is_supported_node(const std::shared_ptr<const ov::Node> &node,
-                       GpuBackend backend) {
-  const auto module = BackendRegistry::default_registry().resolve(backend);
-  return module && module->capabilities().supports_node(node);
-}
-
-bool model_supported_by_backend(const std::shared_ptr<const ov::Model> &model,
-                                GpuBackend backend) {
-  const auto module = BackendRegistry::default_registry().resolve(backend);
-  return module && module->legalizer().legalize_model(model).semantic_legal();
-}
-
-UnsupportedSummary
-collect_unsupported(const std::shared_ptr<const ov::Model> &model,
-                    GpuBackend backend, size_t max_nodes) {
-  const auto module = BackendRegistry::default_registry().resolve(backend);
-  if (!module) {
-    UnsupportedSummary summary;
-    summary.type_counts.emplace_back("UnregisteredBackend", 1);
-    summary.node_names.emplace_back(std::string("backend=") +
-                                    backend_to_string(backend));
-    return summary;
-  }
-  return module->legalizer().legalize_model(model).unsupported_summary(
-      max_nodes);
 }
 
 } // namespace compiler

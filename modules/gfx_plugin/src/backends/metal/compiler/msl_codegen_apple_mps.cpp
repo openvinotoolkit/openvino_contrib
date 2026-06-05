@@ -360,7 +360,8 @@ try_configure_apple_mps_vendor_kernel_source_plan_for_node(
     return {};
   }
   const auto stage_compiler_policy =
-      compiler::resolve_stage_compiler_policy(GpuBackend::Metal);
+      compiler::resolve_stage_compiler_policy(
+          compiler::BackendTarget::from_backend(GpuBackend::Metal));
 
   const bool conv_base_candidate =
       (ov::is_type<const ov::op::v1::Convolution>(node) ||

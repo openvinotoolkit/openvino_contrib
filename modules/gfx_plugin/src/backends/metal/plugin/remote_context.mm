@@ -32,7 +32,7 @@ ov::SoPtr<ov::IRemoteContext> create_metal_remote_context(const std::string& res
     return ov::SoPtr<ov::IRemoteContext>{
         std::make_shared<MetalRemoteContext>(resolved_name,
                                              params.device_id,
-                                             GpuBackend::Metal,
+                                             params.target,
                                              handle,
                                              params.backend_name,
                                              params.merged),

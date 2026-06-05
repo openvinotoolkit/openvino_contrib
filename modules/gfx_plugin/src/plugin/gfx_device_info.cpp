@@ -40,17 +40,21 @@ std::vector<std::string> device_capabilities_from_backend_capabilities(
   return device_capabilities;
 }
 
-std::vector<std::string> query_device_capabilities(GpuBackend backend) {
+std::vector<std::string> query_device_capabilities(
+    const compiler::BackendTarget &target) {
   const auto backend_module =
-      compiler::BackendRegistry::default_registry().resolve(backend);
-  if (!backend_module) {
+      compiler::BackendRegistry::default_registry().resolve(target);
+  if (!backend_module ||
+      !backend_module->target().is_compatible_with_fingerprint(
+          target.fingerprint())) {
     return {};
   }
   return device_capabilities_from_backend_capabilities(
       backend_module->capabilities());
 }
 
-void finalize_device_info(GfxDeviceInfo &info) {
+void finalize_device_info(GfxDeviceInfo &info,
+                          const compiler::BackendTarget &target) {
   if (info.backend_name.empty()) {
     info.backend_name = backend_to_string(info.backend);
   }
@@ -69,7 +73,7 @@ void finalize_device_info(GfxDeviceInfo &info) {
                                                      : info.device_id};
   }
   if (info.capabilities.empty()) {
-    info.capabilities = query_device_capabilities(info.backend);
+    info.capabilities = query_device_capabilities(target);
   }
 }
 
@@ -77,23 +81,29 @@ void finalize_device_info(GfxDeviceInfo &info) {
 
 GfxDeviceInfo query_device_info(GpuBackend backend,
                                 const ov::AnyMap &properties) {
+  return query_device_info(compiler::BackendTarget::from_backend(backend),
+                           properties);
+}
+
+GfxDeviceInfo query_device_info(const compiler::BackendTarget &target,
+                                const ov::AnyMap &properties) {
   GfxDeviceInfo info;
-  info.backend = backend;
-  info.backend_name = backend_to_string(backend);
+  info.backend = target.backend();
+  info.backend_name = target.backend_id();
   info.device_type = ov::device::Type::INTEGRATED;
   const int device_id = parse_device_id(properties);
   info.device_id =
       device_id >= 0 ? std::to_string(device_id) : std::string{"0"};
-  info.capabilities = query_device_capabilities(backend);
+  info.capabilities = query_device_capabilities(target);
 
-  switch (backend) {
+  switch (target.backend()) {
   case GpuBackend::Metal: {
     fill_metal_device_info(info, properties);
     break;
   }
   case GpuBackend::OpenCL: {
-    info.device_name = "OpenCL";
-    info.full_name = "GFX (OpenCL source kernels)";
+    info.device_name = target.device_name();
+    info.full_name = "GFX (" + target.device_profile() + ")";
     break;
   }
   default:
@@ -102,16 +112,16 @@ GfxDeviceInfo query_device_info(GpuBackend backend,
     break;
   }
 
-  finalize_device_info(info);
+  finalize_device_info(info, target);
   return info;
 }
 
 GfxDeviceInfo query_device_info_from_properties(const ov::AnyMap &properties,
                                                 bool log_fallback,
                                                 const char *log_tag) {
-  const auto backend =
-      resolve_backend_kind_from_properties(properties, log_fallback, log_tag);
-  return query_device_info(backend, properties);
+  const auto target =
+      resolve_backend_target_from_properties(properties, log_fallback, log_tag);
+  return query_device_info(target, properties);
 }
 
 } // namespace gfx_plugin

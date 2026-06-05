@@ -9,10 +9,10 @@
 #include "openvino/gfx_plugin/profiling.hpp"
 #include "openvino/gfx_plugin/properties.hpp"
 #include "plugin/compiled_model_backend_resources.hpp"
+#include "plugin/compiled_model_cache_contract.hpp"
 #include "plugin/gfx_profiling_utils.hpp"
 #include "plugin/gfx_property_lists.hpp"
 #include "plugin/gfx_property_utils.hpp"
-#include "plugin/model_serialization.hpp"
 #include "compiler/runtime_executable_descriptor_builder.hpp"
 #include "runtime/executable_descriptor.hpp"
 #include "runtime/backend_runtime.hpp"
@@ -41,10 +41,20 @@ CompiledModel::CompiledModel(
     const std::shared_ptr<const ov::Model> &model,
     const std::shared_ptr<const ov::IPlugin> &plugin,
     const compiler::ExecutableBundle &executable,
+    std::shared_ptr<const RuntimeExecutableDescriptor> runtime_descriptor,
+    const compiler::BackendTarget &target,
     const std::shared_ptr<const ov::Model> &original_model,
     const ov::AnyMap &properties, const ov::SoPtr<ov::IRemoteContext> &context)
     : ov::ICompiledModel(model, plugin, context), m_runtime_model(model),
-      m_original_model(original_model ? original_model : model) {
+      m_original_model(original_model ? original_model : model),
+      m_target(target) {
+  OPENVINO_ASSERT(m_target.backend() != GpuBackend::Unknown,
+                  "GFX: CompiledModel requires concrete BackendTarget");
+  OPENVINO_ASSERT(
+      m_target.fingerprint() == executable.target_fingerprint,
+      "GFX: CompiledModel target does not match compiler executable target: "
+      "compiled=",
+      executable.target_fingerprint, " runtime=", m_target.fingerprint());
   // GFX exposes f16 as the performance preference, while codegen preserves
   // f32 arithmetic for declared f32 and fp32-sensitive stages.
   if (auto it = properties.find(ov::hint::inference_precision.name());
@@ -85,24 +95,25 @@ CompiledModel::CompiledModel(
   }
   ov::AnyMap resolved_props = properties;
   const auto request = get_backend_request(resolved_props);
-  auto resolved = resolve_backend_for_properties(
-      resolved_props, /*log_fallback=*/true, "CompiledModel");
+  if (request.explicit_request && request.kind != m_target.backend()) {
+    OPENVINO_THROW("GFX: backend mismatch between properties (",
+                   backend_to_string(request.kind), ") and compiled target (",
+                   backend_to_string(m_target.backend()), ")");
+  }
   if (context) {
     auto gfx_ctx = std::dynamic_pointer_cast<GfxRemoteContext>(context._ptr);
     OPENVINO_ASSERT(gfx_ctx, "GFX: remote context type mismatch");
-    const auto ctx_backend = gfx_ctx->backend();
-    if (request.explicit_request && request.kind != ctx_backend) {
-      OPENVINO_THROW("GFX: backend mismatch between properties (",
-                     backend_to_string(request.kind), ") and remote context (",
-                     backend_to_string(ctx_backend), ")");
+    const auto& ctx_target = gfx_ctx->target();
+    if (!ctx_target.is_compatible_with_fingerprint(m_target.fingerprint())) {
+      OPENVINO_THROW("GFX: target mismatch between compiled target (",
+                     m_target.debug_string(),
+                     ") and remote context (", ctx_target.debug_string(), ")");
     }
-    resolved.backend = ctx_backend;
-    resolved.backend_name = backend_to_string(ctx_backend);
-    resolved_props[kGfxBackendProperty] = resolved.backend_name;
   }
-  m_backend = resolved.backend;
-  m_backend_name = resolved.backend_name;
-  register_backend_profiling_trace_sinks(m_backend);
+  m_backend = m_target.backend();
+  m_backend_name = backend_to_string(m_backend);
+  resolved_props[kGfxBackendProperty] = m_backend_name;
+  register_backend_profiling_trace_sinks(m_target);
   const bool capture_compile_profile =
       m_enable_profiling && profiling_level() != ProfilingLevel::Off;
   GfxProfilingTrace compile_trace;
@@ -119,22 +130,17 @@ CompiledModel::CompiledModel(
                                    m_loaded_from_cache ? 1 : 0);
   }
 
-  compiler::RuntimeExecutableDescriptorBuildRequest descriptor_request;
-  descriptor_request.executable = &executable;
-  descriptor_request.runtime_model = m_runtime_model;
-  descriptor_request.backend = m_backend;
-  descriptor_request.backend_name = m_backend_name;
-  descriptor_request.enable_fusion = m_enable_fusion;
-  descriptor_request.compile_trace = compile_trace_ptr;
-  auto runtime_descriptor = std::make_shared<RuntimeExecutableDescriptor>(
-      compiler::RuntimeExecutableDescriptorBuilder{}.build(
-          descriptor_request));
+  OPENVINO_ASSERT(runtime_descriptor,
+                  "GFX: compiler did not provide runtime descriptor");
   OPENVINO_ASSERT(
       compiler::runtime_executable_descriptor_valid(*runtime_descriptor,
                                                     executable),
       "GFX: compiler executable bundle does not match runtime descriptor");
   OPENVINO_ASSERT(runtime_descriptor->stage_plan,
                   "GFX: compiler runtime descriptor has no stage plan");
+  OPENVINO_ASSERT(
+      compiler::runtime_executable_stage_plan_valid(*runtime_descriptor),
+      "GFX: compiler runtime descriptor stage plan is inconsistent");
   m_runtime_descriptor = std::move(runtime_descriptor);
 
   // Preserve user properties; store inference_precision as ov::element::Type.
@@ -160,7 +166,7 @@ CompiledModel::CompiledModel(
   const auto backend_state_start =
       compile_trace_ptr ? std::chrono::steady_clock::now()
                         : std::chrono::steady_clock::time_point{};
-  m_backend_state = create_backend_state(m_backend, properties, context);
+  m_backend_state = create_backend_state(m_target, properties, context);
   if (compile_trace_ptr) {
     compile_trace_ptr->increment_counter("backend_state_create_count");
     compile_trace_ptr->add_segment(
@@ -203,9 +209,8 @@ CompiledModel::create_sync_infer_request() const {
   return std::make_shared<InferRequest>(shared_from_this());
 }
 
-void CompiledModel::export_model(std::ostream &model) const {
-  const auto source = m_original_model ? m_original_model : m_runtime_model;
-  write_model_to_stream(source, model);
+void CompiledModel::export_model(std::ostream &) const {
+  throw_compiled_model_cache_roundtrip_unavailable("export_model");
 }
 
 void CompiledModel::set_property(const ov::AnyMap &properties) {
@@ -344,10 +349,10 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
   GpuStageRuntimeOptions stage_runtime_options{};
   stage_runtime_options.diagnostic_f32_vendor_image =
       m_diagnostic_f32_vendor_image;
-  stage_runtime_options.source_kernel_dispatch_enabled =
-      runtime_plan.runtime_options.source_kernel_dispatch_enabled;
-  stage_runtime_options.source_kernel_fallback_parallelism =
-      runtime_plan.runtime_options.source_kernel_fallback_parallelism;
+  stage_runtime_options.custom_kernel_dispatch_enabled =
+      runtime_plan.runtime_options.custom_kernel_dispatch_enabled;
+  stage_runtime_options.custom_kernel_dispatch_profile =
+      runtime_plan.runtime_options.custom_kernel_dispatch_profile;
 
   PipelineStageRuntimeMaterializationRequest materialization_request;
   materialization_request.stage_factory = backend_state;

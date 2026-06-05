@@ -7,7 +7,6 @@
 #include <string>
 #include <vector>
 
-#include "openvino/core/node.hpp"
 #include "runtime/gpu_stage.hpp"
 
 namespace ov {
@@ -37,8 +36,7 @@ private:
 };
 
 std::unique_ptr<GpuStage> create_stateful_stage(
-    const std::shared_ptr<const ov::Node>& node,
-    const RuntimeStageExecutableDescriptor* descriptor);
+    const RuntimeStageExecutableDescriptor& descriptor);
 
 }  // namespace gfx_plugin
 }  // namespace ov
