@@ -8,6 +8,7 @@
 
 #include "cuda/graph.hpp"
 #include "cuda_compiled_model.hpp"
+#include "cuda_dynamic_operation.hpp"
 #include "cuda_operation_registry.hpp"
 #include "cuda_profiler.hpp"
 #include "cuda_runtime.h"
@@ -92,6 +93,7 @@ struct ReluCudaGraphCompatibilityTest : CudaGraphCompatibilityTest {
         std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
         std::map<std::string, std::size_t> emptyMapping;
         ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
+        DynamicOperationCache dynamicOpCache{};
         InferenceRequestContext context{emptyTensor,
                                         emptyMapping,
                                         emptyTensor,
@@ -99,7 +101,8 @@ struct ReluCudaGraphCompatibilityTest : CudaGraphCompatibilityTest {
                                         threadContext,
                                         token,
                                         simpleExecutionDelegator,
-                                        cudaGraphContext};
+                                        cudaGraphContext,
+                                        dynamicOpCache};
 
         // Generate input
         std::vector<ElementType> input(inSize);
@@ -175,6 +178,7 @@ struct ConcatCudaGraphCompatibilityTest : CudaGraphCompatibilityTest {
         std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
         std::map<std::string, std::size_t> emptyMapping;
         ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
+        DynamicOperationCache dynamicOpCache{};
         InferenceRequestContext context{emptyTensor,
                                         emptyMapping,
                                         emptyTensor,
@@ -182,7 +186,8 @@ struct ConcatCudaGraphCompatibilityTest : CudaGraphCompatibilityTest {
                                         threadContext,
                                         token,
                                         simpleExecutionDelegator,
-                                        cudaGraphContext};
+                                        cudaGraphContext,
+                                        dynamicOpCache};
 
         // Generate inputs
         std::vector<ElementType> input1(inSize1);
