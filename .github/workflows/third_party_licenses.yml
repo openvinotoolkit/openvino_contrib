@@ -1,0 +1,265 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+name: Third Party Licenses
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - 'releases/**'
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  ollama-openvino-go:
+    name: Licenses / ollama_openvino / Go
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Check Go dependency licenses
+        uses: apache/skywalking-eyes/dependency@61275cc80d0798a405cb070f7d3a8aaf7cf2c2c1 # v0.8.0
+        with:
+          config: .github/license-policy/skywalking-ollama-openvino.yml
+          mode: check
+
+  openvino-langchain-npm:
+    name: Licenses / openvino-langchain / NPM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Check NPM dependency licenses
+        uses: apache/skywalking-eyes/dependency@61275cc80d0798a405cb070f7d3a8aaf7cf2c2c1 # v0.8.0
+        with:
+          config: .github/license-policy/skywalking-openvino-langchain.yml
+          mode: check
+
+  openvino-langchain-sample-npm:
+    name: Licenses / openvino-langchain sample / NPM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Check NPM dependency licenses
+        uses: apache/skywalking-eyes/dependency@61275cc80d0798a405cb070f7d3a8aaf7cf2c2c1 # v0.8.0
+        with:
+          config: .github/license-policy/skywalking-openvino-langchain-sample.yml
+          mode: check
+
+  ollama-openvino-macapp-npm:
+    name: Licenses / ollama_openvino macapp / NPM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Check NPM dependency licenses
+        uses: apache/skywalking-eyes/dependency@61275cc80d0798a405cb070f7d3a8aaf7cf2c2c1 # v0.8.0
+        with:
+          config: .github/license-policy/skywalking-ollama-openvino-macapp.yml
+          mode: check
+
+  pointpillars-python:
+    name: Licenses / pointPillars / Python
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.10'
+
+      - name: Resolve Python dependencies
+        working-directory: modules/3d/pointPillars
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip freeze > requirements-all.txt
+
+      - name: Check Python dependency licenses
+        id: license_check
+        uses: pilosus/action-pip-license-checker@e909b0226ff49d3235c99c4585bc617f49fff16a # v3.1.0
+        with:
+          requirements: modules/3d/pointPillars/requirements-all.txt
+          fail: StrongCopyleft,NetworkCopyleft,Other,Error
+          fails-only: true
+          totals: true
+          headers: true
+          verbose: 1
+
+      - name: Print Python license report
+        if: ${{ always() }}
+        env:
+          REPORT: ${{ steps.license_check.outputs.report }}
+        run: printf '%s\n' "$REPORT"
+
+  cdpn-python:
+    name: Licenses / CDPN / Python
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.11'
+
+      - name: Resolve Python dependencies
+        working-directory: modules/3d/CDPN
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip freeze > requirements-all.txt
+
+      - name: Check Python dependency licenses
+        id: license_check
+        uses: pilosus/action-pip-license-checker@e909b0226ff49d3235c99c4585bc617f49fff16a # v3.1.0
+        with:
+          requirements: modules/3d/CDPN/requirements-all.txt
+          fail: StrongCopyleft,NetworkCopyleft,Other,Error
+          fails-only: true
+          totals: true
+          headers: true
+          verbose: 1
+
+      - name: Print Python license report
+        if: ${{ always() }}
+        env:
+          REPORT: ${{ steps.license_check.outputs.report }}
+        run: printf '%s\n' "$REPORT"
+
+  openvino-bevfusion-python:
+    name: Licenses / openvino_bevfusion / Python
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.10'
+
+      - name: Resolve Python dependencies
+        working-directory: modules/openvino_bevfusion
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip freeze > requirements-all.txt
+
+      - name: Check Python dependency licenses
+        id: license_check
+        uses: pilosus/action-pip-license-checker@e909b0226ff49d3235c99c4585bc617f49fff16a # v3.1.0
+        with:
+          requirements: modules/openvino_bevfusion/requirements-all.txt
+          fail: StrongCopyleft,NetworkCopyleft,Other,Error
+          fails-only: true
+          totals: true
+          headers: true
+          verbose: 1
+
+      - name: Print Python license report
+        if: ${{ always() }}
+        env:
+          REPORT: ${{ steps.license_check.outputs.report }}
+        run: printf '%s\n' "$REPORT"
+
+  custom-operations-python:
+    name: Licenses / custom_operations / Python
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.10'
+
+      - name: Resolve Python dependencies
+        working-directory: modules/custom_operations
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r tests/requirements.txt
+          python -m pip freeze > requirements-all.txt
+
+      - name: Check Python dependency licenses
+        id: license_check
+        uses: pilosus/action-pip-license-checker@e909b0226ff49d3235c99c4585bc617f49fff16a # v3.1.0
+        with:
+          requirements: modules/custom_operations/requirements-all.txt
+          fail: StrongCopyleft,NetworkCopyleft,Other,Error
+          fails-only: true
+          totals: true
+          headers: true
+          verbose: 1
+
+      - name: Print Python license report
+        if: ${{ always() }}
+        env:
+          REPORT: ${{ steps.license_check.outputs.report }}
+        run: printf '%s\n' "$REPORT"
+
+  nvidia-plugin-python:
+    name: Licenses / nvidia_plugin / Python
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.10'
+
+      - name: Resolve Python dependencies
+        working-directory: modules/nvidia_plugin
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r tests/functional/shared_tests_instances/single_layer_tests/generator/requirements.txt
+          python -m pip install -r utils/shape-extractor/requirements.txt
+          python -m pip install -r wheel/requirements.txt
+          python -m pip install -r wheel/requirements-dev.txt
+          python -m pip freeze > requirements-all.txt
+
+      - name: Check Python dependency licenses
+        id: license_check
+        uses: pilosus/action-pip-license-checker@e909b0226ff49d3235c99c4585bc617f49fff16a # v3.1.0
+        with:
+          requirements: modules/nvidia_plugin/requirements-all.txt
+          fail: StrongCopyleft,NetworkCopyleft,Other,Error
+          fails-only: true
+          totals: true
+          headers: true
+          verbose: 1
+
+      - name: Print Python license report
+        if: ${{ always() }}
+        env:
+          REPORT: ${{ steps.license_check.outputs.report }}
+        run: printf '%s\n' "$REPORT"
+
+  dependency-review:
+    name: Licenses / PR dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          config-file: ./.github/dependency-review-config.yml

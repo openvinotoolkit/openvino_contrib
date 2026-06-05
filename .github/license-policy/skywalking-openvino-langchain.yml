@@ -1,0 +1,9 @@
+license:
+  spdx-id: Apache-2.0
+
+dependency:
+  files:
+    - modules/openvino-langchain/package.json
+
+  licenses: []
+  excludes: []
