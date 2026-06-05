@@ -1,3 +1,6 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 name: Sanitizer CUDA
 on:
   push:
@@ -10,7 +13,12 @@ on:
 permissions: read-all
 
 jobs:
+  license-header:
+    name: License header check
+    uses: ./.github/workflows/copyright.yml
+
   cuda-compute-sanitizer:
+    needs: license-header
     runs-on: lohika-ci
     timeout-minutes: 300
     steps:

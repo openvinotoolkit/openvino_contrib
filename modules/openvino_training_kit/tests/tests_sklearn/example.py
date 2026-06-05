@@ -1,3 +1,6 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 from ov_training_kit.sklearn import RandomForestRegressor
 from sklearn.datasets import fetch_california_housing
 from sklearn.model_selection import train_test_split

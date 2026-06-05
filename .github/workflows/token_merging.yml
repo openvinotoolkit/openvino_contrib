@@ -1,3 +1,6 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 name: Token Merging - Test
 
 on:
@@ -19,7 +22,12 @@ concurrency:
 permissions: read-all
 
 jobs:
+  license-header:
+    name: License header check
+    uses: ./.github/workflows/copyright.yml
+
   Precommit:
+    needs: license-header
     strategy:
       fail-fast: false
       matrix:

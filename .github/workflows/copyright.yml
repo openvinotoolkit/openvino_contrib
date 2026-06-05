@@ -1,0 +1,31 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+name: Copyright
+
+on:
+  workflow_call:
+  pull_request:
+  push:
+    branches:
+      - master
+      - 'releases/**'
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  license-header:
+    name: License header check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+
+      - name: Check license headers
+        uses: apache/skywalking-eyes/header@61275cc80d0798a405cb070f7d3a8aaf7cf2c2c1 # v0.8.0
+        with:
+          config: .licenserc.yaml
+          mode: check
+          token: ""

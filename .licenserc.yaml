@@ -1,0 +1,22 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+header:
+  license:
+    spdx-id: Apache-2.0
+    copyright-owner: Intel Corporation
+    copyright-year: '2018-2026'
+    content: |
+      Copyright (C) 2018-2026 Intel Corporation
+      SPDX-License-Identifier: Apache-2.0
+    pattern: |
+      Copyright \(C\) 2018-2026 Intel Corporation
+      SPDX-License-Identifier: Apache-2.0
+
+  paths:
+    - '**'
+
+  paths-ignore:
+    - 'LICENSE'
+
+  comment: never

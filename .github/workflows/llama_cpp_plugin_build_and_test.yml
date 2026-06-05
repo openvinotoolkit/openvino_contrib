@@ -1,3 +1,6 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 name: llama_cpp_plugin_build_and_test
 
 on:
@@ -9,7 +12,12 @@ on:
 permissions: read-all
 
 jobs:
+  license-header:
+    name: License header check
+    uses: ./.github/workflows/copyright.yml
+
   build_ubuntu20:
+    needs: license-header
     runs-on: ubuntu-20.04-8-cores
     steps:
       - name: Setup cmake

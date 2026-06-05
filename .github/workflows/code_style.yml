@@ -1,3 +1,6 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 name: Code Style
 on:
   push:
@@ -11,7 +14,12 @@ on:
 permissions: read-all
 
 jobs:
+  license-header:
+    name: License header check
+    uses: ./.github/workflows/copyright.yml
+
   Java:
+    needs: license-header
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6

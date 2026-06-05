@@ -1,3 +1,6 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 name: Linux (Ubuntu 22.04, Python 3.11)
 on:
   workflow_dispatch:
@@ -19,8 +22,13 @@ env:
 permissions: read-all
 
 jobs:
+  license-header:
+    name: License header check
+    uses: ./.github/workflows/copyright.yml
+
   Build_and_test:
     name: Build and Test
+    needs: license-header
     timeout-minutes: 150
     defaults:
       run:
@@ -335,7 +343,7 @@ jobs:
 
   Overall_Status:
     name: ci/gha_overall_status_linux
-    needs: [ Build_and_test, NVIDIA_Plugin ]
+    needs: [ license-header, Build_and_test, NVIDIA_Plugin ]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
