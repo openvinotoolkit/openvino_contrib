@@ -10,7 +10,7 @@ on:
     paths:
       - 'modules/token_merging/**'
   pull_request:
-    branches:
+    branches: 
       - master
     paths:
       - 'modules/token_merging/**'
@@ -22,12 +22,7 @@ concurrency:
 permissions: read-all
 
 jobs:
-  copyright:
-    name: Copyright
-    uses: ./.github/workflows/copyright.yml
-
   Precommit:
-    needs: copyright
     strategy:
       fail-fast: false
       matrix:

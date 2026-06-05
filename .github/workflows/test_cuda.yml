@@ -13,12 +13,7 @@ on:
 permissions: read-all
 
 jobs:
-  copyright:
-    name: Copyright
-    uses: ./.github/workflows/copyright.yml
-
   build:
-    needs: copyright
     runs-on: lohika-ci
     steps:
     - name: fetch openvino master branch

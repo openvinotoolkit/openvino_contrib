@@ -12,12 +12,7 @@ on:
 permissions: read-all
 
 jobs:
-  copyright:
-    name: Copyright
-    uses: ./.github/workflows/copyright.yml
-
   build_ubuntu20:
-    needs: copyright
     runs-on: ubuntu-20.04-8-cores
     steps:
       - name: Setup cmake

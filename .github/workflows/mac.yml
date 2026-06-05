@@ -22,13 +22,8 @@ env:
 permissions: read-all
 
 jobs:
-  copyright:
-    name: Copyright
-    uses: ./.github/workflows/copyright.yml
-
   Build_and_test:
     name: Build and Test
-    needs: copyright
     timeout-minutes: 150
     defaults:
       run:
@@ -164,7 +159,7 @@ jobs:
 
   Overall_Status:
     name: ci/gha_overall_status_mac
-    needs: [ copyright, Build_and_test ]
+    needs: [ Build_and_test ]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:

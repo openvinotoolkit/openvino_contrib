@@ -17,12 +17,7 @@ env:
   OV_BRANCH: ${{ github.base_ref || github.event.merge_group.base_ref || github.ref }}
 
 jobs:
-  copyright:
-    name: Copyright
-    uses: ./.github/workflows/copyright.yml
-
   history:
-    needs: copyright
     runs-on: ubuntu-22.04
     steps:
     - name: checkout master branch

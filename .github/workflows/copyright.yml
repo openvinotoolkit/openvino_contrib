@@ -4,7 +4,6 @@
 name: Copyright
 
 on:
-  workflow_call:
   pull_request:
   push:
     branches:

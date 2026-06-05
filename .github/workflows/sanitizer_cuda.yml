@@ -13,12 +13,7 @@ on:
 permissions: read-all
 
 jobs:
-  copyright:
-    name: Copyright
-    uses: ./.github/workflows/copyright.yml
-
   cuda-compute-sanitizer:
-    needs: copyright
     runs-on: lohika-ci
     timeout-minutes: 300
     steps:
