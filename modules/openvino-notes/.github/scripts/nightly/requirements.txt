@@ -1,0 +1,5 @@
+GitPython>=3.1,<4
+PyGithub>=2,<3
+plumbum>=1.8,<2
+pydantic-settings>=2,<3
+typer>=0.12,<1

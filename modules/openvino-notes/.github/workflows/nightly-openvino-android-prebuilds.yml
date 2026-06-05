@@ -1,0 +1,316 @@
+name: Nightly OpenVINO Android Prebuilds
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 2 * * *"
+
+env:
+  OPENVINO_REF: "android-mbind-compat"
+  OPENVINO_GENAI_REF: "master"
+  GENAI_JAVA_API_REF: "main"
+  OPENVINO_CONTRIB_REF: "master"
+  ONETBB_REF: "v2023.0.0"
+  PACKAGE_CHANNEL: "nightly"
+  OPENVINO_REPO: "https://github.com/embedded-dev-research/openvino.git"
+  OPENVINO_CONTRIB_REPO: "https://github.com/openvinotoolkit/openvino_contrib.git"
+  OPENVINO_GENAI_REPO: "https://github.com/openvinotoolkit/openvino.genai.git"
+  GENAI_JAVA_API_REPO: "https://github.com/ov-ext-labs/genai-java-api.git"
+  ONETBB_REPO: "https://github.com/uxlfoundation/oneTBB.git"
+  ANDROID_PLATFORM: "33"
+  ANDROID_NDK_VERSION: "29.0.14206865"
+  JAVA_VERSION: "21"
+  PREBUILD_RELEASE_TAG: "openvino-android-prebuilds-nightly"
+  APK_RELEASE_TAG: "openvino-notes-android-apk-nightly"
+  APK_RELEASE_TITLE: "OpenVINO Notes Android APK Nightly"
+
+jobs:
+  android-prebuild:
+    name: Android ${{ matrix.android_abi }} prebuild
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - android_abi: arm64-v8a
+            package_common: "true"
+          - android_abi: x86_64
+            package_common: "false"
+    env:
+      ANDROID_ABI: ${{ matrix.android_abi }}
+      PACKAGE_COMMON: ${{ matrix.package_common }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Java
+        uses: actions/setup-java@v5.2.0
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4.0.1
+        with:
+          packages: platform-tools
+
+      - name: Install Android platform and NDK
+        shell: bash
+        run: sdkmanager --install "platforms;android-${ANDROID_PLATFORM}" "ndk;${ANDROID_NDK_VERSION}"
+
+      - name: Install host tools
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ccache ninja-build scons
+
+      - name: Install Python dependencies
+        run: python3 -m pip install --user -r .github/scripts/nightly/requirements.txt
+
+      - name: Restore ccache
+        uses: actions/cache@v4.2.4
+        with:
+          path: ${{ runner.temp }}/ccache
+          # ccache validates compiler identity, flags, and source content itself.
+          # Keep workflow/helper script churn out of the primary key to avoid
+          # storing duplicate 600+ MB archives for equivalent native outputs.
+          key: openvino-android-ccache-v1-${{ runner.os }}-${{ env.ANDROID_NDK_VERSION }}-${{ matrix.android_abi }}-${{ env.OPENVINO_REF }}-${{ env.OPENVINO_GENAI_REF }}-${{ env.GENAI_JAVA_API_REF }}-${{ env.OPENVINO_CONTRIB_REF }}-${{ env.ONETBB_REF }}
+          restore-keys: |
+            openvino-android-ccache-v1-${{ runner.os }}-${{ env.ANDROID_NDK_VERSION }}-${{ matrix.android_abi }}-${{ env.OPENVINO_REF }}-${{ env.OPENVINO_GENAI_REF }}-${{ env.GENAI_JAVA_API_REF }}-${{ env.OPENVINO_CONTRIB_REF }}-${{ env.ONETBB_REF }}-
+            openvino-android-ccache-${{ runner.os }}-${{ env.ANDROID_NDK_VERSION }}-${{ matrix.android_abi }}-${{ env.OPENVINO_REF }}-${{ env.OPENVINO_GENAI_REF }}-${{ env.GENAI_JAVA_API_REF }}-${{ env.OPENVINO_CONTRIB_REF }}-${{ env.ONETBB_REF }}-
+            openvino-android-ccache-v1-${{ runner.os }}-${{ env.ANDROID_NDK_VERSION }}-${{ matrix.android_abi }}-
+            openvino-android-ccache-${{ runner.os }}-${{ env.ANDROID_NDK_VERSION }}-${{ matrix.android_abi }}-
+            openvino-android-ccache-v1-${{ runner.os }}-${{ env.ANDROID_NDK_VERSION }}-
+            openvino-android-ccache-${{ runner.os }}-${{ env.ANDROID_NDK_VERSION }}-
+            openvino-android-ccache-v1-${{ runner.os }}-
+            openvino-android-ccache-${{ runner.os }}-
+
+      - name: Prepare build directories
+        run: python3 .github/scripts/nightly/prebuild.py prepare
+
+      - name: Checkout source dependencies
+        run: python3 .github/scripts/nightly/prebuild.py checkout-sources
+
+      - name: Record source manifest
+        run: python3 .github/scripts/nightly/prebuild.py record-source-manifest
+
+      - name: Build oneTBB
+        run: python3 .github/scripts/nightly/prebuild.py build-onetbb
+
+      - name: Configure OpenVINO
+        run: python3 .github/scripts/nightly/prebuild.py configure-openvino
+
+      - name: Build OpenVINO Runtime
+        run: python3 .github/scripts/nightly/prebuild.py build-openvino-runtime
+
+      - name: Build OpenVINO GenAI
+        run: python3 .github/scripts/nightly/prebuild.py build-openvino-genai
+
+      - name: Build OpenVINO Java API
+        run: python3 .github/scripts/nightly/prebuild.py build-openvino-java-api
+
+      - name: Install OpenVINO runtime
+        run: python3 .github/scripts/nightly/prebuild.py install-openvino
+
+      - name: Build OpenVINO GenAI Java API
+        run: python3 .github/scripts/nightly/prebuild.py build-genai-java-api
+
+      - name: Package Android prebuild
+        id: package
+        run: python3 .github/scripts/nightly/prebuild.py package-prebuild
+
+      - name: Show ccache stats
+        if: always()
+        run: python3 .github/scripts/nightly/prebuild.py ccache-stats
+
+      - name: Upload prebuild artifact
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: openvino-android-${{ matrix.android_abi }}-prebuilds
+          path: |
+            ${{ runner.temp }}/openvino-android-prebuilds/artifacts/*.zip
+            ${{ runner.temp }}/openvino-android-prebuilds/artifacts/openvino-android-package-manifest-*.json
+          if-no-files-found: error
+
+  publish-nightly-release:
+    name: Publish rolling nightly prerelease
+    needs: android-prebuild
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install Python dependencies
+        run: python3 -m pip install --user -r .github/scripts/nightly/requirements.txt
+
+      - name: Download prebuild artifact
+        uses: actions/download-artifact@v8.0.1
+        with:
+          pattern: openvino-android-*-prebuilds
+          path: ${{ runner.temp }}/prebuild-artifacts
+          merge-multiple: true
+
+      - name: Publish rolling nightly prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACTS_DIR: ${{ runner.temp }}/prebuild-artifacts
+          RELEASE_TAG: ${{ env.PREBUILD_RELEASE_TAG }}
+          RELEASE_TITLE: OpenVINO Android Prebuilds Nightly
+          RELEASE_NOTES_PREFIX: Rolling nightly Android OpenVINO prebuilds for 64-bit ARM and x86 targets.
+        run: python3 .github/scripts/nightly/prebuild.py publish-release
+
+  plan-release-apks:
+    name: Plan release APK matrix
+    needs: publish-nightly-release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install Python dependencies
+        run: python3 -m pip install --user -r .github/scripts/nightly/requirements.txt
+
+      - name: Build APK matrix from published prebuild release
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREBUILD_RELEASE_TAG: ${{ env.PREBUILD_RELEASE_TAG }}
+          PREBUILD_CHANNEL: ${{ env.PACKAGE_CHANNEL }}
+        run: python3 .github/scripts/nightly/prebuild.py plan-apk-release-matrix
+
+  release-apk:
+    name: Release APK (${{ matrix.android_abi }})
+    needs: plan-release-apks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan-release-apks.outputs.matrix) }}
+    permissions:
+      contents: read
+    env:
+      ANDROID_ABI: ${{ matrix.android_abi }}
+      COMMON_PREBUILD_ASSET: ${{ matrix.common_asset }}
+      RUNTIME_PREBUILD_ASSET: ${{ matrix.runtime_asset }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Verify release signing secrets are configured
+        shell: bash
+        env:
+          ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+          ANDROID_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
+          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+        run: bash .github/scripts/release/verify_release_signing.sh
+
+      - name: Materialize release signing from GitHub secrets
+        shell: bash
+        env:
+          ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+          ANDROID_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
+          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+        run: bash .github/scripts/release/materialize_release_signing.sh
+
+      - name: Materialize Google services from GitHub secrets
+        shell: bash
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+          GOOGLE_SERVICES_JSON_REQUIRED: "true"
+        run: bash .github/scripts/release/materialize_google_services_json.sh
+
+      - name: Set up toolchain
+        uses: ./.github/actions/setup-android-gradle
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          android-api-level: "37.0"
+          android-build-tools: "37.0.0"
+
+      - name: Install Python dependencies
+        run: python3 -m pip install --user -r .github/scripts/nightly/requirements.txt
+
+      - name: Assemble signed release APK from nightly prebuilds
+        shell: bash
+        run: |
+          ./gradlew \
+            app:assembleRelease \
+            -PopenvinoAndroidAbi="${ANDROID_ABI}" \
+            -PopenvinoAndroidPrebuildRepo="${GITHUB_REPOSITORY}" \
+            -PopenvinoAndroidPrebuildReleaseTag="${PREBUILD_RELEASE_TAG}" \
+            -PopenvinoAndroidPrebuildChannel="${PACKAGE_CHANNEL}" \
+            -PopenvinoAndroidCommonArtifactName="${COMMON_PREBUILD_ASSET}" \
+            -PopenvinoAndroidRuntimeArtifactName="${RUNTIME_PREBUILD_ASSET}" \
+            -PonDeviceLlmBundleRepo="${GITHUB_REPOSITORY}" \
+            --stacktrace
+
+      - name: Package release APK artifact
+        env:
+          ARTIFACTS_DIR: ${{ runner.temp }}/release-apks
+          PREBUILD_RELEASE_TAG: ${{ matrix.prebuild_release_tag }}
+          APK_CHANNEL: ${{ env.PACKAGE_CHANNEL }}
+        run: python3 .github/scripts/nightly/prebuild.py package-release-apk
+
+      - name: Upload release APK artifact
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: openvino-notes-release-apk-${{ matrix.android_abi }}
+          path: |
+            ${{ runner.temp }}/release-apks/*.apk
+            ${{ runner.temp }}/release-apks/openvino-notes-android-apk-package-manifest-*.json
+          if-no-files-found: error
+
+  publish-apk-release:
+    name: Publish rolling APK prerelease
+    needs: release-apk
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install Python dependencies
+        run: python3 -m pip install --user -r .github/scripts/nightly/requirements.txt
+
+      - name: Download release APK artifacts
+        uses: actions/download-artifact@v8.0.1
+        with:
+          pattern: openvino-notes-release-apk-*
+          path: ${{ runner.temp }}/release-apk-artifacts
+          merge-multiple: true
+
+      - name: Publish rolling APK prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACTS_DIR: ${{ runner.temp }}/release-apk-artifacts
+          RELEASE_TAG: ${{ env.APK_RELEASE_TAG }}
+          RELEASE_TITLE: ${{ env.APK_RELEASE_TITLE }}
+          RELEASE_NOTES_PREFIX: Rolling nightly signed release APKs built from the published OpenVINO Android nightly prebuilds.
+        run: python3 .github/scripts/nightly/prebuild.py publish-apk-release

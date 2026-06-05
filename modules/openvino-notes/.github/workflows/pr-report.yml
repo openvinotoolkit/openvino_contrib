@@ -1,0 +1,98 @@
+name: PR Report
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+
+permissions:
+  actions: read
+  checks: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  report:
+    name: Report Results To PR
+    if: >
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.pull_requests[0] != null &&
+      github.event.workflow_run.conclusion != 'cancelled'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Download workflow artifacts
+        uses: actions/download-artifact@v8.0.1
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+          path: pr-artifacts
+
+      - name: List downloaded artifacts
+        shell: bash
+        run: bash .github/scripts/pr/list_downloaded_artifacts.sh pr-artifacts
+
+      - name: Publish unit test report
+        if: hashFiles('pr-artifacts/**/build/test-results/testDebugUnitTest/*.xml') != ''
+        continue-on-error: true
+        uses: mikepenz/action-junit-report@v6.4.0
+        with:
+          commit: ${{ github.event.workflow_run.head_sha }}
+          pr_id: ${{ github.event.workflow_run.pull_requests[0].number }}
+          check_name: Unit Tests
+          report_paths: pr-artifacts/**/build/test-results/testDebugUnitTest/*.xml
+          require_tests: true
+          fail_on_failure: false
+          update_check: true
+          detailed_summary: true
+
+      - name: Publish instrumentation report
+        if: hashFiles('pr-artifacts/**/instrumentation-results.xml') != ''
+        continue-on-error: true
+        uses: mikepenz/action-junit-report@v6.4.0
+        with:
+          commit: ${{ github.event.workflow_run.head_sha }}
+          pr_id: ${{ github.event.workflow_run.pull_requests[0].number }}
+          check_name: Android Instrumentation
+          report_paths: pr-artifacts/**/instrumentation-results.xml
+          require_tests: true
+          fail_on_failure: false
+          update_check: true
+          detailed_summary: true
+
+      - name: Publish coverage report
+        if: hashFiles('pr-artifacts/**/build/reports/kover/*.xml') != ''
+        continue-on-error: true
+        uses: madrapps/jacoco-report@v1.7.2
+        with:
+          pr-number: ${{ github.event.workflow_run.pull_requests[0].number }}
+          paths: ${{ github.workspace }}/pr-artifacts/**/build/reports/kover/*.xml
+          token: ${{ github.token }}
+          min-coverage-overall: 60
+          min-coverage-changed-files: 60
+          title: Coverage
+          update-comment: true
+          comment-type: both
+
+      - name: Build PR summary
+        shell: bash
+        run: |
+          python3 .github/scripts/pr/build_pr_summary.py \
+            pr-artifacts \
+            pr-summary.md \
+            "${{ github.event.workflow_run.pull_requests[0].number }}" \
+            "${{ github.event.workflow_run.head_sha }}" \
+            "${{ github.event.workflow_run.html_url }}" \
+            "${{ github.event.workflow_run.conclusion }}"
+
+      - name: Publish sticky PR summary
+        uses: marocchino/sticky-pull-request-comment@v3.0.4
+        with:
+          number: ${{ github.event.workflow_run.pull_requests[0].number }}
+          header: ci-quality-overview
+          path: pr-summary.md

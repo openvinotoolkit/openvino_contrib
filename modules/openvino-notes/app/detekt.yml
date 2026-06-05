@@ -1,0 +1,22 @@
+# UI (app) module: Jetpack Compose entry points often exceed default complexity limits.
+complexity:
+  LongParameterList:
+    active: false
+  LongMethod:
+    active: false
+  TooManyFunctions:
+    active: false
+  CyclomaticComplexMethod:
+    active: false
+
+exceptions:
+  TooGenericExceptionCaught:
+    active: false
+  SwallowedException:
+    active: false
+
+style:
+  ReturnCount:
+    active: false
+  UnusedParameter:
+    active: false

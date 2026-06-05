@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <issue id="InvalidPackage">
+        <ignore path="**/grpc-core-*.jar" />
+    </issue>
+    <!-- Themed launcher monochrome is optional; we ship foreground-only adaptive icons. -->
+    <issue id="MonochromeLauncherIcon" severity="ignore" />
+</lint>
