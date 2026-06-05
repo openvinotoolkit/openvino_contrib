@@ -26,6 +26,10 @@ header:
     - 'modules/openvino-langchain/sample/package-lock.json'
     # Sample document content used by the RAG example, not a source file.
     - 'modules/openvino-langchain/sample/data/document_sample.txt'
+    # Third-party PointPillars fork; keep original upstream notices intact.
+    - 'modules/3d/pointPillars/**'
+    # Third-party Ollama tree with vendored llama.cpp/ggml; keep upstream notices intact.
+    - 'modules/ollama_openvino/**'
     # Third-party license inventory, not a source file.
     - 'third-party-programs.txt'
 
