@@ -127,6 +127,8 @@ RuntimeStageExecutableDescriptor make_runtime_vendor_attention_descriptor(
   descriptor.dispatch_contract = artifact.kernel.dispatch_contract;
   descriptor.layout_contract = artifact.kernel.layout_contract;
   descriptor.runtime_shape_rule = artifact.kernel.runtime_shape_rule;
+  descriptor.runtime_shape_i64_metadata =
+      artifact.kernel.runtime_shape_i64_metadata;
   descriptor.requires_runtime_shape_args =
       artifact.kernel.requires_runtime_shape_args;
   descriptor.tensor_view_only = false;
@@ -138,12 +140,6 @@ RuntimeStageExecutableDescriptor make_runtime_vendor_attention_descriptor(
   descriptor.optional_cache_payload_allowed =
       artifact.optional_cache_payload_allowed;
   descriptor.payload = std::move(payload);
-  descriptor.temporary_source_node_bridge_required =
-      descriptor.payload_kind == KernelArtifactPayloadKind::VendorDescriptor;
-  descriptor.temporary_source_node_bridge_reason =
-      descriptor.temporary_source_node_bridge_required
-          ? "vendor primitive materialization still needs source-node metadata"
-          : std::string{};
   return descriptor;
 }
 
@@ -371,8 +367,6 @@ void finalize_fused_attention_sequence_descriptor(
   descriptor.compile_options_key.clear();
   descriptor.runtime_shape_rule = "static_or_descriptor";
   descriptor.requires_runtime_shape_args = false;
-  descriptor.temporary_source_node_bridge_required = false;
-  descriptor.temporary_source_node_bridge_reason.clear();
   descriptor.tensor_view_only = false;
   descriptor.scalar_roles.clear();
   descriptor.optional_cache_payload_allowed = false;
@@ -422,45 +416,86 @@ RuntimeStageExecutableDescriptor make_materialized_runtime_descriptor(
   return descriptor;
 }
 
+using RuntimeTensorRefMap =
+    std::unordered_map<PipelineOutputPortKey,
+                       ::ov::gfx_plugin::PipelineStageTensorRef,
+                       PipelineOutputPortKeyHash>;
+
+::ov::gfx_plugin::PipelineStageTensorRef make_runtime_tensor_ref(
+    ::ov::gfx_plugin::PipelineStageTensorRefKind kind, size_t index,
+    size_t port);
+
+::ov::gfx_plugin::PipelineStageTensorRef resolve_runtime_tensor_ref(
+    const RuntimeTensorRefMap &refs,
+    const std::shared_ptr<const ov::Node> &node, size_t port);
+
 ::ov::gfx_plugin::PipelineStageInputLink
-make_runtime_input_link(const PipelineStageInputLink &link) {
-  return {link.node, link.port};
+make_runtime_input_link(const PipelineStageInputLink &link,
+                        ::ov::gfx_plugin::PipelineStageTensorRef source_ref) {
+  ::ov::gfx_plugin::PipelineStageInputLink result;
+  result.port = link.port;
+  result.source_ref = source_ref;
+  return result;
 }
 
 ::ov::gfx_plugin::PipelineStageOutputAlias
-make_runtime_output_alias(const PipelineStageOutputAlias &alias) {
-  return {alias.node, alias.source_port, alias.output_port};
+make_runtime_output_alias(
+    const PipelineStageOutputAlias &alias,
+    ::ov::gfx_plugin::PipelineStageTensorRef source_ref) {
+  ::ov::gfx_plugin::PipelineStageOutputAlias result;
+  result.source_port = alias.source_port;
+  result.output_port = alias.output_port;
+  result.source_ref = source_ref;
+  return result;
 }
 
 ::ov::gfx_plugin::PipelineStageOutputDesc
-make_runtime_output_desc(const PipelineStageOutputDesc &output) {
+make_runtime_output_desc(
+    const PipelineStageOutputDesc &output,
+    ::ov::gfx_plugin::PipelineStageTensorRef source_ref) {
   ::ov::gfx_plugin::PipelineStageOutputDesc result;
   result.shape = output.shape;
   result.type = output.type;
   result.is_model_output = output.is_model_output;
-  result.source_node = output.source_node;
   result.source_port = output.source_port;
+  result.source_ref = source_ref;
   result.direct_stateful_assign_variable_id =
       output.direct_stateful_assign_variable_id;
   return result;
 }
 
 ::ov::gfx_plugin::PipelineStageIoPlan
-make_runtime_io_plan(const PipelineStageIoPlan &plan) {
+make_runtime_io_plan(
+    const PipelineStageIoPlan &plan, size_t runtime_plan_stage_index,
+    const RuntimeTensorRefMap &refs) {
   ::ov::gfx_plugin::PipelineStageIoPlan result;
-  result.node = plan.node;
+  if (plan.node) {
+    result.stage_name = plan.node->get_friendly_name();
+    result.op_family = plan.node->get_type_name();
+  }
   result.runtime_stage_index = plan.runtime_stage_index;
   result.outputs.reserve(plan.outputs.size());
-  for (const auto &output : plan.outputs) {
-    result.outputs.push_back(make_runtime_output_desc(output));
+  for (size_t output_idx = 0; output_idx < plan.outputs.size(); ++output_idx) {
+    const auto &output = plan.outputs[output_idx];
+    auto source_ref =
+        resolve_runtime_tensor_ref(refs, output.source_node, output.source_port);
+    if (!source_ref.valid()) {
+      source_ref = make_runtime_tensor_ref(
+          ::ov::gfx_plugin::PipelineStageTensorRefKind::StageOutput,
+          runtime_plan_stage_index, output_idx);
+    }
+    result.outputs.push_back(make_runtime_output_desc(output, source_ref));
   }
   result.inputs.reserve(plan.inputs.size());
   for (const auto &input : plan.inputs) {
-    result.inputs.push_back(make_runtime_input_link(input));
+    result.inputs.push_back(make_runtime_input_link(
+        input, resolve_runtime_tensor_ref(refs, input.node, input.port)));
   }
   result.output_aliases.reserve(plan.output_aliases.size());
   for (const auto &alias : plan.output_aliases) {
-    result.output_aliases.push_back(make_runtime_output_alias(alias));
+    result.output_aliases.push_back(make_runtime_output_alias(
+        alias,
+        resolve_runtime_tensor_ref(refs, alias.node, alias.source_port)));
   }
   return result;
 }
@@ -573,11 +608,14 @@ make_runtime_vendor_attention_plan(
 ::ov::gfx_plugin::PipelineStageMaterializationPlan
 make_runtime_materialization_plan(
     const PipelineStageMaterializationPlan &plan,
+    size_t runtime_plan_stage_index,
     const std::vector<std::shared_ptr<ov::Node>> &ordered_ops,
-    const RuntimeStageDescriptorMap &descriptors) {
+    const RuntimeStageDescriptorMap &descriptors,
+    const RuntimeTensorRefMap &refs) {
   ::ov::gfx_plugin::PipelineStageMaterializationPlan result;
   result.kind = make_runtime_materialization_kind(plan.kind);
-  result.io_plan = make_runtime_io_plan(plan.io_plan);
+  result.io_plan =
+      make_runtime_io_plan(plan.io_plan, runtime_plan_stage_index, refs);
   result.descriptor_stage_index = result.io_plan.runtime_stage_index;
   result.materialized_descriptor =
       make_materialized_runtime_descriptor(plan, ordered_ops, descriptors);
@@ -599,34 +637,195 @@ make_runtime_materialization_plan(
   }
   if (plan.residual_add) {
     result.residual_add =
-        ::ov::gfx_plugin::PipelineStageResidualAddFusionPlan{
-            plan.residual_add->add_node};
+        ::ov::gfx_plugin::PipelineStageResidualAddFusionPlan{};
   }
   result.post_ops = make_runtime_post_op_plan(plan.post_ops);
   return result;
 }
 
+::ov::gfx_plugin::PipelineStageTensorRef make_runtime_tensor_ref(
+    ::ov::gfx_plugin::PipelineStageTensorRefKind kind, size_t index,
+    size_t port) {
+  ::ov::gfx_plugin::PipelineStageTensorRef ref;
+  ref.kind = kind;
+  ref.index = index;
+  ref.port = port;
+  return ref;
+}
+
+::ov::gfx_plugin::PipelineStageTensorRef make_runtime_tensor_ref(
+    const ::ov::gfx_plugin::RuntimePublicOutputDescriptor &output) {
+  ::ov::gfx_plugin::PipelineStageTensorRefKind kind =
+      ::ov::gfx_plugin::PipelineStageTensorRefKind::None;
+  switch (output.kind) {
+  case ::ov::gfx_plugin::RuntimePublicOutputSourceKind::Parameter:
+    kind = ::ov::gfx_plugin::PipelineStageTensorRefKind::Parameter;
+    break;
+  case ::ov::gfx_plugin::RuntimePublicOutputSourceKind::StageOutput:
+    kind = ::ov::gfx_plugin::PipelineStageTensorRefKind::StageOutput;
+    break;
+  case ::ov::gfx_plugin::RuntimePublicOutputSourceKind::None:
+  default:
+    break;
+  }
+  return make_runtime_tensor_ref(kind, output.index, output.port);
+}
+
+size_t compact_stage_index_for_runtime_stage(
+    const ::ov::gfx_plugin::PipelineStageRuntimePlan &runtime_plan,
+    size_t runtime_stage_index) {
+  for (size_t i = 0; i < runtime_plan.stage_plans.size(); ++i) {
+    if (runtime_plan.stage_plans[i].io_plan.runtime_stage_index ==
+        runtime_stage_index) {
+      return i;
+    }
+  }
+  return ::ov::gfx_plugin::PipelineStageTensorRef::npos;
+}
+
+void record_runtime_tensor_ref(RuntimeTensorRefMap &refs,
+                               const std::shared_ptr<const ov::Node> &node,
+                               size_t port,
+                               ::ov::gfx_plugin::PipelineStageTensorRef ref) {
+  if (!node || !ref.valid()) {
+    return;
+  }
+  refs[{node.get(), port}] = ref;
+}
+
+::ov::gfx_plugin::PipelineStageTensorRef resolve_runtime_tensor_ref(
+    const RuntimeTensorRefMap &refs,
+    const std::shared_ptr<const ov::Node> &node, size_t port) {
+  if (!node) {
+    return {};
+  }
+  const auto it = refs.find({node.get(), port});
+  return it == refs.end() ? ::ov::gfx_plugin::PipelineStageTensorRef{}
+                          : it->second;
+}
+
+RuntimeTensorRefMap build_runtime_tensor_ref_map(
+    const std::vector<PipelineStageMaterializationPlan> &stage_plans,
+    const std::unordered_map<const ov::Node *, size_t> &param_index) {
+  RuntimeTensorRefMap refs;
+  refs.reserve(param_index.size() + stage_plans.size());
+
+  for (const auto &entry : param_index) {
+    const auto *node = entry.first;
+    if (!node) {
+      continue;
+    }
+    refs[{node, 0}] = make_runtime_tensor_ref(
+        ::ov::gfx_plugin::PipelineStageTensorRefKind::Parameter, entry.second,
+        0);
+  }
+
+  for (size_t stage_idx = 0; stage_idx < stage_plans.size(); ++stage_idx) {
+    const auto &io_plan = stage_plans[stage_idx].io_plan;
+    for (size_t output_idx = 0; output_idx < io_plan.outputs.size();
+         ++output_idx) {
+      auto ref = make_runtime_tensor_ref(
+          ::ov::gfx_plugin::PipelineStageTensorRefKind::StageOutput, stage_idx,
+          output_idx);
+      const auto &output = io_plan.outputs[output_idx];
+      record_runtime_tensor_ref(refs, io_plan.node, output_idx, ref);
+      record_runtime_tensor_ref(refs, output.source_node, output.source_port,
+                                ref);
+    }
+    for (auto &alias : io_plan.output_aliases) {
+      const auto source_ref = make_runtime_tensor_ref(
+          ::ov::gfx_plugin::PipelineStageTensorRefKind::StageOutput, stage_idx,
+          alias.output_port);
+      record_runtime_tensor_ref(refs, alias.node, alias.source_port,
+                                source_ref);
+      record_runtime_tensor_ref(refs, alias.node, alias.output_port,
+                                source_ref);
+    }
+  }
+
+  return refs;
+}
+
+void attach_runtime_public_output_refs(
+    ::ov::gfx_plugin::PipelineStageRuntimePlan &runtime_plan,
+    const std::vector<PipelineStagePublicOutputSource> &public_outputs,
+    const RuntimeTensorRefMap &refs,
+    const RuntimeStageDescriptorMap &descriptors,
+    const ::ov::gfx_plugin::RuntimeExecutableDescriptor *descriptor) {
+  runtime_plan.public_outputs.clear();
+  runtime_plan.public_outputs.reserve(public_outputs.size());
+
+  for (size_t result_idx = 0; result_idx < public_outputs.size(); ++result_idx) {
+    const auto &source_output = public_outputs[result_idx];
+    ::ov::gfx_plugin::PipelineStagePublicOutputDesc public_output;
+    const auto source_node = source_output.node;
+    const size_t source_port = source_output.port;
+    public_output.source_ref =
+        resolve_runtime_tensor_ref(refs, source_node, source_port);
+    if (!public_output.source_ref.valid()) {
+      if (const auto *stage_descriptor =
+              descriptor_for_node(descriptors, source_node)) {
+        const auto compact_stage_index = compact_stage_index_for_runtime_stage(
+            runtime_plan, stage_descriptor->stage_index);
+        if (compact_stage_index !=
+            ::ov::gfx_plugin::PipelineStageTensorRef::npos) {
+          public_output.source_ref = make_runtime_tensor_ref(
+              ::ov::gfx_plugin::PipelineStageTensorRefKind::StageOutput,
+              compact_stage_index, source_port);
+        }
+      }
+    }
+    if (!public_output.source_ref.valid() && descriptor &&
+        result_idx < descriptor->public_outputs.size()) {
+      public_output.source_ref =
+          make_runtime_tensor_ref(descriptor->public_outputs[result_idx]);
+      public_output.shape = descriptor->public_outputs[result_idx].static_shape;
+      public_output.type = descriptor->public_outputs[result_idx].static_type;
+    }
+
+    if (public_output.shape.empty()) {
+      public_output.shape = source_output.shape;
+    }
+    if (public_output.type == ov::element::dynamic) {
+      public_output.type = source_output.type;
+    }
+    OPENVINO_ASSERT(
+        public_output.source_ref.valid(),
+        "GFX: compiler failed to materialize public output binding for result ",
+        runtime_plan.public_outputs.size(),
+        " source=",
+        source_node ? source_node->get_friendly_name() : std::string("<null>"),
+        " (", source_node ? source_node->get_type_name() : "<null>",
+        ") port=", source_port,
+        " pipeline_stages=", runtime_plan.stage_plans.size(),
+        " descriptor_public_outputs=",
+        descriptor ? descriptor->public_outputs.size() : 0,
+        "; runtime must not resolve public outputs from graph maps");
+    runtime_plan.public_outputs.push_back(std::move(public_output));
+  }
+}
+
 ::ov::gfx_plugin::PipelineStageRuntimePlan make_pipeline_stage_runtime_plan(
     const std::vector<std::shared_ptr<ov::Node>> &ordered_ops,
     const std::vector<PipelineStageMaterializationPlan> &stage_plans,
+    const std::vector<PipelineStagePublicOutputSource> &public_outputs,
     const RuntimeStageDescriptorMap &descriptors,
     const StageCompilerPolicy &stage_compiler_policy,
-    const std::unordered_map<const ov::Node *, size_t> &node_to_stage,
-    const std::unordered_map<const ov::Node *, size_t> &param_index) {
+    const std::unordered_map<const ov::Node *, size_t> &param_index,
+    const ::ov::gfx_plugin::RuntimeExecutableDescriptor *runtime_descriptor) {
+  const auto refs = build_runtime_tensor_ref_map(stage_plans, param_index);
   ::ov::gfx_plugin::PipelineStageRuntimePlan result;
-  result.ordered_ops = ordered_ops;
   result.stage_plans.reserve(stage_plans.size());
-  for (const auto &stage_plan : stage_plans) {
-    result.stage_plans.push_back(
-        make_runtime_materialization_plan(stage_plan, ordered_ops,
-                                          descriptors));
+  for (size_t stage_idx = 0; stage_idx < stage_plans.size(); ++stage_idx) {
+    result.stage_plans.push_back(make_runtime_materialization_plan(
+        stage_plans[stage_idx], stage_idx, ordered_ops, descriptors, refs));
   }
   result.runtime_options.custom_kernel_dispatch_enabled =
       stage_compiler_policy.custom_kernel_dispatch.enabled;
   result.runtime_options.custom_kernel_dispatch_profile =
       stage_compiler_policy.custom_kernel_dispatch.profile;
-  result.node_to_stage = node_to_stage;
-  result.param_index = param_index;
+  attach_runtime_public_output_refs(result, public_outputs, refs, descriptors,
+                                    runtime_descriptor);
   return result;
 }
 
@@ -640,7 +839,6 @@ struct PipelineStageBuildState {
   std::vector<PipelineStageMaterializationPlan> stage_plans;
   PipelineStageRuntimePlan runtime_plan;
   StageCompilerPolicy stage_compiler_policy;
-  std::unordered_map<const ov::Node *, size_t> node_to_stage;
   std::unordered_map<const ov::Node *, size_t> param_index;
 };
 
@@ -753,10 +951,57 @@ std::optional<AttentionSequenceStagePlan> make_attention_sequence_stage_plan(
 
 } // namespace
 
+PipelineStageGraphSnapshot
+make_pipeline_stage_graph_snapshot(const std::shared_ptr<const ov::Model> &model,
+                                   const FusionConfig &fusion_config) {
+  OPENVINO_ASSERT(model,
+                  "GFX: pipeline stage graph snapshot requires compiler model");
+  PipelineStageGraphSnapshot snapshot;
+  snapshot.ordered_ops = model->get_ordered_ops();
+  snapshot.graph_op_count = model->get_ops().size();
+  snapshot.model_outputs = collect_model_output_ports(*model);
+  snapshot.param_index.reserve(model->inputs().size());
+  for (size_t i = 0; i < model->inputs().size(); ++i) {
+    snapshot.param_index[model->inputs()[i].get_node()] = i;
+  }
+  const auto &model_results = model->get_results();
+  snapshot.public_outputs.reserve(model_results.size());
+  for (const auto &model_result : model_results) {
+    const auto source = model_result->input_value(0);
+    PipelineStagePublicOutputSource public_output;
+    public_output.node = source.get_node_shared_ptr();
+    public_output.port = source.get_index();
+    if (source.get_partial_shape().is_static()) {
+      public_output.shape = source.get_shape();
+    }
+    public_output.type = source.get_element_type();
+    snapshot.public_outputs.push_back(std::move(public_output));
+  }
+  snapshot.fusion_plan = build_fusion_plan(model, fusion_config);
+  return snapshot;
+}
+
+FusionConfig make_pipeline_stage_fusion_config(
+    const FusionCapabilities &fusion_capabilities, bool enable_fusion,
+    bool debug_dump_ir) {
+  FusionConfig fusion_config;
+  fusion_config.enable_fusion = enable_fusion;
+  fusion_config.debug_dump_ir = debug_dump_ir;
+  fusion_config.enable_attention_fusion =
+      fusion_capabilities.enable_generic_attention_fusion;
+  fusion_config.enable_vendor_attention_fusion =
+      fusion_capabilities.supports_vendor_attention_stage;
+  fusion_config.enable_conv_activation_fusion =
+      fusion_capabilities.enable_conv_activation_fusion;
+  fusion_config.enable_conv_swish_fusion = true;
+  return fusion_config;
+}
+
 std::shared_ptr<const PipelineStageRuntimePlan>
 build_pipeline_stage_runtime_plan(const PipelineStageBuildRequest &request) {
-  OPENVINO_ASSERT(request.runtime_model,
-                  "GFX: pipeline stage builder requires runtime model");
+  OPENVINO_ASSERT(request.graph.valid(),
+                  "GFX: pipeline stage builder requires compiler-owned graph "
+                  "snapshot");
   OPENVINO_ASSERT(request.runtime_descriptor,
                   "GFX: pipeline stage builder requires compiler-owned runtime "
                   "executable descriptor");
@@ -786,27 +1031,24 @@ build_pipeline_stage_runtime_plan(const PipelineStageBuildRequest &request) {
   gfx_log_info("StagePlan")
       << "Planning pipeline for backend=" << backend_name
       << " target=" << request.target.debug_string()
-      << " ops=" << request.runtime_model->get_ops().size();
+      << " ops=" << request.graph.graph_op_count;
   const auto build_start = request.compile_trace
                                ? std::chrono::steady_clock::now()
                                : std::chrono::steady_clock::time_point{};
   if (request.compile_trace) {
     request.compile_trace->set_counter(
-        "runtime_model_op_count",
-        static_cast<uint64_t>(request.runtime_model->get_ops().size()));
+        "compiler_graph_op_count",
+        static_cast<uint64_t>(request.graph.graph_op_count));
   }
 
   PipelineStageBuildState result;
   result.stage_compiler_policy = stage_compiler_policy;
-  for (size_t i = 0; i < request.runtime_model->inputs().size(); ++i) {
-    result.param_index[request.runtime_model->inputs()[i].get_node()] = i;
-  }
+  result.param_index = request.graph.param_index;
 
-  const auto model_outputs =
-      compiler::collect_model_output_ports(*request.runtime_model);
+  const auto &model_outputs = request.graph.model_outputs;
   const compiler::PipelineStagePlanBuilder stage_plan_builder(model_outputs);
 
-  result.ordered_ops = request.runtime_model->get_ordered_ops();
+  result.ordered_ops = request.graph.ordered_ops;
   const auto &ordered_ops = result.ordered_ops;
   const auto descriptors = build_runtime_stage_descriptor_map(
       ordered_ops, *request.runtime_descriptor);
@@ -840,7 +1082,7 @@ build_pipeline_stage_runtime_plan(const PipelineStageBuildRequest &request) {
       };
 
   const auto fusion_selection = compiler::plan_pipeline_fusions(
-      request.runtime_model, ordered_ops, model_outputs, fusion_options);
+      request.graph.fusion_plan, ordered_ops, model_outputs, fusion_options);
   const auto &planned_fused_indices = fusion_selection.planned_fused_indices;
   const auto &planned_fused_nodes = fusion_selection.planned_fused_nodes;
   const auto &fused_nodes = fusion_selection.fused_nodes;
@@ -1000,13 +1242,10 @@ build_pipeline_stage_runtime_plan(const PipelineStageBuildRequest &request) {
                 "vendor_attention_stage_count");
           }
 
-          const size_t idx = result.stage_plans.size();
           result.stage_plans.emplace_back(std::move(stage_plan));
           for (const auto node_idx : group->node_indices) {
             if (node_idx < ordered_ops.size()) {
               fused_indices.insert(node_idx);
-              const auto &fused_node = ordered_ops[node_idx];
-              result.node_to_stage[fused_node.get()] = idx;
             }
           }
           continue;
@@ -1026,7 +1265,6 @@ build_pipeline_stage_runtime_plan(const PipelineStageBuildRequest &request) {
           stage_plan.fused_inner_stages =
               std::move(sequence_plan->inner_stages);
 
-          const size_t idx = result.stage_plans.size();
           result.stage_plans.emplace_back(std::move(stage_plan));
           for (const auto &alias : result.stage_plans.back().io_plan.output_aliases) {
             stage_plan_builder.record_output_alias(
@@ -1036,8 +1274,6 @@ build_pipeline_stage_runtime_plan(const PipelineStageBuildRequest &request) {
           for (const auto node_idx : group->node_indices) {
             if (node_idx < ordered_ops.size()) {
               fused_indices.insert(node_idx);
-              const auto &fused_node = ordered_ops[node_idx];
-              result.node_to_stage[fused_node.get()] = idx;
             }
           }
           if (request.compile_trace) {
@@ -1112,10 +1348,6 @@ build_pipeline_stage_runtime_plan(const PipelineStageBuildRequest &request) {
     }
 
     const size_t idx = result.stage_plans.size();
-    result.node_to_stage[node.get()] = idx;
-    if (residual_it != rms_residual_adds.end() && residual_it->second) {
-      result.node_to_stage[residual_it->second.get()] = idx;
-    }
     result.stage_plans.emplace_back(std::move(stage_plan));
 
     if (primary_group) {
@@ -1129,7 +1361,6 @@ build_pipeline_stage_runtime_plan(const PipelineStageBuildRequest &request) {
         }
         fused_indices.insert(fused_idx);
         const auto &fused_node = ordered_ops[fused_idx];
-        result.node_to_stage[fused_node.get()] = idx;
         if (aliases_stage_output && fused_node->get_output_size() == 1) {
           stage_plan_builder.merge_model_outputs(io_plan, fused_node.get());
           stage_plan_builder.append_output_alias(io_plan, fused_node, 0, 0);
@@ -1245,8 +1476,9 @@ build_pipeline_stage_runtime_plan(const PipelineStageBuildRequest &request) {
       << "Planned GFX " << backend_name << " pipeline with "
       << result.stage_plans.size() << " stages";
   result.runtime_plan = make_pipeline_stage_runtime_plan(
-      result.ordered_ops, result.stage_plans, descriptors,
-      result.stage_compiler_policy, result.node_to_stage, result.param_index);
+      result.ordered_ops, result.stage_plans, request.graph.public_outputs,
+      descriptors, result.stage_compiler_policy, result.param_index,
+      request.runtime_descriptor);
   return std::make_shared<const PipelineStageRuntimePlan>(
       std::move(result.runtime_plan));
 }

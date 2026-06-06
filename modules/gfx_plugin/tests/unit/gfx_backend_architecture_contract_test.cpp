@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string_view>
 #include <type_traits>
 #include <unordered_set>
@@ -35,6 +36,7 @@
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
 #include "openvino/op/add.hpp"
 #include "openvino/op/assign.hpp"
+#include "openvino/op/broadcast.hpp"
 #include "openvino/op/concat.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/convert.hpp"
@@ -43,18 +45,23 @@
 #include "openvino/op/relu.hpp"
 #include "openvino/op/reshape.hpp"
 #include "openvino/op/result.hpp"
+#include "openvino/op/slice.hpp"
+#include "openvino/op/strided_slice.hpp"
 #include "openvino/op/transpose.hpp"
+#include "transformations/rt_info/disable_constant_folding.hpp"
 #include "runtime/backend_request_state.hpp"
 #include "runtime/backend_runtime.hpp"
 #include "runtime/backend_runtime_provider.hpp"
 #include "runtime/backend_stage_factory.hpp"
+#include "runtime/descriptor_const_tensor_materializer.hpp"
 #include "runtime/executable_descriptor.hpp"
-#include "runtime/gfx_stage_runtime_values.hpp"
-#include "runtime/gpu_buffer_manager.hpp"
 #include "runtime/execution_dispatcher.hpp"
+#include "runtime/gfx_stage_runtime_values.hpp"
 #include "runtime/gpu_buffer.hpp"
+#include "runtime/gpu_buffer_manager.hpp"
 #include "runtime/gpu_memory_ops.hpp"
 #include "runtime/kernel_launch_plan.hpp"
+#include "runtime/pipeline_stage_plan.hpp"
 #include "runtime/pipeline_stage_materializer.hpp"
 #include "runtime/runtime_session.hpp"
 #include "runtime/stateful_stage.hpp"
@@ -95,6 +102,17 @@ static_assert(std::is_same_v<decltype(&GpuStageFactory::create),
               "GpuStageFactory must require the unified compiler-owned stage "
               "materialization context");
 
+static_assert(
+    !std::is_default_constructible_v<RuntimeStageMaterializationContext>,
+    "Runtime stage materialization context must not allow a null/default "
+    "descriptor escape hatch");
+
+static_assert(
+    std::is_constructible_v<RuntimeStageMaterializationContext,
+                            const RuntimeStageExecutableDescriptor &>,
+    "Runtime stage materialization context must be constructed from the "
+    "compiler-owned stage descriptor");
+
 static_assert(std::is_same_v<decltype(&RuntimeSession::prepare_stage),
                              PreparedKernelExecutable (RuntimeSession::*)(
                                  size_t, GpuStage &, GpuBufferManager *,
@@ -118,10 +136,9 @@ static_assert(std::is_same_v<decltype(&create_view_only_stage),
 static_assert(
     std::is_same_v<decltype(&PipelineStageMaterializer::create_stage),
                    std::unique_ptr<GpuStage> (PipelineStageMaterializer::*)(
-                       const RuntimeStageExecutableDescriptor &,
-                       const std::shared_ptr<const ov::Node> &) const>,
+                       const RuntimeStageExecutableDescriptor &) const>,
     "PipelineStageMaterializer must materialize stages from compiler-owned "
-    "runtime descriptors; ov::Node is only a temporary backend bridge");
+    "runtime descriptors without an ov::Node bridge");
 
 static_assert(
     std::is_same_v<
@@ -132,11 +149,118 @@ static_assert(
     "indices without fallback repair");
 
 static_assert(
+    std::is_same_v<decltype(RuntimeExecutableDescriptor::pipeline_plan),
+                   std::shared_ptr<const PipelineStageRuntimePlan>>,
+    "Runtime executable descriptor must be the single materialization contract "
+    "entry point for runtime instead of passing a parallel stage plan");
+
+using RuntimeShapeOfPlannerFn = RuntimeValuePlan (*)(
+    const RuntimeInputResolver &, std::string_view);
+using RuntimeBroadcastPlannerFn = RuntimeValuePlan (*)(
+    const RuntimeInputResolver &, const ov::Shape &, std::string_view);
+using RuntimeRangePlannerFn = RuntimeValuePlan (*)(
+    const RuntimeInputResolver &, std::string_view);
+using RuntimeSelectPlannerFn = RuntimeSelectPlan (*)(
+    const RuntimeInputResolver &, std::string_view);
+using RuntimeReducePlannerFn = RuntimeReducePlan (*)(
+    const RuntimeInputResolver &, std::string_view,
+    const RuntimeReduceInfo &, std::string_view);
+using RuntimeConcatPlannerFn = RuntimeConcatPlan (*)(
+    const RuntimeInputResolver &, std::string_view);
+using RuntimeSlicePlannerFn = RuntimeSlicePlan (*)(
+    const RuntimeInputResolver &, const std::vector<GpuTensor *> &, bool,
+    std::string_view);
+using RuntimeSmallI64BinderFn = bool (*)(
+    GpuBufferManager *, const std::vector<GpuTensor *> &,
+    std::vector<GpuTensor> &, GfxProfiler *, bool, std::string_view,
+    std::string_view);
+
+static_assert(
     std::is_same_v<
-        decltype(PipelineStageRuntimeMaterializationRequest::runtime_plan),
-        const PipelineStageRuntimePlan *>,
-    "Runtime materializer must consume a runtime-facing stage plan instead of "
-    "the compiler build result");
+        decltype(static_cast<RuntimeShapeOfPlannerFn>(
+            &plan_shapeof_runtime_values)),
+        RuntimeShapeOfPlannerFn>,
+    "Shared runtime ShapeOf planning must be descriptor/input based");
+
+static_assert(
+    std::is_same_v<
+        decltype(static_cast<RuntimeBroadcastPlannerFn>(
+            &plan_broadcast_runtime_values)),
+        RuntimeBroadcastPlannerFn>,
+    "Shared runtime Broadcast planning must be descriptor/input based");
+
+static_assert(
+    std::is_same_v<
+        decltype(static_cast<RuntimeRangePlannerFn>(
+            &plan_range_runtime_values)),
+        RuntimeRangePlannerFn>,
+    "Shared runtime Range planning must be descriptor/input based");
+
+static_assert(
+    std::is_same_v<
+        decltype(static_cast<RuntimeSelectPlannerFn>(
+            &plan_select_runtime_values)),
+        RuntimeSelectPlannerFn>,
+    "Shared runtime Select planning must be descriptor/input based");
+
+static_assert(
+    std::is_same_v<
+        decltype(static_cast<RuntimeReducePlannerFn>(
+            &plan_reduce_runtime_values)),
+        RuntimeReducePlannerFn>,
+    "Shared runtime Reduce planning must be descriptor/input based");
+
+static_assert(
+    std::is_same_v<
+        decltype(static_cast<RuntimeConcatPlannerFn>(
+            &plan_concat_runtime_values)),
+        RuntimeConcatPlannerFn>,
+    "Shared runtime Concat planning must be descriptor/input based");
+
+static_assert(
+    std::is_same_v<
+        decltype(static_cast<RuntimeSlicePlannerFn>(
+            &plan_slice_runtime_values)),
+        RuntimeSlicePlannerFn>,
+    "Shared runtime Slice planning must be descriptor/input based");
+
+static_assert(
+    !std::is_invocable_v<RuntimeSlicePlannerFn, const RuntimeInputResolver &,
+                         const std::vector<GpuTensor *> &, const ov::Node *,
+                         bool, std::string_view>,
+    "Shared runtime Slice planner must not accept ov::Node");
+
+static_assert(
+    std::is_same_v<
+        decltype(static_cast<RuntimeSmallI64BinderFn>(
+            &bind_small_i64_const_stage_outputs)),
+        RuntimeSmallI64BinderFn>,
+    "Shared runtime small i64 const binding must not require ov::Node output "
+    "metadata");
+
+static_assert(
+    !std::is_invocable_v<RuntimeShapeOfPlannerFn, const RuntimeInputResolver &,
+                         const ov::Node *, std::string_view>,
+    "Shared runtime ShapeOf planner must not accept ov::Node");
+
+static_assert(
+    !std::is_invocable_v<RuntimeReducePlannerFn, const RuntimeInputResolver &,
+                         const ov::Node *, std::string_view,
+                         const RuntimeReduceInfo &, std::string_view>,
+    "Shared runtime Reduce planner must not accept ov::Node");
+
+static_assert(
+    !std::is_invocable_v<RuntimeRangePlannerFn, const RuntimeInputResolver &,
+                         const ov::Node *, std::string_view>,
+    "Shared runtime Range planner must not accept ov::Node");
+
+static_assert(
+    !std::is_invocable_v<RuntimeSmallI64BinderFn, GpuBufferManager *,
+                         const std::vector<GpuTensor *> &,
+                         std::vector<GpuTensor> &,
+                         const std::shared_ptr<const ov::Node> &, GfxProfiler *,
+                         bool, std::string_view, std::string_view>,
+    "Shared runtime small i64 const binding must not accept ov::Node");
 
 static_assert(
     std::is_same_v<decltype(&compiler::build_pipeline_stage_runtime_plan),
@@ -261,6 +385,45 @@ private:
   uintptr_t m_next_handle = 0x100000u;
 };
 
+class UnitDescriptorConstBufferManager final : public GpuBufferManager {
+public:
+  struct Upload {
+    std::string key;
+    std::vector<uint8_t> bytes;
+    ov::element::Type type;
+    uint64_t allocation_uid = 0;
+  };
+
+  bool supports_const_cache() const override { return true; }
+
+  GpuBuffer wrap_const(const std::string &key, const void *data, size_t bytes,
+                       ov::element::Type type) override {
+    Upload upload;
+    upload.key = key;
+    upload.bytes.resize(bytes);
+    if (bytes != 0) {
+      std::memcpy(upload.bytes.data(), data, bytes);
+    }
+    upload.type = type;
+
+    GpuBuffer buffer;
+    buffer.buffer = reinterpret_cast<GpuBufferHandle>(m_next_handle);
+    buffer.size = bytes;
+    buffer.type = type;
+    buffer.persistent = true;
+    buffer.allocation_uid = allocate_gpu_buffer_uid();
+    upload.allocation_uid = buffer.allocation_uid;
+    m_next_handle += 0x1000u;
+    uploads.push_back(std::move(upload));
+    return buffer;
+  }
+
+  std::vector<Upload> uploads;
+
+private:
+  uintptr_t m_next_handle = 0x200000u;
+};
+
 class UnitVendorPayload final : public KernelArtifactPayload {
 public:
   KernelArtifactPayloadKind payload_kind() const noexcept override {
@@ -326,7 +489,6 @@ public:
 
   std::unique_ptr<GpuStage> create_stage(
       const RuntimeStageMaterializationContext &context) const override {
-    source_node_seen.push_back(context.has_source_node());
     stage_names.push_back(context.op_friendly_name());
 
     const auto &descriptor = context.require_descriptor();
@@ -340,7 +502,6 @@ public:
                                            context.op_type_name());
   }
 
-  mutable std::vector<bool> source_node_seen;
   mutable std::vector<std::string> stage_names;
 };
 
@@ -390,25 +551,31 @@ PipelineStageMaterializationPlan
 make_vendor_materialization_plan(const std::shared_ptr<ov::Node> &input,
                                  const std::shared_ptr<ov::Node> &node,
                                  RuntimeStageExecutableDescriptor descriptor) {
+  (void)input;
   descriptor.payload_kind = KernelArtifactPayloadKind::VendorDescriptor;
   descriptor.payload = std::make_shared<UnitVendorPayload>();
   descriptor.artifact_key = "artifact://unit/vendor_attention";
-  descriptor.temporary_source_node_bridge_required = true;
-  descriptor.temporary_source_node_bridge_reason =
-      "unit vendor bridge migration";
 
   PipelineStageMaterializationPlan plan;
   plan.kind = PipelineStageMaterializationKind::VendorAttention;
-  plan.io_plan.node = node;
+  plan.io_plan.stage_name = node ? node->get_friendly_name() : "unit_vendor_attention";
+  plan.io_plan.op_family = node ? node->get_type_name() : "VendorAttention";
   plan.io_plan.runtime_stage_index = 0;
   plan.descriptor_stage_index = descriptor.stage_index;
-  plan.io_plan.inputs.push_back({input, 0});
+  PipelineStageInputLink input_link;
+  input_link.port = 0;
+  input_link.source_ref.kind = PipelineStageTensorRefKind::Parameter;
+  input_link.source_ref.index = 0;
+  input_link.source_ref.port = 0;
+  plan.io_plan.inputs.push_back(input_link);
 
   PipelineStageOutputDesc output;
   output.shape = ov::Shape{1};
   output.type = ov::element::f32;
-  output.source_node = node;
   output.source_port = 0;
+  output.source_ref.kind = PipelineStageTensorRefKind::StageOutput;
+  output.source_ref.index = 0;
+  output.source_ref.port = 0;
   plan.io_plan.outputs.push_back(std::move(output));
 
   plan.vendor_attention.name = "unit_vendor_attention";
@@ -423,15 +590,19 @@ make_single_materialization_plan(const std::shared_ptr<const ov::Node> &node,
                                  RuntimeStageExecutableDescriptor descriptor) {
   PipelineStageMaterializationPlan plan;
   plan.kind = PipelineStageMaterializationKind::SingleStage;
-  plan.io_plan.node = node;
+  plan.io_plan.stage_name =
+      node ? node->get_friendly_name() : std::string("unit_single_stage");
+  plan.io_plan.op_family = node ? node->get_type_name() : std::string("Unknown");
   plan.io_plan.runtime_stage_index = descriptor.stage_index;
   plan.descriptor_stage_index = descriptor.stage_index;
 
   PipelineStageOutputDesc output;
   output.shape = ov::Shape{1};
   output.type = ov::element::f32;
-  output.source_node = node;
   output.source_port = 0;
+  output.source_ref.kind = PipelineStageTensorRefKind::StageOutput;
+  output.source_ref.index = descriptor.stage_index;
+  output.source_ref.port = 0;
   plan.io_plan.outputs.push_back(std::move(output));
 
   plan.materialized_descriptor = std::move(descriptor);
@@ -489,7 +660,40 @@ TEST_F(GfxBackendArchitectureContractTest,
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
-       RuntimeStageMaterializationContextUsesDescriptorIdentityWithoutNode) {
+       DescriptorLaunchPlanRolesUseSharedAbiMapping) {
+  KernelLaunchPlanDescriptor descriptor;
+  descriptor.valid = true;
+  descriptor.buffer_roles = {
+      std::string(kernel_buffer_role_descriptor_name(
+          GfxKernelBufferRole::TensorInput)),
+      std::string(kernel_buffer_role_descriptor_name(
+          GfxKernelBufferRole::ConstTensor)),
+      std::string(kernel_buffer_role_descriptor_name(
+          GfxKernelBufferRole::TensorOutput)),
+      std::string(kernel_buffer_role_descriptor_name(
+          GfxKernelBufferRole::ScalarParam)),
+      std::string(kernel_buffer_role_descriptor_name(
+          GfxKernelBufferRole::RuntimeParams)),
+  };
+
+  const auto roles =
+      materialize_descriptor_launch_roles(descriptor, "unit_launch_roles");
+  EXPECT_EQ(roles,
+            (std::vector<GfxKernelBufferRole>{
+                GfxKernelBufferRole::TensorInput,
+                GfxKernelBufferRole::ConstTensor,
+                GfxKernelBufferRole::TensorOutput,
+                GfxKernelBufferRole::ScalarParam,
+                GfxKernelBufferRole::RuntimeParams}));
+
+  descriptor.buffer_roles[1] = "unknown_backend_local_role";
+  EXPECT_THROW((void)materialize_descriptor_launch_roles(
+                   descriptor, "unit_launch_roles"),
+               ov::Exception);
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       RuntimeStageMaterializationContextUsesDescriptorIdentityOnly) {
   RuntimeStageExecutableDescriptor descriptor;
   descriptor.op_family = "DescriptorOwnedOp";
   descriptor.stage_name = "descriptor_owned_stage";
@@ -501,41 +705,6 @@ TEST_F(GfxBackendArchitectureContractTest,
   EXPECT_EQ(context.op_type_name(), std::string("DescriptorOwnedOp"));
   EXPECT_EQ(context.op_friendly_name(), std::string("descriptor_owned_stage"));
   EXPECT_EQ(&context.require_descriptor(), &descriptor);
-  EXPECT_FALSE(context.has_source_node());
-  EXPECT_THROW((void)context.require_source_node("unit descriptor-only check"),
-               ov::Exception);
-
-  auto parameter =
-      std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
-  auto relu = std::make_shared<ov::op::v0::Relu>(parameter);
-  RuntimeStageMaterializationContext node_backed_context{descriptor, relu};
-  EXPECT_TRUE(node_backed_context.has_source_node());
-  EXPECT_EQ(node_backed_context.op_type_name(),
-            std::string("DescriptorOwnedOp"));
-  EXPECT_EQ(node_backed_context.op_friendly_name(),
-            std::string("descriptor_owned_stage"));
-}
-
-TEST_F(GfxBackendArchitectureContractTest,
-       RuntimeStageExecutableDescriptorDoesNotOwnSourceNodeBridge) {
-  RuntimeStageExecutableDescriptor descriptor;
-  descriptor.op_family = "Relu";
-  descriptor.stage_name = "unit_relu";
-  descriptor.payload_kind = KernelArtifactPayloadKind::MslSource;
-  EXPECT_FALSE(descriptor.temporary_source_node_bridge_required);
-  EXPECT_TRUE(descriptor.temporary_source_node_bridge_reason.empty());
-
-  RuntimeStageMaterializationContext descriptor_only{descriptor};
-  EXPECT_FALSE(descriptor_only.has_source_node());
-  EXPECT_THROW((void)descriptor_only.require_source_node("unit bridge check"),
-               ov::Exception);
-
-  auto parameter =
-      std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
-  auto relu = std::make_shared<ov::op::v0::Relu>(parameter);
-  RuntimeStageMaterializationContext context{descriptor, relu};
-  EXPECT_TRUE(context.has_source_node());
-  EXPECT_EQ(context.require_source_node("unit bridge check").get(), relu.get());
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
@@ -827,7 +996,7 @@ TEST_F(GfxBackendArchitectureContractTest,
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
-       PipelineStageMaterializerPassesSourceNodeOnlyWhenDescriptorRequiresBridge) {
+       PipelineStageMaterializerMaterializesDescriptorOnly) {
   auto parameter = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
                                                            ov::Shape{2, 3});
   auto shape =
@@ -862,7 +1031,6 @@ TEST_F(GfxBackendArchitectureContractTest,
   runtime_descriptor.stages = {view_descriptor, payload_descriptor};
 
   PipelineStageRuntimePlan runtime_plan;
-  runtime_plan.ordered_ops = {reshape, relu};
   auto view_plan = make_single_materialization_plan(reshape, view_descriptor);
   view_plan.io_plan.outputs.front().shape = ov::Shape{6};
   runtime_plan.stage_plans.push_back(std::move(view_plan));
@@ -873,30 +1041,14 @@ TEST_F(GfxBackendArchitectureContractTest,
   PipelineStageRuntimeMaterializationRequest request;
   request.stage_factory = &stage_factory;
   request.runtime_descriptor = &runtime_descriptor;
-  request.runtime_plan = &runtime_plan;
+  runtime_descriptor.pipeline_plan =
+      std::make_shared<PipelineStageRuntimePlan>(std::move(runtime_plan));
 
   auto pipeline = materialize_pipeline_stage_descriptors(request);
   ASSERT_EQ(pipeline.size(), 2u);
-  ASSERT_EQ(stage_factory.source_node_seen.size(), 2u);
-  EXPECT_FALSE(stage_factory.source_node_seen[0]);
-  EXPECT_FALSE(stage_factory.source_node_seen[1]);
-
-  payload_descriptor.temporary_source_node_bridge_required = true;
-  payload_descriptor.temporary_source_node_bridge_reason =
-      "unit source bridge migration";
-  payload_descriptor.stage_index = 0;
-  payload_descriptor.stage_record_key = 0x3234u;
-  runtime_descriptor.stages = {payload_descriptor};
-  runtime_plan.ordered_ops = {relu};
-  runtime_plan.stage_plans.clear();
-  runtime_plan.stage_plans.push_back(
-      make_single_materialization_plan(relu, payload_descriptor));
-  stage_factory.source_node_seen.clear();
-
-  auto bridge_pipeline = materialize_pipeline_stage_descriptors(request);
-  ASSERT_EQ(bridge_pipeline.size(), 1u);
-  ASSERT_EQ(stage_factory.source_node_seen.size(), 1u);
-  EXPECT_TRUE(stage_factory.source_node_seen.front());
+  ASSERT_EQ(stage_factory.stage_names.size(), 2u);
+  EXPECT_EQ(stage_factory.stage_names[0], reshape->get_friendly_name());
+  EXPECT_EQ(stage_factory.stage_names[1], relu->get_friendly_name());
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
@@ -915,14 +1067,17 @@ TEST_F(GfxBackendArchitectureContractTest,
 
   PipelineStageMaterializationPlan plan;
   plan.kind = PipelineStageMaterializationKind::SingleStage;
-  plan.io_plan.node = relu;
+  plan.io_plan.stage_name = relu->get_friendly_name();
+  plan.io_plan.op_family = relu->get_type_name();
   plan.io_plan.runtime_stage_index = descriptor.stage_index;
   plan.descriptor_stage_index = descriptor.stage_index;
 
   PipelineStageOutputDesc output;
   output.type = ov::element::dynamic;
-  output.source_node = relu;
   output.source_port = 0;
+  output.source_ref.kind = PipelineStageTensorRefKind::StageOutput;
+  output.source_ref.index = descriptor.stage_index;
+  output.source_ref.port = 0;
   plan.io_plan.outputs.push_back(std::move(output));
   plan.materialized_descriptor = descriptor;
   plan.materialized_descriptor_valid = true;
@@ -932,22 +1087,22 @@ TEST_F(GfxBackendArchitectureContractTest,
   runtime_descriptor.stages = {descriptor};
 
   PipelineStageRuntimePlan runtime_plan;
-  runtime_plan.ordered_ops = {relu};
   runtime_plan.stage_plans.push_back(std::move(plan));
 
   CapturingBackendStageFactory stage_factory;
   PipelineStageRuntimeMaterializationRequest request;
   request.stage_factory = &stage_factory;
   request.runtime_descriptor = &runtime_descriptor;
-  request.runtime_plan = &runtime_plan;
+  runtime_descriptor.pipeline_plan =
+      std::make_shared<PipelineStageRuntimePlan>(std::move(runtime_plan));
 
   auto pipeline = materialize_pipeline_stage_descriptors(request);
   ASSERT_EQ(pipeline.size(), 1u);
   ASSERT_EQ(pipeline.front().outputs.size(), 1u);
   EXPECT_EQ(pipeline.front().outputs.front().type, ov::element::i32);
   EXPECT_EQ(pipeline.front().outputs.front().shape, (ov::Shape{4, 2}));
-  ASSERT_EQ(stage_factory.source_node_seen.size(), 1u);
-  EXPECT_FALSE(stage_factory.source_node_seen.front());
+  ASSERT_EQ(stage_factory.stage_names.size(), 1u);
+  EXPECT_EQ(stage_factory.stage_names.front(), relu->get_friendly_name());
 }
 
 compiler::TensorContract
@@ -1058,14 +1213,13 @@ compiler::ManifestBundle make_single_payload_route_manifest(
   return manifest;
 }
 
-compiler::TensorContract make_source_payload_tensor_contract(
-    compiler::TensorContractRole role, size_t index, std::string shape) {
+compiler::TensorContract
+make_source_payload_tensor_contract(compiler::TensorContractRole role,
+                                    size_t index, std::string shape) {
   auto contract = make_tensor_contract(role);
   const bool input = role == compiler::TensorContractRole::TensorInput;
-  contract.logical_name =
-      (input ? "input" : "output") + std::to_string(index);
-  contract.memory_region_id =
-      "stage_0." + contract.logical_name + "_region";
+  contract.logical_name = (input ? "input" : "output") + std::to_string(index);
+  contract.memory_region_id = "stage_0." + contract.logical_name + "_region";
   contract.partial_shape = std::move(shape);
   return contract;
 }
@@ -1106,9 +1260,9 @@ compiler::ManifestBundle make_source_payload_route_manifest(
   return manifest;
 }
 
-GfxKernelStageManifest make_unit_source_stage_manifest(
-    GfxKernelBackendDomain backend_domain,
-    const std::vector<GfxKernelBufferRole> &roles) {
+GfxKernelStageManifest
+make_unit_source_stage_manifest(GfxKernelBackendDomain backend_domain,
+                                const std::vector<GfxKernelBufferRole> &roles) {
   GfxKernelStageManifest manifest;
   manifest.valid = true;
   manifest.stage_family = GfxKernelStageFamily::Eltwise;
@@ -1122,6 +1276,58 @@ GfxKernelStageManifest make_unit_source_stage_manifest(
   manifest.custom_kernel.entry_point = "unit_source_entry";
   manifest.custom_kernel.external_buffer_abi = make_gfx_kernel_roles_abi(roles);
   return manifest;
+}
+
+uint32_t
+count_runtime_param_roles(const std::vector<GfxKernelBufferRole> &roles) {
+  uint32_t count = 0;
+  for (const auto role : roles) {
+    if (role == GfxKernelBufferRole::RuntimeParams) {
+      ++count;
+    }
+  }
+  return count;
+}
+
+uint32_t count_kernel_roles(const std::vector<GfxKernelBufferRole> &roles,
+                            GfxKernelBufferRole expected) {
+  uint32_t count = 0;
+  for (const auto role : roles) {
+    if (role == expected) {
+      ++count;
+    }
+  }
+  return count;
+}
+
+std::vector<size_t>
+make_unit_direct_input_indices(const std::vector<GfxKernelBufferRole> &roles) {
+  std::vector<size_t> indices;
+  size_t next_input = 0;
+  for (const auto role : roles) {
+    if (role == GfxKernelBufferRole::TensorInput) {
+      indices.push_back(next_input++);
+    }
+  }
+  return indices;
+}
+
+KernelLaunchPlanDescriptor make_unit_launch_plan_descriptor(
+    const std::vector<GfxKernelBufferRole> &roles,
+    const GfxKernelSourceRuntimeBinding &runtime_binding) {
+  KernelLaunchPlanDescriptor plan;
+  plan.valid = !roles.empty();
+  plan.buffer_roles.reserve(roles.size());
+  for (const auto role : roles) {
+    plan.buffer_roles.emplace_back(kernel_buffer_role_descriptor_name(role));
+  }
+  plan.direct_input_indices = make_unit_direct_input_indices(roles);
+  plan.input_indices = runtime_binding.inputs;
+  plan.input_arg_count = runtime_binding.input_arg_count;
+  plan.operand_kinds = runtime_binding.operand_kinds;
+  plan.operand_arg_indices = runtime_binding.operand_arg_indices;
+  plan.scalar_args = runtime_binding.scalar_args;
+  return plan;
 }
 
 std::shared_ptr<const KernelArtifactPayload> make_unit_source_payload(
@@ -1139,7 +1345,14 @@ std::shared_ptr<const KernelArtifactPayload> make_unit_source_payload(
     artifact.source = "__kernel void unit_source_entry() {}";
     artifact.stage_manifest =
         make_unit_source_stage_manifest(GfxKernelBackendDomain::OpenCl, roles);
-    return std::make_shared<GfxOpenClSourceArtifactPayload>(std::move(artifact));
+    artifact.arg_count = static_cast<uint32_t>(roles.size());
+    artifact.direct_input_count =
+        count_kernel_roles(roles, GfxKernelBufferRole::TensorInput);
+    artifact.direct_output_count =
+        count_kernel_roles(roles, GfxKernelBufferRole::TensorOutput);
+    artifact.direct_input_indices = make_unit_direct_input_indices(roles);
+    return std::make_shared<GfxOpenClSourceArtifactPayload>(
+        std::move(artifact));
   }
 
   return std::make_shared<GfxKernelSourcePayload>(
@@ -1155,7 +1368,8 @@ compiler::ExecutableBundle make_source_payload_executable(
     const std::vector<GfxKernelBufferRole> &roles,
     const std::vector<std::string> &input_shapes,
     const std::vector<std::string> &output_shapes,
-    const GfxKernelSourceRuntimeBinding &runtime_binding = {}) {
+    const GfxKernelSourceRuntimeBinding &runtime_binding = {},
+    std::vector<KernelArtifactConstTensor> const_tensors = {}) {
   auto manifest = make_source_payload_route_manifest(
       std::move(backend_domain), std::move(op_family), input_shapes,
       output_shapes);
@@ -1164,12 +1378,25 @@ compiler::ExecutableBundle make_source_payload_executable(
                   "unit source payload executable must have one descriptor");
   auto &descriptor = executable.artifact_descriptors.front();
   descriptor.entry_point = "unit_source_entry";
+  descriptor.abi_arg_count = static_cast<uint32_t>(roles.size());
+  descriptor.abi_output_arg_count =
+      count_kernel_roles(roles, GfxKernelBufferRole::TensorOutput);
+  descriptor.runtime_param_buffer_count = count_runtime_param_roles(roles);
+  descriptor.runtime_param_i64_metadata =
+      runtime_binding.runtime_param_i64_metadata;
+  descriptor.runtime_param_reduce_keep_dims =
+      runtime_binding.runtime_param_reduce_keep_dims;
+  descriptor.runtime_param_reduce_keep_dims_valid =
+      runtime_binding.runtime_param_reduce_keep_dims_valid;
+  descriptor.launch_plan =
+      make_unit_launch_plan_descriptor(roles, runtime_binding);
   compiler::finalize_kernel_artifact_descriptor_identity(descriptor);
   compiler::KernelArtifactPayloadRecord payload_record;
   payload_record.artifact_descriptor_index = 0;
   payload_record.artifact_key = descriptor.artifact_key;
   payload_record.payload =
       make_unit_source_payload(descriptor, roles, runtime_binding);
+  payload_record.const_tensors = std::move(const_tensors);
   executable.artifact_payloads.push_back(std::move(payload_record));
   return executable;
 }
@@ -1192,9 +1419,33 @@ std::shared_ptr<ov::Model> make_static_range_model() {
       ov::op::v0::Constant::create(ov::element::f32, ov::Shape{}, {1.0f});
   auto range =
       std::make_shared<ov::op::v4::Range>(start, stop, step, ov::element::f32);
+  ov::disable_constant_folding(range);
   auto result = std::make_shared<ov::op::v0::Result>(range);
   return std::make_shared<ov::Model>(ov::ResultVector{result},
                                      ov::ParameterVector{});
+}
+
+std::shared_ptr<ov::Model> make_add_constant_model(float value) {
+  auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                       ov::Shape{1, 3});
+  auto constant = ov::op::v0::Constant::create(
+      ov::element::f32, ov::Shape{1, 3}, {value, value, value});
+  auto add = std::make_shared<ov::op::v1::Add>(input, constant);
+  auto result = std::make_shared<ov::op::v0::Result>(add);
+  return std::make_shared<ov::Model>(ov::ResultVector{result},
+                                     ov::ParameterVector{input});
+}
+
+std::shared_ptr<ov::Model> make_reshape_model(bool special_zero) {
+  auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                       ov::Shape{2, 3});
+  auto pattern =
+      ov::op::v0::Constant::create(ov::element::i64, ov::Shape{2}, {2, 3});
+  auto reshape =
+      std::make_shared<ov::op::v1::Reshape>(input, pattern, special_zero);
+  auto result = std::make_shared<ov::op::v0::Result>(reshape);
+  return std::make_shared<ov::Model>(ov::ResultVector{result},
+                                     ov::ParameterVector{input});
 }
 
 compiler::CacheEnvelopeBuildOptions make_test_cache_options(
@@ -1415,6 +1666,7 @@ TEST_F(GfxBackendArchitectureContractTest,
 
   compiler::PipelineStageBuildRequest stage_build_request;
   EXPECT_EQ(stage_build_request.target.backend(), GpuBackend::Unknown);
+  EXPECT_FALSE(stage_build_request.graph.valid());
 
   compiler::StageCompilerPolicy stage_compiler_policy;
   EXPECT_EQ(stage_compiler_policy.target.backend(), GpuBackend::Unknown);
@@ -1670,41 +1922,33 @@ TEST_F(GfxBackendArchitectureContractTest,
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
-       RuntimeExecutableDescriptorRequiresFrozenCompilerStagePlan) {
+       RuntimeExecutableDescriptorRejectsIncompletePipelinePlan) {
   const auto manifest = make_single_payload_route_manifest(
       LoweringRouteKind::Metadata, "opencl", "metadata", "metadata");
   const auto executable = compiler::ExecutableBundleBuilder{}.build(manifest);
   ASSERT_TRUE(executable.valid());
 
-  const auto descriptor_without_stage_plan =
+  auto runtime_descriptor =
       compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
   ASSERT_TRUE(compiler::runtime_executable_descriptor_valid(
-      descriptor_without_stage_plan, executable));
-
-  const auto stage_plan_verification =
-      compiler::verify_runtime_executable_stage_plan(
-          descriptor_without_stage_plan);
-  EXPECT_FALSE(stage_plan_verification.valid());
-  EXPECT_TRUE(has_diagnostic_containing(stage_plan_verification.diagnostics,
-                                        "missing compiler-owned stage plan"));
+      runtime_descriptor, executable));
 
   auto parameter =
       std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
   auto relu = std::make_shared<ov::op::v0::Relu>(parameter);
   auto unfrozen_stage_plan = std::make_shared<PipelineStageRuntimePlan>();
-  unfrozen_stage_plan->ordered_ops = {relu};
   PipelineStageMaterializationPlan materialized_stage;
   materialized_stage.kind = PipelineStageMaterializationKind::SingleStage;
-  materialized_stage.io_plan.node = relu;
+  materialized_stage.io_plan.stage_name = relu->get_friendly_name();
+  materialized_stage.io_plan.op_family = relu->get_type_name();
   materialized_stage.io_plan.runtime_stage_index = 0;
   materialized_stage.descriptor_stage_index = 0;
   unfrozen_stage_plan->stage_plans.push_back(std::move(materialized_stage));
 
-  auto descriptor_with_unfrozen_stage_plan = descriptor_without_stage_plan;
-  descriptor_with_unfrozen_stage_plan.stage_plan = unfrozen_stage_plan;
+  runtime_descriptor.pipeline_plan = unfrozen_stage_plan;
   const auto unfrozen_verification =
-      compiler::verify_runtime_executable_stage_plan(
-          descriptor_with_unfrozen_stage_plan);
+      compiler::verify_runtime_executable_descriptor_pipeline_plan(
+          runtime_descriptor);
   EXPECT_FALSE(unfrozen_verification.valid());
   EXPECT_TRUE(has_diagnostic_containing(unfrozen_verification.diagnostics,
                                         "materialized descriptor missing"));
@@ -1731,8 +1975,23 @@ TEST_F(GfxBackendArchitectureContractTest,
         test_case.requires_runtime_shape_args);
     op.layout = compiler::TensorLayoutPlan{};
     op.profitability_score = 1.0;
-    op.input_element_types = {"f32"};
-    op.input_shapes = {"{1,2,3}"};
+    auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                         ov::Shape{1, 2, 3});
+    auto starts = ov::op::v0::Constant::create(ov::element::i64,
+                                               ov::Shape{1}, {0});
+    auto ends = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{1},
+                                             {2});
+    auto steps = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{1},
+                                              {1});
+    auto axes = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{1},
+                                             {1});
+    auto slice =
+        std::make_shared<ov::op::v8::Slice>(input, starts, ends, steps, axes);
+    op.source_node = slice;
+    op.node_name = slice->get_friendly_name();
+    op.type_name = slice->get_type_name();
+    op.input_element_types = {"f32", "i64", "i64", "i64", "i64"};
+    op.input_shapes = {"{1,2,3}", "{1}", "{1}", "{1}", "{1}"};
     op.output_element_types = {"f32"};
     op.output_shapes = {"{1,2,3}"};
     plan.operations.push_back(std::move(op));
@@ -1774,14 +2033,24 @@ TEST_F(GfxBackendArchitectureContractTest,
   struct Case {
     const char *op_type;
     const char *expected_rule;
+    std::vector<int64_t> expected_i64_metadata;
   };
 
+  const std::vector<int64_t> slice_metadata = {1, 1, 5};
+  const std::vector<int64_t> strided_slice_metadata = {
+      1, 2, 4, 3, 0, 0, 0, 3, 0, 0, 0, 3, 0,
+      0, 0, 3, 0, 0, 0, 3, 0, 0, 0};
+
   for (const auto test_case :
-       {Case{"Concat", "concat"}, Case{"Broadcast", "broadcast"},
-        Case{"Select", "select"}, Case{"ShapeOf", "shape_of"},
-        Case{"Slice", "slice"}, Case{"StridedSlice", "slice"},
-        Case{"Range", "range"}, Case{"Tile", "tile"},
-        Case{"Relu", "static_or_descriptor"}}) {
+       {Case{"Concat", "concat", {1}},
+        Case{"Broadcast", "broadcast", {0, 2}},
+        Case{"Select", "select", {}},
+        Case{"ShapeOf", "shape_of", {}},
+        Case{"Slice", "slice", slice_metadata},
+        Case{"StridedSlice", "slice", strided_slice_metadata},
+        Case{"Range", "range", {}},
+        Case{"Tile", "tile", {}},
+        Case{"Relu", "static_or_descriptor", {}}}) {
     SCOPED_TRACE(test_case.op_type);
     compiler::LoweringPlan plan;
     plan.target = compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
@@ -1797,6 +2066,70 @@ TEST_F(GfxBackendArchitectureContractTest,
     op.input_shapes = {"{1,2,3}"};
     op.output_element_types = {"f32"};
     op.output_shapes = {"{1,2,3}"};
+    if (std::string_view(test_case.op_type) == "Concat") {
+      auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                         ov::Shape{1, 2, 3});
+      auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                         ov::Shape{1, 2, 3});
+      auto concat = std::make_shared<ov::op::v0::Concat>(
+          ov::OutputVector{lhs, rhs}, 1);
+      op.source_node = concat;
+      op.node_name = concat->get_friendly_name();
+      op.type_name = concat->get_type_name();
+      op.input_element_types = {"f32", "f32"};
+      op.input_shapes = {"{1,2,3}", "{1,2,3}"};
+      op.output_shapes = {"{1,4,3}"};
+    } else if (std::string_view(test_case.op_type) == "Broadcast") {
+      auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                           ov::Shape{1, 3});
+      auto target = ov::op::v0::Constant::create(ov::element::i64,
+                                                 ov::Shape{2}, {2, 3});
+      auto broadcast = std::make_shared<ov::op::v3::Broadcast>(input, target);
+      op.source_node = broadcast;
+      op.node_name = broadcast->get_friendly_name();
+      op.type_name = broadcast->get_type_name();
+      op.input_element_types = {"f32", "i64"};
+      op.input_shapes = {"{1,3}", "{2}"};
+      op.output_shapes = {"{2,3}"};
+    } else if (std::string_view(test_case.op_type) == "Slice") {
+      auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                           ov::Shape{1, 2, 3});
+      auto starts = ov::op::v0::Constant::create(ov::element::i64,
+                                                 ov::Shape{1}, {0});
+      auto ends = ov::op::v0::Constant::create(ov::element::i64,
+                                               ov::Shape{1}, {2});
+      auto steps = ov::op::v0::Constant::create(ov::element::i64,
+                                                ov::Shape{1}, {1});
+      auto axes = ov::op::v0::Constant::create(ov::element::i64,
+                                               ov::Shape{1}, {1});
+      auto slice =
+          std::make_shared<ov::op::v8::Slice>(input, starts, ends, steps, axes);
+      op.source_node = slice;
+      op.node_name = slice->get_friendly_name();
+      op.type_name = slice->get_type_name();
+      op.input_element_types = {"f32", "i64", "i64", "i64", "i64"};
+      op.input_shapes = {"{1,2,3}", "{1}", "{1}", "{1}", "{1}"};
+      op.output_shapes = {"{1,2,3}"};
+    } else if (std::string_view(test_case.op_type) == "StridedSlice") {
+      auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                           ov::Shape{1, 2, 3});
+      auto begin = ov::op::v0::Constant::create(ov::element::i64,
+                                                ov::Shape{3}, {0, 0, 0});
+      auto end = ov::op::v0::Constant::create(ov::element::i64,
+                                              ov::Shape{3}, {1, 2, 3});
+      auto strides = ov::op::v0::Constant::create(ov::element::i64,
+                                                  ov::Shape{3}, {1, 1, 1});
+      const std::vector<int64_t> zero_mask = {0, 0, 0};
+      auto slice = std::make_shared<ov::op::v1::StridedSlice>(
+          input, begin, end, strides, zero_mask, zero_mask, zero_mask,
+          zero_mask, zero_mask);
+      op.source_node = slice;
+      op.node_name = slice->get_friendly_name();
+      op.type_name = slice->get_type_name();
+      op.input_element_types = {"f32", "i64", "i64", "i64"};
+      op.input_shapes = {"{1,2,3}", "{3}", "{3}", "{3}"};
+      op.output_shapes = {"{1,2,3}"};
+    }
     plan.operations.push_back(std::move(op));
 
     const auto manifest = compiler::ManifestBuilder{}.build(plan);
@@ -1804,12 +2137,17 @@ TEST_F(GfxBackendArchitectureContractTest,
     ASSERT_EQ(manifest.stages.size(), 1u);
     EXPECT_EQ(manifest.stages.front().runtime_shape.rule,
               test_case.expected_rule);
+    EXPECT_EQ(manifest.stages.front().runtime_shape.i64_metadata,
+              test_case.expected_i64_metadata);
 
     const auto executable = compiler::ExecutableBundleBuilder{}.build(manifest);
     ASSERT_TRUE(executable.valid());
     ASSERT_EQ(executable.artifact_descriptors.size(), 1u);
     EXPECT_EQ(executable.artifact_descriptors.front().kernel.runtime_shape_rule,
               test_case.expected_rule);
+    EXPECT_EQ(executable.artifact_descriptors.front()
+                  .kernel.runtime_shape_i64_metadata,
+              test_case.expected_i64_metadata);
 
     const auto runtime_descriptor =
         compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
@@ -1818,6 +2156,8 @@ TEST_F(GfxBackendArchitectureContractTest,
     ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
     EXPECT_EQ(runtime_descriptor.stages.front().runtime_shape_rule,
               test_case.expected_rule);
+    EXPECT_EQ(runtime_descriptor.stages.front().runtime_shape_i64_metadata,
+              test_case.expected_i64_metadata);
 
     auto stale_descriptor = runtime_descriptor;
     stale_descriptor.stages.front().runtime_shape_rule = "stale_runtime_rule";
@@ -1826,6 +2166,14 @@ TEST_F(GfxBackendArchitectureContractTest,
     EXPECT_FALSE(stale_result.valid());
     EXPECT_TRUE(
         has_diagnostic_containing(stale_result.diagnostics, "artifact drift"));
+    auto stale_metadata_descriptor = runtime_descriptor;
+    stale_metadata_descriptor.stages.front().runtime_shape_i64_metadata = {42};
+    const auto stale_metadata_result =
+        compiler::verify_runtime_executable_descriptor(stale_metadata_descriptor,
+                                                       executable);
+    EXPECT_FALSE(stale_metadata_result.valid());
+    EXPECT_TRUE(has_diagnostic_containing(stale_metadata_result.diagnostics,
+                                          "artifact drift"));
   }
 }
 
@@ -1853,6 +2201,20 @@ TEST_F(GfxBackendArchitectureContractTest,
     op.input_shapes = {"{1,2,3}"};
     op.output_element_types = {"f32"};
     op.output_shapes = {"{1,2,3}"};
+    if (std::string_view(test_case.op_type) == "Concat") {
+      auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                         ov::Shape{1, 2, 3});
+      auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                         ov::Shape{1, 2, 3});
+      auto concat = std::make_shared<ov::op::v0::Concat>(
+          ov::OutputVector{lhs, rhs}, 1);
+      op.source_node = concat;
+      op.node_name = concat->get_friendly_name();
+      op.type_name = concat->get_type_name();
+      op.input_element_types = {"f32", "f32"};
+      op.input_shapes = {"{1,2,3}", "{1,2,3}"};
+      op.output_shapes = {"{1,4,3}"};
+    }
     plan.operations.push_back(std::move(op));
 
     const auto manifest = compiler::ManifestBuilder{}.build(plan);
@@ -1918,6 +2280,35 @@ TEST_F(GfxBackendArchitectureContractTest,
   EXPECT_EQ(envelope.manifest.target_fingerprint, manifest.target_fingerprint);
   EXPECT_EQ(envelope.artifact_descriptors.size(),
             executable.artifact_descriptors.size());
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       ModelCacheFingerprintIncludesAttributesAndConstantPayloads) {
+  const auto manifest = make_single_payload_route_manifest(
+      LoweringRouteKind::Metadata, "opencl", "metadata", "metadata");
+  const auto executable = compiler::ExecutableBundleBuilder{}.build(manifest);
+  ASSERT_TRUE(executable.verify().valid());
+
+  const auto add_one = make_add_constant_model(1.0f);
+  const auto add_two = make_add_constant_model(2.0f);
+  const auto add_one_fingerprint =
+      compiler::make_model_cache_fingerprint(*add_one);
+  const auto add_two_fingerprint =
+      compiler::make_model_cache_fingerprint(*add_two);
+  EXPECT_NE(add_one_fingerprint, add_two_fingerprint);
+
+  const auto reshape_plain = make_reshape_model(false);
+  const auto reshape_special_zero = make_reshape_model(true);
+  EXPECT_NE(compiler::make_model_cache_fingerprint(*reshape_plain),
+            compiler::make_model_cache_fingerprint(*reshape_special_zero));
+
+  const auto envelope_one = compiler::CacheEnvelopeBuilder{}.build(
+      executable, make_test_cache_options(*add_one));
+  const auto envelope_two = compiler::CacheEnvelopeBuilder{}.build(
+      executable, make_test_cache_options(*add_two));
+  EXPECT_NE(envelope_one.key.model_fingerprint,
+            envelope_two.key.model_fingerprint);
+  EXPECT_NE(envelope_one.key.stable_key, envelope_two.key.stable_key);
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
@@ -2008,27 +2399,48 @@ TEST_F(GfxBackendArchitectureContractTest,
 
   const compiler::GfxCompilerService compiler_service(registry);
   const auto compile_result =
-      compiler_service.compile({make_static_range_model(), target});
+      compiler_service.compile({make_relu_model(), target});
   ASSERT_TRUE(compile_result.supported())
       << compile_result.unsupported_message();
   EXPECT_EQ(compile_result.target.fingerprint(), target.fingerprint());
   EXPECT_EQ(compile_result.executable.target_fingerprint, target.fingerprint());
 
   ASSERT_TRUE(compile_result.runtime_descriptor);
+  ASSERT_TRUE(compile_result.runtime_descriptor->pipeline_plan);
+  const auto &pipeline_plan =
+      *compile_result.runtime_descriptor->pipeline_plan;
   EXPECT_EQ(compile_result.runtime_descriptor->target_fingerprint,
             target.fingerprint());
-  ASSERT_TRUE(compile_result.runtime_descriptor->stage_plan);
-  EXPECT_EQ(compile_result.runtime_descriptor->stage_plan->ordered_ops.size(),
-            compile_result.runtime_descriptor->stages.size());
-  EXPECT_EQ(compile_result.runtime_descriptor->stage_plan->runtime_options
-                .custom_kernel_dispatch_profile.profile_key,
+  EXPECT_FALSE(pipeline_plan.stage_plans.empty());
+  EXPECT_EQ(pipeline_plan.runtime_options.custom_kernel_dispatch_profile
+                .profile_key,
             "opencl:broadcom_v3d");
-  EXPECT_EQ(compile_result.runtime_descriptor->stage_plan->runtime_options
-                .custom_kernel_dispatch_profile.max_total_threads_per_group,
+  EXPECT_EQ(pipeline_plan.runtime_options.custom_kernel_dispatch_profile
+                .max_total_threads_per_group,
             64u);
-  EXPECT_TRUE(compile_result.runtime_descriptor->stage_plan->runtime_options
-                  .custom_kernel_dispatch_profile.chunk_dispatch
+  EXPECT_TRUE(pipeline_plan.runtime_options.custom_kernel_dispatch_profile
+                  .chunk_dispatch
                   .retune_threads_to_workload);
+
+  const auto binding_ref_compile_result =
+      compiler_service.compile({make_relu_model(), target});
+  ASSERT_TRUE(binding_ref_compile_result.supported())
+      << binding_ref_compile_result.unsupported_message();
+  ASSERT_TRUE(binding_ref_compile_result.runtime_descriptor);
+  ASSERT_TRUE(binding_ref_compile_result.runtime_descriptor->pipeline_plan);
+  const auto &binding_ref_plan =
+      *binding_ref_compile_result.runtime_descriptor->pipeline_plan;
+  bool checked_stage_input_ref = false;
+  for (const auto &stage_plan : binding_ref_plan.stage_plans) {
+    for (const auto &input : stage_plan.io_plan.inputs) {
+      if (input.source_ref.kind == PipelineStageTensorRefKind::None) {
+        continue;
+      }
+      EXPECT_TRUE(input.source_ref.valid());
+      checked_stage_input_ref = true;
+    }
+  }
+  EXPECT_TRUE(checked_stage_input_ref);
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
@@ -2066,8 +2478,13 @@ TEST_F(GfxBackendArchitectureContractTest,
       << compile_result.unsupported_message();
   ASSERT_TRUE(compile_result.runtime_descriptor);
 
+  const auto backend_module = registry.resolve(target);
+  ASSERT_TRUE(backend_module);
   compiler::PipelineStageBuildRequest stage_request;
-  stage_request.runtime_model = compile_result.transformed_model;
+  stage_request.graph = compiler::make_pipeline_stage_graph_snapshot(
+      compile_result.transformed_model,
+      compiler::make_pipeline_stage_fusion_config(
+          backend_module->capabilities().fusion(), true, false));
   stage_request.runtime_descriptor = compile_result.runtime_descriptor.get();
   stage_request.target = target;
 
@@ -2387,7 +2804,7 @@ TEST_F(GfxBackendArchitectureContractTest,
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
-       DescriptorOwnedRuntimeParamsDoNotRequireSourceNodeBridge) {
+       DescriptorOwnedRuntimeParamsStayDescriptorOnly) {
   struct Case {
     const char *backend_domain;
     KernelArtifactPayloadKind payload_kind;
@@ -2416,9 +2833,54 @@ TEST_F(GfxBackendArchitectureContractTest,
     ASSERT_TRUE(compiler::runtime_executable_descriptor_valid(
         runtime_descriptor, executable));
     ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
-    const auto &stage = runtime_descriptor.stages.front();
-    EXPECT_FALSE(stage.temporary_source_node_bridge_required);
-    EXPECT_TRUE(stage.temporary_source_node_bridge_reason.empty());
+    EXPECT_EQ(runtime_descriptor.stages.front().payload_kind,
+              test_case.payload_kind);
+    EXPECT_EQ(runtime_descriptor.stages.front().runtime_param_buffer_count, 3u);
+  }
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       SourceLaunchPlanAbiIsDescriptorOwnedAcrossSourceBackends) {
+  const std::vector<GfxKernelBufferRole> roles = {
+      GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorInput,
+      GfxKernelBufferRole::ScalarParam, GfxKernelBufferRole::TensorOutput};
+
+  for (const auto backend_domain : {"metal", "opencl"}) {
+    SCOPED_TRACE(backend_domain);
+    auto executable = make_source_payload_executable(
+        backend_domain, "Add", roles, {"{1,3}", "{1,3}"}, {"{1,3}"});
+    const auto executable_result = executable.verify();
+    ASSERT_TRUE(executable_result.valid())
+        << (executable_result.diagnostics.empty()
+                ? std::string{}
+                : executable_result.diagnostics.front());
+
+    ASSERT_EQ(executable.artifact_descriptors.size(), 1u);
+    const auto &artifact = executable.artifact_descriptors.front();
+    ASSERT_TRUE(artifact.launch_plan.valid);
+    EXPECT_EQ(artifact.launch_plan.buffer_roles,
+              (std::vector<std::string>{"tensor_input", "tensor_input",
+                                        "scalar_param", "tensor_output"}));
+    EXPECT_EQ(artifact.launch_plan.direct_input_indices,
+              (std::vector<size_t>{0, 1}));
+
+    auto runtime_descriptor =
+        compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
+    ASSERT_TRUE(compiler::runtime_executable_descriptor_valid(
+        runtime_descriptor, executable));
+    ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
+    EXPECT_EQ(runtime_descriptor.stages.front().launch_plan.buffer_roles,
+              artifact.launch_plan.buffer_roles);
+    EXPECT_EQ(
+        runtime_descriptor.stages.front().launch_plan.direct_input_indices,
+        artifact.launch_plan.direct_input_indices);
+
+    runtime_descriptor.stages.front().launch_plan.buffer_roles.pop_back();
+    const auto stale_result = compiler::verify_runtime_executable_descriptor(
+        runtime_descriptor, executable);
+    ASSERT_FALSE(stale_result.valid());
+    EXPECT_TRUE(has_diagnostic_containing(
+        stale_result.diagnostics, "source launch-plan ABI count drift"));
   }
 }
 
@@ -2439,8 +2901,7 @@ TEST_F(GfxBackendArchitectureContractTest,
        RuntimeParamDescriptorPayloadKind::BinaryBroadcast,
        {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorInput,
         GfxKernelBufferRole::TensorOutput, GfxKernelBufferRole::ScalarParam,
-        GfxKernelBufferRole::RuntimeParams,
-        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams, GfxKernelBufferRole::RuntimeParams,
         GfxKernelBufferRole::RuntimeParams},
        {"{1,3}", "{1,3}"},
        {"{1,3}"}},
@@ -2448,10 +2909,8 @@ TEST_F(GfxBackendArchitectureContractTest,
        4,
        RuntimeParamDescriptorPayloadKind::Broadcast,
        {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
-        GfxKernelBufferRole::RuntimeParams,
-        GfxKernelBufferRole::RuntimeParams,
-        GfxKernelBufferRole::RuntimeParams,
-        GfxKernelBufferRole::RuntimeParams},
+        GfxKernelBufferRole::RuntimeParams, GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams, GfxKernelBufferRole::RuntimeParams},
        {"{1,3}"},
        {"{2,3}"}},
       {"Select",
@@ -2459,20 +2918,16 @@ TEST_F(GfxBackendArchitectureContractTest,
        RuntimeParamDescriptorPayloadKind::Select,
        {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorInput,
         GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
-        GfxKernelBufferRole::RuntimeParams,
-        GfxKernelBufferRole::RuntimeParams,
-        GfxKernelBufferRole::RuntimeParams,
-        GfxKernelBufferRole::RuntimeParams},
+        GfxKernelBufferRole::RuntimeParams, GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams, GfxKernelBufferRole::RuntimeParams},
        {"{1,3}", "{1,3}", "{1,3}"},
        {"{1,3}"}},
       {"Tile",
        4,
        RuntimeParamDescriptorPayloadKind::Tile,
        {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
-        GfxKernelBufferRole::RuntimeParams,
-        GfxKernelBufferRole::RuntimeParams,
-        GfxKernelBufferRole::RuntimeParams,
-        GfxKernelBufferRole::RuntimeParams},
+        GfxKernelBufferRole::RuntimeParams, GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams, GfxKernelBufferRole::RuntimeParams},
        {"{1,3}"},
        {"{2,3}"}},
   };
@@ -2496,10 +2951,9 @@ TEST_F(GfxBackendArchitectureContractTest,
           runtime_descriptor, executable));
       ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
       const auto &stage = runtime_descriptor.stages.front();
+      EXPECT_EQ(stage.runtime_param_buffer_count, family.runtime_param_count);
       EXPECT_TRUE(descriptor_owns_runtime_param_payload(
           stage, family.runtime_param_count));
-      EXPECT_FALSE(stage.temporary_source_node_bridge_required);
-      EXPECT_TRUE(stage.temporary_source_node_bridge_reason.empty());
     }
   }
 }
@@ -2531,10 +2985,8 @@ TEST_F(GfxBackendArchitectureContractTest,
        5,
        RuntimeParamDescriptorPayloadKind::Transpose,
        {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
-        GfxKernelBufferRole::RuntimeParams,
-        GfxKernelBufferRole::RuntimeParams,
-        GfxKernelBufferRole::RuntimeParams,
-        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams, GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams, GfxKernelBufferRole::RuntimeParams,
         GfxKernelBufferRole::RuntimeParams},
        {"{2,3}"},
        {"{3,2}"},
@@ -2545,10 +2997,8 @@ TEST_F(GfxBackendArchitectureContractTest,
        {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
         GfxKernelBufferRole::ScalarParam, GfxKernelBufferRole::ScalarParam,
         GfxKernelBufferRole::ScalarParam, GfxKernelBufferRole::RuntimeParams,
-        GfxKernelBufferRole::RuntimeParams,
-        GfxKernelBufferRole::RuntimeParams,
-        GfxKernelBufferRole::RuntimeParams,
-        GfxKernelBufferRole::RuntimeParams},
+        GfxKernelBufferRole::RuntimeParams, GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams, GfxKernelBufferRole::RuntimeParams},
        {"{2,3}"},
        {"{2}"},
        {1},
@@ -2579,14 +3029,289 @@ TEST_F(GfxBackendArchitectureContractTest,
         runtime_descriptor, executable));
     ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
     const auto &stage = runtime_descriptor.stages.front();
+    EXPECT_EQ(stage.runtime_param_buffer_count, family.runtime_param_count);
     EXPECT_TRUE(descriptor_owns_runtime_param_payload(
         stage, family.runtime_param_count));
     EXPECT_EQ(stage.runtime_param_i64_metadata, family.i64_metadata);
     EXPECT_EQ(stage.runtime_param_reduce_keep_dims, family.reduce_keep_dims);
     EXPECT_EQ(stage.runtime_param_reduce_keep_dims_valid,
               family.reduce_keep_dims_valid);
-    EXPECT_FALSE(stage.temporary_source_node_bridge_required);
-    EXPECT_TRUE(stage.temporary_source_node_bridge_reason.empty());
+  }
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       RuntimeParamMetadataComesFromArtifactDescriptorNotSourcePayload) {
+  const std::vector<GfxKernelBufferRole> roles = {
+      GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
+      GfxKernelBufferRole::RuntimeParams};
+
+  GfxKernelSourceRuntimeBinding payload_binding;
+  payload_binding.runtime_param_i64_metadata = {99, 99, 99};
+
+  auto executable = make_source_payload_executable(
+      "metal", "Softmax", roles, {"{2,3}"}, {"{2,3}"}, payload_binding);
+  ASSERT_EQ(executable.artifact_descriptors.size(), 1u);
+  ASSERT_EQ(executable.artifact_payloads.size(), 1u);
+
+  auto &artifact = executable.artifact_descriptors.front();
+  artifact.runtime_param_buffer_count = 1;
+  artifact.runtime_param_i64_metadata = {2, 3, 1};
+  artifact.runtime_param_reduce_keep_dims = false;
+  artifact.runtime_param_reduce_keep_dims_valid = false;
+  compiler::finalize_kernel_artifact_descriptor_identity(artifact);
+  executable.artifact_payloads.front().artifact_key = artifact.artifact_key;
+
+  const auto runtime_descriptor =
+      compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
+  ASSERT_TRUE(compiler::runtime_executable_descriptor_valid(runtime_descriptor,
+                                                            executable));
+  ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
+  const auto &stage = runtime_descriptor.stages.front();
+  EXPECT_EQ(stage.runtime_param_buffer_count, 1u);
+  EXPECT_EQ(stage.runtime_param_i64_metadata, (std::vector<int64_t>{2, 3, 1}));
+  EXPECT_TRUE(descriptor_owns_runtime_param_payload(stage, 1));
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       DescriptorOwnedRuntimeShapeRulesDoNotRequireSourceNodeBridge) {
+  auto make_binding = [](std::string name, std::string role,
+                         std::string element_type,
+                         std::string partial_shape) {
+    auto binding =
+        make_runtime_binding(std::move(name), "unit_region", std::move(role));
+    binding.element_type = std::move(element_type);
+    binding.partial_shape = std::move(partial_shape);
+    return binding;
+  };
+
+  auto make_descriptor = [&](std::string backend_domain, std::string op_family,
+                             std::string rule,
+                             std::vector<RuntimeTensorBindingContract> inputs,
+                             std::vector<RuntimeTensorBindingContract> outputs,
+                             std::vector<int64_t> metadata = {}) {
+    RuntimeStageExecutableDescriptor descriptor;
+    descriptor.stage_index = 0;
+    descriptor.stage_record_key = 0x9001u;
+    descriptor.artifact_descriptor_index = 0;
+    descriptor.manifest_ref = "manifest://unit/runtime_shape";
+    descriptor.abi_fingerprint = "abi://unit/runtime_shape";
+    descriptor.artifact_key = "artifact://unit/runtime_shape";
+    descriptor.backend_domain = std::move(backend_domain);
+    descriptor.kernel_id = "unit/runtime_shape";
+    descriptor.op_family = std::move(op_family);
+    descriptor.stage_name = descriptor.op_family + "_runtime_shape";
+    descriptor.origin = KernelArtifactOrigin::Generated;
+    descriptor.payload_kind = KernelArtifactPayloadKind::MslSource;
+    descriptor.entry_point = "unit_runtime_shape";
+    descriptor.runtime_shape_rule = std::move(rule);
+    descriptor.runtime_shape_i64_metadata = std::move(metadata);
+    descriptor.input_bindings = std::move(inputs);
+    descriptor.output_bindings = std::move(outputs);
+    return descriptor;
+  };
+
+  auto tensor = [](ov::Shape shape, ov::element::Type type) {
+    GpuTensor value;
+    value.shape = std::move(shape);
+    value.expected_type = type;
+    return value;
+  };
+  auto i64_tensor = [](std::vector<int64_t> values) {
+    GpuTensor value;
+    value.shape = ov::Shape{values.size()};
+    value.expected_type = ov::element::i64;
+    value.i64_values = std::move(values);
+    return value;
+  };
+
+  for (const auto backend_domain : {"metal", "opencl"}) {
+    SCOPED_TRACE(backend_domain);
+
+    {
+      auto descriptor = make_descriptor(
+          backend_domain, "Concat", "concat",
+          {make_binding("lhs", "TensorInput", "f32", "{1,2,2}"),
+           make_binding("rhs", "TensorInput", "f32", "{1,3,2}")},
+          {make_binding("out", "TensorOutput", "f32", "{1,5,2}")}, {1});
+      std::vector<GpuTensor> storage = {
+          tensor({1, 2, 2}, ov::element::f32),
+          tensor({1, 3, 2}, ov::element::f32)};
+      std::vector<GpuTensor *> input_ptrs = {&storage[0], &storage[1]};
+      RuntimeInputResolver inputs;
+      inputs.inputs = &input_ptrs;
+      inputs.descriptor = &descriptor;
+      ASSERT_EQ(inputs.descriptor, &descriptor);
+      const auto plan =
+          plan_concat_runtime_values(inputs, descriptor.stage_name);
+      ASSERT_TRUE(plan.valid());
+      EXPECT_EQ(plan.values.output_shape, (ov::Shape{1, 5, 2}));
+      EXPECT_EQ(plan.axis_norm, 1);
+    }
+
+    {
+      auto descriptor = make_descriptor(
+          backend_domain, "Broadcast", "broadcast",
+          {make_binding("input", "TensorInput", "f32", "{1,3}"),
+           make_binding("target", "TensorInput", "i64", "{2}")},
+          {make_binding("out", "TensorOutput", "f32", "{2,3}")}, {0, 2});
+      std::vector<GpuTensor> storage = {
+          tensor({1, 3}, ov::element::f32), i64_tensor({2, 3})};
+      std::vector<GpuTensor *> input_ptrs = {&storage[0], &storage[1]};
+      RuntimeInputResolver inputs;
+      inputs.inputs = &input_ptrs;
+      inputs.descriptor = &descriptor;
+      ASSERT_EQ(inputs.descriptor, &descriptor);
+      const auto plan = plan_broadcast_runtime_values(
+          inputs, storage[0].shape, descriptor.stage_name);
+      EXPECT_EQ(plan.output_shape, (ov::Shape{2, 3}));
+      EXPECT_EQ(plan.output_type, ov::element::f32);
+    }
+
+    {
+      auto descriptor = make_descriptor(
+          backend_domain, "Select", "select",
+          {make_binding("cond", "TensorInput", "boolean", "{1,3}"),
+           make_binding("then", "TensorInput", "f32", "{1,3}"),
+           make_binding("else", "TensorInput", "f32", "{1,3}")},
+          {make_binding("out", "TensorOutput", "f32", "{1,3}")});
+      std::vector<GpuTensor> storage = {
+          tensor({1, 3}, ov::element::boolean),
+          tensor({1, 3}, ov::element::f32),
+          tensor({1, 3}, ov::element::f32)};
+      std::vector<GpuTensor *> input_ptrs = {&storage[0], &storage[1],
+                                             &storage[2]};
+      RuntimeInputResolver inputs;
+      inputs.inputs = &input_ptrs;
+      inputs.descriptor = &descriptor;
+      ASSERT_EQ(inputs.descriptor, &descriptor);
+      const auto plan =
+          plan_select_runtime_values(inputs, descriptor.stage_name);
+      ASSERT_TRUE(plan.valid());
+      EXPECT_EQ(plan.values.output_shape, (ov::Shape{1, 3}));
+      EXPECT_EQ(plan.values.output_type, ov::element::f32);
+    }
+
+    {
+      auto descriptor = make_descriptor(
+          backend_domain, "ShapeOf", "shape_of",
+          {make_binding("input", "TensorInput", "f32", "{2,3,4}")},
+          {make_binding("out", "TensorOutput", "i64", "{3}")});
+      std::vector<GpuTensor> storage = {tensor({2, 3, 4}, ov::element::f32)};
+      std::vector<GpuTensor *> input_ptrs = {&storage[0]};
+      RuntimeInputResolver inputs;
+      inputs.inputs = &input_ptrs;
+      inputs.descriptor = &descriptor;
+      ASSERT_EQ(inputs.descriptor, &descriptor);
+      const auto plan =
+          plan_shapeof_runtime_values(inputs, descriptor.stage_name);
+      EXPECT_EQ(plan.output_shape, (ov::Shape{3}));
+      EXPECT_EQ(plan.i64_values, (std::vector<int64_t>{2, 3, 4}));
+    }
+
+    {
+      auto descriptor = make_descriptor(
+          backend_domain, "Range", "range",
+          {make_binding("start", "TensorInput", "i64", "{1}"),
+           make_binding("stop", "TensorInput", "i64", "{1}"),
+           make_binding("step", "TensorInput", "i64", "{1}")},
+          {make_binding("out", "TensorOutput", "i64", "{3}")});
+      std::vector<GpuTensor> storage = {i64_tensor({0}), i64_tensor({3}),
+                                        i64_tensor({1})};
+      std::vector<GpuTensor *> input_ptrs = {&storage[0], &storage[1],
+                                             &storage[2]};
+      RuntimeInputResolver inputs;
+      inputs.inputs = &input_ptrs;
+      inputs.descriptor = &descriptor;
+      ASSERT_EQ(inputs.descriptor, &descriptor);
+      const auto plan = plan_range_runtime_values(inputs, descriptor.stage_name);
+      EXPECT_EQ(plan.output_shape, (ov::Shape{3}));
+      EXPECT_EQ(plan.i64_values, (std::vector<int64_t>{0, 1, 2}));
+    }
+
+    {
+      auto descriptor = make_descriptor(
+          backend_domain, "Tile", "tile",
+          {make_binding("input", "TensorInput", "f32", "{2,3}"),
+           make_binding("repeats", "TensorInput", "i64", "{2}")},
+          {make_binding("out", "TensorOutput", "f32", "{4,3}")});
+      std::vector<GpuTensor> storage = {
+          tensor({2, 3}, ov::element::f32), i64_tensor({2, 1})};
+      std::vector<GpuTensor *> input_ptrs = {&storage[0], &storage[1]};
+      GpuTensor output;
+      std::vector<GpuTensor *> outputs = {&output};
+      RuntimeInputResolver inputs;
+      inputs.inputs = &input_ptrs;
+      inputs.descriptor = &descriptor;
+      ASSERT_EQ(inputs.descriptor, &descriptor);
+      const auto plan =
+          plan_tile_runtime_values(inputs, outputs, descriptor.stage_name);
+      ASSERT_TRUE(plan.valid());
+      EXPECT_EQ(plan.output_shape, (ov::Shape{4, 3}));
+      EXPECT_EQ(plan.values.output_type, ov::element::f32);
+    }
+
+    {
+      auto descriptor = make_descriptor(
+          backend_domain, "Slice", "slice",
+          {make_binding("input", "TensorInput", "f32", "{2,5}"),
+           make_binding("starts", "TensorInput", "i64", "{1}"),
+           make_binding("ends", "TensorInput", "i64", "{1}"),
+           make_binding("steps", "TensorInput", "i64", "{1}"),
+           make_binding("axes", "TensorInput", "i64", "{1}")},
+          {make_binding("out", "TensorOutput", "f32", "{2,3}")},
+          {1, 1, 5});
+      std::vector<GpuTensor> storage = {
+          tensor({2, 5}, ov::element::f32), i64_tensor({1}),
+          i64_tensor({4}), i64_tensor({1}), i64_tensor({1})};
+      std::vector<GpuTensor *> input_ptrs = {&storage[0], &storage[1],
+                                             &storage[2], &storage[3],
+                                             &storage[4]};
+      GpuTensor output;
+      std::vector<GpuTensor *> outputs = {&output};
+      RuntimeInputResolver inputs;
+      inputs.inputs = &input_ptrs;
+      inputs.descriptor = &descriptor;
+      ASSERT_EQ(inputs.descriptor, &descriptor);
+      const auto plan = plan_slice_runtime_values(inputs, outputs, false,
+                                                  descriptor.stage_name);
+      ASSERT_TRUE(plan.valid());
+      EXPECT_EQ(plan.values.output_shape, (ov::Shape{2, 3}));
+      EXPECT_EQ(plan.values.output_type, ov::element::f32);
+      EXPECT_EQ(plan.starts_full, (std::vector<int32_t>{0, 1}));
+      EXPECT_EQ(plan.steps_full, (std::vector<int32_t>{1, 1}));
+    }
+
+    {
+      const std::vector<int64_t> strided_slice_metadata = {
+          1, 2, 4, 2, 0, 0, 2, 0, 0, 2, 0,
+          0, 2, 0, 0, 2, 0, 0};
+      auto descriptor = make_descriptor(
+          backend_domain, "StridedSlice", "slice",
+          {make_binding("input", "TensorInput", "f32", "{4,5}"),
+           make_binding("begin", "TensorInput", "i64", "{2}"),
+           make_binding("end", "TensorInput", "i64", "{2}"),
+           make_binding("strides", "TensorInput", "i64", "{2}")},
+          {make_binding("out", "TensorOutput", "f32", "{3,3}")},
+          strided_slice_metadata);
+      std::vector<GpuTensor> storage = {
+          tensor({4, 5}, ov::element::f32), i64_tensor({1, 0}),
+          i64_tensor({4, 5}), i64_tensor({1, 2})};
+      std::vector<GpuTensor *> input_ptrs = {&storage[0], &storage[1],
+                                             &storage[2], &storage[3]};
+      GpuTensor output;
+      std::vector<GpuTensor *> outputs = {&output};
+      RuntimeInputResolver inputs;
+      inputs.inputs = &input_ptrs;
+      inputs.descriptor = &descriptor;
+      ASSERT_EQ(inputs.descriptor, &descriptor);
+      const auto plan = plan_slice_runtime_values(inputs, outputs, false,
+                                                  descriptor.stage_name);
+      ASSERT_TRUE(plan.valid());
+      EXPECT_EQ(plan.values.output_shape, (ov::Shape{3, 3}));
+      EXPECT_EQ(plan.values.output_type, ov::element::f32);
+      EXPECT_EQ(plan.starts_full, (std::vector<int32_t>{1, 0}));
+      EXPECT_EQ(plan.steps_full, (std::vector<int32_t>{1, 2}));
+    }
   }
 }
 
@@ -2606,6 +3331,7 @@ TEST_F(GfxBackendArchitectureContractTest,
         compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
     ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
     const auto &stage = runtime_descriptor.stages.front();
+    EXPECT_EQ(stage.runtime_param_buffer_count, 3u);
     ASSERT_TRUE(descriptor_owns_runtime_param_payload(stage, 3));
 
     UnitMetadataBufferManager buffer_manager;
@@ -2623,8 +3349,7 @@ TEST_F(GfxBackendArchitectureContractTest,
     EXPECT_TRUE(materialization.descriptor_owned);
     EXPECT_EQ(materialization.extra_inputs.size(), 3u);
     EXPECT_EQ(output.shape, (ov::Shape{1, 3}));
-    EXPECT_EQ(materialization.scalar_args,
-              (std::vector<int32_t>{3, 2}));
+    EXPECT_EQ(materialization.scalar_args, (std::vector<int32_t>{3, 2}));
   }
 }
 
@@ -2660,10 +3385,8 @@ TEST_F(GfxBackendArchitectureContractTest,
       {"Transpose",
        5,
        {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
-        GfxKernelBufferRole::RuntimeParams,
-        GfxKernelBufferRole::RuntimeParams,
-        GfxKernelBufferRole::RuntimeParams,
-        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams, GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams, GfxKernelBufferRole::RuntimeParams,
         GfxKernelBufferRole::RuntimeParams},
        {"{2,3}"},
        {"{3,2}"},
@@ -2678,10 +3401,8 @@ TEST_F(GfxBackendArchitectureContractTest,
        {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
         GfxKernelBufferRole::ScalarParam, GfxKernelBufferRole::ScalarParam,
         GfxKernelBufferRole::ScalarParam, GfxKernelBufferRole::RuntimeParams,
-        GfxKernelBufferRole::RuntimeParams,
-        GfxKernelBufferRole::RuntimeParams,
-        GfxKernelBufferRole::RuntimeParams,
-        GfxKernelBufferRole::RuntimeParams},
+        GfxKernelBufferRole::RuntimeParams, GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams, GfxKernelBufferRole::RuntimeParams},
        {"{2,3}"},
        {"{2}"},
        {1},
@@ -2696,8 +3417,7 @@ TEST_F(GfxBackendArchitectureContractTest,
     SCOPED_TRACE(test_case.op_family);
     GfxKernelSourceRuntimeBinding runtime_binding;
     runtime_binding.runtime_param_i64_metadata = test_case.i64_metadata;
-    runtime_binding.runtime_param_reduce_keep_dims =
-        test_case.reduce_keep_dims;
+    runtime_binding.runtime_param_reduce_keep_dims = test_case.reduce_keep_dims;
     runtime_binding.runtime_param_reduce_keep_dims_valid =
         test_case.reduce_keep_dims_valid;
 
@@ -2708,6 +3428,7 @@ TEST_F(GfxBackendArchitectureContractTest,
         compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
     ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
     const auto &stage = runtime_descriptor.stages.front();
+    EXPECT_EQ(stage.runtime_param_buffer_count, test_case.runtime_param_count);
     ASSERT_TRUE(descriptor_owns_runtime_param_payload(
         stage, test_case.runtime_param_count));
 
@@ -2718,9 +3439,8 @@ TEST_F(GfxBackendArchitectureContractTest,
     std::vector<GpuTensor *> outputs = {&output};
 
     auto materialization = materialize_descriptor_owned_runtime_param_payload(
-        buffer_manager, stage, inputs, outputs,
-        test_case.runtime_param_count, test_case.compiler_scalar_args,
-        test_case.op_family);
+        buffer_manager, stage, inputs, outputs, test_case.runtime_param_count,
+        test_case.compiler_scalar_args, test_case.op_family);
 
     ASSERT_TRUE(materialization.available);
     EXPECT_TRUE(materialization.descriptor_owned);
@@ -2738,12 +3458,6 @@ TEST_F(GfxBackendArchitectureContractTest,
       GfxKernelBufferRole::ScalarParam,   GfxKernelBufferRole::RuntimeParams,
       GfxKernelBufferRole::RuntimeParams, GfxKernelBufferRole::RuntimeParams};
 
-  auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
-                                                     ov::Shape{1, 3});
-  auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
-                                                     ov::Shape{1, 3});
-  auto add = std::make_shared<ov::op::v1::Add>(lhs, rhs);
-
   for (const auto backend_domain : {"metal", "opencl"}) {
     SCOPED_TRACE(backend_domain);
     auto executable = make_source_payload_executable(
@@ -2752,28 +3466,24 @@ TEST_F(GfxBackendArchitectureContractTest,
         compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
     ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
     const auto &stage = runtime_descriptor.stages.front();
-    EXPECT_FALSE(stage.temporary_source_node_bridge_required);
-    EXPECT_TRUE(stage.temporary_source_node_bridge_reason.empty());
     ASSERT_FALSE(descriptor_owns_runtime_param_payload(stage, 3));
 
     UnitMetadataBufferManager buffer_manager;
     RuntimeInputResolver inputs;
     inputs.descriptor = &stage;
-    inputs.node = add;
     GpuTensor output;
     std::vector<GpuTensor *> outputs = {&output};
     const std::vector<int32_t> compiler_scalar_args;
 
-    EXPECT_THROW(
-        (void)materialize_descriptor_owned_runtime_param_payload(
-            buffer_manager, stage, inputs, outputs, 3, compiler_scalar_args,
-            "unit_no_source_bridge_add"),
-        ov::Exception);
+    EXPECT_THROW((void)materialize_descriptor_owned_runtime_param_payload(
+                     buffer_manager, stage, inputs, outputs, 3,
+                     compiler_scalar_args, "unit_no_source_bridge_add"),
+                 ov::Exception);
   }
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
-       RuntimeParamsWithoutStaticDescriptorShapeDoNotKeepSourceNodeBridge) {
+       RuntimeParamsWithoutStaticDescriptorShapeFailDescriptorValidation) {
   const std::vector<GfxKernelBufferRole> binary_roles = {
       GfxKernelBufferRole::TensorInput,   GfxKernelBufferRole::TensorInput,
       GfxKernelBufferRole::TensorOutput,  GfxKernelBufferRole::ScalarParam,
@@ -2794,13 +3504,11 @@ TEST_F(GfxBackendArchitectureContractTest,
                                         "descriptor-owned"));
   ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
   const auto &stage = runtime_descriptor.stages.front();
-  EXPECT_FALSE(stage.temporary_source_node_bridge_required);
-  EXPECT_TRUE(stage.temporary_source_node_bridge_reason.empty());
   EXPECT_FALSE(descriptor_owns_runtime_param_payload(stage, 3));
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
-       ConstTensorSourcePayloadsKeepSourceNodeBridgeUntilDescriptorOwned) {
+       ConstTensorSourcePayloadsAreDescriptorOwned) {
   struct Case {
     const char *backend_domain;
   };
@@ -2811,9 +3519,16 @@ TEST_F(GfxBackendArchitectureContractTest,
 
   for (const auto test_case : {Case{"metal"}, Case{"opencl"}}) {
     SCOPED_TRACE(test_case.backend_domain);
+    KernelArtifactConstTensor const_tensor;
+    const_tensor.source_input_index = 1;
+    const_tensor.logical_name = "unit_const_input";
+    const_tensor.element_type = "f32";
+    const_tensor.shape = {1, 3};
+    const_tensor.bytes = {0, 0, 0, 0, 0, 0, 128, 63, 0, 0, 0, 64};
+
     auto executable = make_source_payload_executable(
         test_case.backend_domain, "Multiply", const_roles, {"{1,3}", "{1,3}"},
-        {"{1,3}"});
+        {"{1,3}"}, {}, {const_tensor});
     ASSERT_TRUE(executable.verify().valid());
 
     const auto runtime_descriptor =
@@ -2822,10 +3537,96 @@ TEST_F(GfxBackendArchitectureContractTest,
         runtime_descriptor, executable));
     ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
     const auto &stage = runtime_descriptor.stages.front();
-    EXPECT_TRUE(stage.temporary_source_node_bridge_required);
+    ASSERT_EQ(stage.const_tensors.size(), 1u);
+    EXPECT_EQ(stage.const_tensors.front().source_input_index, 1u);
+    EXPECT_EQ(stage.const_tensors.front().logical_name, "unit_const_input");
+    EXPECT_EQ(stage.const_tensors.front().element_type, "f32");
+    EXPECT_EQ(stage.const_tensors.front().shape, (std::vector<size_t>{1, 3}));
+    EXPECT_EQ(stage.const_tensors.front().bytes, const_tensor.bytes);
+
+    auto missing_const_executable = make_source_payload_executable(
+        test_case.backend_domain, "Multiply", const_roles, {"{1,3}", "{1,3}"},
+        {"{1,3}"});
+    const auto missing_const_descriptor =
+        compiler::RuntimeExecutableDescriptorBuilder{}.build(
+            missing_const_executable);
+    const auto missing_const_verification =
+        compiler::verify_runtime_executable_descriptor(
+            missing_const_descriptor, missing_const_executable);
+    EXPECT_FALSE(missing_const_verification.valid());
     EXPECT_TRUE(has_diagnostic_containing(
-        {stage.temporary_source_node_bridge_reason}, "ConstTensor"));
+        missing_const_verification.diagnostics, "ConstTensor ABI"));
   }
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       DescriptorConstTensorMaterializerUsesSharedDescriptorSlots) {
+  RuntimeStageExecutableDescriptor descriptor;
+  descriptor.stage_name = "unit_descriptor_const_stage";
+  descriptor.kernel_id = "unit/descriptor_const";
+  descriptor.const_tensors = {
+      KernelArtifactConstTensor{3, "rhs_const", "f32", {1}, {0, 0, 0, 64}},
+      KernelArtifactConstTensor{1, "lhs_const", "f32", {1}, {0, 0, 128, 63}},
+  };
+
+  UnitDescriptorConstBufferManager buffer_manager;
+  auto slots = materialize_descriptor_const_tensor_slots(
+      buffer_manager, descriptor, "unit/const_tensor");
+
+  ASSERT_EQ(slots.buffers.size(), 4u);
+  ASSERT_EQ(slots.present.size(), 4u);
+  EXPECT_FALSE(slots.present[0]);
+  EXPECT_TRUE(slots.present[1]);
+  EXPECT_FALSE(slots.present[2]);
+  EXPECT_TRUE(slots.present[3]);
+  EXPECT_EQ(slots.buffers[1].shape, (ov::Shape{1}));
+  EXPECT_EQ(slots.buffers[3].shape, (ov::Shape{1}));
+  EXPECT_EQ(slots.buffers[1].expected_type, ov::element::f32);
+  EXPECT_EQ(slots.buffers[3].expected_type, ov::element::f32);
+  EXPECT_TRUE(slots.buffers[1].buf.valid());
+  EXPECT_TRUE(slots.buffers[3].buf.valid());
+
+  auto args = descriptor_const_tensor_args(slots, 2);
+  ASSERT_EQ(args.size(), 2u);
+  EXPECT_EQ(args[0], &slots.buffers[1]);
+  EXPECT_EQ(args[1], &slots.buffers[3]);
+  EXPECT_NE(args[0]->buf.allocation_uid, args[1]->buf.allocation_uid);
+
+  ASSERT_EQ(buffer_manager.uploads.size(), 2u);
+  EXPECT_EQ(buffer_manager.uploads[0].bytes,
+            (std::vector<uint8_t>{0, 0, 0, 64}));
+  EXPECT_EQ(buffer_manager.uploads[1].bytes,
+            (std::vector<uint8_t>{0, 0, 128, 63}));
+  EXPECT_NE(buffer_manager.uploads[0].key, buffer_manager.uploads[1].key);
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       DescriptorConstTensorMaterializerRejectsInvalidSharedContracts) {
+  RuntimeStageExecutableDescriptor duplicate_descriptor;
+  duplicate_descriptor.stage_name = "unit_duplicate_const_stage";
+  duplicate_descriptor.kernel_id = "unit/duplicate_const";
+  duplicate_descriptor.const_tensors = {
+      KernelArtifactConstTensor{1, "const_a", "f32", {1}, {0, 0, 128, 63}},
+      KernelArtifactConstTensor{1, "const_b", "f32", {1}, {0, 0, 0, 64}},
+  };
+
+  UnitDescriptorConstBufferManager buffer_manager;
+  EXPECT_THROW((void)materialize_descriptor_const_tensor_slots(
+                   buffer_manager, duplicate_descriptor, "unit/const_tensor"),
+               ov::Exception);
+
+  RuntimeStageExecutableDescriptor cache_descriptor;
+  cache_descriptor.stage_name = "unit_no_const_cache_stage";
+  cache_descriptor.kernel_id = "unit/no_const_cache";
+  cache_descriptor.const_tensors = {
+      KernelArtifactConstTensor{0, "const_input", "f32", {1}, {0, 0, 128, 63}},
+  };
+
+  GpuBufferManager no_const_cache_manager;
+  EXPECT_THROW(
+      (void)materialize_descriptor_const_tensor_slots(
+          no_const_cache_manager, cache_descriptor, "unit/const_tensor"),
+      ov::Exception);
 }
 
 TEST_F(GfxBackendArchitectureContractTest,

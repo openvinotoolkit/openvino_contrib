@@ -5,7 +5,6 @@
 
 #include <functional>
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
 #include "openvino/core/node.hpp"
@@ -79,8 +78,6 @@ private:
     void bind_outputs_for_infer(
         const std::shared_ptr<const CompiledModel>& cm,
         std::vector<InferStage>& pipeline,
-        const std::unordered_map<const ov::Node*, size_t>& node_map,
-        const std::unordered_map<const ov::Node*, size_t>& param_map,
         const std::function<GpuTensor*(size_t)>& output_input_lookup,
         const std::function<void(size_t, const std::shared_ptr<GfxRemoteTensor>&)>& remote_setter,
         const std::function<void(size_t, GpuTensor&, const OutputViewInfo&, const ov::Tensor*)>& device_setter,

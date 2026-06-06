@@ -9,7 +9,6 @@
 #include <limits>
 #include <sstream>
 #include <string_view>
-#include <unordered_map>
 
 #include "openvino/core/shape_util.hpp"
 #include "runtime/gfx_logger.hpp"
@@ -366,77 +365,48 @@ size_t submission_stage_weight(const InferStage& stage,
     return std::max<size_t>(policy.weight, 1u);
 }
 
-size_t stage_output_bytes_for_budget(uint64_t bytes_out) {
-    return static_cast<size_t>(std::min<uint64_t>(bytes_out, std::numeric_limits<size_t>::max()));
+void append_unique_submission_producer(std::vector<size_t>& producers,
+                                       size_t producer_stage) {
+    if (std::find(producers.begin(), producers.end(), producer_stage) ==
+        producers.end()) {
+        producers.push_back(producer_stage);
+    }
 }
 
-void register_submission_stage_output(
-    std::unordered_map<NodePortKey, StageOutputRef, NodePortKeyHash>& output_by_source,
-    const std::shared_ptr<const ov::Node>& node,
-    size_t source_port,
-    size_t stage_index,
-    size_t output_index,
-    const InferStage& stage) {
-    if (!node || output_index >= stage.outputs.size()) {
-        return;
+bool stage_output_ref_points_to_pipeline_output(const PipelineStageTensorRef& ref,
+                                                const std::vector<InferStage>& pipeline) {
+    if (ref.kind != PipelineStageTensorRefKind::StageOutput ||
+        ref.index >= pipeline.size()) {
+        return false;
     }
-    output_by_source[NodePortKey{node.get(), source_port}] = StageOutputRef{stage_index, output_index};
+    const size_t output_port =
+        ref.port == PipelineStageTensorRef::npos ? 0 : ref.port;
+    return output_port < pipeline[ref.index].outputs.size();
 }
 
 SubmissionDependencyGraph build_submission_dependency_graph(const std::vector<InferStage>& pipeline) {
     SubmissionDependencyGraph graph{};
     graph.input_producers.resize(pipeline.size());
-    std::unordered_map<NodePortKey, StageOutputRef, NodePortKeyHash> output_by_source;
-
-    for (size_t stage_index = 0; stage_index < pipeline.size(); ++stage_index) {
-        const auto& stage = pipeline[stage_index];
-        if (stage.node) {
-            for (size_t output_index = 0; output_index < stage.outputs.size(); ++output_index) {
-                register_submission_stage_output(output_by_source,
-                                                 stage.node,
-                                                 output_index,
-                                                 stage_index,
-                                                 output_index,
-                                                 stage);
-            }
-        }
-        for (size_t output_index = 0; output_index < stage.output_sources.size(); ++output_index) {
-            const auto& source = stage.output_sources[output_index];
-            register_submission_stage_output(output_by_source,
-                                             source.node,
-                                             source.port,
-                                             stage_index,
-                                             output_index,
-                                             stage);
-        }
-        for (const auto& alias : stage.output_aliases) {
-            register_submission_stage_output(output_by_source,
-                                             alias.node,
-                                             alias.source_port,
-                                             stage_index,
-                                             alias.output_port,
-                                             stage);
-        }
-    }
 
     for (size_t stage_index = 0; stage_index < pipeline.size(); ++stage_index) {
         auto& producers = graph.input_producers[stage_index];
         const auto& stage = pipeline[stage_index];
         for (const auto& input : stage.inputs) {
-            if (!input.node) {
-                continue;
+            if (input.source_ref.kind == PipelineStageTensorRefKind::StageOutput &&
+                stage_output_ref_points_to_pipeline_output(input.source_ref, pipeline) &&
+                input.source_ref.index != stage_index) {
+                append_unique_submission_producer(producers, input.source_ref.index);
             }
-            const auto it = output_by_source.find(NodePortKey{input.node.get(), input.port});
-            if (it == output_by_source.end() || it->second.stage == stage_index) {
-                continue;
-            }
-            producers.push_back(it->second.stage);
         }
         std::sort(producers.begin(), producers.end());
         producers.erase(std::unique(producers.begin(), producers.end()), producers.end());
     }
 
     return graph;
+}
+
+size_t stage_output_bytes_for_budget(uint64_t bytes_out) {
+    return static_cast<size_t>(std::min<uint64_t>(bytes_out, std::numeric_limits<size_t>::max()));
 }
 
 bool stage_depends_on_recording_window(size_t stage_index,
@@ -639,8 +609,6 @@ GpuCommandBufferHandle TrackedInferSubmissionSession::completed_command_buffer()
 
 void execute_pipeline_with_submission(
     std::vector<InferStage>& pipeline,
-    const std::unordered_map<const ov::Node*, size_t>& node_map,
-    const std::unordered_map<const ov::Node*, size_t>& param_map,
     const InferInputLookup& input_lookup,
     InferSubmissionSession& submission,
     const InferSubmissionConfig& config,
@@ -733,8 +701,6 @@ void execute_pipeline_with_submission(
 
     execute_pipeline(
         pipeline,
-        node_map,
-        param_map,
         input_lookup,
         [&](InferStage& stage, const std::vector<GpuTensor*>& resolved) {
             const size_t stage_index = static_cast<size_t>(&stage - pipeline.data());

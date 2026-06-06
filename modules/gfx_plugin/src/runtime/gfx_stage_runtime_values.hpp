@@ -4,14 +4,12 @@
 #pragma once
 
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <string_view>
 #include <vector>
 
 #include "kernel_ir/gfx_kernel_manifest.hpp"
 #include "openvino/core/axis_set.hpp"
-#include "openvino/core/node.hpp"
 #include "openvino/core/shape.hpp"
 #include "openvino/core/type/element_type.hpp"
 #include "runtime/gpu_tensor.hpp"
@@ -38,7 +36,6 @@ struct RuntimeInputResolver {
   const std::vector<GpuTensor> *const_buffers = nullptr;
   const std::vector<bool> *const_buffer_present = nullptr;
   const RuntimeStageExecutableDescriptor *descriptor = nullptr;
-  std::shared_ptr<const ov::Node> node;
 
   ov::Shape shape(size_t idx) const;
   bool shape_known(size_t idx, ov::Shape &shape,
@@ -181,52 +178,28 @@ struct DescriptorOwnedRuntimeParamMaterialization {
   std::vector<int32_t> scalar_args;
 };
 
-RuntimeValuePlan plan_reshape_runtime_values(const RuntimeInputResolver &inputs,
-                                             const ov::Node &node,
-                                             std::string_view stage_name);
-
-RuntimeValuePlan
-plan_squeeze_unsqueeze_runtime_values(const RuntimeInputResolver &inputs,
-                                      const ov::Node &node,
-                                      std::string_view stage_name);
-
-RuntimeValuePlan
-plan_shape_preserving_runtime_values(const RuntimeInputResolver &inputs,
-                                     const ov::Node &node,
-                                     std::string_view stage_name);
-
 ov::Shape compute_binary_broadcast_shape(const ov::Shape &lhs,
                                          const ov::Shape &rhs,
                                          std::string_view stage_name);
 
 RuntimeValuePlan plan_shapeof_runtime_values(const RuntimeInputResolver &inputs,
-                                             const ov::Node *node,
                                              std::string_view stage_name);
 
 RuntimeValuePlan plan_broadcast_runtime_values(
-    const RuntimeInputResolver &inputs, const ov::Node &node,
-    const ov::Shape &input_shape, std::string_view stage_name);
-
-RuntimeValuePlan plan_convert_runtime_values(const RuntimeInputResolver &inputs,
-                                             const ov::Node *node,
-                                             std::string_view stage_name);
+    const RuntimeInputResolver &inputs, const ov::Shape &input_shape,
+    std::string_view stage_name);
 
 RuntimeValuePlan plan_range_runtime_values(const RuntimeInputResolver &inputs,
-                                           const ov::Node *node,
                                            std::string_view stage_name);
 
 RuntimeSelectPlan plan_select_runtime_values(const RuntimeInputResolver &inputs,
-                                             const ov::Node &node,
                                              std::string_view stage_name);
 
 RuntimeReducePlan
 plan_reduce_runtime_values(const RuntimeInputResolver &inputs,
-                           const ov::Node *node, std::string_view reduce_type,
+                           std::string_view reduce_type,
                            const RuntimeReduceInfo &reduce_info,
                            std::string_view stage_name);
-
-std::optional<RuntimeReduceInfo>
-get_runtime_reduce_info(const std::shared_ptr<const ov::Node> &node);
 
 RuntimeTilePlan
 plan_tile_runtime_values(const RuntimeInputResolver &inputs,
@@ -234,41 +207,13 @@ plan_tile_runtime_values(const RuntimeInputResolver &inputs,
                          std::string_view stage_name);
 
 RuntimeConcatPlan plan_concat_runtime_values(const RuntimeInputResolver &inputs,
-                                             const ov::Node &node,
                                              std::string_view stage_name);
-
-RuntimeGatherPlan plan_gather_runtime_values(const RuntimeInputResolver &inputs,
-                                             const ov::Node &node,
-                                             std::string_view stage_name);
-
-RuntimeScatterUpdatePlan
-plan_scatter_update_runtime_values(const RuntimeInputResolver &inputs,
-                                   const ov::Node &node,
-                                   std::string_view stage_name);
-
-RuntimeSplitPlan plan_split_runtime_values(const ov::Node *node,
-                                           const ov::Shape &input_shape,
-                                           size_t output_count,
-                                           std::string_view stage_name);
 
 RuntimeSlicePlan
 plan_slice_runtime_values(const RuntimeInputResolver &inputs,
                           const std::vector<GpuTensor *> &outputs,
                           bool requires_runtime_shape_args,
                           std::string_view stage_name);
-
-RuntimeTransposePlan
-plan_transpose_runtime_values(const RuntimeInputResolver &inputs,
-                              const ov::Node &node,
-                              std::string_view stage_name);
-
-RuntimeInterpolatePlan plan_interpolate_runtime_values(
-    const RuntimeInputResolver &inputs, const std::vector<GpuTensor *> &outputs,
-    const ov::Node &node, std::string_view stage_name);
-
-RuntimeSoftmaxPlan
-plan_softmax_runtime_values(const RuntimeInputResolver &inputs,
-                            const ov::Node &node, std::string_view stage_name);
 
 DescriptorOwnedRuntimeParamMaterialization
 materialize_descriptor_owned_runtime_param_payload(
@@ -293,8 +238,8 @@ std::optional<std::vector<int64_t>> compute_reduce_i64_values(
 
 bool bind_small_i64_const_stage_outputs(
     GpuBufferManager *buffer_manager, const std::vector<GpuTensor *> &outputs,
-    std::vector<GpuTensor> &cache, const std::shared_ptr<const ov::Node> &node,
-    GfxProfiler *profiler, bool profiling_enabled, std::string_view stage_name,
+    std::vector<GpuTensor> &cache, GfxProfiler *profiler,
+    bool profiling_enabled, std::string_view stage_name,
     std::string_view suffix);
 
 } // namespace gfx_plugin

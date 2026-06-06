@@ -5606,8 +5606,29 @@ void materialize_gfx_opencl_source_chunk_plan(
         artifact.planned_chunks.clear();
         return;
       }
+      const auto &chunk_static_u32 = chunk_artifact->source_static_u32_scalars;
+      if (chunk_static_u32.size() !=
+              2 + static_cast<size_t>(input_count) * 2 ||
+          chunk_static_u32[0] == 0) {
+        artifact.valid = false;
+        artifact.planned_chunks.clear();
+        return;
+      }
+      uint32_t chunk_axis_total = 0;
+      for (uint32_t local_input = 0; local_input < input_count; ++local_input) {
+        const size_t axis_extent_idx =
+            2 + static_cast<size_t>(local_input) * 2 + 1;
+        chunk_axis_total += chunk_static_u32[axis_extent_idx];
+      }
+      if (chunk_axis_total == 0) {
+        artifact.valid = false;
+        artifact.planned_chunks.clear();
+        return;
+      }
       artifact.planned_chunks.push_back(
           {input_begin, input_count,
+           GfxOpenClSourceChunkBindingRole::DirectInputs, chunk_axis_total,
+           chunk_static_u32[0],
            std::make_shared<const GfxOpenClSourceArtifact>(
                std::move(*chunk_artifact))});
     }
@@ -5630,6 +5651,9 @@ void materialize_gfx_opencl_source_chunk_plan(
       }
       artifact.planned_chunks.push_back(
           {output_begin, output_count,
+           GfxOpenClSourceChunkBindingRole::DirectOutputs,
+           /*element_count_multiplier=*/1,
+           /*element_count_divisor=*/1,
            std::make_shared<const GfxOpenClSourceArtifact>(
                std::move(*chunk_artifact))});
     }
@@ -5677,7 +5701,8 @@ bool GfxOpenClSourceArtifactPayload::valid() const noexcept {
     return false;
   }
   for (const auto &chunk : m_artifact.planned_chunks) {
-    if (chunk.binding_count == 0 || !chunk.artifact ||
+    if (chunk.binding_count == 0 || chunk.element_count_multiplier == 0 ||
+        chunk.element_count_divisor == 0 || !chunk.artifact ||
         !chunk.artifact->valid || !chunk.artifact->artifact_ref.valid ||
         chunk.artifact->artifact_ref.kind !=
             GfxKernelArtifactKind::OpenClSource ||
@@ -5687,6 +5712,26 @@ bool GfxOpenClSourceArtifactPayload::valid() const noexcept {
         !chunk.artifact->planned_chunks.empty()) {
       return false;
     }
+    if (chunk.binding_role == GfxOpenClSourceChunkBindingRole::DirectInputs) {
+      if (chunk.binding_begin + chunk.binding_count >
+              m_artifact.direct_input_count ||
+          chunk.artifact->direct_input_count != chunk.binding_count ||
+          chunk.artifact->direct_output_count !=
+              m_artifact.direct_output_count) {
+        return false;
+      }
+      continue;
+    }
+    if (chunk.binding_role == GfxOpenClSourceChunkBindingRole::DirectOutputs) {
+      if (chunk.binding_begin + chunk.binding_count >
+              m_artifact.direct_output_count ||
+          chunk.artifact->direct_input_count != m_artifact.direct_input_count ||
+          chunk.artifact->direct_output_count != chunk.binding_count) {
+        return false;
+      }
+      continue;
+    }
+    return false;
   }
   return true;
 }

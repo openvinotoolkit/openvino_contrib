@@ -214,9 +214,6 @@ void execute_opencl_infer_request(
   }
 
   const auto &descs = cm->pipeline_desc();
-  const auto &node_map = cm->node_to_stage();
-  const auto &param_map = cm->parameter_index();
-  const auto runtime_model = cm->get_runtime_model();
   void *stage_profiler = profiler ? profiler->native_handle() : nullptr;
 
   std::vector<GpuTensor> input_tensors;
@@ -253,10 +250,6 @@ void execute_opencl_infer_request(
   execution_config.buffer_manager = backend->const_manager.get();
   execution_config.stage_profiler = stage_profiler;
   execution_config.profiling_enabled = profiling;
-  execution_config.runtime_model = &runtime_model;
-  execution_config.public_outputs = &InferRequestBackendAccess::outputs(request);
-  execution_config.node_map = &node_map;
-  execution_config.param_map = &param_map;
   execution_config.remote_outputs = &state.bound_remote_outputs;
   execution_config.remote_inputs = &state.bound_remote_inputs;
   execution_config.expected_target = &cm->target();

@@ -881,6 +881,8 @@ extract_kernel_runtime_metadata(mlir::ModuleOp module, size_t output_arg_count,
                                 std::string_view entry_point = {},
                                 std::optional<GfxKernelBackendDomain>
                                     expected_backend_domain = std::nullopt) {
+  (void)output_arg_count;
+  (void)fallback_input_arg_count;
   KernelRuntimeMetadata meta;
   if (!module) {
     return meta;
@@ -915,12 +917,7 @@ extract_kernel_runtime_metadata(mlir::ModuleOp module, size_t output_arg_count,
     meta.valid = false;
     return meta;
   }
-  if (expected_backend_domain) {
-    meta.valid = false;
-    return meta;
-  }
-  meta.operands = {};
-  meta.kernel_input_arg_count = fallback_input_arg_count;
+  meta.valid = false;
   return meta;
 }
 
@@ -943,8 +940,9 @@ infer_kernel_arg_count_from_module(mlir::ModuleOp module, size_t fallback,
                                    std::optional<GfxKernelBackendDomain>
                                        expected_backend_domain =
                                            std::nullopt) {
+  (void)fallback;
   if (!module) {
-    return fallback;
+    return 0;
   }
   size_t typed_program_arg_count = 0;
   if (infer_kernel_arg_count_from_mpsrt_typed_program_manifest(
@@ -955,7 +953,7 @@ infer_kernel_arg_count_from_module(mlir::ModuleOp module, size_t fallback,
   if ((!expected_backend_domain ||
        *expected_backend_domain == GfxKernelBackendDomain::AppleMsl) &&
       module_has_typed_custom_dispatch_mpsrt_program(module)) {
-    return fallback;
+    return 0;
   }
   size_t manifest_arg_count = 0;
   if (infer_kernel_arg_count_from_stage_manifest(module, manifest_arg_count,
@@ -963,16 +961,7 @@ infer_kernel_arg_count_from_module(mlir::ModuleOp module, size_t fallback,
                                                  expected_backend_domain)) {
     return manifest_arg_count;
   }
-  size_t launch_operand_count = 0;
-  module.walk([&](mlir::gpu::LaunchFuncOp launch) {
-    if (launch_operand_count == 0) {
-      launch_operand_count = launch.getKernelOperands().size();
-    }
-  });
-  if (launch_operand_count != 0) {
-    return launch_operand_count;
-  }
-  return fallback;
+  return 0;
 }
 
 } // namespace gfx_plugin

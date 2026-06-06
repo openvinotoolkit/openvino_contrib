@@ -399,26 +399,15 @@ find_rms_residual_add(const std::shared_ptr<const ov::Node> &rms,
 }
 
 PipelineFusionSelectionPlan
-plan_pipeline_fusions(const std::shared_ptr<const ov::Model> &model,
+plan_pipeline_fusions(const FusionPlan &fusion_plan,
                       const std::vector<std::shared_ptr<ov::Node>> &ordered_ops,
                       const ModelOutputPorts &model_outputs,
                       const PipelineFusionSelectionOptions &options) {
   PipelineFusionSelectionPlan selection;
-  if (!options.enable_fusion || !model) {
+  if (!options.enable_fusion || fusion_plan.groups.empty()) {
     return selection;
   }
-
-  FusionConfig fusion_cfg;
-  fusion_cfg.enable_fusion = true;
-  fusion_cfg.debug_dump_ir = options.debug_dump_ir;
-  fusion_cfg.enable_attention_fusion =
-      options.fusion_capabilities.enable_generic_attention_fusion;
-  fusion_cfg.enable_vendor_attention_fusion =
-      options.fusion_capabilities.supports_vendor_attention_stage;
-  fusion_cfg.enable_conv_activation_fusion =
-      options.fusion_capabilities.enable_conv_activation_fusion;
-  fusion_cfg.enable_conv_swish_fusion = true;
-  selection.fusion_plan = build_fusion_plan(model, fusion_cfg);
+  selection.fusion_plan = fusion_plan;
 
   selection.primary_group_indices.reserve(selection.fusion_plan.groups.size());
   for (size_t group_idx = 0; group_idx < selection.fusion_plan.groups.size();

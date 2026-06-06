@@ -91,7 +91,8 @@ Build-system notes:
   aliases.
 - `src/compiler/runtime_executable_descriptor_builder.*` owns conversion and
   verification from compiler executable bundles into runtime executable
-  descriptors and attaches the runtime-facing stage plan.
+  descriptors. Runtime-facing stage plans are separate compiler outputs and must
+  not be embedded into cacheable descriptors.
 - `src/compiler/memory_plan.*` owns compiler memory regions, lifetimes, alias
   groups, and transient arenas; request code must consume the runtime descriptor
   instead of reconstructing this information.
@@ -107,11 +108,15 @@ Build-system notes:
   descriptor-backed backend stage creation, vendor primitive artifact
   materialization, and fused sequence materialization.
 - `src/runtime/stage_materialization_context.hpp` is the runtime handoff object
-  for compiler-owned `RuntimeStageExecutableDescriptor` records. Source-node
-  identity is available only for descriptor-recorded temporary bridges.
+  for compiler-owned `RuntimeStageExecutableDescriptor` records. It is
+  descriptor-only and does not expose OpenVINO source graph identity to backend
+  runtime code.
 - `src/runtime/tensor_binding_contract.*` owns descriptor element-type/static
   shape parsing and the generated source `RuntimeParams` ownership rules shared
   by Metal and OpenCL runtime code.
+- `src/runtime/descriptor_const_tensor_materializer.*` owns shared
+  materialization of descriptor-owned `ConstTensor` payloads. Do not rebuild
+  constant inputs from request-time OpenVINO source nodes in backend code.
 - `src/runtime/output_lifetime.hpp` and
   `src/runtime/fused_output_lifetime_plan.*` own fused-stage output lifetime and
   alias-storage planning from runtime memory descriptors.
@@ -302,7 +307,8 @@ For OpenCL source execution, start with:
    - selected backend compiler policy passed through `GpuStageRuntimeOptions`
      and `compiler::StageCompilerPolicy`
    - runtime session binding tables for request-local resource preparation
-   - runtime pipeline-stage plan for materialization
+   - runtime pipeline-stage plan for materialization, separate from the cacheable
+     runtime executable descriptor
    - shared stage policy for fusion, precision, and submission
    - kernel manifest for custom-kernel ABI
    - runtime-value payloads for dynamic metadata
@@ -312,9 +318,10 @@ For OpenCL source execution, start with:
    Backend stage creation now requires the matching runtime executable
    descriptor for executable routes; do not reconstruct kernel or vendor
    payloads from the OpenVINO node in request-time code.
-   If a route still needs `ov::Node` metadata, set
-   `temporary_source_node_bridge_required` and a specific migration reason in
-   the descriptor instead of silently relying on source-node availability.
+   If a route still needs `ov::Node` metadata, it is not descriptor-owned yet:
+   freeze the required metadata into the compiler artifact/descriptor or make
+   descriptor verification fail closed. Do not add request-time source-node
+   bridges.
 6. Add focused unit tests first.
 7. Add backend or functional tests when behavior is externally visible.
 8. Update docs when public properties, supported shapes, route selection,

@@ -8,7 +8,8 @@
 #include <memory>
 #include <vector>
 
-#include "openvino/core/node.hpp"
+#include "openvino/core/shape.hpp"
+#include "openvino/core/type/element_type.hpp"
 #include "openvino/runtime/tensor.hpp"
 #include "runtime/gpu_buffer.hpp"
 #include "runtime/gpu_stage.hpp"
@@ -20,7 +21,6 @@ namespace ov {
 namespace gfx_plugin {
 
 struct InferStage {
-    std::shared_ptr<const ov::Node> node;
     std::unique_ptr<GpuStage> stage;
     std::shared_ptr<RuntimeSession> runtime_session;
     size_t runtime_stage_index = PipelineStageDesc::npos;
@@ -28,10 +28,8 @@ struct InferStage {
     std::unique_ptr<PreparedKernelExecutable> prepared_executable;
     std::vector<std::unique_ptr<GpuTensor>> outputs;
     std::vector<bool> output_is_model_output;
-    std::vector<PipelineStageDesc::InputLink> output_sources;
     std::vector<std::string> direct_stateful_assign_variable_ids;
     std::vector<PipelineStageDesc::InputLink> inputs;
-    std::vector<PipelineStageDesc::OutputAlias> output_aliases;
     std::vector<PipelineStageDesc::OutputLifetime> output_lifetimes;
 };
 
@@ -67,15 +65,16 @@ struct PreparedInferExecutionPlan {
     std::vector<PreparedStageExecution> stages;
 };
 
-struct OutputSource {
-    std::shared_ptr<const ov::Node> node;
-    size_t port = 0;
-};
-
 enum class PreparedOutputSourceKind {
     None,
     Parameter,
     StageOutput,
+};
+
+struct OutputSource {
+    PreparedOutputSourceKind kind = PreparedOutputSourceKind::None;
+    size_t index = 0;
+    size_t port = 0;
 };
 
 struct PreparedOutputBinding {

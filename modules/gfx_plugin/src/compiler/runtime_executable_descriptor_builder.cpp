@@ -12,8 +12,6 @@
 #include <unordered_set>
 #include <utility>
 
-#include "kernel_ir/gfx_kernel_source.hpp"
-#include "kernel_ir/gfx_opencl_source_artifacts.hpp"
 #include "openvino/core/except.hpp"
 #include "runtime/pipeline_stage_plan.hpp"
 #include "runtime/tensor_binding_contract.hpp"
@@ -35,119 +33,66 @@ bool payload_kind_requires_materialized_payload(
          source_payload_kind(kind);
 }
 
-struct SourcePayloadRoleSummary {
-  bool has_const_tensor = false;
+struct LaunchPlanRoleSummary {
+  size_t const_tensor_count = 0;
   size_t runtime_param_count = 0;
+  size_t output_count = 0;
 };
 
-struct SourcePayloadRuntimeParamMetadata {
-  std::vector<int64_t> i64_metadata;
-  bool reduce_keep_dims = false;
-  bool reduce_keep_dims_valid = false;
-};
-
-SourcePayloadRoleSummary
-summarize_stage_manifest_roles(const GfxKernelStageManifest &manifest) {
-  SourcePayloadRoleSummary summary;
-  if (!manifest.valid || !manifest.custom_kernel.valid ||
-      !manifest.custom_kernel.external_buffer_abi.valid) {
+LaunchPlanRoleSummary
+summarize_launch_plan_roles(const KernelLaunchPlanDescriptor &plan) {
+  LaunchPlanRoleSummary summary;
+  if (!plan.valid) {
     return summary;
   }
-  const auto roles = materialize_gfx_kernel_external_buffer_roles(
-      manifest.custom_kernel.external_buffer_abi);
-  for (const auto role : roles) {
-    if (role == GfxKernelBufferRole::ConstTensor) {
-      summary.has_const_tensor = true;
-    } else if (role == GfxKernelBufferRole::RuntimeParams) {
+  for (const auto &role : plan.buffer_roles) {
+    if (role == "const_tensor") {
+      ++summary.const_tensor_count;
+    } else if (role == "runtime_params") {
       ++summary.runtime_param_count;
+    } else if (role == "tensor_output") {
+      ++summary.output_count;
     }
   }
   return summary;
 }
 
-SourcePayloadRoleSummary summarize_source_payload_roles(
-    const KernelArtifactPayload *payload) {
-  if (!payload) {
-    return {};
-  }
-  if (const auto *msl_payload =
-          dynamic_cast<const GfxKernelSourcePayload *>(payload)) {
-    return summarize_stage_manifest_roles(msl_payload->stage_manifest());
-  }
-  if (const auto *opencl_payload =
-          dynamic_cast<const GfxOpenClSourceArtifactPayload *>(payload)) {
-    return summarize_stage_manifest_roles(
-        opencl_payload->artifact().stage_manifest);
-  }
-  return {};
-}
-
-SourcePayloadRuntimeParamMetadata runtime_param_metadata_from_source_payload(
-    const KernelArtifactPayload *payload) {
-  SourcePayloadRuntimeParamMetadata metadata;
-  if (const auto *msl_payload =
-          dynamic_cast<const GfxKernelSourcePayload *>(payload)) {
-    const auto &binding = msl_payload->runtime_binding();
-    metadata.i64_metadata = binding.runtime_param_i64_metadata;
-    metadata.reduce_keep_dims = binding.runtime_param_reduce_keep_dims;
-    metadata.reduce_keep_dims_valid =
-        binding.runtime_param_reduce_keep_dims_valid;
-  }
-  return metadata;
-}
-
-void apply_runtime_param_metadata_from_source_payload(
-    RuntimeStageExecutableDescriptor &descriptor) {
-  const auto metadata =
-      runtime_param_metadata_from_source_payload(descriptor.payload.get());
-  descriptor.runtime_param_i64_metadata = metadata.i64_metadata;
-  descriptor.runtime_param_reduce_keep_dims = metadata.reduce_keep_dims;
-  descriptor.runtime_param_reduce_keep_dims_valid =
-      metadata.reduce_keep_dims_valid;
-}
-
-void apply_temporary_source_node_bridge_contract(
-    RuntimeStageExecutableDescriptor &descriptor) {
-  descriptor.temporary_source_node_bridge_required = false;
-  descriptor.temporary_source_node_bridge_reason.clear();
-
-  if (descriptor.payload_kind == KernelArtifactPayloadKind::VendorDescriptor) {
-    descriptor.temporary_source_node_bridge_required = true;
-    descriptor.temporary_source_node_bridge_reason =
-        "vendor primitive materialization still needs source-node metadata";
-    return;
-  }
-
-  if (descriptor.requires_runtime_shape_args) {
-    descriptor.temporary_source_node_bridge_required = true;
-    descriptor.temporary_source_node_bridge_reason =
-        "runtime shape arguments are not fully descriptor-owned yet";
-    return;
-  }
-
-  const auto source_roles =
-      summarize_source_payload_roles(descriptor.payload.get());
-  if (source_roles.has_const_tensor) {
-    descriptor.temporary_source_node_bridge_required = true;
-    descriptor.temporary_source_node_bridge_reason =
-        "source artifact ABI contains ConstTensor roles not fully "
-        "descriptor-owned yet";
-    return;
-  }
-  if (source_roles.runtime_param_count != 0 &&
-      !descriptor_owns_runtime_param_payload(
-          descriptor, source_roles.runtime_param_count)) {
-    descriptor.temporary_source_node_bridge_required = true;
-    descriptor.temporary_source_node_bridge_reason =
-        "source artifact ABI contains RuntimeParams roles not fully "
-        "descriptor-owned yet";
-    return;
-  }
+bool launch_plan_matches(const KernelLaunchPlanDescriptor &lhs,
+                         const KernelLaunchPlanDescriptor &rhs) {
+  return lhs.valid == rhs.valid && lhs.buffer_roles == rhs.buffer_roles &&
+         lhs.direct_input_indices == rhs.direct_input_indices &&
+         lhs.input_indices == rhs.input_indices &&
+         lhs.input_arg_count == rhs.input_arg_count &&
+         lhs.operand_kinds == rhs.operand_kinds &&
+         lhs.operand_arg_indices == rhs.operand_arg_indices &&
+         lhs.scalar_args == rhs.scalar_args &&
+         lhs.scalar_arg_kinds == rhs.scalar_arg_kinds;
 }
 
 bool source_origin(KernelArtifactOrigin origin) noexcept {
   return origin == KernelArtifactOrigin::Generated ||
          origin == KernelArtifactOrigin::HandwrittenException;
+}
+
+bool const_tensor_payloads_match(
+    const std::vector<KernelArtifactConstTensor> &lhs,
+    const std::vector<KernelArtifactConstTensor> *rhs) {
+  if (!rhs) {
+    return lhs.empty();
+  }
+  if (lhs.size() != rhs->size()) {
+    return false;
+  }
+  for (size_t i = 0; i < lhs.size(); ++i) {
+    const auto &a = lhs[i];
+    const auto &b = (*rhs)[i];
+    if (a.source_input_index != b.source_input_index ||
+        a.logical_name != b.logical_name || a.element_type != b.element_type ||
+        a.shape != b.shape || a.bytes != b.bytes) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool same_string(std::string_view lhs, const std::string &rhs) {
@@ -178,11 +123,9 @@ make_tensor_binding_contract(const compiler::TensorContract &contract,
   binding.layout = contract.layout;
   binding.storage_kind = contract.storage_kind;
   binding.lifetime_class = contract.lifetime_class;
-  binding.stateful_prebind_variable_id =
-      contract.stateful_prebind_variable_id;
+  binding.stateful_prebind_variable_id = contract.stateful_prebind_variable_id;
   binding.stateful_prebind_shape_rule = contract.stateful_prebind_shape_rule;
-  binding.stateful_prebind_shape_axis =
-      contract.stateful_prebind_shape_axis;
+  binding.stateful_prebind_shape_axis = contract.stateful_prebind_shape_axis;
   if (const auto *region =
           find_memory_region(memory_plan, contract.memory_region_id)) {
     binding.alias_group = region->alias_group;
@@ -208,7 +151,8 @@ RuntimeStageExecutableDescriptor make_stage_descriptor(
     const compiler::StageRecord &manifest_stage,
     const compiler::MemoryPlan &memory_plan,
     const compiler::KernelArtifactDescriptor &artifact,
-    std::shared_ptr<const KernelArtifactPayload> payload) {
+    std::shared_ptr<const KernelArtifactPayload> payload,
+    const std::vector<KernelArtifactConstTensor> *const_tensors) {
   RuntimeStageExecutableDescriptor descriptor;
   descriptor.stage_index = stage_index;
   descriptor.stage_record_key = executable_stage.stage_record_key;
@@ -230,13 +174,13 @@ RuntimeStageExecutableDescriptor make_stage_descriptor(
   descriptor.dispatch_contract = artifact.kernel.dispatch_contract;
   descriptor.layout_contract = artifact.kernel.layout_contract;
   descriptor.runtime_shape_rule = artifact.kernel.runtime_shape_rule;
+  descriptor.runtime_shape_i64_metadata =
+      artifact.kernel.runtime_shape_i64_metadata;
   descriptor.requires_runtime_shape_args =
       artifact.kernel.requires_runtime_shape_args;
   descriptor.tensor_view_only = descriptor.layout_contract == "view_only";
-  descriptor.submission_stage_weight =
-      manifest_stage.submission.stage_weight;
-  descriptor.submission_macs_estimate =
-      manifest_stage.submission.macs_estimate;
+  descriptor.submission_stage_weight = manifest_stage.submission.stage_weight;
+  descriptor.submission_macs_estimate = manifest_stage.submission.macs_estimate;
   descriptor.submission_dependency_boundary =
       manifest_stage.submission.dependency_extension_boundary;
   descriptor.stateful_effect =
@@ -245,19 +189,27 @@ RuntimeStageExecutableDescriptor make_stage_descriptor(
   descriptor.stateful_variable_id = manifest_stage.stateful_effect.variable_id;
   descriptor.tensor_roles = artifact.kernel.tensor_roles;
   descriptor.scalar_roles = artifact.kernel.scalar_roles;
+  descriptor.runtime_param_buffer_count = artifact.runtime_param_buffer_count;
+  descriptor.runtime_param_i64_metadata = artifact.runtime_param_i64_metadata;
+  descriptor.runtime_param_reduce_keep_dims =
+      artifact.runtime_param_reduce_keep_dims;
+  descriptor.runtime_param_reduce_keep_dims_valid =
+      artifact.runtime_param_reduce_keep_dims_valid;
+  descriptor.launch_plan = artifact.launch_plan;
   descriptor.exception_ticket = artifact.kernel.exception_ticket;
   descriptor.exception_reason = artifact.kernel.exception_reason;
   descriptor.exception_removal_condition =
       artifact.kernel.exception_removal_condition;
   descriptor.optional_cache_payload_allowed =
       artifact.optional_cache_payload_allowed;
+  if (const_tensors) {
+    descriptor.const_tensors = *const_tensors;
+  }
   descriptor.payload = std::move(payload);
   descriptor.input_bindings =
       make_tensor_binding_contracts(manifest_stage.inputs, memory_plan);
   descriptor.output_bindings =
       make_tensor_binding_contracts(manifest_stage.outputs, memory_plan);
-  apply_runtime_param_metadata_from_source_payload(descriptor);
-  apply_temporary_source_node_bridge_contract(descriptor);
   return descriptor;
 }
 
@@ -410,8 +362,7 @@ void append_materialized_binding_diagnostics(
       result.diagnostics.push_back(
           "runtime executable descriptor materialized " +
           std::string(direction) + " binding incomplete at " +
-          std::to_string(materialized_stage_index) + ":" +
-          std::to_string(i));
+          std::to_string(materialized_stage_index) + ":" + std::to_string(i));
     }
   }
 }
@@ -443,7 +394,8 @@ void append_materialized_descriptor_diagnostics(
         "identity incomplete at " +
         std::to_string(materialized_stage_index));
   }
-  if (materialized_stage.kind != PipelineStageMaterializationKind::SingleStage) {
+  if (materialized_stage.kind !=
+      PipelineStageMaterializationKind::SingleStage) {
     if (materialized.input_bindings.size() !=
         materialized_stage.io_plan.inputs.size()) {
       result.diagnostics.push_back(
@@ -460,24 +412,42 @@ void append_materialized_descriptor_diagnostics(
     }
   }
 
-  if (materialized.abi_arg_count != materialized.input_bindings.size()) {
-    result.diagnostics.push_back(
-        "runtime executable descriptor stage plan materialized input ABI "
-        "count drift at " +
-        std::to_string(materialized_stage_index));
-  }
-  if (materialized.abi_output_arg_count !=
-      materialized.output_bindings.size()) {
-    result.diagnostics.push_back(
-        "runtime executable descriptor stage plan materialized output ABI "
-        "count drift at " +
-        std::to_string(materialized_stage_index));
+  if (materialized.launch_plan.valid) {
+    const auto launch_roles = summarize_launch_plan_roles(
+        materialized.launch_plan);
+    if (materialized.launch_plan.buffer_roles.size() !=
+        materialized.abi_arg_count) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor stage plan materialized "
+          "launch-plan ABI count drift at " +
+          std::to_string(materialized_stage_index));
+    }
+    if (launch_roles.output_count != materialized.abi_output_arg_count) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor stage plan materialized "
+          "launch-plan output count drift at " +
+          std::to_string(materialized_stage_index));
+    }
+  } else {
+    if (materialized.abi_arg_count < materialized.input_bindings.size()) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor stage plan materialized tensor ABI "
+          "count drift at " +
+          std::to_string(materialized_stage_index));
+    }
+    if (materialized.abi_output_arg_count !=
+        materialized.output_bindings.size()) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor stage plan materialized output ABI "
+          "count drift at " +
+          std::to_string(materialized_stage_index));
+    }
   }
 
-  append_materialized_binding_diagnostics(
-      result, materialized.input_bindings, "input", materialized_stage_index);
-  append_materialized_binding_diagnostics(
-      result, materialized.output_bindings, "output", materialized_stage_index);
+  append_materialized_binding_diagnostics(result, materialized.input_bindings,
+                                          "input", materialized_stage_index);
+  append_materialized_binding_diagnostics(result, materialized.output_bindings,
+                                          "output", materialized_stage_index);
 
   if (materialized_stage.kind ==
       PipelineStageMaterializationKind::VendorAttention) {
@@ -622,73 +592,41 @@ void append_memory_plan_diagnostics(
 
 void append_stage_plan_diagnostics(
     RuntimeExecutableDescriptorVerificationResult &result,
+    const PipelineStageRuntimePlan &stage_plan,
     const RuntimeExecutableDescriptor &descriptor) {
-  if (!descriptor.stage_plan) {
-    result.diagnostics.emplace_back(
-        "runtime executable descriptor is missing compiler-owned stage plan");
-    return;
-  }
-
-  const auto &stage_plan = *descriptor.stage_plan;
-  if (stage_plan.ordered_ops.size() != descriptor.stages.size()) {
-    result.diagnostics.emplace_back(
-        "runtime executable descriptor stage plan ordered-op count drift");
-  }
-  const size_t ordered_count =
-      std::min(stage_plan.ordered_ops.size(), descriptor.stages.size());
-  for (size_t i = 0; i < ordered_count; ++i) {
-    const auto &node = stage_plan.ordered_ops[i];
-    const auto &stage = descriptor.stages[i];
-    if (!node) {
-      result.diagnostics.push_back(
-          "runtime executable descriptor stage plan null ordered op at " +
-          std::to_string(i));
-      continue;
-    }
-    if (stage.stage_index != i || stage.op_family != node->get_type_name() ||
-        stage.stage_name != node->get_friendly_name()) {
-      result.diagnostics.push_back(
-          "runtime executable descriptor stage plan ordered-op drift at " +
-          std::to_string(i));
-    }
-  }
-
   for (size_t i = 0; i < stage_plan.stage_plans.size(); ++i) {
     const auto &materialized_stage = stage_plan.stage_plans[i];
     const auto runtime_stage_index =
         materialized_stage.io_plan.runtime_stage_index;
     if (materialized_stage.descriptor_stage_index != runtime_stage_index) {
-      result.diagnostics.push_back(
-          "runtime executable descriptor stage plan descriptor index drift at " +
-          std::to_string(i));
+      result.diagnostics.push_back("runtime executable descriptor stage plan "
+                                   "descriptor index drift at " +
+                                   std::to_string(i));
     }
     if (runtime_stage_index == PipelineStageIoPlan::npos ||
         runtime_stage_index >= descriptor.stages.size()) {
       result.diagnostics.push_back(
-          "runtime executable descriptor stage plan materialized stage has "
+          "compiler-owned runtime stage plan materialized stage has "
           "invalid descriptor index at " +
           std::to_string(i));
       continue;
     }
     const auto &descriptor_stage = descriptor.stages[runtime_stage_index];
-    if (!materialized_stage.io_plan.node ||
-        descriptor_stage.op_family !=
-            materialized_stage.io_plan.node->get_type_name() ||
-        descriptor_stage.stage_name !=
-            materialized_stage.io_plan.node->get_friendly_name()) {
+    if (descriptor_stage.op_family != materialized_stage.io_plan.op_family ||
+        descriptor_stage.stage_name != materialized_stage.io_plan.stage_name) {
       result.diagnostics.push_back(
-          "runtime executable descriptor stage plan materialized stage drift "
+          "compiler-owned runtime stage plan materialized stage drift "
           "at " +
           std::to_string(i));
     }
-    append_materialized_descriptor_diagnostics(
-        result, materialized_stage, descriptor_stage, i);
+    append_materialized_descriptor_diagnostics(result, materialized_stage,
+                                               descriptor_stage, i);
     for (const auto fused_stage_index :
          materialized_stage.fused_descriptor_stage_indices) {
       if (fused_stage_index == PipelineStageIoPlan::npos ||
           fused_stage_index >= descriptor.stages.size()) {
         result.diagnostics.push_back(
-            "runtime executable descriptor stage plan fused descriptor index "
+            "compiler-owned runtime stage plan fused descriptor index "
             "out of range at " +
             std::to_string(i));
         break;
@@ -696,11 +634,42 @@ void append_stage_plan_diagnostics(
     }
   }
 
-  for (const auto &entry : stage_plan.node_to_stage) {
-    if (entry.second >= stage_plan.stage_plans.size()) {
-      result.diagnostics.emplace_back(
-          "runtime executable descriptor stage plan node-to-stage index drift");
-      break;
+  if (descriptor.public_outputs.size() != stage_plan.public_outputs.size()) {
+    result.diagnostics.emplace_back(
+        "runtime executable descriptor public output count drift");
+  }
+  const size_t public_output_count =
+      std::min(descriptor.public_outputs.size(), stage_plan.public_outputs.size());
+  for (size_t i = 0; i < public_output_count; ++i) {
+    const auto &descriptor_output = descriptor.public_outputs[i];
+    const auto &plan_output = stage_plan.public_outputs[i];
+    if (!plan_output.source_ref.valid() ||
+        descriptor_output.index != plan_output.source_ref.index ||
+        descriptor_output.port != plan_output.source_ref.port ||
+        descriptor_output.static_shape != plan_output.shape ||
+        descriptor_output.static_type != plan_output.type) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor public output drift at " +
+          std::to_string(i));
+      continue;
+    }
+    if (plan_output.source_ref.kind == PipelineStageTensorRefKind::Parameter &&
+        descriptor_output.kind != RuntimePublicOutputSourceKind::Parameter) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor public output source-kind drift at " +
+          std::to_string(i));
+    }
+    if (plan_output.source_ref.kind == PipelineStageTensorRefKind::StageOutput &&
+        descriptor_output.kind != RuntimePublicOutputSourceKind::StageOutput) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor public output source-kind drift at " +
+          std::to_string(i));
+    }
+    if (descriptor_output.kind == RuntimePublicOutputSourceKind::StageOutput &&
+        descriptor_output.index >= stage_plan.stage_plans.size()) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor public output stage index out of range at " +
+          std::to_string(i));
     }
   }
 }
@@ -726,12 +695,6 @@ verify_runtime_executable_descriptor(
   if (descriptor.stages.size() != executable.stages.size()) {
     result.diagnostics.emplace_back(
         "runtime executable descriptor stage count drift");
-  }
-  if (descriptor.stage_plan) {
-    if (descriptor.stage_plan->ordered_ops.size() != descriptor.stages.size()) {
-      result.diagnostics.emplace_back(
-          "runtime executable descriptor stage plan ordered-op count drift");
-    }
   }
   append_memory_plan_diagnostics(result, descriptor.memory_plan,
                                  executable.memory_plan);
@@ -794,6 +757,8 @@ verify_runtime_executable_descriptor(
         stage.dispatch_contract != artifact.kernel.dispatch_contract ||
         stage.layout_contract != artifact.kernel.layout_contract ||
         stage.runtime_shape_rule != artifact.kernel.runtime_shape_rule ||
+        stage.runtime_shape_i64_metadata !=
+            artifact.kernel.runtime_shape_i64_metadata ||
         stage.requires_runtime_shape_args !=
             artifact.kernel.requires_runtime_shape_args ||
         stage.tensor_view_only !=
@@ -812,6 +777,15 @@ verify_runtime_executable_descriptor(
             executable.manifest.stages[i].stateful_effect.variable_id ||
         stage.tensor_roles != artifact.kernel.tensor_roles ||
         stage.scalar_roles != artifact.kernel.scalar_roles ||
+        stage.runtime_param_buffer_count !=
+            artifact.runtime_param_buffer_count ||
+        stage.runtime_param_i64_metadata !=
+            artifact.runtime_param_i64_metadata ||
+        stage.runtime_param_reduce_keep_dims !=
+            artifact.runtime_param_reduce_keep_dims ||
+        stage.runtime_param_reduce_keep_dims_valid !=
+            artifact.runtime_param_reduce_keep_dims_valid ||
+        !launch_plan_matches(stage.launch_plan, artifact.launch_plan) ||
         stage.exception_ticket != artifact.kernel.exception_ticket ||
         stage.exception_reason != artifact.kernel.exception_reason ||
         stage.exception_removal_condition !=
@@ -825,8 +799,7 @@ verify_runtime_executable_descriptor(
     if (stage.manifest_ref.empty() || stage.abi_fingerprint.empty() ||
         stage.artifact_key.empty() || stage.backend_domain.empty() ||
         stage.kernel_id.empty() || stage.op_family.empty() ||
-        stage.stage_name.empty() ||
-        stage.runtime_shape_rule.empty() ||
+        stage.stage_name.empty() || stage.runtime_shape_rule.empty() ||
         stage.submission_stage_weight == 0u) {
       result.diagnostics.push_back(
           "runtime executable descriptor has incomplete identity at " +
@@ -867,46 +840,65 @@ verify_runtime_executable_descriptor(
     }
     const auto executable_payload =
         executable.find_artifact_payload(stage.artifact_key);
-    const auto source_roles =
-        summarize_source_payload_roles(executable_payload.get());
-    if (source_roles.runtime_param_count != 0 &&
+    const auto executable_const_tensors =
+        executable.find_artifact_const_tensors(stage.artifact_key);
+    const auto launch_roles = summarize_launch_plan_roles(stage.launch_plan);
+    if (source_payload_kind(stage.payload_kind)) {
+      if (!stage.launch_plan.valid || stage.launch_plan.buffer_roles.empty()) {
+        result.diagnostics.push_back(
+            "runtime executable descriptor source launch plan is incomplete "
+            "at " +
+            std::to_string(i));
+      }
+      if (stage.launch_plan.buffer_roles.size() != stage.abi_arg_count) {
+        result.diagnostics.push_back(
+            "runtime executable descriptor source launch-plan ABI count drift "
+            "at " +
+            std::to_string(i));
+      }
+      if (launch_roles.output_count != stage.abi_output_arg_count) {
+        result.diagnostics.push_back(
+            "runtime executable descriptor source launch-plan output count "
+            "drift at " +
+            std::to_string(i));
+      }
+    }
+    if (launch_roles.const_tensor_count != 0 &&
+        stage.const_tensors.size() < launch_roles.const_tensor_count) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor ConstTensor ABI is not "
+          "descriptor-owned at " +
+          std::to_string(i));
+    }
+    if (!const_tensor_payloads_match(stage.const_tensors,
+                                     executable_const_tensors)) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor const tensor payload drift at " +
+          std::to_string(i));
+    }
+    if (artifact.runtime_param_buffer_count != 0 &&
         !descriptor_owns_runtime_param_payload(
-            stage, source_roles.runtime_param_count)) {
+            stage, artifact.runtime_param_buffer_count)) {
       result.diagnostics.push_back(
           "runtime executable descriptor RuntimeParams ABI is not "
           "descriptor-owned at " +
           std::to_string(i));
     }
-    const auto expected_runtime_param_metadata =
-        runtime_param_metadata_from_source_payload(executable_payload.get());
-    if (stage.runtime_param_i64_metadata !=
-            expected_runtime_param_metadata.i64_metadata ||
-        stage.runtime_param_reduce_keep_dims !=
-            expected_runtime_param_metadata.reduce_keep_dims ||
-        stage.runtime_param_reduce_keep_dims_valid !=
-            expected_runtime_param_metadata.reduce_keep_dims_valid) {
+    if (launch_roles.runtime_param_count != 0 &&
+        artifact.runtime_param_buffer_count !=
+            launch_roles.runtime_param_count) {
       result.diagnostics.push_back(
-          "runtime executable descriptor runtime-param metadata drift at " +
+          "runtime executable descriptor RuntimeParams buffer count drift at " +
           std::to_string(i));
     }
-    RuntimeStageExecutableDescriptor expected_bridge_stage = stage;
-    expected_bridge_stage.payload_kind = artifact.payload_kind;
-    expected_bridge_stage.requires_runtime_shape_args =
-        artifact.kernel.requires_runtime_shape_args;
-    expected_bridge_stage.payload = executable_payload;
-    expected_bridge_stage.runtime_param_i64_metadata =
-        expected_runtime_param_metadata.i64_metadata;
-    expected_bridge_stage.runtime_param_reduce_keep_dims =
-        expected_runtime_param_metadata.reduce_keep_dims;
-    expected_bridge_stage.runtime_param_reduce_keep_dims_valid =
-        expected_runtime_param_metadata.reduce_keep_dims_valid;
-    apply_temporary_source_node_bridge_contract(expected_bridge_stage);
-    if (stage.temporary_source_node_bridge_required !=
-            expected_bridge_stage.temporary_source_node_bridge_required ||
-        stage.temporary_source_node_bridge_reason !=
-            expected_bridge_stage.temporary_source_node_bridge_reason) {
+    if (stage.runtime_param_i64_metadata !=
+            artifact.runtime_param_i64_metadata ||
+        stage.runtime_param_reduce_keep_dims !=
+            artifact.runtime_param_reduce_keep_dims ||
+        stage.runtime_param_reduce_keep_dims_valid !=
+            artifact.runtime_param_reduce_keep_dims_valid) {
       result.diagnostics.push_back(
-          "runtime executable descriptor source-node bridge contract drift at " +
+          "runtime executable descriptor runtime-param metadata drift at " +
           std::to_string(i));
     }
     if (stage.payload != executable_payload) {
@@ -942,21 +934,53 @@ bool runtime_executable_descriptor_valid(
 }
 
 RuntimeExecutableDescriptorVerificationResult
-verify_runtime_executable_stage_plan(
+verify_runtime_executable_descriptor_pipeline_plan(
     const RuntimeExecutableDescriptor &descriptor) {
   RuntimeExecutableDescriptorVerificationResult result;
-  append_stage_plan_diagnostics(result, descriptor);
+  if (!descriptor.pipeline_plan) {
+    result.diagnostics.emplace_back(
+        "runtime executable descriptor is missing compiler-owned pipeline "
+        "materialization plan");
+    return result;
+  }
+  append_stage_plan_diagnostics(result, *descriptor.pipeline_plan, descriptor);
   return result;
 }
 
-bool runtime_executable_stage_plan_valid(
+bool runtime_executable_descriptor_pipeline_plan_valid(
     const RuntimeExecutableDescriptor &descriptor) {
-  return verify_runtime_executable_stage_plan(descriptor).valid();
+  return verify_runtime_executable_descriptor_pipeline_plan(descriptor).valid();
 }
 
-RuntimeExecutableDescriptor
-RuntimeExecutableDescriptorBuilder::build(const ExecutableBundle &executable)
-    const {
+void attach_runtime_public_output_descriptors(
+    RuntimeExecutableDescriptor &descriptor,
+    const PipelineStageRuntimePlan &pipeline_plan) {
+  descriptor.public_outputs.clear();
+  descriptor.public_outputs.reserve(pipeline_plan.public_outputs.size());
+  for (const auto &output : pipeline_plan.public_outputs) {
+    RuntimePublicOutputDescriptor runtime_output;
+    switch (output.source_ref.kind) {
+    case PipelineStageTensorRefKind::Parameter:
+      runtime_output.kind = RuntimePublicOutputSourceKind::Parameter;
+      break;
+    case PipelineStageTensorRefKind::StageOutput:
+      runtime_output.kind = RuntimePublicOutputSourceKind::StageOutput;
+      break;
+    case PipelineStageTensorRefKind::None:
+    default:
+      runtime_output.kind = RuntimePublicOutputSourceKind::None;
+      break;
+    }
+    runtime_output.index = output.source_ref.index;
+    runtime_output.port = output.source_ref.port;
+    runtime_output.static_shape = output.shape;
+    runtime_output.static_type = output.type;
+    descriptor.public_outputs.push_back(std::move(runtime_output));
+  }
+}
+
+RuntimeExecutableDescriptor RuntimeExecutableDescriptorBuilder::build(
+    const ExecutableBundle &executable) const {
   RuntimeExecutableDescriptor descriptor;
   descriptor.schema_version = kRuntimeExecutableDescriptorSchemaVersion;
   descriptor.target_fingerprint = executable.target_fingerprint;
@@ -981,7 +1005,8 @@ RuntimeExecutableDescriptorBuilder::build(const ExecutableBundle &executable)
     descriptor.stages.push_back(make_stage_descriptor(
         i, executable_stage, executable.manifest.stages[i],
         executable.memory_plan, artifact,
-        executable.find_artifact_payload(artifact.artifact_key)));
+        executable.find_artifact_payload(artifact.artifact_key),
+        executable.find_artifact_const_tensors(artifact.artifact_key)));
   }
   return descriptor;
 }

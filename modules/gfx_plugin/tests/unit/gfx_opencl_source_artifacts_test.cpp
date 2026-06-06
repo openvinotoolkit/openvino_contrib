@@ -226,6 +226,10 @@ void expect_opencl_artifact(const std::shared_ptr<const ov::Node> &node,
           input_chunk_size, direct_input_count - input_begin);
       EXPECT_EQ(chunk.binding_begin, input_begin);
       EXPECT_EQ(chunk.binding_count, chunk_count);
+      EXPECT_EQ(chunk.binding_role,
+                GfxOpenClSourceChunkBindingRole::DirectInputs);
+      EXPECT_NE(chunk.element_count_multiplier, 0u);
+      EXPECT_NE(chunk.element_count_divisor, 0u);
       ASSERT_TRUE(chunk.artifact);
       EXPECT_TRUE(chunk.artifact->valid);
       EXPECT_TRUE(chunk.artifact->planned_chunks.empty());
@@ -242,6 +246,10 @@ void expect_opencl_artifact(const std::shared_ptr<const ov::Node> &node,
           output_chunk_size, direct_output_count - output_begin);
       EXPECT_EQ(chunk.binding_begin, output_begin);
       EXPECT_EQ(chunk.binding_count, chunk_count);
+      EXPECT_EQ(chunk.binding_role,
+                GfxOpenClSourceChunkBindingRole::DirectOutputs);
+      EXPECT_EQ(chunk.element_count_multiplier, 1u);
+      EXPECT_EQ(chunk.element_count_divisor, 1u);
       ASSERT_TRUE(chunk.artifact);
       EXPECT_TRUE(chunk.artifact->valid);
       EXPECT_TRUE(chunk.artifact->planned_chunks.empty());
@@ -1766,6 +1774,10 @@ TEST(GfxOpenClSourceArtifactsTest,
   ASSERT_TRUE(base->planned_chunks[0].artifact);
   EXPECT_EQ(base->planned_chunks[0].binding_begin, 0u);
   EXPECT_EQ(base->planned_chunks[0].binding_count, 1u);
+  EXPECT_EQ(base->planned_chunks[0].binding_role,
+            GfxOpenClSourceChunkBindingRole::DirectInputs);
+  EXPECT_EQ(base->planned_chunks[0].element_count_multiplier, 1u);
+  EXPECT_EQ(base->planned_chunks[0].element_count_divisor, 30u);
   const auto &chunk0 = *base->planned_chunks[0].artifact;
   EXPECT_EQ(chunk0.artifact_ref.entry_point,
             "gfx_opencl_generated_concat1_f32");
@@ -1786,6 +1798,10 @@ TEST(GfxOpenClSourceArtifactsTest,
   ASSERT_TRUE(base->planned_chunks[28].artifact);
   EXPECT_EQ(base->planned_chunks[28].binding_begin, 28u);
   EXPECT_EQ(base->planned_chunks[28].binding_count, 1u);
+  EXPECT_EQ(base->planned_chunks[28].binding_role,
+            GfxOpenClSourceChunkBindingRole::DirectInputs);
+  EXPECT_EQ(base->planned_chunks[28].element_count_multiplier, 1u);
+  EXPECT_EQ(base->planned_chunks[28].element_count_divisor, 30u);
   const auto &chunk_tail = *base->planned_chunks[28].artifact;
   EXPECT_EQ(chunk_tail.artifact_ref.entry_point,
             "gfx_opencl_generated_concat1_f32");
@@ -1871,6 +1887,10 @@ TEST(GfxOpenClSourceArtifactsTest,
   ASSERT_TRUE(base->planned_chunks[0].artifact);
   EXPECT_EQ(base->planned_chunks[0].binding_begin, 0u);
   EXPECT_EQ(base->planned_chunks[0].binding_count, 4u);
+  EXPECT_EQ(base->planned_chunks[0].binding_role,
+            GfxOpenClSourceChunkBindingRole::DirectInputs);
+  EXPECT_EQ(base->planned_chunks[0].element_count_multiplier, 10u);
+  EXPECT_EQ(base->planned_chunks[0].element_count_divisor, 15u);
   const auto &chunk0 = *base->planned_chunks[0].artifact;
   EXPECT_EQ(chunk0.artifact_ref.entry_point,
             "gfx_opencl_generated_concat4_f16");
@@ -1883,6 +1903,10 @@ TEST(GfxOpenClSourceArtifactsTest,
   ASSERT_TRUE(base->planned_chunks[1].artifact);
   EXPECT_EQ(base->planned_chunks[1].binding_begin, 4u);
   EXPECT_EQ(base->planned_chunks[1].binding_count, 1u);
+  EXPECT_EQ(base->planned_chunks[1].binding_role,
+            GfxOpenClSourceChunkBindingRole::DirectInputs);
+  EXPECT_EQ(base->planned_chunks[1].element_count_multiplier, 5u);
+  EXPECT_EQ(base->planned_chunks[1].element_count_divisor, 15u);
   const auto &chunk_tail = *base->planned_chunks[1].artifact;
   EXPECT_EQ(chunk_tail.artifact_ref.entry_point,
             "gfx_opencl_generated_concat1_f16");
@@ -2042,6 +2066,10 @@ TEST(GfxOpenClSourceArtifactsTest,
   ASSERT_TRUE(base->planned_chunks[0].artifact);
   EXPECT_EQ(base->planned_chunks[0].binding_begin, 0u);
   EXPECT_EQ(base->planned_chunks[0].binding_count, 4u);
+  EXPECT_EQ(base->planned_chunks[0].binding_role,
+            GfxOpenClSourceChunkBindingRole::DirectOutputs);
+  EXPECT_EQ(base->planned_chunks[0].element_count_multiplier, 1u);
+  EXPECT_EQ(base->planned_chunks[0].element_count_divisor, 1u);
   const auto &chunk0 = *base->planned_chunks[0].artifact;
   EXPECT_EQ(chunk0.artifact_ref.entry_point, "gfx_opencl_generated_split4_f32");
   EXPECT_EQ(chunk0.arg_count, 6u);
@@ -2056,6 +2084,10 @@ TEST(GfxOpenClSourceArtifactsTest,
   ASSERT_TRUE(base->planned_chunks[7].artifact);
   EXPECT_EQ(base->planned_chunks[7].binding_begin, 28u);
   EXPECT_EQ(base->planned_chunks[7].binding_count, 2u);
+  EXPECT_EQ(base->planned_chunks[7].binding_role,
+            GfxOpenClSourceChunkBindingRole::DirectOutputs);
+  EXPECT_EQ(base->planned_chunks[7].element_count_multiplier, 1u);
+  EXPECT_EQ(base->planned_chunks[7].element_count_divisor, 1u);
   const auto &chunk_tail = *base->planned_chunks[7].artifact;
   EXPECT_EQ(chunk_tail.artifact_ref.entry_point,
             "gfx_opencl_generated_split2_f32");

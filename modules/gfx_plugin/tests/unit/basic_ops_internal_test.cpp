@@ -3337,7 +3337,7 @@ TEST(GfxMlir, OpenClMetadataReaderRejectsAppleMslStageManifestAsFallbackAbi) {
                 module,
                 /*fallback=*/3, "eltwise_fused_buffer",
                 ov::gfx_plugin::GfxKernelBackendDomain::OpenCl),
-            3u);
+            0u);
 
   const auto metadata = ov::gfx_plugin::extract_kernel_runtime_metadata(
       module,
@@ -3484,12 +3484,12 @@ TEST(GfxMlir, AppleMslRuntimeMetadataRejectsLegacyOperandAttrsWithoutManifest) {
   ASSERT_EQ(ov::gfx_plugin::infer_kernel_arg_count_from_module(
                 module,
                 /*fallback=*/999, "eltwise_fused_buffer"),
-            999u);
+            0u);
 }
 
 TEST(
     GfxMlir,
-    RuntimeMetadataRejectsLegacyAttrsButKeepsSignatureFallbackWhenNoManifestExists) {
+    RuntimeMetadataRejectsSignatureFallbackWhenNoManifestExists) {
   mlir::MLIRContext ctx;
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
@@ -3497,15 +3497,15 @@ TEST(
       module,
       /*output_arg_count=*/1,
       /*fallback_input_arg_count=*/2, "gfx_kernel");
-  ASSERT_TRUE(metadata.valid);
-  EXPECT_EQ(metadata.kernel_input_arg_count, 2u);
+  ASSERT_FALSE(metadata.valid);
+  EXPECT_EQ(metadata.kernel_input_arg_count, 0u);
   EXPECT_TRUE(metadata.operands.operand_kinds.empty());
   EXPECT_TRUE(metadata.operands.operand_arg_indices.empty());
   EXPECT_TRUE(metadata.operands.scalar_args.empty());
   EXPECT_EQ(ov::gfx_plugin::infer_kernel_arg_count_from_module(module,
                                                                /*fallback=*/3,
                                                                "gfx_kernel"),
-            3u);
+            0u);
 }
 
 TEST(GfxMlir, KernelPlanRejectsLegacyArgCountAttrs) {
@@ -3547,7 +3547,7 @@ TEST(GfxMlir, FixedArgRuntimeMetadataIsRejectedWithoutManifest) {
   EXPECT_EQ(ov::gfx_plugin::infer_kernel_arg_count_from_module(module,
                                                                /*fallback=*/3,
                                                                "gfx_kernel"),
-            3u);
+            0u);
 }
 
 TEST(GfxMlir,
@@ -3602,7 +3602,7 @@ TEST(GfxMlir, AppleMslArgCountCanUseStageManifestWithoutMlirEntryMatch) {
   ASSERT_EQ(ov::gfx_plugin::infer_kernel_arg_count_from_module(module,
                                                                /*fallback=*/2,
                                                                "slice_main"),
-            2u);
+            0u);
   ASSERT_EQ(
       ov::gfx_plugin::infer_kernel_arg_count_from_module(module,
                                                          /*fallback=*/2,
@@ -4041,7 +4041,7 @@ TEST(GfxMlir,
   EXPECT_EQ(ov::gfx_plugin::infer_kernel_arg_count_from_module(
                 module, /*fallback=*/999,
                 stale_binding.stage_manifest.custom_kernel.entry_point),
-            999u);
+            0u);
 }
 
 TEST(GfxMlir, TypedMpsrtProgramMaterializationErasesLegacyExternalAbiAttrs) {

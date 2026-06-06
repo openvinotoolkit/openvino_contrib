@@ -10,10 +10,10 @@
 #include "plugin/infer_io_utils.hpp"
 #include "runtime/fused_output_lifetime_plan.hpp"
 #include "runtime/infer_executor.hpp"
+#include "runtime/stateful_execution.hpp"
 #include "openvino/op/add.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/relu.hpp"
-#include "openvino/op/result.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -145,6 +145,36 @@ public:
     size_t prewarm_count = 0;
 };
 
+class FakeExecutionSubmissionSession final : public TrackedInferSubmissionSession {
+public:
+    size_t submit_count() const {
+        return m_submit_count;
+    }
+
+    size_t finish_count() const {
+        return m_finish_count;
+    }
+
+protected:
+    GpuCommandBufferHandle begin_recording_impl() override {
+        ++m_begin_count;
+        return reinterpret_cast<GpuCommandBufferHandle>(m_begin_count);
+    }
+
+    void submit_recorded_impl(GpuCommandBufferHandle, bool) override {
+        ++m_submit_count;
+    }
+
+    void finish_impl() override {
+        ++m_finish_count;
+    }
+
+private:
+    size_t m_begin_count = 0;
+    size_t m_submit_count = 0;
+    size_t m_finish_count = 0;
+};
+
 class DescriptorProbeStage final : public GpuStage {
 public:
     explicit DescriptorProbeStage(std::string type_name)
@@ -175,7 +205,9 @@ private:
 
 std::shared_ptr<RuntimeExecutableDescriptor>
 make_test_runtime_descriptor(size_t stage_count,
-                             std::vector<size_t> output_last_stages = {}) {
+                             std::vector<size_t> output_last_stages = {},
+                             bool include_transient_arena = true,
+                             size_t public_output_stage_index = PipelineStageTensorRef::npos) {
     auto descriptor = std::make_shared<RuntimeExecutableDescriptor>();
     descriptor->target_fingerprint = "test/runtime-session";
     descriptor->stages.reserve(stage_count);
@@ -229,11 +261,24 @@ make_test_runtime_descriptor(size_t stage_count,
         alias_group.region_ids.push_back("stage_" + std::to_string(i) +
                                          ".output_0");
         descriptor->memory_plan.alias_groups.push_back(std::move(alias_group));
-        arena.region_ids.push_back("stage_" + std::to_string(i) + ".output_0");
+        if (include_transient_arena) {
+            arena.region_ids.push_back("stage_" + std::to_string(i) + ".output_0");
+        }
         descriptor->stages.push_back(std::move(stage));
     }
     if (!arena.region_ids.empty()) {
         descriptor->memory_plan.transient_arenas.push_back(std::move(arena));
+    }
+    if (stage_count != 0) {
+        RuntimePublicOutputDescriptor public_output;
+        public_output.kind = RuntimePublicOutputSourceKind::StageOutput;
+        public_output.index = public_output_stage_index == PipelineStageTensorRef::npos
+                                  ? stage_count - 1
+                                  : public_output_stage_index;
+        public_output.port = 0;
+        public_output.static_shape = {4};
+        public_output.static_type = ov::element::f32;
+        descriptor->public_outputs.push_back(std::move(public_output));
     }
     return descriptor;
 }
@@ -271,6 +316,74 @@ TEST(InferPipelineReuseTest, RuntimeViewContractUsesCompilerDescriptorOnly) {
 
     EXPECT_TRUE(is_view_op(stage));
     EXPECT_TRUE(stage_outputs_may_alias_inputs(stage));
+}
+
+TEST(InferPipelineReuseTest,
+     StatefulAssignPrebindUsesDescriptorBindingWithoutGraphNode) {
+    auto runtime_descriptor = make_test_runtime_descriptor(1);
+    auto& output_binding =
+        runtime_descriptor->stages.front().output_bindings.front();
+    output_binding.stateful_prebind_variable_id = "state0";
+    output_binding.partial_shape = "{1,4}";
+    output_binding.element_type = "f16";
+
+    InferStage stage;
+    stage.stage = std::make_unique<TrackingStage>();
+    stage.runtime_session = std::make_shared<RuntimeSession>(runtime_descriptor);
+    stage.runtime_stage_index = 0;
+    stage.outputs.push_back(std::make_unique<GpuTensor>());
+
+    FakeAllocator allocator;
+    GpuBufferPool pool(allocator);
+    StatefulVariableStateMap variables;
+
+    EXPECT_TRUE(try_bind_direct_stateful_assign_output(
+        variables, stage, {}, pool, nullptr));
+    ASSERT_EQ(variables.count("state0"), 1u);
+    ASSERT_TRUE(stage.outputs.front()->buf.valid());
+    EXPECT_EQ(stage.outputs.front()->shape, (ov::Shape{1, 4}));
+    EXPECT_EQ(stage.outputs.front()->expected_type, ov::element::f16);
+}
+
+TEST(InferPipelineReuseTest, PreparedExecutionPlanUsesCompilerOwnedInputRefs) {
+    std::vector<InferStage> pipeline(2);
+    pipeline[0].stage = std::make_unique<TrackingStage>();
+    pipeline[0].outputs.push_back(std::make_unique<GpuTensor>());
+    pipeline[0].outputs[0]->shape = {1, 8};
+    pipeline[0].outputs[0]->expected_type = ov::element::f16;
+
+    pipeline[1].stage = std::make_unique<TrackingStage>();
+    pipeline[1].outputs.push_back(std::make_unique<GpuTensor>());
+    pipeline[1].outputs[0]->shape = {1, 8};
+    pipeline[1].outputs[0]->expected_type = ov::element::f16;
+
+    PipelineStageInputLink stage_input;
+    stage_input.source_ref.kind = PipelineStageTensorRefKind::StageOutput;
+    stage_input.source_ref.index = 0;
+    stage_input.source_ref.port = 0;
+    pipeline[1].inputs.push_back(stage_input);
+
+    PipelineStageInputLink parameter_input;
+    parameter_input.source_ref.kind = PipelineStageTensorRefKind::Parameter;
+    parameter_input.source_ref.index = 1;
+    parameter_input.source_ref.port = 0;
+    pipeline[1].inputs.push_back(parameter_input);
+
+    PreparedInferExecutionPlan plan;
+    prepare_reusable_execution_plan(plan, pipeline);
+
+    ASSERT_EQ(plan.stages.size(), pipeline.size());
+    ASSERT_EQ(plan.stages[1].input_refs.size(), 2u);
+    EXPECT_EQ(plan.stages[1].input_refs[0].kind,
+              PreparedStageInputKind::StageOutput);
+    EXPECT_EQ(plan.stages[1].input_refs[0].index, 0u);
+    EXPECT_EQ(plan.stages[1].input_refs[0].port, 0u);
+    EXPECT_EQ(plan.stages[1].resolved_inputs[0],
+              pipeline[0].outputs[0].get());
+    EXPECT_EQ(plan.stages[1].input_refs[1].kind,
+              PreparedStageInputKind::Parameter);
+    EXPECT_EQ(plan.stages[1].input_refs[1].index, 1u);
+    EXPECT_EQ(plan.stages[1].resolved_inputs[1], nullptr);
 }
 
 TEST(InferPipelineReuseTest,
@@ -355,6 +468,60 @@ TEST(InferPipelineReuseTest, BuildPipelineRejectsMissingRuntimeStageIndex) {
                                                 make_test_runtime_descriptor(1)));
 }
 
+TEST(InferPipelineReuseTest,
+     RuntimeOutputAllocationUsesCompilerMemoryPlanForModelOutputs) {
+    auto runtime_descriptor = make_test_runtime_descriptor(1);
+
+    InferStage stage;
+    stage.runtime_session = std::make_shared<RuntimeSession>(runtime_descriptor);
+    stage.runtime_stage_index = 0;
+    stage.outputs.push_back(std::make_unique<GpuTensor>());
+    stage.outputs.front()->shape = {4};
+    stage.outputs.front()->expected_type = ov::element::f32;
+
+    GpuBufferDesc desc{};
+
+    ASSERT_TRUE(init_stage_output_desc(GpuBackend::Metal,
+                                       stage,
+                                       0,
+                                       *stage.outputs.front(),
+                                       desc,
+                                       /*is_model_output=*/true,
+                                       /*skip_view_ops=*/false,
+                                       "test"));
+    EXPECT_EQ(desc.usage, BufferUsage::Intermediate);
+    EXPECT_FALSE(desc.cpu_read);
+    EXPECT_FALSE(desc.cpu_write);
+    EXPECT_TRUE(desc.prefer_device_local);
+    EXPECT_TRUE(stage.outputs.front()->prefer_private);
+    EXPECT_TRUE(runtime_output_uses_transient_arena(stage, 0));
+}
+
+TEST(InferPipelineReuseTest,
+     RuntimeOutputAllocationRejectsHiddenCopyMemoryPlan) {
+    auto runtime_descriptor = make_test_runtime_descriptor(1);
+    runtime_descriptor->memory_plan.hidden_host_copies_allowed = true;
+
+    InferStage stage;
+    stage.runtime_session = std::make_shared<RuntimeSession>(runtime_descriptor);
+    stage.runtime_stage_index = 0;
+    stage.outputs.push_back(std::make_unique<GpuTensor>());
+    stage.outputs.front()->shape = {4};
+    stage.outputs.front()->expected_type = ov::element::f32;
+
+    GpuBufferDesc desc{};
+
+    EXPECT_THROW((void)init_stage_output_desc(GpuBackend::Metal,
+                                              stage,
+                                              0,
+                                              *stage.outputs.front(),
+                                              desc,
+                                              /*is_model_output=*/false,
+                                              /*skip_view_ops=*/false,
+                                              "test"),
+                 ov::Exception);
+}
+
 TEST(InferPipelineReuseTest, RemoteTensorValidationRejectsTargetProfileMismatch) {
     const auto generic_target =
         compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
@@ -397,11 +564,11 @@ TEST(InferPipelineReuseTest, ReusesClonedPipelineAndOutputHandlesAcrossPreparati
     BackendInferState runtime_state;
     std::vector<std::shared_ptr<GfxRemoteTensor>> remote_outputs;
     const std::vector<std::shared_ptr<GfxRemoteTensor>> remote_inputs;
-    const std::vector<ov::Output<const ov::Node>> outputs;
-    const std::unordered_map<const ov::Node*, size_t> node_map;
-    const std::unordered_map<const ov::Node*, size_t> param_map;
-    const std::shared_ptr<const ov::Model> runtime_model;
-    auto runtime_descriptor = make_test_runtime_descriptor(3);
+    auto runtime_descriptor = make_test_runtime_descriptor(
+        3,
+        /*output_last_stages=*/{},
+        /*include_transient_arena=*/true,
+        /*public_output_stage_index=*/0);
 
     auto describe_output = [](InferStage& stage,
                               size_t oi,
@@ -422,10 +589,6 @@ TEST(InferPipelineReuseTest, ReusesClonedPipelineAndOutputHandlesAcrossPreparati
     InferRuntimeExecutionConfig config;
     config.state = &runtime_state;
     config.descs = &descs;
-    config.runtime_model = &runtime_model;
-    config.public_outputs = &outputs;
-    config.node_map = &node_map;
-    config.param_map = &param_map;
     config.remote_outputs = &remote_outputs;
     config.remote_inputs = &remote_inputs;
     config.expected_target = &target;
@@ -475,10 +638,6 @@ TEST(InferPipelineReuseTest, RuntimeMemoryPlanExtendsWorkspaceOutputLifetime) {
     BackendInferState runtime_state;
     std::vector<std::shared_ptr<GfxRemoteTensor>> remote_outputs;
     const std::vector<std::shared_ptr<GfxRemoteTensor>> remote_inputs;
-    const std::vector<ov::Output<const ov::Node>> outputs;
-    const std::unordered_map<const ov::Node*, size_t> node_map;
-    const std::unordered_map<const ov::Node*, size_t> param_map;
-    const std::shared_ptr<const ov::Model> runtime_model;
     auto runtime_descriptor =
         make_test_runtime_descriptor(2, /*output_last_stages=*/{1, 1});
 
@@ -501,10 +660,6 @@ TEST(InferPipelineReuseTest, RuntimeMemoryPlanExtendsWorkspaceOutputLifetime) {
     InferRuntimeExecutionConfig config;
     config.state = &runtime_state;
     config.descs = &descs;
-    config.runtime_model = &runtime_model;
-    config.public_outputs = &outputs;
-    config.node_map = &node_map;
-    config.param_map = &param_map;
     config.remote_outputs = &remote_outputs;
     config.remote_inputs = &remote_inputs;
     config.expected_target = &target;
@@ -526,37 +681,174 @@ TEST(InferPipelineReuseTest, RuntimeMemoryPlanExtendsWorkspaceOutputLifetime) {
     EXPECT_EQ(runtime_state.stage_output_workspace.last_peak_live_slots, 2u);
 }
 
-TEST(InferPipelineReuseTest, ReusesPreparedExecutionInputsAcrossInferences) {
-    auto param0 = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::Shape{1, 4});
-    auto param1 = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::Shape{1, 4});
-    auto relu = std::make_shared<ov::op::v0::Relu>(param0);
-    auto add = std::make_shared<ov::op::v1::Add>(relu, param1);
+TEST(InferPipelineReuseTest,
+     RuntimeWorkspaceProtectsDescriptorInputRefsWithoutGraphNodes) {
+    CountingStage::reset_counters();
 
+    std::vector<PipelineStageDesc> descs;
+    for (size_t i = 0; i < 3; ++i) {
+        PipelineStageDesc desc;
+        desc.stage = std::make_unique<CountingStage>();
+        desc.runtime_stage_index = i;
+        desc.outputs.push_back(OutputDesc{{4}, ov::element::f32, false});
+        descs.push_back(std::move(desc));
+    }
+    PipelineStageInputLink stage_input;
+    stage_input.source_ref.kind = PipelineStageTensorRefKind::StageOutput;
+    stage_input.source_ref.index = 0;
+    stage_input.source_ref.port = 0;
+    descs[1].inputs.push_back(stage_input);
+
+    FakeAllocator allocator;
+    GpuBufferPool pool(allocator);
+    BackendInferState runtime_state;
+    std::vector<std::shared_ptr<GfxRemoteTensor>> remote_outputs;
+    const std::vector<std::shared_ptr<GfxRemoteTensor>> remote_inputs;
+    auto runtime_descriptor = make_test_runtime_descriptor(3);
+    RuntimeTensorBindingContract stage_input_binding;
+    stage_input_binding.logical_name = "test.stage.1.input0";
+    stage_input_binding.memory_region_id = "stage_0.output_0";
+    stage_input_binding.role = "tensor_input";
+    stage_input_binding.element_type = "f32";
+    stage_input_binding.partial_shape = "{4}";
+    stage_input_binding.layout = "logical";
+    stage_input_binding.storage_kind = "device_buffer";
+    stage_input_binding.lifetime_class = "stage_input";
+    stage_input_binding.alias_group = "stage_0";
+    runtime_descriptor->stages[1].input_bindings.push_back(
+        std::move(stage_input_binding));
+
+    auto describe_output = [](InferStage& stage,
+                              size_t oi,
+                              GpuTensor& out_ref,
+                              GpuBufferDesc& desc,
+                              const char* error_prefix) {
+        return init_stage_output_desc(GpuBackend::Metal,
+                                      stage,
+                                      oi,
+                                      out_ref,
+                                      desc,
+                                      /*is_model_output=*/false,
+                                      /*skip_view_ops=*/true,
+                                      error_prefix);
+    };
+
+    const auto target = compiler::BackendTarget::from_backend(GpuBackend::Metal);
+    InferRuntimeExecutionConfig config;
+    config.state = &runtime_state;
+    config.descs = &descs;
+    config.remote_outputs = &remote_outputs;
+    config.remote_inputs = &remote_inputs;
+    config.expected_target = &target;
+    config.runtime_descriptor = runtime_descriptor;
+    config.pool = &pool;
+    config.post_prepare = [](std::vector<InferStage>&) {};
+    config.init_output_desc = describe_output;
+    config.error_prefix = "test";
+
+    auto& pipeline = prepare_reusable_infer_runtime_pipeline(config);
+
+    ASSERT_EQ(pipeline.size(), 3u);
+    ASSERT_TRUE(pipeline[0].outputs.front()->buf.valid());
+    ASSERT_TRUE(pipeline[1].outputs.front()->buf.valid());
+    ASSERT_TRUE(pipeline[2].outputs.front()->buf.valid());
+    const auto producer_uid = pipeline[0].outputs.front()->buf.allocation_uid;
+    const auto consumer_uid = pipeline[1].outputs.front()->buf.allocation_uid;
+    const auto later_uid = pipeline[2].outputs.front()->buf.allocation_uid;
+
+    EXPECT_NE(producer_uid, consumer_uid);
+    EXPECT_EQ(producer_uid, later_uid);
+    EXPECT_EQ(allocator.allocate_count(), 2u);
+    EXPECT_EQ(runtime_state.stage_output_workspace.last_workspace_outputs, 3u);
+    EXPECT_EQ(runtime_state.stage_output_workspace.last_direct_outputs, 0u);
+    EXPECT_EQ(runtime_state.stage_output_workspace.last_slots_used, 2u);
+    EXPECT_EQ(runtime_state.stage_output_workspace.last_peak_live_slots, 2u);
+}
+
+TEST(InferPipelineReuseTest,
+     RuntimeMemoryPlanTransientArenaControlsWorkspaceAllocation) {
+    CountingStage::reset_counters();
+
+    PipelineStageDesc desc;
+    desc.stage = std::make_unique<CountingStage>();
+    desc.runtime_stage_index = 0;
+    desc.outputs.push_back(OutputDesc{{4}, ov::element::f32, false});
+    std::vector<PipelineStageDesc> descs;
+    descs.push_back(std::move(desc));
+
+    FakeAllocator allocator;
+    GpuBufferPool pool(allocator);
+    BackendInferState runtime_state;
+    std::vector<std::shared_ptr<GfxRemoteTensor>> remote_outputs;
+    const std::vector<std::shared_ptr<GfxRemoteTensor>> remote_inputs;
+    auto runtime_descriptor =
+        make_test_runtime_descriptor(1, /*output_last_stages=*/{}, /*include_transient_arena=*/false);
+
+    auto describe_output = [](InferStage& stage,
+                              size_t oi,
+                              GpuTensor& out_ref,
+                              GpuBufferDesc& desc,
+                              const char* error_prefix) {
+        return init_stage_output_desc(GpuBackend::Metal,
+                                      stage,
+                                      oi,
+                                      out_ref,
+                                      desc,
+                                      /*is_model_output=*/false,
+                                      /*skip_view_ops=*/true,
+                                      error_prefix);
+    };
+
+    const auto target = compiler::BackendTarget::from_backend(GpuBackend::Metal);
+    InferRuntimeExecutionConfig config;
+    config.state = &runtime_state;
+    config.descs = &descs;
+    config.remote_outputs = &remote_outputs;
+    config.remote_inputs = &remote_inputs;
+    config.expected_target = &target;
+    config.runtime_descriptor = runtime_descriptor;
+    config.pool = &pool;
+    config.post_prepare = [](std::vector<InferStage>&) {};
+    config.init_output_desc = describe_output;
+    config.error_prefix = "test";
+
+    auto& pipeline = prepare_reusable_infer_runtime_pipeline(config);
+
+    ASSERT_EQ(pipeline.size(), 1u);
+    ASSERT_TRUE(pipeline.front().outputs.front()->buf.valid());
+    EXPECT_EQ(allocator.allocate_count(), 1u);
+    EXPECT_EQ(runtime_state.stage_output_workspace.last_workspace_outputs, 0u);
+    EXPECT_EQ(runtime_state.stage_output_workspace.last_direct_outputs, 1u);
+    EXPECT_EQ(runtime_state.stage_output_workspace.last_slots_used, 0u);
+    EXPECT_FALSE(runtime_output_uses_transient_arena(pipeline.front(), 0));
+}
+
+TEST(InferPipelineReuseTest, ReusesPreparedExecutionInputsAcrossInferences) {
     std::vector<InferStage> pipeline(2);
-    pipeline[0].node = relu;
     pipeline[0].stage = std::make_unique<TrackingStage>();
     pipeline[0].outputs.push_back(std::make_unique<GpuTensor>());
     pipeline[0].outputs[0]->shape = {1, 4};
     pipeline[0].outputs[0]->expected_type = ov::element::f16;
 
-    pipeline[1].node = add;
     pipeline[1].stage = std::make_unique<TrackingStage>();
     pipeline[1].outputs.push_back(std::make_unique<GpuTensor>());
     pipeline[1].outputs[0]->shape = {1, 4};
     pipeline[1].outputs[0]->expected_type = ov::element::f16;
-    pipeline[1].inputs.push_back({relu, 0});
-    pipeline[1].inputs.push_back({param1, 0});
-
-    const std::unordered_map<const ov::Node*, size_t> node_map = {
-        {relu.get(), 0},
-        {add.get(), 1},
-    };
-    const std::unordered_map<const ov::Node*, size_t> param_map = {
-        {param1.get(), 0},
-    };
+    PipelineStageInputLink relu_input;
+    relu_input.port = 0;
+    relu_input.source_ref.kind = PipelineStageTensorRefKind::StageOutput;
+    relu_input.source_ref.index = 0;
+    relu_input.source_ref.port = 0;
+    pipeline[1].inputs.push_back(relu_input);
+    PipelineStageInputLink param_input;
+    param_input.port = 0;
+    param_input.source_ref.kind = PipelineStageTensorRefKind::Parameter;
+    param_input.source_ref.index = 0;
+    param_input.source_ref.port = 0;
+    pipeline[1].inputs.push_back(param_input);
 
     PreparedInferExecutionPlan plan;
-    prepare_reusable_execution_plan(plan, pipeline, node_map, param_map);
+    prepare_reusable_execution_plan(plan, pipeline);
     ASSERT_EQ(plan.stages.size(), pipeline.size());
     ASSERT_EQ(plan.stages[1].resolved_inputs.size(), 2u);
     EXPECT_EQ(plan.stages[1].resolved_inputs[0], pipeline[0].outputs[0].get());
@@ -567,8 +859,6 @@ TEST(InferPipelineReuseTest, ReusesPreparedExecutionInputsAcrossInferences) {
     external_a.expected_type = ov::element::f16;
     execute_pipeline(
         pipeline,
-        node_map,
-        param_map,
         [&](size_t idx) -> GpuTensor* {
             return idx == 0 ? &external_a : nullptr;
         },
@@ -586,8 +876,6 @@ TEST(InferPipelineReuseTest, ReusesPreparedExecutionInputsAcrossInferences) {
     external_b.expected_type = ov::element::f16;
     execute_pipeline(
         pipeline,
-        node_map,
-        param_map,
         [&](size_t idx) -> GpuTensor* {
             return idx == 0 ? &external_b : nullptr;
         },
@@ -600,35 +888,140 @@ TEST(InferPipelineReuseTest, ReusesPreparedExecutionInputsAcrossInferences) {
     EXPECT_EQ(tracking->last_inputs_data, first_inputs_data);
 }
 
-TEST(InferPipelineReuseTest, PrewarmPipelineUsesPreparedExecutionInputs) {
-    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::Shape{1, 4});
-    auto relu = std::make_shared<ov::op::v0::Relu>(param);
+TEST(InferPipelineReuseTest,
+     PreparedRuntimeExecutionDoesNotRequireGraphNodeMaps) {
+    std::vector<PipelineStageDesc> descs;
 
+    PipelineStageDesc first_desc;
+    first_desc.stage = std::make_unique<TrackingStage>();
+    first_desc.runtime_stage_index = 0;
+    first_desc.outputs.push_back(OutputDesc{{1, 4}, ov::element::f16, false});
+    descs.push_back(std::move(first_desc));
+
+    PipelineStageDesc second_desc;
+    second_desc.stage = std::make_unique<TrackingStage>();
+    second_desc.runtime_stage_index = 1;
+    PipelineStageInputLink stage_input;
+    stage_input.source_ref.kind = PipelineStageTensorRefKind::StageOutput;
+    stage_input.source_ref.index = 0;
+    stage_input.source_ref.port = 0;
+    second_desc.inputs.push_back(stage_input);
+    PipelineStageInputLink parameter_input;
+    parameter_input.source_ref.kind = PipelineStageTensorRefKind::Parameter;
+    parameter_input.source_ref.index = 0;
+    parameter_input.source_ref.port = 0;
+    second_desc.inputs.push_back(parameter_input);
+    second_desc.outputs.push_back(OutputDesc{{1, 4}, ov::element::f16, false});
+    descs.push_back(std::move(second_desc));
+
+    FakeAllocator allocator;
+    GpuBufferPool pool(allocator);
+    BackendInferState runtime_state;
+    std::vector<std::shared_ptr<GfxRemoteTensor>> remote_outputs;
+    const std::vector<std::shared_ptr<GfxRemoteTensor>> remote_inputs;
+    auto runtime_descriptor = make_test_runtime_descriptor(2);
+    auto make_input_binding = [](std::string logical_name,
+                                 std::string region_id,
+                                 std::string alias_group) {
+        RuntimeTensorBindingContract binding;
+        binding.logical_name = std::move(logical_name);
+        binding.memory_region_id = std::move(region_id);
+        binding.role = "tensor_input";
+        binding.element_type = "f16";
+        binding.partial_shape = "{1,4}";
+        binding.layout = "logical";
+        binding.storage_kind = "device_buffer";
+        binding.lifetime_class = "external_or_stage_input";
+        binding.alias_group = std::move(alias_group);
+        return binding;
+    };
+    runtime_descriptor->stages[1].input_bindings.push_back(
+        make_input_binding("test.stage.1.input0",
+                           "stage_0.output_0",
+                           "stage_0"));
+    runtime_descriptor->stages[1].input_bindings.push_back(
+        make_input_binding("test.stage.1.input1",
+                           "external.input_0",
+                           "external.input_0"));
+
+    std::vector<GpuTensor> input_tensors(1);
+    input_tensors[0].shape = {1, 4};
+    input_tensors[0].expected_type = ov::element::f16;
+    input_tensors[0].buf.buffer = reinterpret_cast<GpuBufferHandle>(0x777);
+    input_tensors[0].buf.size = 8;
+    input_tensors[0].buf.type = ov::element::f16;
+
+    auto describe_output = [](InferStage& stage,
+                              size_t oi,
+                              GpuTensor& out_ref,
+                              GpuBufferDesc& desc,
+                              const char* error_prefix) {
+        return init_stage_output_desc(GpuBackend::Metal,
+                                      stage,
+                                      oi,
+                                      out_ref,
+                                      desc,
+                                      /*is_model_output=*/false,
+                                      /*skip_view_ops=*/true,
+                                      error_prefix);
+    };
+
+    FakeExecutionSubmissionSession submission;
+    const auto target = compiler::BackendTarget::from_backend(GpuBackend::Metal);
+    InferRuntimeExecutionConfig config;
+    config.state = &runtime_state;
+    config.descs = &descs;
+    config.buffer_manager = nullptr;
+    config.remote_outputs = &remote_outputs;
+    config.remote_inputs = &remote_inputs;
+    config.expected_target = &target;
+    config.runtime_descriptor = runtime_descriptor;
+    config.pool = &pool;
+    config.runtime_input_tensors = &input_tensors;
+    config.init_output_desc = describe_output;
+    config.input_lookup = [&](size_t input_idx) -> GpuTensor* {
+        return lookup_runtime_input_tensor(input_tensors, input_idx);
+    };
+    config.submission = &submission;
+    config.error_prefix = "test";
+
+    auto result = prepare_and_execute_infer_runtime(std::move(config));
+
+    ASSERT_NE(result.pipeline, nullptr);
+    ASSERT_EQ(result.pipeline->size(), 2u);
+    auto* second_stage =
+        static_cast<TrackingStage*>((*result.pipeline)[1].stage.get());
+    ASSERT_EQ(second_stage->last_inputs.size(), 2u);
+    EXPECT_EQ(second_stage->last_inputs[0],
+              (*result.pipeline)[0].outputs[0].get());
+    EXPECT_EQ(second_stage->last_inputs[1], &input_tensors[0]);
+    EXPECT_EQ(second_stage->prewarm_count, 1u);
+    EXPECT_EQ(second_stage->set_inputs_count, 3u);
+    EXPECT_EQ(submission.submit_count(), 1u);
+    EXPECT_EQ(submission.finish_count(), 1u);
+}
+
+TEST(InferPipelineReuseTest, PrewarmPipelineUsesPreparedExecutionInputs) {
     std::vector<InferStage> pipeline(1);
-    pipeline[0].node = relu;
     pipeline[0].stage = std::make_unique<TrackingStage>();
-    pipeline[0].inputs.push_back({param, 0});
+    PipelineStageInputLink param_input;
+    param_input.port = 0;
+    param_input.source_ref.kind = PipelineStageTensorRefKind::Parameter;
+    param_input.source_ref.index = 0;
+    param_input.source_ref.port = 0;
+    pipeline[0].inputs.push_back(param_input);
     pipeline[0].outputs.push_back(std::make_unique<GpuTensor>());
     pipeline[0].outputs[0]->shape = {1, 4};
     pipeline[0].outputs[0]->expected_type = ov::element::f16;
 
-    const std::unordered_map<const ov::Node*, size_t> node_map = {
-        {relu.get(), 0},
-    };
-    const std::unordered_map<const ov::Node*, size_t> param_map = {
-        {param.get(), 0},
-    };
-
     PreparedInferExecutionPlan plan;
-    prepare_reusable_execution_plan(plan, pipeline, node_map, param_map);
+    prepare_reusable_execution_plan(plan, pipeline);
 
     GpuTensor external;
     external.shape = {1, 4};
     external.expected_type = ov::element::f16;
     prewarm_pipeline_runtime_state(
         pipeline,
-        node_map,
-        param_map,
         [&](size_t idx) -> GpuTensor* {
             return idx == 0 ? &external : nullptr;
         },
@@ -642,13 +1035,7 @@ TEST(InferPipelineReuseTest, PrewarmPipelineUsesPreparedExecutionInputs) {
 }
 
 TEST(InferPipelineReuseTest, ReusesPreparedOutputResolutionAcrossInferences) {
-    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::Shape{1, 4});
-    auto relu = std::make_shared<ov::op::v0::Relu>(param);
-    auto result = std::make_shared<ov::op::v0::Result>(relu);
-    auto model = std::make_shared<ov::Model>(ov::ResultVector{result}, ov::ParameterVector{param});
-
     std::vector<InferStage> pipeline(1);
-    pipeline[0].node = relu;
     pipeline[0].stage = std::make_unique<TrackingStage>();
     pipeline[0].outputs.push_back(std::make_unique<GpuTensor>());
     pipeline[0].outputs[0]->shape = {1, 4};
@@ -657,20 +1044,19 @@ TEST(InferPipelineReuseTest, ReusesPreparedOutputResolutionAcrossInferences) {
     pipeline[0].outputs[0]->buf.size = 8;
     pipeline[0].outputs[0]->buf.type = ov::element::f16;
 
-    const std::unordered_map<const ov::Node*, size_t> node_map = {
-        {relu.get(), 0},
-    };
-    const std::unordered_map<const ov::Node*, size_t> param_map;
-    const auto model_outputs = model->outputs();
-    const std::vector<ov::Output<const ov::Node>> public_outputs(model_outputs.begin(), model_outputs.end());
+    RuntimeExecutableDescriptor runtime_descriptor;
+    RuntimePublicOutputDescriptor public_output;
+    public_output.kind = RuntimePublicOutputSourceKind::StageOutput;
+    public_output.index = 0;
+    public_output.port = 0;
+    public_output.static_shape = {1, 4};
+    public_output.static_type = ov::element::f16;
+    runtime_descriptor.public_outputs.push_back(std::move(public_output));
 
     PreparedInferOutputPlan output_plan;
     prepare_reusable_output_plan(output_plan,
-                                 public_outputs,
-                                 model,
+                                 runtime_descriptor,
                                  pipeline,
-                                 node_map,
-                                 param_map,
                                  "test");
     ASSERT_EQ(output_plan.outputs.size(), 1u);
     EXPECT_EQ(output_plan.outputs[0].kind, PreparedOutputSourceKind::StageOutput);
@@ -685,10 +1071,6 @@ TEST(InferPipelineReuseTest, ReusesPreparedOutputResolutionAcrossInferences) {
     size_t host_override_calls = 0;
 
     bind_outputs_common(
-        public_outputs,
-        model,
-        node_map,
-        param_map,
         pipeline,
         [](size_t) -> GpuTensor* {
             return nullptr;
@@ -709,7 +1091,7 @@ TEST(InferPipelineReuseTest, ReusesPreparedOutputResolutionAcrossInferences) {
             resolved_output = &dev;
             resolved_info = info;
         },
-        &output_plan,
+        output_plan,
         /*allow_missing=*/false,
         "test");
 
@@ -717,9 +1099,68 @@ TEST(InferPipelineReuseTest, ReusesPreparedOutputResolutionAcrossInferences) {
     EXPECT_EQ(resolved_output, pipeline[0].outputs[0].get());
     EXPECT_EQ(resolved_info.shape, (ov::Shape{1, 4}));
     EXPECT_EQ(resolved_info.type, ov::element::f16);
-    ASSERT_TRUE(resolved_info.source.node);
-    EXPECT_EQ(resolved_info.source.node.get(), relu.get());
+    EXPECT_EQ(resolved_info.source.kind, PreparedOutputSourceKind::StageOutput);
+    EXPECT_EQ(resolved_info.source.index, 0u);
     EXPECT_EQ(resolved_info.source.port, 0u);
+}
+
+TEST(InferPipelineReuseTest,
+     PreparedOutputPlanResolvesDynamicTypeFromTensorBindingWithoutGraphNode) {
+    std::vector<InferStage> pipeline(1);
+    pipeline[0].stage = std::make_unique<TrackingStage>();
+    pipeline[0].outputs.push_back(std::make_unique<GpuTensor>());
+    pipeline[0].outputs[0]->shape = {1, 4};
+    pipeline[0].outputs[0]->expected_type = ov::element::dynamic;
+    pipeline[0].outputs[0]->buf.buffer =
+        reinterpret_cast<GpuBufferHandle>(0x1234);
+    pipeline[0].outputs[0]->buf.size = 8;
+    pipeline[0].outputs[0]->buf.type = ov::element::f16;
+
+    RuntimeExecutableDescriptor runtime_descriptor;
+    RuntimePublicOutputDescriptor public_output;
+    public_output.kind = RuntimePublicOutputSourceKind::StageOutput;
+    public_output.index = 0;
+    public_output.port = 0;
+    public_output.static_shape = {1, 4};
+    public_output.static_type = ov::element::dynamic;
+    runtime_descriptor.public_outputs.push_back(std::move(public_output));
+
+    PreparedInferOutputPlan output_plan;
+    prepare_reusable_output_plan(output_plan,
+                                 runtime_descriptor,
+                                 pipeline,
+                                 "test");
+
+    ASSERT_EQ(output_plan.outputs.size(), 1u);
+    EXPECT_EQ(output_plan.outputs[0].kind,
+              PreparedOutputSourceKind::StageOutput);
+    EXPECT_EQ(output_plan.outputs[0].static_type, ov::element::f16);
+}
+
+TEST(InferPipelineReuseTest,
+     PreparedOutputPlanRejectsDynamicTypeWithoutDescriptorOrTensorBinding) {
+    std::vector<InferStage> pipeline(1);
+    pipeline[0].stage = std::make_unique<TrackingStage>();
+    pipeline[0].outputs.push_back(std::make_unique<GpuTensor>());
+    pipeline[0].outputs[0]->shape = {1, 4};
+    pipeline[0].outputs[0]->expected_type = ov::element::dynamic;
+    pipeline[0].outputs[0]->buf.type = ov::element::dynamic;
+
+    RuntimeExecutableDescriptor runtime_descriptor;
+    RuntimePublicOutputDescriptor public_output;
+    public_output.kind = RuntimePublicOutputSourceKind::StageOutput;
+    public_output.index = 0;
+    public_output.port = 0;
+    public_output.static_shape = {1, 4};
+    public_output.static_type = ov::element::dynamic;
+    runtime_descriptor.public_outputs.push_back(std::move(public_output));
+
+    PreparedInferOutputPlan output_plan;
+    EXPECT_THROW(prepare_reusable_output_plan(output_plan,
+                                             runtime_descriptor,
+                                             pipeline,
+                                             "test"),
+                 ov::Exception);
 }
 
 TEST(InferPipelineReuseTest, ReusesPreparedHostOutputsAcrossInferences) {

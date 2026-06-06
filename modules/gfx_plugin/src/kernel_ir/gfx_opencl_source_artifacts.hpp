@@ -19,9 +19,18 @@ namespace gfx_plugin {
 
 struct GfxOpenClSourceArtifact;
 
+enum class GfxOpenClSourceChunkBindingRole : uint32_t {
+  DirectInputs = 0,
+  DirectOutputs = 1,
+};
+
 struct GfxOpenClSourceChunkArtifact {
   uint32_t binding_begin = 0;
   uint32_t binding_count = 0;
+  GfxOpenClSourceChunkBindingRole binding_role =
+      GfxOpenClSourceChunkBindingRole::DirectInputs;
+  uint32_t element_count_multiplier = 1;
+  uint32_t element_count_divisor = 1;
   std::shared_ptr<const GfxOpenClSourceArtifact> artifact;
 };
 

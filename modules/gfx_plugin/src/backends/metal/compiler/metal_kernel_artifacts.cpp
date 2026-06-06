@@ -4,15 +4,12 @@
 
 #include "backends/metal/compiler/metal_kernel_artifacts.hpp"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
 
 #include "backends/metal/compiler/apple_vendor_descriptors.hpp"
-#include "compiler/pipeline_stage_fusion.hpp"
-#include "kernel_ir/gfx_kernel_source.hpp"
-#include "kernel_ir/metal_kernels/reduction_kernels.hpp"
-#include "kernel_ir/metal_kernels/softmax_kernels.hpp"
 #include "backends/metal/compiler/msl_codegen_apple_msl_activation.hpp"
 #include "backends/metal/compiler/msl_codegen_apple_msl_eltwise.hpp"
 #include "backends/metal/compiler/msl_codegen_apple_msl_ops.hpp"
@@ -22,6 +19,10 @@
 #include "backends/metal/compiler/msl_codegen_apple_msl_softmax.hpp"
 #include "backends/metal/compiler/msl_codegen_apple_msl_split.hpp"
 #include "backends/metal/compiler/msl_codegen_attention.hpp"
+#include "compiler/pipeline_stage_fusion.hpp"
+#include "kernel_ir/gfx_kernel_source.hpp"
+#include "kernel_ir/metal_kernels/reduction_kernels.hpp"
+#include "kernel_ir/metal_kernels/softmax_kernels.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -96,6 +97,58 @@ make_source_runtime_binding(const KernelRuntimeBindingState &binding) {
   return payload_binding;
 }
 
+uint32_t count_runtime_param_roles(const GfxKernelStageManifest &manifest) {
+  if (!manifest.valid || !manifest.custom_kernel.valid ||
+      !manifest.custom_kernel.external_buffer_abi.valid) {
+    return 0;
+  }
+  const auto roles = materialize_gfx_kernel_external_buffer_roles(
+      manifest.custom_kernel.external_buffer_abi);
+  return static_cast<uint32_t>(std::count(roles.begin(), roles.end(),
+                                          GfxKernelBufferRole::RuntimeParams));
+}
+
+KernelLaunchPlanDescriptor
+make_msl_launch_plan_descriptor(const GfxKernelRuntimeBindingPlan &plan) {
+  KernelLaunchPlanDescriptor descriptor;
+  if (!plan.stage_manifest.valid || !plan.stage_manifest.custom_kernel.valid ||
+      !plan.stage_manifest.custom_kernel.external_buffer_abi.valid) {
+    return descriptor;
+  }
+  const auto roles = materialize_gfx_kernel_external_buffer_roles(
+      plan.stage_manifest.custom_kernel.external_buffer_abi);
+  if (roles.empty()) {
+    return descriptor;
+  }
+  descriptor.valid = true;
+  descriptor.buffer_roles.reserve(roles.size());
+  for (const auto role : roles) {
+    descriptor.buffer_roles.emplace_back(
+        kernel_buffer_role_descriptor_name(role));
+  }
+  descriptor.input_indices = plan.runtime_binding.inputs;
+  descriptor.input_arg_count = plan.runtime_binding.input_arg_count;
+  descriptor.operand_kinds = plan.runtime_binding.operand_kinds;
+  descriptor.operand_arg_indices = plan.runtime_binding.operand_arg_indices;
+  descriptor.scalar_args = plan.runtime_binding.scalar_args;
+  return descriptor;
+}
+
+void apply_runtime_param_artifact_contract(
+    KernelArtifactDescriptor &descriptor,
+    const GfxKernelRuntimeBindingPlan &binding_plan) {
+  descriptor.runtime_param_buffer_count =
+      count_runtime_param_roles(binding_plan.stage_manifest);
+  descriptor.runtime_param_i64_metadata =
+      binding_plan.runtime_binding.runtime_param_i64_metadata;
+  descriptor.runtime_param_reduce_keep_dims =
+      binding_plan.runtime_binding.runtime_param_reduce_keep_dims;
+  descriptor.runtime_param_reduce_keep_dims_valid =
+      binding_plan.runtime_binding.runtime_param_reduce_keep_dims_valid;
+  descriptor.launch_plan = make_msl_launch_plan_descriptor(binding_plan);
+  finalize_kernel_artifact_descriptor_identity(descriptor);
+}
+
 std::shared_ptr<const KernelArtifactPayload>
 materialize_generated_msl_payload(KernelArtifactDescriptor &descriptor,
                                   GfxMslGeneratedKernelSourcePlan source_plan) {
@@ -107,6 +160,7 @@ materialize_generated_msl_payload(KernelArtifactDescriptor &descriptor,
   descriptor.abi_arg_count = source_plan.source.signature.arg_count;
   descriptor.abi_output_arg_count =
       source_plan.source.signature.output_arg_count;
+  apply_runtime_param_artifact_contract(descriptor, source_plan.binding);
   return std::make_shared<GfxKernelSourcePayload>(
       descriptor.kernel.kernel_id, descriptor.kernel.backend_domain,
       descriptor.entry_point, GfxKernelSourceLanguage::MetalShadingLanguage,
@@ -222,7 +276,8 @@ materialize_fused_mpsgraph_sdpa_payload(
                                     std::move(contract));
 }
 
-KernelArtifactDescriptor make_mpsgraph_sdpa_vendor_attention_artifact_descriptor(
+KernelArtifactDescriptor
+make_mpsgraph_sdpa_vendor_attention_artifact_descriptor(
     uint64_t stage_record_key, const PipelineVendorAttentionPlan &plan) {
   KernelArtifactDescriptor descriptor;
   descriptor.stage_record_key = stage_record_key;
@@ -249,9 +304,8 @@ KernelArtifactDescriptor make_mpsgraph_sdpa_vendor_attention_artifact_descriptor
 PipelineVendorAttentionArtifact materialize_fused_mpsgraph_sdpa_artifact(
     uint64_t stage_record_key, const PipelineVendorAttentionPlan &plan) {
   PipelineVendorAttentionArtifact artifact;
-  artifact.descriptor =
-      make_mpsgraph_sdpa_vendor_attention_artifact_descriptor(stage_record_key,
-                                                             plan);
+  artifact.descriptor = make_mpsgraph_sdpa_vendor_attention_artifact_descriptor(
+      stage_record_key, plan);
   artifact.payload =
       materialize_fused_mpsgraph_sdpa_payload(artifact.descriptor, plan);
   if (!artifact.valid()) {
@@ -362,9 +416,10 @@ std::string_view metal_mpsgraph_sdpa_vendor_kernel_unit_id() noexcept {
 
 PipelineVendorAttentionArtifactResolver
 make_metal_vendor_attention_artifact_resolver() {
-  return [](uint64_t stage_record_key, const PipelineVendorAttentionPlan &plan) {
-    return materialize_fused_mpsgraph_sdpa_artifact(stage_record_key, plan);
-  };
+  return
+      [](uint64_t stage_record_key, const PipelineVendorAttentionPlan &plan) {
+        return materialize_fused_mpsgraph_sdpa_artifact(stage_record_key, plan);
+      };
 }
 
 } // namespace compiler

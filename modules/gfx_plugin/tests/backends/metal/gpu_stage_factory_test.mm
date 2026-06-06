@@ -66,9 +66,8 @@ TEST(GpuStageFactory, ReturnsNullForUnsupportedParameter) {
       std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
   const auto descriptor = make_metal_test_descriptor(p);
 
-  auto stage =
-      GpuStageFactory::create(RuntimeStageMaterializationContext{descriptor, p},
-                              default_backend_kind());
+  auto stage = GpuStageFactory::create(
+      RuntimeStageMaterializationContext{descriptor}, default_backend_kind());
 
   ASSERT_NE(stage, nullptr);
   EXPECT_EQ(stage->type(), std::string("Parameter"));

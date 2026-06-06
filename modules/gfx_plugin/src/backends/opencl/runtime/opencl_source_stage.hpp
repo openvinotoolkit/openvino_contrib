@@ -16,8 +16,7 @@ namespace gfx_plugin {
 std::unique_ptr<GpuStage>
 create_opencl_source_stage(std::shared_ptr<OpenClRuntimeContext> context,
                            RuntimeStageExecutableDescriptor descriptor,
-                           GfxOpenClSourceArtifact artifact,
-                           std::shared_ptr<const ov::Node> source_node = {});
+                           GfxOpenClSourceArtifact artifact);
 
 } // namespace gfx_plugin
 } // namespace ov

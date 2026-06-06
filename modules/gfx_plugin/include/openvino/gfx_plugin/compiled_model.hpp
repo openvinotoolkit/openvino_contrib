@@ -6,7 +6,6 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "openvino/runtime/icompiled_model.hpp"
@@ -71,12 +70,6 @@ public:
   std::shared_ptr<const RuntimeExecutableDescriptor> runtime_descriptor() const {
     return m_runtime_descriptor;
   }
-  const std::unordered_map<const ov::Node *, size_t> &node_to_stage() const {
-    return m_node_to_stage;
-  }
-  const std::unordered_map<const ov::Node *, size_t> &parameter_index() const {
-    return m_param_index;
-  }
   void update_last_profiling_report_json(std::string report_json) const;
   std::string last_profiling_report_json() const;
   void update_compile_profiling_report_json(std::string report_json) const;
@@ -106,8 +99,6 @@ private:
   bool m_loaded_from_cache = false;
   std::shared_ptr<const RuntimeExecutableDescriptor> m_runtime_descriptor;
   mutable std::vector<PipelineStageDesc> m_pipeline;
-  std::unordered_map<const ov::Node *, size_t> m_node_to_stage;
-  std::unordered_map<const ov::Node *, size_t> m_param_index;
   mutable std::mutex m_report_mutex;
   mutable std::string m_last_report_json;
   mutable std::string m_compile_report_json;

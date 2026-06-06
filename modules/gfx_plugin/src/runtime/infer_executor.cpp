@@ -4,15 +4,44 @@
 
 #include "runtime/infer_executor.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <utility>
 
 #include "openvino/core/except.hpp"
 #include "runtime/memory_manager.hpp"
+#include "runtime/tensor_binding_contract.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 namespace {
+
+std::string stage_descriptor_name(const InferStage& stage) {
+    const auto* descriptor = runtime_stage_descriptor_or_null(stage);
+    if (descriptor && !descriptor->stage_name.empty()) {
+        return descriptor->stage_name;
+    }
+    return stage.stage ? stage.stage->name() : std::string("<null>");
+}
+
+std::string stage_descriptor_op_family(const InferStage& stage) {
+    const auto* descriptor = runtime_stage_descriptor_or_null(stage);
+    if (descriptor && !descriptor->op_family.empty()) {
+        return descriptor->op_family;
+    }
+    return stage.stage ? stage.stage->type() : std::string("<null>");
+}
+
+bool descriptor_output_static_shape(const InferStage& stage,
+                                    size_t output_idx,
+                                    ov::Shape& shape) {
+    const auto* descriptor = runtime_stage_descriptor_or_null(stage);
+    if (!descriptor || output_idx >= descriptor->output_bindings.size()) {
+        return false;
+    }
+    return parse_static_shape_contract(
+        descriptor->output_bindings[output_idx].partial_shape, shape);
+}
 
 void reset_reusable_pipeline_outputs(std::vector<InferStage>& pipeline) {
     for (auto& stage : pipeline) {
@@ -26,12 +55,11 @@ void reset_reusable_pipeline_outputs(std::vector<InferStage>& pipeline) {
             }
             out->buf = {};
             out->i64_values.clear();
-            if (stage.node && out_idx < stage.node->get_output_size()) {
-                if (stage.node->get_output_partial_shape(out_idx).is_static()) {
-                    out->shape = stage.node->get_output_shape(out_idx);
-                } else {
-                    out->shape.clear();
-                }
+            ov::Shape descriptor_shape;
+            if (descriptor_output_static_shape(stage, out_idx, descriptor_shape)) {
+                out->shape = std::move(descriptor_shape);
+            } else {
+                out->shape.clear();
             }
         }
     }
@@ -49,14 +77,10 @@ void configure_pipeline_profiling(std::vector<InferStage>& pipeline,
         if (!profiling_enabled || !profiler) {
             continue;
         }
-        const std::string node_name =
-            stage.node ? stage.node->get_friendly_name() : stage.stage->name();
-        const std::string node_type =
-            stage.node ? stage.node->get_type_name() : stage.stage->type();
         stage.stage->set_profiler(profiler,
                                   static_cast<uint32_t>(stage_id),
-                                  node_name,
-                                  node_type);
+                                  stage_descriptor_name(stage),
+                                  stage_descriptor_op_family(stage));
     }
 }
 
@@ -65,6 +89,18 @@ void release_stage_output_handles(std::vector<BufferHandle>& handles,
     for (auto& handle : handles) {
         pool.release(handle);
     }
+}
+
+bool has_bound_remote_output(
+    const std::vector<std::shared_ptr<GfxRemoteTensor>>* remote_outputs) {
+    if (!remote_outputs) {
+        return false;
+    }
+    return std::any_of(remote_outputs->begin(),
+                       remote_outputs->end(),
+                       [](const std::shared_ptr<GfxRemoteTensor>& remote) {
+                           return remote != nullptr;
+                       });
 }
 
 void prepare_stage_output_handles(
@@ -94,18 +130,17 @@ std::vector<InferStage>& prepare_reusable_pipeline_for_runtime(
     OPENVINO_ASSERT(config.expected_target,
                     config.error_prefix,
                     ": runtime execution requires compiler BackendTarget");
+    OPENVINO_ASSERT(config.runtime_descriptor,
+                    config.error_prefix,
+                    ": runtime executable descriptor is null");
+    OPENVINO_ASSERT(!config.runtime_descriptor->public_outputs.empty(),
+                    config.error_prefix,
+                    ": runtime executable descriptor has no public output descriptors");
     if (reusable_pipeline.empty()) {
         reusable_pipeline = build_bound_pipeline(*config.descs,
                                                  config.buffer_manager,
                                                  config.stage_profiler,
                                                  config.profiling_enabled,
-                                                 *config.runtime_model,
-                                                 *config.public_outputs,
-                                                 *config.node_map,
-                                                 *config.param_map,
-                                                 *config.remote_outputs,
-                                                 *config.remote_inputs,
-                                                 *config.expected_target,
                                                  config.runtime_descriptor,
                                                  config.error_prefix);
     }
@@ -117,26 +152,27 @@ std::vector<InferStage>& prepare_reusable_pipeline_for_runtime(
     normalize_remote_outputs(*config.remote_outputs,
                              *config.expected_target,
                              config.error_prefix);
-    bind_remote_outputs(*config.public_outputs,
-                        *config.runtime_model,
-                        *config.node_map,
-                        *config.param_map,
-                        *config.remote_outputs,
-                        *config.remote_inputs,
-                        reusable_pipeline,
-                        config.error_prefix);
-    if (config.post_prepare) {
-        config.post_prepare(reusable_pipeline);
-    }
+    prepare_reusable_execution_plan(config.state->reusable_execution_plan,
+                                    reusable_pipeline);
     if (config.runtime_input_tensors) {
-        prepare_reusable_execution_plan(config.state->reusable_execution_plan,
-                                        reusable_pipeline,
-                                        *config.node_map,
-                                        *config.param_map);
         assign_runtime_stage_output_shapes(reusable_pipeline,
                                            config.state->reusable_execution_plan,
                                            *config.runtime_input_tensors,
                                            config.error_prefix);
+    }
+    prepare_reusable_output_plan(config.state->reusable_output_plan,
+                                 *config.runtime_descriptor,
+                                 reusable_pipeline,
+                                 config.error_prefix);
+    if (has_bound_remote_output(config.remote_outputs)) {
+        bind_remote_outputs(config.state->reusable_output_plan,
+                            *config.remote_outputs,
+                            *config.remote_inputs,
+                            reusable_pipeline,
+                            config.error_prefix);
+    }
+    if (config.post_prepare) {
+        config.post_prepare(reusable_pipeline);
     }
     prepare_stage_output_handles(config.state->stage_output_handles,
                                  reusable_pipeline,
@@ -157,10 +193,6 @@ std::vector<InferStage>& prepare_reusable_infer_runtime_pipeline(
     const InferRuntimeExecutionConfig& config) {
     OPENVINO_ASSERT(config.state, config.error_prefix, ": infer runtime state is null");
     OPENVINO_ASSERT(config.descs, config.error_prefix, ": pipeline descriptors are null");
-    OPENVINO_ASSERT(config.runtime_model, config.error_prefix, ": runtime model handle is null");
-    OPENVINO_ASSERT(config.public_outputs, config.error_prefix, ": public outputs are null");
-    OPENVINO_ASSERT(config.node_map, config.error_prefix, ": node map is null");
-    OPENVINO_ASSERT(config.param_map, config.error_prefix, ": parameter map is null");
     OPENVINO_ASSERT(config.remote_outputs, config.error_prefix, ": remote outputs are null");
     OPENVINO_ASSERT(config.remote_inputs, config.error_prefix, ": remote inputs are null");
     OPENVINO_ASSERT(config.pool, config.error_prefix, ": GPU buffer pool is null");
@@ -173,10 +205,6 @@ InferRuntimeExecutionResult prepare_and_execute_infer_runtime(
     InferRuntimeExecutionConfig config) {
     OPENVINO_ASSERT(config.state, config.error_prefix, ": infer runtime state is null");
     OPENVINO_ASSERT(config.descs, config.error_prefix, ": pipeline descriptors are null");
-    OPENVINO_ASSERT(config.runtime_model, config.error_prefix, ": runtime model handle is null");
-    OPENVINO_ASSERT(config.public_outputs, config.error_prefix, ": public outputs are null");
-    OPENVINO_ASSERT(config.node_map, config.error_prefix, ": node map is null");
-    OPENVINO_ASSERT(config.param_map, config.error_prefix, ": parameter map is null");
     OPENVINO_ASSERT(config.remote_outputs, config.error_prefix, ": remote outputs are null");
     OPENVINO_ASSERT(config.remote_inputs, config.error_prefix, ": remote inputs are null");
     OPENVINO_ASSERT(config.pool, config.error_prefix, ": GPU buffer pool is null");
@@ -193,9 +221,7 @@ InferRuntimeExecutionResult prepare_and_execute_infer_runtime(
     auto& pipeline = prepare_reusable_infer_runtime_pipeline(config);
 
     prepare_reusable_execution_plan(state.reusable_execution_plan,
-                                    pipeline,
-                                    *config.node_map,
-                                    *config.param_map);
+                                    pipeline);
 
     if (profiling) {
         config.profiler->record_segment(
@@ -210,8 +236,6 @@ InferRuntimeExecutionResult prepare_and_execute_infer_runtime(
             profiling ? std::chrono::steady_clock::now()
                       : std::chrono::steady_clock::time_point{};
         prewarm_pipeline_runtime_state(pipeline,
-                                       *config.node_map,
-                                       *config.param_map,
                                        config.input_lookup,
                                        &state.reusable_execution_plan);
         state.reusable_pipeline_runtime_prewarmed = true;
@@ -236,8 +260,6 @@ InferRuntimeExecutionResult prepare_and_execute_infer_runtime(
         profiling ? std::chrono::steady_clock::now()
                   : std::chrono::steady_clock::time_point{};
     execute_pipeline_with_submission(pipeline,
-                                     *config.node_map,
-                                     *config.param_map,
                                      config.input_lookup,
                                      *config.submission,
                                      submission_tuning.config,

@@ -10,6 +10,8 @@
 #include <vector>
 
 #include "common/artifact_payload.hpp"
+#include "openvino/core/shape.hpp"
+#include "openvino/core/type/element_type.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -53,9 +55,8 @@ struct RuntimeStageExecutableDescriptor {
   std::string dispatch_contract;
   std::string layout_contract = "logical";
   std::string runtime_shape_rule = "static_or_descriptor";
+  std::vector<int64_t> runtime_shape_i64_metadata;
   bool requires_runtime_shape_args = false;
-  bool temporary_source_node_bridge_required = false;
-  std::string temporary_source_node_bridge_reason;
   bool tensor_view_only = false;
   uint32_t submission_stage_weight = 1;
   uint64_t submission_macs_estimate = 0;
@@ -64,16 +65,33 @@ struct RuntimeStageExecutableDescriptor {
   std::string stateful_variable_id;
   std::vector<std::string> tensor_roles;
   std::vector<std::string> scalar_roles;
+  uint32_t runtime_param_buffer_count = 0;
   std::vector<int64_t> runtime_param_i64_metadata;
   bool runtime_param_reduce_keep_dims = false;
   bool runtime_param_reduce_keep_dims_valid = false;
+  KernelLaunchPlanDescriptor launch_plan;
   std::string exception_ticket;
   std::string exception_reason;
   std::string exception_removal_condition;
   bool optional_cache_payload_allowed = true;
+  std::vector<KernelArtifactConstTensor> const_tensors;
   std::shared_ptr<const KernelArtifactPayload> payload;
   std::vector<RuntimeTensorBindingContract> input_bindings;
   std::vector<RuntimeTensorBindingContract> output_bindings;
+};
+
+enum class RuntimePublicOutputSourceKind {
+  None,
+  Parameter,
+  StageOutput,
+};
+
+struct RuntimePublicOutputDescriptor {
+  RuntimePublicOutputSourceKind kind = RuntimePublicOutputSourceKind::None;
+  size_t index = static_cast<size_t>(-1);
+  size_t port = 0;
+  ov::Shape static_shape;
+  ov::element::Type static_type = ov::element::dynamic;
 };
 
 struct RuntimeMemoryRegionDescriptor {
@@ -121,12 +139,16 @@ struct RuntimeExecutableDescriptorVerificationResult {
   bool valid() const noexcept { return diagnostics.empty(); }
 };
 
+std::vector<GfxKernelBufferRole> materialize_descriptor_launch_roles(
+    const KernelLaunchPlanDescriptor &plan, std::string_view stage_name);
+
 struct RuntimeExecutableDescriptor {
   uint32_t schema_version = 1;
   std::string target_fingerprint;
   RuntimeMemoryPlanDescriptor memory_plan;
   std::vector<RuntimeStageExecutableDescriptor> stages;
-  std::shared_ptr<const PipelineStageRuntimePlan> stage_plan;
+  std::vector<RuntimePublicOutputDescriptor> public_outputs;
+  std::shared_ptr<const PipelineStageRuntimePlan> pipeline_plan;
 };
 
 } // namespace gfx_plugin

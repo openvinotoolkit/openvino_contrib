@@ -6,9 +6,15 @@
 
 #include <algorithm>
 #include <iomanip>
+#include <limits>
 #include <sstream>
+#include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
+
+#include "openvino/core/attribute_adapter.hpp"
+#include "openvino/op/constant.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -32,6 +38,41 @@ void append_field(std::ostringstream &os, std::string_view value) {
 
 void append_bool(std::ostringstream &os, bool value) {
   append_field(os, value ? "1" : "0");
+}
+
+template <typename T>
+void append_number(std::ostringstream &os, T value) {
+  append_field(os, std::to_string(value));
+}
+
+void append_number(std::ostringstream &os, float value) {
+  std::ostringstream value_os;
+  value_os << std::setprecision(std::numeric_limits<float>::max_digits10)
+           << value;
+  append_field(os, value_os.str());
+}
+
+void append_number(std::ostringstream &os, double value) {
+  std::ostringstream value_os;
+  value_os << std::setprecision(std::numeric_limits<double>::max_digits10)
+           << value;
+  append_field(os, value_os.str());
+}
+
+template <typename T>
+void append_vector(std::ostringstream &os, const std::vector<T> &values) {
+  append_field(os, std::to_string(values.size()));
+  for (const auto &value : values) {
+    append_number(os, value);
+  }
+}
+
+void append_vector(std::ostringstream &os,
+                   const std::vector<std::string> &values) {
+  append_field(os, std::to_string(values.size()));
+  for (const auto &value : values) {
+    append_field(os, value);
+  }
 }
 
 void append_parallelism_band(std::ostringstream &os,
@@ -84,6 +125,138 @@ std::string shape_to_string(const ov::PartialShape &shape) {
 
 std::string hash_material(std::string_view material) {
   return hex64(stable_hash64(material));
+}
+
+std::string hash_bytes(const void *data, size_t size) {
+  if (!data || size == 0) {
+    return hash_material({});
+  }
+  return hash_material(
+      std::string_view(static_cast<const char *>(data), size));
+}
+
+class ModelFingerprintAttributeVisitor final : public ov::AttributeVisitor {
+public:
+  explicit ModelFingerprintAttributeVisitor(std::ostringstream &material)
+      : m_material(material) {}
+
+  void on_adapter(const std::string &name,
+                  ov::ValueAccessor<std::shared_ptr<ov::Model>> &adapter) override {
+    append_attribute_header(name, "model_ref");
+    const auto &model = adapter.get();
+    append_field(m_material,
+                 model ? model->get_friendly_name() : std::string("<null>"));
+  }
+
+  void on_adapter(const std::string &name,
+                  ov::ValueAccessor<void> &adapter) override {
+    append_attribute_header(name, adapter.get_type_info().name);
+    if (auto element_type =
+            ov::as_type<ov::AttributeAdapter<ov::element::Type>>(&adapter)) {
+      append_field(m_material, element_type->get());
+      return;
+    }
+    if (auto partial_shape =
+            ov::as_type<ov::AttributeAdapter<ov::PartialShape>>(&adapter)) {
+      append_field(m_material, shape_to_string(partial_shape->get()));
+      return;
+    }
+    if (auto dimension =
+            ov::as_type<ov::AttributeAdapter<ov::Dimension>>(&adapter)) {
+      std::ostringstream os;
+      os << dimension->get();
+      append_field(m_material, os.str());
+      return;
+    }
+    if (auto element_types = ov::as_type<
+            ov::AttributeAdapter<std::vector<ov::element::Type>>>(&adapter)) {
+      append_field(m_material, std::to_string(element_types->get().size()));
+      for (const auto &type : element_types->get()) {
+        append_field(m_material, type.get_type_name());
+      }
+      return;
+    }
+    append_field(m_material, "<unsupported-attribute-adapter>");
+  }
+
+  void on_adapter(const std::string &name,
+                  ov::ValueAccessor<void *> &adapter) override {
+    append_attribute_header(name, "raw");
+    append_field(m_material, std::to_string(adapter.size()));
+    append_field(m_material, hash_bytes(adapter.get_ptr(), adapter.size()));
+  }
+
+#define GFX_CACHE_SCALAR_ATTR(TYPE)                                             \
+  void on_adapter(const std::string &name,                                      \
+                  ov::ValueAccessor<TYPE> &adapter) override {                  \
+    append_attribute_header(name, #TYPE);                                       \
+    append_number(m_material, adapter.get());                                   \
+  }
+
+  GFX_CACHE_SCALAR_ATTR(bool)
+  GFX_CACHE_SCALAR_ATTR(int8_t)
+  GFX_CACHE_SCALAR_ATTR(int16_t)
+  GFX_CACHE_SCALAR_ATTR(int32_t)
+  GFX_CACHE_SCALAR_ATTR(int64_t)
+  GFX_CACHE_SCALAR_ATTR(uint8_t)
+  GFX_CACHE_SCALAR_ATTR(uint16_t)
+  GFX_CACHE_SCALAR_ATTR(uint32_t)
+  GFX_CACHE_SCALAR_ATTR(uint64_t)
+  GFX_CACHE_SCALAR_ATTR(float)
+  GFX_CACHE_SCALAR_ATTR(double)
+
+#undef GFX_CACHE_SCALAR_ATTR
+
+  void on_adapter(const std::string &name,
+                  ov::ValueAccessor<std::string> &adapter) override {
+    append_attribute_header(name, "string");
+    append_field(m_material, adapter.get());
+  }
+
+#define GFX_CACHE_VECTOR_ATTR(TYPE)                                             \
+  void on_adapter(const std::string &name,                                      \
+                  ov::ValueAccessor<std::vector<TYPE>> &adapter) override {     \
+    append_attribute_header(name, "vector<" #TYPE ">");                       \
+    append_vector(m_material, adapter.get());                                   \
+  }
+
+  GFX_CACHE_VECTOR_ATTR(int8_t)
+  GFX_CACHE_VECTOR_ATTR(int16_t)
+  GFX_CACHE_VECTOR_ATTR(int32_t)
+  GFX_CACHE_VECTOR_ATTR(int64_t)
+  GFX_CACHE_VECTOR_ATTR(uint8_t)
+  GFX_CACHE_VECTOR_ATTR(uint16_t)
+  GFX_CACHE_VECTOR_ATTR(uint32_t)
+  GFX_CACHE_VECTOR_ATTR(uint64_t)
+  GFX_CACHE_VECTOR_ATTR(float)
+  GFX_CACHE_VECTOR_ATTR(double)
+  GFX_CACHE_VECTOR_ATTR(std::string)
+
+#undef GFX_CACHE_VECTOR_ATTR
+
+private:
+  void append_attribute_header(const std::string &name,
+                               std::string_view type_name) {
+    append_field(m_material, name);
+    append_field(m_material, type_name);
+  }
+
+  std::ostringstream &m_material;
+};
+
+void append_constant_payload_fingerprint(std::ostringstream &material,
+                                         const ov::op::v0::Constant &constant) {
+  append_field(material, "constant_payload");
+  append_field(material, constant.get_element_type().get_type_name());
+  append_field(material, shape_to_string(constant.get_output_partial_shape(0)));
+  append_field(material, std::to_string(constant.get_byte_size()));
+  if (constant.get_element_type() == ov::element::string) {
+    const auto values = constant.cast_vector<std::string>();
+    append_vector(material, values);
+    return;
+  }
+  append_field(material,
+               hash_bytes(constant.get_data_ptr(), constant.get_byte_size()));
 }
 
 std::string make_cache_key_stable_key(const CacheKey &key) {
@@ -164,6 +337,13 @@ std::string make_model_cache_fingerprint(const ov::Model &model) {
   append_field(material, std::to_string(model.inputs().size()));
   append_field(material, std::to_string(model.outputs().size()));
   const auto ordered_ops = model.get_ordered_ops();
+  std::unordered_map<const ov::Node *, size_t> ordered_index;
+  ordered_index.reserve(ordered_ops.size());
+  for (size_t i = 0; i < ordered_ops.size(); ++i) {
+    if (ordered_ops[i]) {
+      ordered_index.emplace(ordered_ops[i].get(), i);
+    }
+  }
   append_field(material, std::to_string(ordered_ops.size()));
   for (const auto &node : ordered_ops) {
     if (!node) {
@@ -177,11 +357,36 @@ std::string make_model_cache_fingerprint(const ov::Model &model) {
     for (size_t i = 0; i < node->get_input_size(); ++i) {
       append_field(material, node->get_input_element_type(i).get_type_name());
       append_field(material, shape_to_string(node->get_input_partial_shape(i)));
+      const auto source = node->input_value(i);
+      const auto *source_node = source.get_node();
+      const auto source_it = ordered_index.find(source_node);
+      append_field(material, source_it == ordered_index.end()
+                                 ? std::string("<external>")
+                                 : std::to_string(source_it->second));
+      append_field(material, std::to_string(source.get_index()));
+      if (source_node) {
+        append_field(material, source_node->get_type_name());
+        append_field(material, source_node->get_friendly_name());
+      }
     }
     for (size_t i = 0; i < node->get_output_size(); ++i) {
       append_field(material, node->get_output_element_type(i).get_type_name());
       append_field(material,
                    shape_to_string(node->get_output_partial_shape(i)));
+    }
+    if (const auto constant =
+            ov::as_type_ptr<const ov::op::v0::Constant>(node)) {
+      append_constant_payload_fingerprint(material, *constant);
+    } else {
+      ModelFingerprintAttributeVisitor visitor(material);
+      try {
+        append_field(material, "attributes");
+        const bool visited = node->visit_attributes(visitor);
+        append_bool(material, visited);
+      } catch (const std::exception &ex) {
+        append_field(material, "attribute_visit_failed");
+        append_field(material, ex.what());
+      }
     }
   }
   return hash_material(material.str());
@@ -203,6 +408,7 @@ std::string make_manifest_cache_hash(const ManifestBundle &manifest) {
     append_field(material, stage.kernel_unit_id);
     append_field(material, stage.kernel_unit_kind);
     append_field(material, stage.runtime_shape.rule);
+    append_vector(material, stage.runtime_shape.i64_metadata);
     append_bool(material, stage.requires_runtime_shape_args);
     append_field(material, stage.dispatch.dispatch_source);
     append_field(material, stage.memory.alias_group);

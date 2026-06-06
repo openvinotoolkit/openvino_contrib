@@ -20,8 +20,7 @@ public:
 
   std::unique_ptr<GpuStage>
   load_source_stage(const RuntimeStageExecutableDescriptor &descriptor,
-                    GfxOpenClSourceArtifact artifact,
-                    std::shared_ptr<const ov::Node> source_node = {}) const;
+                    GfxOpenClSourceArtifact artifact) const;
 
 private:
   std::shared_ptr<OpenClRuntimeContext> m_context;

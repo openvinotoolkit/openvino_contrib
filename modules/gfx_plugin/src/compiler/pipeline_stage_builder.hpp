@@ -6,10 +6,10 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "compiler/backend_target.hpp"
-#include "openvino/core/model.hpp"
 #include "compiler/pipeline_stage_fusion.hpp"
 #include "compiler/pipeline_stage_plan.hpp"
 #include "runtime/pipeline_stage_plan.hpp"
@@ -24,8 +24,26 @@ namespace compiler {
 
 class BackendRegistry;
 
+struct PipelineStagePublicOutputSource {
+  std::shared_ptr<const ov::Node> node;
+  size_t port = 0;
+  ov::Shape shape;
+  ov::element::Type type = ov::element::dynamic;
+};
+
+struct PipelineStageGraphSnapshot {
+  std::vector<std::shared_ptr<ov::Node>> ordered_ops;
+  ModelOutputPorts model_outputs;
+  std::unordered_map<const ov::Node *, size_t> param_index;
+  std::vector<PipelineStagePublicOutputSource> public_outputs;
+  FusionPlan fusion_plan;
+  size_t graph_op_count = 0;
+
+  bool valid() const noexcept { return !ordered_ops.empty(); }
+};
+
 struct PipelineStageBuildRequest {
-  std::shared_ptr<const ov::Model> runtime_model;
+  PipelineStageGraphSnapshot graph;
   const RuntimeExecutableDescriptor *runtime_descriptor = nullptr;
   const BackendRegistry *backend_registry = nullptr;
   BackendTarget target;
@@ -95,6 +113,14 @@ struct PipelineStageMaterializationPlan {
   std::optional<PipelineStageResidualAddFusionPlan> residual_add;
   PipelineStagePostOpFusionPlan post_ops;
 };
+
+PipelineStageGraphSnapshot
+make_pipeline_stage_graph_snapshot(const std::shared_ptr<const ov::Model> &model,
+                                   const FusionConfig &fusion_config);
+
+FusionConfig make_pipeline_stage_fusion_config(
+    const FusionCapabilities &fusion_capabilities, bool enable_fusion,
+    bool debug_dump_ir);
 
 std::shared_ptr<const PipelineStageRuntimePlan>
 build_pipeline_stage_runtime_plan(const PipelineStageBuildRequest &request);

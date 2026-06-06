@@ -8,7 +8,6 @@
 #include <memory>
 #include <string>
 
-#include "openvino/op/parameter.hpp"
 #include "runtime/infer_submission.hpp"
 #include "runtime/gpu_tensor.hpp"
 
@@ -260,6 +259,15 @@ void apply_opencl_constrained_extreme_submission_hints(
     caps.extremely_deep_dependency_extension_budget_den = 4u;
 }
 
+PipelineStageDesc::InputLink descriptor_stage_output_input(size_t stage_index,
+                                                           size_t output_port = 0) {
+    PipelineStageDesc::InputLink link;
+    link.source_ref.kind = PipelineStageTensorRefKind::StageOutput;
+    link.source_ref.index = stage_index;
+    link.source_ref.port = output_port;
+    return link;
+}
+
 TEST(InferSubmissionTest, IncrementalSubmitNotifiesOnlySubmittedStages) {
     std::vector<InferStage> pipeline;
     pipeline.emplace_back();
@@ -279,8 +287,6 @@ TEST(InferSubmissionTest, IncrementalSubmitNotifiesOnlySubmittedStages) {
 
     execute_pipeline_with_submission(
         pipeline,
-        {},
-        {},
         [](size_t) -> GpuTensor* {
             return nullptr;
         },
@@ -316,8 +322,6 @@ TEST(InferSubmissionTest, NonIncrementalSubmitDefersFlushUntilFinish) {
 
     execute_pipeline_with_submission(
         pipeline,
-        {},
-        {},
         [](size_t) -> GpuTensor* {
             return nullptr;
         },
@@ -350,8 +354,6 @@ TEST(InferSubmissionTest, SingleFlightSessionReusesPreparedSlotAcrossRecordingWi
 
     execute_pipeline_with_submission(
         pipeline,
-        {},
-        {},
         [](size_t) -> GpuTensor* {
             return nullptr;
         },
@@ -384,8 +386,6 @@ TEST(InferSubmissionTest, RotatingSessionAdvancesAcrossSubmissionWindowsWithoutR
 
     execute_pipeline_with_submission(
         pipeline,
-        {},
-        {},
         [](size_t) -> GpuTensor* {
             return nullptr;
         },
@@ -412,8 +412,6 @@ TEST(InferSubmissionTest, FinalRecordHookCanAppendWorkBeforeLastSubmit) {
 
     execute_pipeline_with_submission(
         pipeline,
-        {},
-        {},
         [](size_t) -> GpuTensor* {
             return nullptr;
         },
@@ -456,8 +454,6 @@ TEST(InferSubmissionTest, DisabledIncrementalSubmitIgnoresIsolateFlushes) {
 
     execute_pipeline_with_submission(
         pipeline,
-        {},
-        {},
         [](size_t) -> GpuTensor* {
             return nullptr;
         },
@@ -488,8 +484,6 @@ TEST(InferSubmissionTest, SubmissionFlushesBeforeRecordingStageThatWouldExceedWi
 
     execute_pipeline_with_submission(
         pipeline,
-        {},
-        {},
         [](size_t) -> GpuTensor* {
             return nullptr;
         },
@@ -524,8 +518,6 @@ TEST(InferSubmissionTest, SubmissionUsesDescriptorOwnedStageWeight) {
 
     execute_pipeline_with_submission(
         pipeline,
-        {},
-        {},
         [](size_t) -> GpuTensor* {
             return nullptr;
         },
@@ -560,8 +552,6 @@ TEST(InferSubmissionTest, SubmissionUsesDescriptorOwnedMacEstimate) {
 
     execute_pipeline_with_submission(
         pipeline,
-        {},
-        {},
         [](size_t) -> GpuTensor* {
             return nullptr;
         },
@@ -574,20 +564,16 @@ TEST(InferSubmissionTest, SubmissionUsesDescriptorOwnedMacEstimate) {
     EXPECT_FALSE(submission.continue_recording_flags()[1]);
 }
 
-TEST(InferSubmissionTest, SubmissionKeepsDirectProducerConsumerAcrossSoftBudgetBoundary) {
+TEST(InferSubmissionTest, SubmissionKeepsDescriptorProducerConsumerAcrossSoftBudgetBoundary) {
     std::vector<InferStage> pipeline;
     pipeline.emplace_back();
     pipeline.emplace_back();
-    const auto producer = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
-    const auto consumer = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
     auto* stage0 = new FakeStage(GpuStageSubmitPolicy{.weight = 2});
     auto* stage1 = new FakeStage(GpuStageSubmitPolicy{.weight = 2});
-    pipeline[0].node = producer;
     pipeline[0].stage.reset(stage0);
     pipeline[0].outputs.push_back(std::make_unique<GpuTensor>());
-    pipeline[1].node = consumer;
     pipeline[1].stage.reset(stage1);
-    pipeline[1].inputs.push_back(PipelineStageDesc::InputLink{producer, 0});
+    pipeline[1].inputs.push_back(descriptor_stage_output_input(0));
 
     FakeSubmissionSession submission(/*incremental_submit=*/true);
     InferSubmissionConfig config;
@@ -597,8 +583,6 @@ TEST(InferSubmissionTest, SubmissionKeepsDirectProducerConsumerAcrossSoftBudgetB
 
     execute_pipeline_with_submission(
         pipeline,
-        {},
-        {},
         [](size_t) -> GpuTensor* {
             return nullptr;
         },
@@ -616,16 +600,12 @@ TEST(InferSubmissionTest, SubmissionDoesNotExtendSoftBudgetAcrossLayoutBoundary)
     std::vector<InferStage> pipeline;
     pipeline.emplace_back();
     pipeline.emplace_back();
-    const auto producer = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
-    const auto concat = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
     auto* stage0 = new FakeStage(GpuStageSubmitPolicy{.weight = 2});
     auto* stage1 = new FakeStage(GpuStageSubmitPolicy{.weight = 2});
-    pipeline[0].node = producer;
     pipeline[0].stage.reset(stage0);
     pipeline[0].outputs.push_back(std::make_unique<GpuTensor>());
-    pipeline[1].node = concat;
     pipeline[1].stage.reset(stage1);
-    pipeline[1].inputs.push_back(PipelineStageDesc::InputLink{producer, 0});
+    pipeline[1].inputs.push_back(descriptor_stage_output_input(0));
     attach_submission_contract_session(
         pipeline, make_submission_contract_session(
                       pipeline.size(),
@@ -641,8 +621,6 @@ TEST(InferSubmissionTest, SubmissionDoesNotExtendSoftBudgetAcrossLayoutBoundary)
 
     execute_pipeline_with_submission(
         pipeline,
-        {},
-        {},
         [](size_t) -> GpuTensor* {
             return nullptr;
         },
@@ -660,19 +638,13 @@ TEST(InferSubmissionTest, SubmissionHoldsBudgetReachedProducerForDirectConsumerO
     pipeline.emplace_back();
     pipeline.emplace_back();
     pipeline.emplace_back();
-    const auto producer = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
-    const auto consumer = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
-    const auto independent = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
     auto* stage0 = new FakeStage(GpuStageSubmitPolicy{.weight = 3});
     auto* stage1 = new FakeStage(GpuStageSubmitPolicy{.weight = 2});
     auto* stage2 = new FakeStage(GpuStageSubmitPolicy{.weight = 1});
-    pipeline[0].node = producer;
     pipeline[0].stage.reset(stage0);
     pipeline[0].outputs.push_back(std::make_unique<GpuTensor>());
-    pipeline[1].node = consumer;
     pipeline[1].stage.reset(stage1);
-    pipeline[1].inputs.push_back(PipelineStageDesc::InputLink{producer, 0});
-    pipeline[2].node = independent;
+    pipeline[1].inputs.push_back(descriptor_stage_output_input(0));
     pipeline[2].stage.reset(stage2);
 
     FakeSubmissionSession submission(/*incremental_submit=*/true);
@@ -683,8 +655,6 @@ TEST(InferSubmissionTest, SubmissionHoldsBudgetReachedProducerForDirectConsumerO
 
     execute_pipeline_with_submission(
         pipeline,
-        {},
-        {},
         [](size_t) -> GpuTensor* {
             return nullptr;
         },
@@ -704,16 +674,12 @@ TEST(InferSubmissionTest, SubmissionDoesNotHoldBudgetReachedLayoutBoundaryForDir
     std::vector<InferStage> pipeline;
     pipeline.emplace_back();
     pipeline.emplace_back();
-    const auto concat = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
-    const auto consumer = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
     auto* stage0 = new FakeStage(GpuStageSubmitPolicy{.weight = 3});
     auto* stage1 = new FakeStage(GpuStageSubmitPolicy{.weight = 1});
-    pipeline[0].node = concat;
     pipeline[0].stage.reset(stage0);
     pipeline[0].outputs.push_back(std::make_unique<GpuTensor>());
-    pipeline[1].node = consumer;
     pipeline[1].stage.reset(stage1);
-    pipeline[1].inputs.push_back(PipelineStageDesc::InputLink{concat, 0});
+    pipeline[1].inputs.push_back(descriptor_stage_output_input(0));
     attach_submission_contract_session(
         pipeline, make_submission_contract_session(
                       pipeline.size(),
@@ -729,8 +695,6 @@ TEST(InferSubmissionTest, SubmissionDoesNotHoldBudgetReachedLayoutBoundaryForDir
 
     execute_pipeline_with_submission(
         pipeline,
-        {},
-        {},
         [](size_t) -> GpuTensor* {
             return nullptr;
         },
@@ -747,16 +711,12 @@ TEST(InferSubmissionTest, SubmissionDoesNotExtendDirectDependencyPastConfiguredB
     std::vector<InferStage> pipeline;
     pipeline.emplace_back();
     pipeline.emplace_back();
-    const auto producer = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
-    const auto consumer = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
     auto* stage0 = new FakeStage(GpuStageSubmitPolicy{.weight = 10});
     auto* stage1 = new FakeStage(GpuStageSubmitPolicy{.weight = 3});
-    pipeline[0].node = producer;
     pipeline[0].stage.reset(stage0);
     pipeline[0].outputs.push_back(std::make_unique<GpuTensor>());
-    pipeline[1].node = consumer;
     pipeline[1].stage.reset(stage1);
-    pipeline[1].inputs.push_back(PipelineStageDesc::InputLink{producer, 0});
+    pipeline[1].inputs.push_back(descriptor_stage_output_input(0));
 
     FakeSubmissionSession submission(/*incremental_submit=*/true);
     InferSubmissionConfig config;
@@ -768,8 +728,6 @@ TEST(InferSubmissionTest, SubmissionDoesNotExtendDirectDependencyPastConfiguredB
 
     execute_pipeline_with_submission(
         pipeline,
-        {},
-        {},
         [](size_t) -> GpuTensor* {
             return nullptr;
         },

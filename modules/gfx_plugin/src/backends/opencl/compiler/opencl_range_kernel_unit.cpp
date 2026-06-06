@@ -4,6 +4,7 @@
 
 #include "backends/opencl/compiler/opencl_range_kernel_unit.hpp"
 
+#include "backends/opencl/compiler/opencl_kernel_artifacts.hpp"
 #include "compiler/executable_bundle.hpp"
 #include "compiler/lowering_planner.hpp"
 #include "kernel_ir/opencl_kernels/range_kernel.hpp"
@@ -36,6 +37,7 @@ materialize_range_payload(KernelArtifactDescriptor &descriptor,
       gfx_opencl_source_artifact_build_options(artifact);
   descriptor.abi_arg_count = artifact.arg_count;
   descriptor.abi_output_arg_count = artifact.direct_output_count;
+  apply_opencl_runtime_param_artifact_contract(descriptor, artifact);
   return std::make_shared<GfxOpenClSourceArtifactPayload>(std::move(artifact));
 }
 

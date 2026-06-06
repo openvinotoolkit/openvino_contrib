@@ -370,8 +370,6 @@ void InferRequest::bind_inputs_before_infer(
 void InferRequest::bind_outputs_for_infer(
     const std::shared_ptr<const CompiledModel>& cm,
     std::vector<InferStage>& pipeline,
-    const std::unordered_map<const ov::Node*, size_t>& node_map,
-    const std::unordered_map<const ov::Node*, size_t>& param_map,
     const std::function<GpuTensor*(size_t)>& output_input_lookup,
     const std::function<void(size_t, const std::shared_ptr<GfxRemoteTensor>&)>& remote_setter,
     const std::function<void(size_t, GpuTensor&, const OutputViewInfo&, const ov::Tensor*)>& device_setter,
@@ -380,21 +378,17 @@ void InferRequest::bind_outputs_for_infer(
     OPENVINO_ASSERT(cm, error_prefix, ": compiled model is null");
     auto& state = *m_state;
     OPENVINO_ASSERT(state.runtime.backend, error_prefix, ": infer backend state is not initialized");
+    OPENVINO_ASSERT(cm->runtime_descriptor(),
+                    error_prefix,
+                    ": compiled model runtime descriptor is null");
     prepare_reusable_output_plan(state.runtime.backend->reusable_output_plan,
-                                 get_outputs(),
-                                 cm->get_runtime_model(),
+                                 *cm->runtime_descriptor(),
                                  pipeline,
-                                 node_map,
-                                 param_map,
                                  error_prefix);
     prepare_reusable_host_output_plan(state.runtime.backend->reusable_host_output_plan,
                                       state.runtime.backend->reusable_output_plan,
                                       state.bound_output_hosts);
     bind_outputs_common(
-        get_outputs(),
-        cm->get_runtime_model(),
-        node_map,
-        param_map,
         pipeline,
         output_input_lookup,
         state.bound_remote_outputs,
@@ -403,7 +397,7 @@ void InferRequest::bind_outputs_for_infer(
         },
         remote_setter,
         device_setter,
-        &state.runtime.backend->reusable_output_plan,
+        state.runtime.backend->reusable_output_plan,
         allow_missing,
         error_prefix);
 }
@@ -439,8 +433,6 @@ void InferRequest::bind_outputs_after_infer(
     bind_outputs_for_infer(
         cm,
         pipeline,
-        cm->node_to_stage(),
-        cm->parameter_index(),
         output_input_lookup,
         [&](size_t idx, const std::shared_ptr<GfxRemoteTensor>& remote) {
             ov::ISyncInferRequest::set_tensor(

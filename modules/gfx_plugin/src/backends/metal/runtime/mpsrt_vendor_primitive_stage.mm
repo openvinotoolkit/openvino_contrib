@@ -15,12 +15,11 @@
 #include "backends/metal/common/mpsrt/gfx_mpsrt_vendor_artifact_payload.hpp"
 #include "backends/metal/runtime/mpsrt/mpsrt_context.hpp"
 #include "backends/metal/runtime/mpsrt/mpsrt_request.hpp"
-#include "common/constant_tensor_evaluator.hpp"
-#include "kernel_ir/gfx_kernel_cache.hpp"
 #include "kernel_ir/gfx_kernel_manifest.hpp"
 #include "openvino/core/except.hpp"
 #include "backends/metal/runtime/mpsrt/gfx_mpsrt_model.hpp"
 #include "backends/metal/common/mpsrt/gfx_mpsrt_program.hpp"
+#include "runtime/descriptor_const_tensor_materializer.hpp"
 #include "runtime/gfx_profiler.hpp"
 #include "runtime/gpu_buffer_manager.hpp"
 #include "runtime/gpu_tensor.hpp"
@@ -315,77 +314,20 @@ metal::mpsrt::MpsrtBoundBuffer tensor_bound_buffer(const GpuTensor& tensor) {
   return {tensor.buf.buffer, tensor.buf.offset};
 }
 
-struct VendorConstInputBuffers {
-  std::vector<GpuTensor> buffers;
-  std::vector<bool> present;
-};
+using VendorConstInputBuffers = DescriptorConstTensorSlots;
 
-std::string make_vendor_const_input_key(const std::string& kernel_id,
-                                        const ov::Node& node,
-                                        size_t input_index,
-                                        const ov::Tensor& tensor) {
-  std::ostringstream key;
-  key << "metal/vendor/" << kernel_id << "/const/"
-      << node.get_friendly_name() << "/" << input_index << "/"
-      << tensor.get_element_type().get_type_name() << "/"
-      << tensor.get_byte_size() << "/"
-      << gfx_hash_bytes(tensor.data(), tensor.get_byte_size());
-  return key.str();
-}
-
-void prepare_vendor_const_inputs(const std::shared_ptr<const ov::Node>& node,
+void prepare_vendor_const_inputs(const RuntimeStageExecutableDescriptor& descriptor,
                                  GpuBufferManager* buffer_manager,
-                                 const std::string& kernel_id,
                                  VendorConstInputBuffers& const_inputs) {
-  if (!node) {
+  if (descriptor.const_tensors.empty()) {
     return;
   }
-  const size_t input_count = node->get_input_size();
-  if (const_inputs.buffers.size() < input_count) {
-    const_inputs.buffers.resize(input_count);
-    const_inputs.present.assign(input_count, false);
-  }
-
-  bool const_cache_checked = false;
-  for (size_t input_index = 0; input_index < input_count; ++input_index) {
-    if (const_inputs.present[input_index] &&
-        const_inputs.buffers[input_index].buf.valid()) {
-      continue;
-    }
-    auto tensor =
-        gfx_evaluate_constant_source_tensor(node->input_value(input_index));
-    if (!tensor.has_value() || tensor->get_byte_size() == 0) {
-      continue;
-    }
-    if (!const_cache_checked) {
-      OPENVINO_ASSERT(buffer_manager,
-                      "GFX Metal MPSRT: const buffer manager is required for "
-                      "vendor primitive ",
-                      kernel_id);
-      OPENVINO_ASSERT(buffer_manager->supports_const_cache(),
-                      "GFX Metal MPSRT: const cache is required for vendor "
-                      "primitive ",
-                      kernel_id);
-      const_cache_checked = true;
-    }
-
-    const auto key =
-        make_vendor_const_input_key(kernel_id, *node, input_index, *tensor);
-    GpuBuffer buffer = buffer_manager->wrap_const(
-        key, tensor->data(), tensor->get_byte_size(),
-        tensor->get_element_type());
-    OPENVINO_ASSERT(buffer.valid(),
-                    "GFX Metal MPSRT: failed to materialize const input ",
-                    input_index, " for ", kernel_id);
-    buffer.owned = false;
-
-    auto& const_tensor = const_inputs.buffers[input_index];
-    const_tensor.buf = buffer;
-    const_tensor.shape = tensor->get_shape();
-    const_tensor.expected_type = tensor->get_element_type();
-    const_tensor.prefer_private = false;
-    const_inputs.present[input_index] = true;
-  }
+  OPENVINO_ASSERT(buffer_manager,
+                  "GFX Metal MPSRT: const buffer manager is required for "
+                  "vendor primitive ",
+                  descriptor.kernel_id);
+  const_inputs = materialize_descriptor_const_tensor_slots(
+      *buffer_manager, descriptor, "metal/vendor");
 }
 
 GpuTensor* resolve_vendor_input_tensor(
@@ -458,12 +400,10 @@ make_external_buffers_for_roles(
 class MpsrtVendorPrimitiveStage final : public GpuStage {
 public:
   MpsrtVendorPrimitiveStage(
-      const std::shared_ptr<const ov::Node>& node,
       MetalDeviceHandle device,
       MetalCommandQueueHandle queue,
       const RuntimeStageExecutableDescriptor& descriptor)
-      : m_node(node),
-        m_device(device),
+      : m_device(device),
         m_queue(queue),
         m_descriptor(descriptor),
         m_name(!descriptor.stage_name.empty()
@@ -489,8 +429,7 @@ public:
     OPENVINO_ASSERT(m_device,
                     "GFX Metal MPSRT: Metal device handle is null for ",
                     m_descriptor.kernel_id);
-    prepare_vendor_const_inputs(m_node, m_buffer_manager,
-                                m_descriptor.kernel_id, m_const_inputs);
+    prepare_vendor_const_inputs(m_descriptor, m_buffer_manager, m_const_inputs);
     m_model = make_mpsrt_model_from_contract(m_descriptor, m_contract);
     auto context =
         std::make_shared<metal::mpsrt::MpsrtContext>((id<MTLDevice>)m_device);
@@ -582,7 +521,7 @@ public:
 
   std::unique_ptr<GpuStage> clone() const override {
     auto stage = std::make_unique<MpsrtVendorPrimitiveStage>(
-        m_node, m_device, m_queue, m_descriptor);
+        m_device, m_queue, m_descriptor);
     stage->m_contract = m_contract;
     stage->m_model = m_model;
     stage->m_context = m_context;
@@ -624,7 +563,6 @@ private:
     return &hooks;
   }
 
-  std::shared_ptr<const ov::Node> m_node;
   MetalDeviceHandle m_device = nullptr;
   [[maybe_unused]] MetalCommandQueueHandle m_queue = nullptr;
   RuntimeStageExecutableDescriptor m_descriptor;
@@ -655,12 +593,10 @@ bool is_metal_mpsrt_vendor_primitive_descriptor(
 }
 
 std::unique_ptr<GpuStage> create_metal_mpsrt_vendor_primitive_stage(
-    const std::shared_ptr<const ov::Node>& node,
     MetalDeviceHandle device,
     MetalCommandQueueHandle queue,
     const RuntimeStageExecutableDescriptor& descriptor) {
-  return std::make_unique<MpsrtVendorPrimitiveStage>(node, device, queue,
-                                                    descriptor);
+  return std::make_unique<MpsrtVendorPrimitiveStage>(device, queue, descriptor);
 }
 
 }  // namespace gfx_plugin

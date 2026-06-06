@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "backends/metal/runtime/memory/buffer.hpp"
+#include "runtime/descriptor_const_tensor_materializer.hpp"
 #include "runtime/executable_descriptor.hpp"
 #include "runtime/gpu_backend_base.hpp"
 #include "runtime/gpu_stage.hpp"
@@ -18,14 +19,12 @@ namespace gfx_plugin {
 class MetalProfiler;
 
 class ICompiledKernel;
-class GfxKernelSourcePayload;
 
 // Metal runtime stage for compiler-owned MSL source artifacts.
 class MetalStage final : public GpuStage {
 public:
   MetalStage(const RuntimeStageExecutableDescriptor &descriptor,
-             MetalDeviceHandle device, MetalCommandQueueHandle queue,
-             std::shared_ptr<const ov::Node> source_node = {});
+             MetalDeviceHandle device, MetalCommandQueueHandle queue);
 
   void init(GpuBufferManager *buffer_manager) override;
   void prepare_runtime_handle(GpuBufferManager *buffer_manager) override;
@@ -55,17 +54,15 @@ public:
 
 private:
   struct ProfileState;
-  struct ConstBufferSet;
+  using ConstBufferSet = DescriptorConstTensorSlots;
 
   void ensure_prepared();
   std::vector<GpuTensor *> resolve_outputs() const;
   std::vector<KernelArg>
   materialize_source_args(const std::vector<GpuTensor *> &outputs);
   std::vector<KernelArg>
-  materialize_role_ordered_source_args(const GfxKernelSourcePayload &payload,
-                                       const std::vector<GpuTensor *> &outputs);
+  materialize_role_ordered_source_args(const std::vector<GpuTensor *> &outputs);
   std::vector<int32_t> refresh_runtime_param_buffers(
-      const GfxKernelSourcePayload &payload,
       const std::vector<GpuTensor *> &outputs,
       const std::vector<int32_t> &compiler_scalar_args);
   void prepare_constant_input_buffers();
@@ -81,7 +78,6 @@ private:
   RuntimeStageExecutableDescriptor m_descriptor;
   std::shared_ptr<ICompiledKernel> m_kernel;
   GpuBufferManager *m_buffer_manager = nullptr;
-  std::shared_ptr<const ov::Node> m_node;
   std::string m_name;
   std::string m_type;
   std::vector<GpuTensor *> m_inputs;

@@ -71,8 +71,8 @@ Read these files first:
   pipeline-stage materialization, fused-output lifetime planning,
   liveness-aware output workspaces, remote context/tensor helpers,
   descriptor-backed view-only stages, tensor binding contract helpers,
-  descriptor-owned runtime-parameter payload materialization, runtime-value and
-  kernel-launch planning, and target profiles
+  descriptor-owned runtime-parameter and const-tensor payload materialization,
+  runtime-value and kernel-launch planning, and target profiles
 - `src/kernel_ir/`: backend-neutral kernel manifests, custom-kernel family
   metadata, cache keys, dispatch descriptions, embedded Metal/OpenCL helper
   sources, and OpenCL source artifacts
@@ -117,13 +117,14 @@ The high-level path is:
 4. `CompiledModel` asks
    `src/compiler/runtime_executable_descriptor_builder.*` to build and verify a
    `RuntimeExecutableDescriptor` from the compiler executable bundle. The
-   descriptor also carries the runtime `PipelineStageRuntimePlan` used for
-   stage materialization. Native compiled-model cache round-trip APIs require a
+   runtime `PipelineStageRuntimePlan` used for stage materialization is a
+   separate compiler output, not part of the cacheable descriptor. Native
+   compiled-model cache round-trip APIs require a
    serialized `CacheEnvelope`/`ExecutableBundle`; the old OpenVINO-model
    serialization path is disabled by
    `src/plugin/compiled_model_cache_contract.hpp`.
-5. `CompiledModel::build_op_pipeline()` consumes the descriptor-owned runtime
-   plan and delegates concrete stage materialization to
+5. `CompiledModel::build_op_pipeline()` consumes the compiler-owned runtime
+   stage plan and descriptor, then delegates concrete stage materialization to
    `src/runtime/pipeline_stage_materializer.*`. The compiler stage builder uses
    `src/compiler/pipeline_stage_plan.*` for model-output flags, input links,
    and output aliases, `src/compiler/pipeline_stage_fusion.*` for fusion
@@ -174,12 +175,12 @@ Backend stage creation is descriptor-owned. Stages that need a kernel, source
 artifact, vendor descriptor, or ABI metadata must consume the matching
 `RuntimeStageExecutableDescriptor`; request-time code must not reconstruct
 payloads from the OpenVINO node.
-Remaining source-node dependencies are explicit temporary bridges. The runtime
-descriptor records `temporary_source_node_bridge_required` and a migration
-reason when a route still needs `ov::Node` metadata, currently for vendor
-primitive materialization, runtime-shape arguments, `ConstTensor` source ABI, or
-source `RuntimeParams` roles not yet covered by descriptor-owned static
-contracts. New routes should avoid widening that bridge.
+Source-node bridge routes are not allowed. Vendor primitive metadata,
+runtime-shape arguments, `ConstTensor` source ABI, and source `RuntimeParams`
+roles must be represented by descriptor-owned payloads and validation
+contracts; if the compiler cannot freeze that data, the route must fail
+descriptor verification instead of falling back to request-time `ov::Node`
+inspection.
 
 There is no generic backend-lowering escape route. Metal and OpenCL operation
 support must resolve to common metadata, an explicit generated kernel unit, a

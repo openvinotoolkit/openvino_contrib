@@ -9,10 +9,13 @@
 #include <utility>
 
 #include "compiler/pipeline_stage_plan.hpp"
+#include "openvino/op/broadcast.hpp"
 #include "openvino/op/concat.hpp"
 #include "openvino/op/convolution.hpp"
 #include "openvino/op/group_conv.hpp"
 #include "openvino/op/matmul.hpp"
+#include "openvino/op/slice.hpp"
+#include "openvino/op/strided_slice.hpp"
 #include "openvino/op/util/assign_base.hpp"
 #include "openvino/op/util/read_value_base.hpp"
 
@@ -37,6 +40,9 @@ constexpr const char *kRuntimeShapeRuleShapeOf = "shape_of";
 constexpr const char *kRuntimeShapeRuleSlice = "slice";
 constexpr const char *kRuntimeShapeRuleRange = "range";
 constexpr const char *kRuntimeShapeRuleTile = "tile";
+constexpr int64_t kRuntimeSliceMetadataVersion = 1;
+constexpr int64_t kRuntimeSliceKindV8 = 1;
+constexpr int64_t kRuntimeSliceKindStridedSliceV1 = 2;
 
 uint64_t stable_hash64(std::string_view value) noexcept {
   uint64_t hash = 14695981039346656037ull;
@@ -99,6 +105,39 @@ bool runtime_shape_rule_valid(std::string_view rule) {
          rule == kRuntimeShapeRuleTile;
 }
 
+bool read_counted_metadata_field(const std::vector<int64_t> &metadata,
+                                 size_t &offset) {
+  if (offset >= metadata.size() || metadata[offset] < 0) {
+    return false;
+  }
+  const size_t count = static_cast<size_t>(metadata[offset++]);
+  if (offset + count > metadata.size()) {
+    return false;
+  }
+  offset += count;
+  return true;
+}
+
+bool slice_runtime_shape_metadata_valid(const std::vector<int64_t> &metadata) {
+  if (metadata.size() < 3 ||
+      metadata[0] != kRuntimeSliceMetadataVersion ||
+      (metadata[1] != kRuntimeSliceKindV8 &&
+       metadata[1] != kRuntimeSliceKindStridedSliceV1) ||
+      metadata[2] < 3) {
+    return false;
+  }
+  if (metadata[1] == kRuntimeSliceKindV8) {
+    return metadata.size() == 3;
+  }
+  size_t offset = 3;
+  for (size_t i = 0; i < 5; ++i) {
+    if (!read_counted_metadata_field(metadata, offset)) {
+      return false;
+    }
+  }
+  return offset == metadata.size();
+}
+
 std::string runtime_shape_rule_for_op(const PlannedOperation &op) {
   if (op.type_name == "Concat") {
     return kRuntimeShapeRuleConcat;
@@ -122,6 +161,82 @@ std::string runtime_shape_rule_for_op(const PlannedOperation &op) {
     return kRuntimeShapeRuleTile;
   }
   return kRuntimeShapeRuleStaticOrDescriptor;
+}
+
+void append_counted_i64_vector(std::vector<int64_t> &metadata,
+                               const std::vector<int64_t> &values) {
+  metadata.push_back(static_cast<int64_t>(values.size()));
+  metadata.insert(metadata.end(), values.begin(), values.end());
+}
+
+RuntimeShapeContract make_slice_runtime_shape_contract(
+    const ov::op::v8::Slice &slice) {
+  RuntimeShapeContract contract;
+  contract.rule = kRuntimeShapeRuleSlice;
+  contract.i64_metadata = {kRuntimeSliceMetadataVersion, kRuntimeSliceKindV8,
+                           static_cast<int64_t>(slice.get_input_size())};
+  return contract;
+}
+
+RuntimeShapeContract make_strided_slice_runtime_shape_contract(
+    const ov::op::v1::StridedSlice &slice) {
+  RuntimeShapeContract contract;
+  contract.rule = kRuntimeShapeRuleSlice;
+  contract.i64_metadata = {kRuntimeSliceMetadataVersion,
+                           kRuntimeSliceKindStridedSliceV1,
+                           static_cast<int64_t>(slice.get_input_size())};
+  append_counted_i64_vector(contract.i64_metadata, slice.get_begin_mask());
+  append_counted_i64_vector(contract.i64_metadata, slice.get_end_mask());
+  append_counted_i64_vector(contract.i64_metadata, slice.get_new_axis_mask());
+  append_counted_i64_vector(contract.i64_metadata, slice.get_shrink_axis_mask());
+  append_counted_i64_vector(contract.i64_metadata, slice.get_ellipsis_mask());
+  return contract;
+}
+
+RuntimeShapeContract runtime_shape_contract_for_op(const PlannedOperation &op) {
+  RuntimeShapeContract contract;
+  contract.rule = runtime_shape_rule_for_op(op);
+
+  if (auto concat = ov::as_type_ptr<const ov::op::v0::Concat>(op.source_node)) {
+    contract.i64_metadata.push_back(concat->get_axis());
+    return contract;
+  }
+
+  if (auto broadcast =
+          ov::as_type_ptr<const ov::op::v3::Broadcast>(op.source_node)) {
+    const bool bidirectional =
+        broadcast->get_broadcast_spec().m_type ==
+        ov::op::BroadcastType::BIDIRECTIONAL;
+    contract.i64_metadata.push_back(bidirectional ? 1 : 0);
+    const auto rank = broadcast->get_output_partial_shape(0).rank();
+    contract.i64_metadata.push_back(
+        rank.is_static() ? rank.get_length() : -1);
+    return contract;
+  }
+
+  if (auto broadcast =
+          ov::as_type_ptr<const ov::op::v1::Broadcast>(op.source_node)) {
+    contract.i64_metadata.push_back(
+        broadcast->get_broadcast_spec().m_type ==
+                ov::op::AutoBroadcastType::NUMPY
+            ? 1
+            : 0);
+    const auto rank = broadcast->get_output_partial_shape(0).rank();
+    contract.i64_metadata.push_back(
+        rank.is_static() ? rank.get_length() : -1);
+    return contract;
+  }
+
+  if (auto slice = ov::as_type_ptr<const ov::op::v8::Slice>(op.source_node)) {
+    return make_slice_runtime_shape_contract(*slice);
+  }
+
+  if (auto slice =
+          ov::as_type_ptr<const ov::op::v1::StridedSlice>(op.source_node)) {
+    return make_strided_slice_runtime_shape_contract(*slice);
+  }
+
+  return contract;
 }
 
 int64_t normalize_axis_for_rank(int64_t axis, size_t rank) {
@@ -451,6 +566,25 @@ void verify_runtime_shape_contract(const RuntimeShapeContract &contract,
     result.diagnostics.push_back("stage " + std::to_string(stage_id) +
                                  " has invalid runtime shape contract");
   }
+  if (contract.rule == kRuntimeShapeRuleConcat &&
+      contract.i64_metadata.size() != 1) {
+    result.diagnostics.push_back("stage " + std::to_string(stage_id) +
+                                 " has incomplete concat runtime shape "
+                                 "metadata");
+  }
+  if (contract.rule == kRuntimeShapeRuleBroadcast &&
+      contract.i64_metadata.size() < 2) {
+    result.diagnostics.push_back("stage " + std::to_string(stage_id) +
+                                 " has incomplete broadcast runtime shape "
+                                 "metadata");
+  }
+  if (contract.rule == kRuntimeShapeRuleSlice) {
+    if (!slice_runtime_shape_metadata_valid(contract.i64_metadata)) {
+      result.diagnostics.push_back("stage " + std::to_string(stage_id) +
+                                   " has incomplete slice runtime shape "
+                                   "metadata");
+    }
+  }
 }
 
 void verify_submission_contract(const SubmissionContract &contract,
@@ -599,7 +733,7 @@ ManifestBundle ManifestBuilder::build(const LoweringPlan &plan) const {
           "stage_" + std::to_string(i) + ".output_" + std::to_string(output_idx);
     }
     stage.runtime_params = make_runtime_param_contract(stage);
-    stage.runtime_shape.rule = runtime_shape_rule_for_op(op);
+    stage.runtime_shape = runtime_shape_contract_for_op(op);
     stage.stateful_effect = std::move(stateful_effect);
     stage.dispatch = make_dispatch_contract(stage);
     stage.memory = make_memory_contract(stage);

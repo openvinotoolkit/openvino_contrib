@@ -34,6 +34,34 @@ struct ActivationCase {
   std::vector<float> expected;
 };
 
+KernelLaunchPlanDescriptor
+make_test_launch_plan_descriptor(const GfxKernelRuntimeBindingPlan &plan) {
+  KernelLaunchPlanDescriptor descriptor;
+  if (!plan.valid || !plan.stage_manifest.valid ||
+      !plan.stage_manifest.custom_kernel.valid ||
+      !plan.stage_manifest.custom_kernel.external_buffer_abi.valid) {
+    return descriptor;
+  }
+
+  const auto roles = materialize_gfx_kernel_external_buffer_roles(
+      plan.stage_manifest.custom_kernel.external_buffer_abi);
+  if (roles.empty()) {
+    return descriptor;
+  }
+
+  descriptor.valid = true;
+  descriptor.buffer_roles.reserve(roles.size());
+  for (const auto role : roles) {
+    descriptor.buffer_roles.emplace_back(kernel_buffer_role_descriptor_name(role));
+  }
+  descriptor.input_indices = plan.runtime_binding.inputs;
+  descriptor.input_arg_count = plan.runtime_binding.input_arg_count;
+  descriptor.operand_kinds = plan.runtime_binding.operand_kinds;
+  descriptor.operand_arg_indices = plan.runtime_binding.operand_arg_indices;
+  descriptor.scalar_args = plan.runtime_binding.scalar_args;
+  return descriptor;
+}
+
 RuntimeStageExecutableDescriptor
 make_metal_test_descriptor(const std::shared_ptr<const ov::Node> &node) {
   auto source_plan = make_activation_msl_kernel_source_plan(node);
@@ -61,6 +89,7 @@ make_metal_test_descriptor(const std::shared_ptr<const ov::Node> &node) {
   descriptor.abi_arg_count = source_plan.source.signature.arg_count;
   descriptor.abi_output_arg_count =
       source_plan.source.signature.output_arg_count;
+  descriptor.launch_plan = make_test_launch_plan_descriptor(source_plan.binding);
   descriptor.dispatch_contract = "manifest";
   descriptor.payload = std::make_shared<GfxKernelSourcePayload>(
       descriptor.kernel_id, descriptor.backend_domain, descriptor.entry_point,
@@ -134,7 +163,7 @@ template <typename OpFactory> void run_activation(const ActivationCase &tc) {
   auto node = OpFactory::make_node(param);
   const auto descriptor = make_metal_test_descriptor(node);
   auto stage = GpuStageFactory::create(
-      RuntimeStageMaterializationContext{descriptor, node}, GpuBackend::Metal,
+      RuntimeStageMaterializationContext{descriptor}, GpuBackend::Metal,
       device, queue);
   ASSERT_NE(stage, nullptr);
   stage->set_inputs({&input});
@@ -242,7 +271,7 @@ TEST(GpuStageActivation, RejectsRuntimeSourcePlanWithoutCompilerPayload) {
   auto node = std::make_shared<ov::op::v0::Relu>(param);
   const auto descriptor = make_descriptor_without_payload(node);
   auto stage = GpuStageFactory::create(
-      RuntimeStageMaterializationContext{descriptor, node}, GpuBackend::Metal,
+      RuntimeStageMaterializationContext{descriptor}, GpuBackend::Metal,
       device, queue);
   ASSERT_NE(stage, nullptr);
   stage->set_inputs({&input});

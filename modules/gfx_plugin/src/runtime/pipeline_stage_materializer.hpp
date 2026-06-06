@@ -9,7 +9,6 @@
 #include <string>
 #include <vector>
 
-#include "openvino/core/node.hpp"
 #include "runtime/backend_stage_factory.hpp"
 #include "runtime/executable_descriptor.hpp"
 #include "runtime/gpu_stage.hpp"
@@ -31,7 +30,6 @@ struct MaterializedFusedSequenceStage {
 struct PipelineStageRuntimeMaterializationRequest {
   const BackendStageFactory *stage_factory = nullptr;
   const RuntimeExecutableDescriptor *runtime_descriptor = nullptr;
-  const PipelineStageRuntimePlan *runtime_plan = nullptr;
   GpuStageRuntimeOptions runtime_options;
   GfxProfilingTrace *compile_trace = nullptr;
 };
@@ -47,17 +45,14 @@ public:
   descriptor_for_stage_index(size_t stage_index) const noexcept;
 
   std::unique_ptr<GpuStage>
-  create_stage(const RuntimeStageExecutableDescriptor &descriptor,
-               const std::shared_ptr<const ov::Node> &source_node = {}) const;
+  create_stage(const RuntimeStageExecutableDescriptor &descriptor) const;
 
   std::unique_ptr<GpuStage> create_vendor_attention_stage(
       const PipelineVendorAttentionStagePlan &plan,
-      const std::shared_ptr<const ov::Node> &final_node,
       const RuntimeStageExecutableDescriptor *descriptor) const;
 
   std::optional<MaterializedFusedSequenceStage> create_attention_sequence_stage(
-      const PipelineStageMaterializationPlan &plan,
-      const std::vector<std::shared_ptr<ov::Node>> &ordered_ops) const;
+      const PipelineStageMaterializationPlan &plan) const;
 
   std::shared_ptr<const RuntimeStageExecutableDescriptor>
   create_materialized_descriptor(

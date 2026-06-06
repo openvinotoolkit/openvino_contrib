@@ -147,8 +147,8 @@ For compiler-service, manifest, or executable-descriptor changes:
 - infer-pipeline reuse tests when `RuntimeSession`, prepared executable
   bindings, descriptor-owned view/alias classification, fused-output lifetimes,
   runtime-shape argument policy, descriptor memory-region use, descriptor-owned
-  `RuntimeParams` payload materialization, or temporary source-node bridge
-  policy changes
+  `RuntimeParams` payload materialization, descriptor-owned `ConstTensor`
+  materialization, or fail-closed runtime descriptor verification changes
 - OpenCL runtime-bundle contract tests when dynamic loader candidate ordering
   or CLVK tool-path setup changes
 

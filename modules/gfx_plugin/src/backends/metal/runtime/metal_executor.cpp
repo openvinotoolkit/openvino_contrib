@@ -13,13 +13,12 @@
 #include "backends/metal/runtime/metal_memory.hpp"
 #include "backends/metal/runtime/metal_runtime_kernel_loader.hpp"
 #include "backends/metal/runtime/profiling/profiler.hpp"
-#include "common/constant_tensor_evaluator.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
 #include "kernel_ir/gfx_kernel_cache.hpp"
 #include "kernel_ir/gfx_kernel_dispatch.hpp"
-#include "kernel_ir/gfx_kernel_source.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
+#include "runtime/descriptor_const_tensor_materializer.hpp"
 #include "runtime/gfx_kernel_runtime_params.hpp"
 #include "runtime/gfx_shape_utils.hpp"
 #include "runtime/gfx_stage_runtime_values.hpp"
@@ -30,10 +29,8 @@ namespace ov {
 namespace gfx_plugin {
 
 MetalStage::MetalStage(const RuntimeStageExecutableDescriptor &descriptor,
-                       MetalDeviceHandle device, MetalCommandQueueHandle queue,
-                       std::shared_ptr<const ov::Node> source_node)
-    : m_device(device), m_queue(queue), m_descriptor(descriptor),
-      m_node(std::move(source_node)) {
+                       MetalDeviceHandle device, MetalCommandQueueHandle queue)
+    : m_device(device), m_queue(queue), m_descriptor(descriptor) {
   OPENVINO_ASSERT(!m_descriptor.stage_name.empty(),
                   "MetalStage: compiler-owned descriptor must provide stage "
                   "name for MSL source execution");
@@ -52,21 +49,6 @@ inline bool is_metal_descriptor_domain(std::string_view domain) {
 }
 
 constexpr size_t kDefaultMetalSourceThreadsPerGroup = 64;
-
-const GfxKernelSourcePayload *
-source_payload_or_null(const RuntimeStageExecutableDescriptor &descriptor) {
-  if (!descriptor.payload) {
-    return nullptr;
-  }
-  return dynamic_cast<const GfxKernelSourcePayload *>(descriptor.payload.get());
-}
-
-size_t count_runtime_param_roles(const GfxKernelSourcePayload &payload) {
-  const auto roles = materialize_gfx_kernel_external_buffer_roles(
-      payload.stage_manifest().custom_kernel.external_buffer_abi);
-  return static_cast<size_t>(std::count(roles.begin(), roles.end(),
-                                        GfxKernelBufferRole::RuntimeParams));
-}
 
 bool descriptor_output_shape(const RuntimeStageExecutableDescriptor &descriptor,
                              size_t output_idx, ov::Shape &shape) {
@@ -188,8 +170,7 @@ void MetalStage::set_profiler(void *profiler, uint32_t node_id,
 }
 
 std::unique_ptr<GpuStage> MetalStage::clone() const {
-  auto stage =
-      std::make_unique<MetalStage>(m_descriptor, m_device, m_queue, m_node);
+  auto stage = std::make_unique<MetalStage>(m_descriptor, m_device, m_queue);
   stage->m_name = m_name;
   stage->m_type = m_type;
   stage->m_profiling_enabled = m_profiling_enabled;
@@ -244,64 +225,20 @@ std::vector<GpuTensor *> MetalStage::resolve_outputs() const {
   return {};
 }
 
-struct MetalStage::ConstBufferSet {
-  std::vector<GpuTensor> buffers;
-  std::vector<bool> present;
-};
-
 void MetalStage::prepare_constant_input_buffers() {
-  if (!m_node || !m_buffer_manager) {
+  if (m_descriptor.const_tensors.empty()) {
     return;
   }
-  const size_t input_count = m_node->get_input_size();
+  OPENVINO_ASSERT(m_buffer_manager,
+                  "MetalStage: const input buffer manager is required for ",
+                  m_name);
   if (!m_const_buffers) {
     m_const_buffers = std::make_shared<ConstBufferSet>();
   }
-  if (m_const_buffers->buffers.size() < input_count) {
-    m_const_buffers->buffers.resize(input_count);
-    m_const_buffers->present.assign(input_count, false);
-  }
-
-  bool const_cache_checked = false;
-  for (size_t input_idx = 0; input_idx < input_count; ++input_idx) {
-    if (m_const_buffers->present[input_idx] &&
-        m_const_buffers->buffers[input_idx].buf.valid()) {
-      continue;
-    }
-    auto const_tensor =
-        gfx_evaluate_constant_source_tensor(m_node->input_value(input_idx));
-    if (!const_tensor.has_value()) {
-      continue;
-    }
-    if (!const_cache_checked) {
-      OPENVINO_ASSERT(
-          m_buffer_manager->supports_const_cache(),
-          "MetalStage: const cache is required for compiler-owned source "
-          "artifact const inputs in ",
-          m_name);
-      const_cache_checked = true;
-    }
-
-    const void *data = const_tensor->data();
-    const size_t bytes = const_tensor->get_byte_size();
-    const auto element_type = const_tensor->get_element_type();
-    if (bytes > 0) {
-      std::ostringstream key;
-      key << m_name << "/source-const/" << input_idx << "/"
-          << element_type.get_type_name() << "/" << bytes << "/"
-          << gfx_hash_bytes(data, bytes);
-      GpuBuffer buffer =
-          m_buffer_manager->wrap_const(key.str(), data, bytes, element_type);
-      OPENVINO_ASSERT(buffer.valid(),
-                      "MetalStage: failed to materialize const input ",
-                      input_idx, " for ", m_name);
-      buffer.owned = false;
-      m_const_buffers->buffers[input_idx].buf = buffer;
-    }
-    m_const_buffers->buffers[input_idx].shape = const_tensor->get_shape();
-    m_const_buffers->buffers[input_idx].expected_type = element_type;
-    m_const_buffers->present[input_idx] = true;
-  }
+  auto slots = materialize_descriptor_const_tensor_slots(
+      *m_buffer_manager, m_descriptor, "metal/source");
+  m_const_buffers->buffers = std::move(slots.buffers);
+  m_const_buffers->present = std::move(slots.present);
 }
 
 GpuTensor *MetalStage::resolve_input_tensor(size_t input_idx) const {
@@ -320,11 +257,10 @@ GpuTensor *MetalStage::resolve_input_tensor(size_t input_idx) const {
 }
 
 std::vector<int32_t> MetalStage::refresh_runtime_param_buffers(
-    const GfxKernelSourcePayload &payload,
     const std::vector<GpuTensor *> &outputs,
     const std::vector<int32_t> &compiler_scalar_args) {
   std::vector<int32_t> scalar_args = compiler_scalar_args;
-  const size_t runtime_param_count = count_runtime_param_roles(payload);
+  const size_t runtime_param_count = m_descriptor.runtime_param_buffer_count;
   if (runtime_param_count == 0) {
     return scalar_args;
   }
@@ -356,74 +292,68 @@ std::vector<KernelArg>
 MetalStage::materialize_source_args(const std::vector<GpuTensor *> &outputs) {
   OPENVINO_ASSERT(m_buffer_manager,
                   "MetalStage: buffer manager is not initialized for ", m_name);
-  const auto *payload = source_payload_or_null(m_descriptor);
-  OPENVINO_ASSERT(payload && payload->has_stage_manifest(),
-                  "MetalStage: MSL source payload is missing compiler-owned "
-                  "kernel manifest ABI for ",
+  OPENVINO_ASSERT(m_descriptor.launch_plan.valid &&
+                      !m_descriptor.launch_plan.buffer_roles.empty(),
+                  "MetalStage: source descriptor launch plan is missing for ",
                   m_name);
-  const auto &manifest = payload->stage_manifest();
-  OPENVINO_ASSERT(manifest.backend_domain == GfxKernelBackendDomain::AppleMsl,
-                  "MetalStage: MSL source payload backend domain drift for ",
+  OPENVINO_ASSERT(m_descriptor.launch_plan.buffer_roles.size() ==
+                      m_descriptor.abi_arg_count,
+                  "MetalStage: source descriptor launch plan ABI count drift "
+                  "for ",
                   m_name);
   prepare_constant_input_buffers();
-  if (payload->has_runtime_binding()) {
-    const auto &binding = payload->runtime_binding();
+  const auto &launch_plan = m_descriptor.launch_plan;
+  OPENVINO_ASSERT(launch_plan.operand_kinds.size() ==
+                      launch_plan.operand_arg_indices.size(),
+                  "MetalStage: source descriptor operand ABI metadata drift "
+                  "for ",
+                  m_name);
+  const bool has_runtime_binding =
+      (!launch_plan.input_indices.empty() ||
+       !launch_plan.operand_kinds.empty() || !launch_plan.scalar_args.empty());
+  if (has_runtime_binding) {
     const auto scalar_args =
-        refresh_runtime_param_buffers(*payload, outputs, binding.scalar_args);
+        refresh_runtime_param_buffers(outputs, launch_plan.scalar_args);
     auto bundle = build_kernel_args_from_metadata(
-        binding.operand_kinds, binding.operand_arg_indices, scalar_args,
-        binding.inputs, binding.input_arg_count, m_kernel_extra_inputs, outputs,
+        launch_plan.operand_kinds, launch_plan.operand_arg_indices, scalar_args,
+        launch_plan.input_indices, launch_plan.input_arg_count,
+        m_kernel_extra_inputs, outputs,
         [&](size_t input_idx) { return resolve_input_tensor(input_idx); },
         m_name.c_str(), nullptr);
     m_scalar_storage = std::move(bundle.scalar_storage);
     return materialize_kernel_bytes_args(bundle.args, *m_buffer_manager,
                                          m_name.c_str());
   }
-  return materialize_role_ordered_source_args(*payload, outputs);
+  return materialize_role_ordered_source_args(outputs);
 }
 
 std::vector<KernelArg> MetalStage::materialize_role_ordered_source_args(
-    const GfxKernelSourcePayload &payload,
     const std::vector<GpuTensor *> &outputs) {
-  const auto &manifest = payload.stage_manifest();
-  const auto roles = materialize_gfx_kernel_external_buffer_roles(
-      manifest.custom_kernel.external_buffer_abi);
-  OPENVINO_ASSERT(!roles.empty(), "MetalStage: source ABI roles are empty for ",
-                  m_name);
+  const auto roles =
+      materialize_descriptor_launch_roles(m_descriptor.launch_plan, m_name);
 
   const auto const_count = static_cast<size_t>(
       std::count(roles.begin(), roles.end(), GfxKernelBufferRole::ConstTensor));
   std::vector<GpuTensor *> const_tensors;
-  const_tensors.reserve(const_count);
   if (const_count != 0) {
-    OPENVINO_ASSERT(
-        m_node,
-        "MetalStage: ConstTensor ABI requires a temporary source-node bridge "
-        "for ",
-        m_name);
     prepare_constant_input_buffers();
-    if (m_const_buffers) {
-      for (size_t input_idx = 0; input_idx < m_const_buffers->buffers.size() &&
-                                 const_tensors.size() < const_count;
-           ++input_idx) {
-        if (input_idx < m_const_buffers->present.size() &&
-            m_const_buffers->present[input_idx] &&
-            m_const_buffers->buffers[input_idx].buf.valid()) {
-          const_tensors.push_back(&m_const_buffers->buffers[input_idx]);
-        }
-      }
-    }
+    OPENVINO_ASSERT(m_const_buffers,
+                    "MetalStage: descriptor-owned const tensor buffers are "
+                    "missing for ",
+                    m_name);
+    const_tensors = descriptor_const_tensor_args(*m_const_buffers, const_count);
     OPENVINO_ASSERT(const_tensors.size() == const_count,
                     "MetalStage: ConstTensor ABI count does not match "
-                    "materialized constants for ",
+                    "descriptor-owned constants for ",
                     m_name);
   }
 
   m_kernel_extra_inputs.clear();
   const auto scalar_args = refresh_runtime_param_buffers(
-      payload, outputs, manifest.custom_kernel.scalar_args);
+      outputs, m_descriptor.launch_plan.scalar_args);
   auto launch_plan = build_role_ordered_kernel_launch_plan<int32_t>(
-      roles, {}, scalar_args, outputs, const_tensors, m_kernel_extra_inputs,
+      roles, m_descriptor.launch_plan.direct_input_indices, scalar_args,
+      outputs, const_tensors, m_kernel_extra_inputs,
       [&](size_t input_idx) { return resolve_input_tensor(input_idx); },
       m_name);
   auto args = materialize_kernel_bytes_args(launch_plan.args, *m_buffer_manager,

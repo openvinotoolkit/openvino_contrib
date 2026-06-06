@@ -27,22 +27,9 @@ create_metal_stage(const RuntimeStageMaterializationContext &context,
     return view;
   }
   if (is_metal_mpsrt_vendor_primitive_descriptor(descriptor)) {
-    const std::string reason =
-        !descriptor.temporary_source_node_bridge_reason.empty()
-            ? descriptor.temporary_source_node_bridge_reason
-            : "Metal MPSRT vendor primitive runtime still needs source-node "
-              "bridge until vendor constants and layout metadata are "
-              "descriptor-owned";
-    const auto &node = context.require_source_node(reason);
-    return create_metal_mpsrt_vendor_primitive_stage(node, device, queue,
-                                                     descriptor);
+    return create_metal_mpsrt_vendor_primitive_stage(device, queue, descriptor);
   }
-  std::shared_ptr<const ov::Node> node;
-  if (descriptor.temporary_source_node_bridge_required) {
-    node = context.require_source_node(
-        descriptor.temporary_source_node_bridge_reason);
-  }
-  return std::make_unique<MetalStage>(descriptor, device, queue, node);
+  return std::make_unique<MetalStage>(descriptor, device, queue);
 }
 
 void ensure_metal_stage_factory_registered() {

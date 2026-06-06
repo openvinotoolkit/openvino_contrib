@@ -5,10 +5,8 @@
 
 #include <functional>
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
-#include "openvino/core/model.hpp"
 #include "runtime/backend_request_state.hpp"
 #include "runtime/infer_pipeline.hpp"
 #include "runtime/infer_submission.hpp"
@@ -26,10 +24,6 @@ struct InferRuntimeExecutionConfig {
     GpuBufferManager* buffer_manager = nullptr;
     void* stage_profiler = nullptr;
     bool profiling_enabled = false;
-    const std::shared_ptr<const ov::Model>* runtime_model = nullptr;
-    const std::vector<ov::Output<const ov::Node>>* public_outputs = nullptr;
-    const std::unordered_map<const ov::Node*, size_t>* node_map = nullptr;
-    const std::unordered_map<const ov::Node*, size_t>* param_map = nullptr;
     std::vector<std::shared_ptr<GfxRemoteTensor>>* remote_outputs = nullptr;
     const std::vector<std::shared_ptr<GfxRemoteTensor>>* remote_inputs = nullptr;
     const compiler::BackendTarget* expected_target = nullptr;

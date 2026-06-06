@@ -76,9 +76,10 @@ Then inspect the relevant code path:
 - Keep descriptor element-type/static-shape parsing and generated source
   `RuntimeParams` ownership rules in `src/runtime/tensor_binding_contract.*`;
   do not duplicate them in Metal/OpenCL request-time code.
-- Treat `ov::Node` handoff to backend stages as a temporary bridge only when
-  `RuntimeStageExecutableDescriptor` records
-  `temporary_source_node_bridge_required` with a concrete migration reason.
+- Do not add `ov::Node` handoff routes to backend stages. Metadata needed by
+  vendor primitives, runtime-shape handling, `ConstTensor` inputs, or generated
+  `RuntimeParams` must be frozen into descriptor-owned payloads, or descriptor
+  verification must fail closed.
 - Keep compiler memory regions, alias groups, lifetimes, transient arenas, and
   cache-envelope fingerprints in `src/compiler/`; request code consumes runtime
   descriptors and `RuntimeSession`.

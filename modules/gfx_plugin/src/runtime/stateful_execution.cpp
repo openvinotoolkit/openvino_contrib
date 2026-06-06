@@ -12,6 +12,7 @@
 #include "runtime/backend_runtime.hpp"
 #include "runtime/gfx_shape_utils.hpp"
 #include "runtime/memory_manager.hpp"
+#include "runtime/tensor_binding_contract.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -36,19 +37,32 @@ const RuntimeTensorBindingContract* output_binding_or_null(const InferStage& sta
     return &descriptor->output_bindings[output_idx];
 }
 
+const RuntimeTensorBindingContract* input_binding_or_null(const InferStage& stage,
+                                                          size_t input_idx) {
+    const auto* descriptor = runtime_stage_descriptor_or_null(stage);
+    if (!descriptor || input_idx >= descriptor->input_bindings.size()) {
+        return nullptr;
+    }
+    return &descriptor->input_bindings[input_idx];
+}
+
 ov::element::Type tensor_storage_type(const GpuTensor& tensor) {
     return tensor.expected_type == ov::element::dynamic ? tensor.buf.type : tensor.expected_type;
 }
 
 ov::element::Type resolve_assign_output_type(const InferStage& stage,
                                              const std::vector<GpuTensor*>& resolved_inputs,
-                                             GpuTensor& output) {
+                                             GpuTensor& output,
+                                             const RuntimeTensorBindingContract* binding) {
+    (void)stage;
     if (output.expected_type != ov::element::dynamic) {
         return output.expected_type;
     }
-    if (stage.node && stage.node->get_output_size() > 0 &&
-        stage.node->get_output_element_type(0) != ov::element::dynamic) {
-        return stage.node->get_output_element_type(0);
+    if (binding) {
+        const auto descriptor_type = element_type_from_contract(binding->element_type);
+        if (descriptor_type != ov::element::dynamic) {
+            return descriptor_type;
+        }
     }
     for (auto* input : resolved_inputs) {
         if (input && input->buf.valid()) {
@@ -68,9 +82,11 @@ ov::Shape resolve_input_shape(const InferStage& stage,
         !resolved_inputs[input_idx]->shape.empty()) {
         return resolved_inputs[input_idx]->shape;
     }
-    if (stage.node && input_idx < stage.node->get_input_size() &&
-        stage.node->get_input_partial_shape(input_idx).is_static()) {
-        return stage.node->get_input_shape(input_idx);
+    ov::Shape descriptor_shape;
+    if (const auto* binding = input_binding_or_null(stage, input_idx)) {
+        if (parse_static_shape_contract(binding->partial_shape, descriptor_shape)) {
+            return descriptor_shape;
+        }
     }
     return {};
 }
@@ -84,10 +100,7 @@ ov::Shape resolve_sum_inputs_along_axis_shape(
     }
     const auto axis = static_cast<size_t>(axis_i64);
     ov::Shape out_shape;
-    const size_t input_count = stage.node
-                                   ? std::min(resolved_inputs.size(),
-                                              stage.node->get_input_size())
-                                   : resolved_inputs.size();
+    const size_t input_count = resolved_inputs.size();
     for (size_t i = 0; i < input_count; ++i) {
         auto in_shape = resolve_input_shape(stage, resolved_inputs, i);
         if (in_shape.empty() || axis >= in_shape.size()) {
@@ -123,9 +136,10 @@ ov::Shape resolve_assign_output_shape(const InferStage& stage,
         return resolve_sum_inputs_along_axis_shape(
             stage, resolved_inputs, binding->stateful_prebind_shape_axis);
     }
-    if (stage.node && stage.node->get_output_size() > 0 &&
-        stage.node->get_output_partial_shape(0).is_static()) {
-        return stage.node->get_output_shape(0);
+    ov::Shape descriptor_shape;
+    if (binding &&
+        parse_static_shape_contract(binding->partial_shape, descriptor_shape)) {
+        return descriptor_shape;
     }
     return {};
 }
@@ -317,7 +331,8 @@ bool try_bind_direct_stateful_assign_output(StatefulVariableStateMap& variable_s
         auto& out = *stage.outputs[output_idx];
         const ov::Shape shape =
             resolve_assign_output_shape(stage, resolved_inputs, out, binding);
-        const auto type = resolve_assign_output_type(stage, resolved_inputs, out);
+        const auto type =
+            resolve_assign_output_type(stage, resolved_inputs, out, binding);
         if (shape.empty() || type == ov::element::dynamic) {
             continue;
         }
@@ -358,7 +373,7 @@ bool execute_stateful_stage(StatefulVariableStateMap& variable_states,
                             GpuBufferPool& pool,
                             GpuCommandBufferHandle command_buffer,
                             GfxProfiler* profiler) {
-    if (!stage.node || !stage.stage) {
+    if (!stage.stage) {
         return false;
     }
 

@@ -40,8 +40,8 @@ notes or deleted backend code as current behavior.
   stages, stateful runtime helpers, submission windows, target profiles,
   profiling reports, remote tensor/context helpers, common buffer abstractions,
   runtime executable descriptor records, runtime pipeline-stage plans, runtime
-  sessions, fused-output lifetime planning, runtime-value and kernel-launch
-  planning, and reusable caches
+  sessions, fused-output lifetime planning, descriptor-owned const-tensor
+  materialization, runtime-value and kernel-launch planning, and reusable caches
 - `src/kernel_ir/`: kernel manifests, custom-kernel family registry, dispatch
   metadata, argument helpers, cache keys, embedded helper kernel sources, and
   OpenCL source artifacts
@@ -99,13 +99,14 @@ backend-specific `GpuStage` instances. One stage may represent one OpenVINO node
 a fused sequence, a stateful helper, a view-style alias, or a materialized
 constant output.
 
-`build_op_pipeline()` consumes the descriptor-owned
-`PipelineStageRuntimePlan` and delegates concrete stage materialization to
-`src/runtime/pipeline_stage_materializer.*`. The runtime plan is emitted by
-`src/compiler/pipeline_stage_builder.*` while building the runtime executable
-descriptor. The builder owns stage ordering, node-to-stage mapping, parameter
-index map, absorbed input transforms, model-output alias handling, and the
-handoff from compiler-owned planning contracts in
+`build_op_pipeline()` consumes the compiler-owned `PipelineStageRuntimePlan`
+alongside the runtime executable descriptor and delegates concrete stage
+materialization to `src/runtime/pipeline_stage_materializer.*`. The runtime
+plan is emitted by `src/compiler/pipeline_stage_builder.*` as a separate
+compiler output, not as part of the cacheable runtime executable descriptor.
+The builder owns stage ordering, node-to-stage mapping, parameter index map,
+absorbed input transforms, model-output alias handling, and the handoff from
+compiler-owned planning contracts in
 `src/compiler/pipeline_stage_plan.*` and
 `src/compiler/pipeline_stage_fusion.*`. `CompiledModel` should not accumulate
 backend-specific stage construction logic.
@@ -325,11 +326,12 @@ a kernel, source artifact, vendor primitive, or ABI fingerprint consumes the
 matching `RuntimeStageExecutableDescriptor`. The old pattern where a backend
 stage inferred its executable payload from the OpenVINO node is not a current
 route.
-Any remaining `ov::Node` dependency must be recorded as
-`temporary_source_node_bridge_required` with a non-empty migration reason in the
-runtime descriptor. Current bridges are limited to routes whose vendor
-primitive metadata, runtime-shape arguments, `ConstTensor` ABI, or unsupported
-source `RuntimeParams` ABI is not yet fully descriptor-owned.
+Source-node bridge routes are removed from the runtime descriptor contract.
+Vendor primitive metadata, runtime-shape arguments, `ConstTensor` ABI, and
+source `RuntimeParams` ABI must be descriptor-owned. If the compiler cannot
+freeze the required data into the executable descriptor/artifact payload,
+runtime descriptor verification must fail instead of allowing backend runtime
+code to inspect the OpenVINO node.
 
 `BackendTarget`, lowering plans, backend capability objects, buffers, and
 runtime capability records default to `GpuBackend::Unknown` until a backend is
@@ -420,7 +422,8 @@ Kernel contracts are split across the current compiler and kernel IR layers:
   records
 - `src/compiler/runtime_executable_descriptor_builder.*`: conversion and
   verification from compiler executable bundles into runtime executable
-  descriptors, including the attached runtime stage plan
+  descriptors; graph-owned runtime stage plans are emitted separately and are not
+  embedded into cacheable descriptors
 - `src/runtime/executable_descriptor.*`: backend-neutral runtime descriptor
   records consumed by stage factories and `RuntimeSession`
 - `src/runtime/pipeline_stage_plan.hpp`: runtime-facing stage materialization
@@ -432,10 +435,12 @@ Kernel contracts are split across the current compiler and kernel IR layers:
 - `src/runtime/pipeline_stage_materializer.*`: descriptor lookup, backend stage
   creation, vendor primitive artifact materialization, and fused sequence
   materialization
+- `src/runtime/descriptor_const_tensor_materializer.*`: shared materialization
+  of descriptor-owned `ConstTensor` payloads for Metal, OpenCL, and vendor
+  primitive stages
 - `src/runtime/stage_materialization_context.hpp`: the context object that hands
   compiler-owned `RuntimeStageExecutableDescriptor` records to backend stage
-  factories and exposes source-node identity only for explicitly recorded
-  temporary bridges
+  factories without exposing OpenVINO source graph identity to runtime code
 - `src/runtime/tensor_binding_contract.*`: descriptor-owned tensor
   element-type/static-shape parsing and generated `RuntimeParams` ownership
   classification shared by Metal and OpenCL runtime code

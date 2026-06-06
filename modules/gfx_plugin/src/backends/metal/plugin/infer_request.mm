@@ -35,6 +35,7 @@
 #include "runtime/infer_pipeline.hpp"
 #include "runtime/infer_submission.hpp"
 #include "runtime/stateful_execution.hpp"
+#include "runtime/tensor_binding_contract.hpp"
 #include "backends/metal/runtime/metal_command_encoder.hpp"
 
 #import <Metal/Metal.h>
@@ -304,9 +305,6 @@ void execute_metal_infer_request(InferRequest& request,
         OPENVINO_ASSERT(cm->op_pipeline_built(),
                         "GFX: op pipeline is not built");
         const auto& descs = cm->pipeline_desc();
-        const auto& node_map = cm->node_to_stage();
-        const auto& param_map = cm->parameter_index();
-        const auto runtime_model = cm->get_runtime_model();
 
         const bool profiling_enabled = (profiler != nullptr);
         void* stage_profiler = profiler ? profiler->native_handle() : nullptr;
@@ -333,10 +331,6 @@ void execute_metal_infer_request(InferRequest& request,
         execution_config.buffer_manager = metal->const_manager.get();
         execution_config.stage_profiler = stage_profiler;
         execution_config.profiling_enabled = profiling_enabled;
-        execution_config.runtime_model = &runtime_model;
-        execution_config.public_outputs = &InferRequestBackendAccess::outputs(request);
-        execution_config.node_map = &node_map;
-        execution_config.param_map = &param_map;
         execution_config.remote_outputs = &state.bound_remote_outputs;
         execution_config.remote_inputs = &state.bound_remote_inputs;
         execution_config.expected_target = &cm->target();
@@ -378,14 +372,51 @@ void execute_metal_infer_request(InferRequest& request,
                         const std::vector<GpuTensor*>& backend_resolved,
                         GpuCommandBufferHandle backend_command_buffer) {
                         if (gfx_log_debug_enabled() || metal_safe_debug_enabled()) {
+                            const auto* stage_descriptor =
+                                runtime_stage_descriptor_or_null(backend_stage);
                             const std::string node_name =
-                                backend_stage.node
-                                    ? backend_stage.node->get_friendly_name()
+                                stage_descriptor && !stage_descriptor->stage_name.empty()
+                                    ? stage_descriptor->stage_name
                                     : backend_stage.stage->name();
                             const std::string node_type =
-                                backend_stage.node
-                                    ? backend_stage.node->get_type_name()
+                                stage_descriptor && !stage_descriptor->op_family.empty()
+                                    ? stage_descriptor->op_family
                                     : backend_stage.stage->type();
+                            auto describe_source_ref =
+                                [](const PipelineStageInputLink& input) {
+                                    std::ostringstream ref;
+                                    switch (input.source_ref.kind) {
+                                    case PipelineStageTensorRefKind::Parameter:
+                                        ref << "param[" << input.source_ref.index << ":"
+                                            << input.source_ref.port << "]";
+                                        break;
+                                    case PipelineStageTensorRefKind::StageOutput:
+                                        ref << "stage[" << input.source_ref.index << "].out"
+                                            << input.source_ref.port;
+                                        break;
+                                    case PipelineStageTensorRefKind::None:
+                                    default:
+                                        ref << "unbound";
+                                        break;
+                                    }
+                                    return ref.str();
+                                };
+                            auto static_input_shape_from_descriptor =
+                                [&](size_t input_idx, ov::Shape& shape) {
+                                    return stage_descriptor &&
+                                           input_idx < stage_descriptor->input_bindings.size() &&
+                                           parse_static_shape_contract(
+                                               stage_descriptor->input_bindings[input_idx].partial_shape,
+                                               shape);
+                                };
+                            auto static_output_shape_from_descriptor =
+                                [&](size_t output_idx, ov::Shape& shape) {
+                                    return stage_descriptor &&
+                                           output_idx < stage_descriptor->output_bindings.size() &&
+                                           parse_static_shape_contract(
+                                               stage_descriptor->output_bindings[output_idx].partial_shape,
+                                               shape);
+                                };
                             if (gfx_log_debug_enabled()) {
                                 std::ostringstream oss;
                                 oss << "Op=" << node_type << " name=" << node_name;
@@ -396,10 +427,9 @@ void execute_metal_infer_request(InferRequest& request,
                                     oss << " in" << i << "_shape=" << shape_to_string(t.shape)
                                         << " in" << i << "_bytes=" << t.buf.size;
                                     if (backend_stage.stage && backend_stage.stage->has_internal_input_bindings() &&
-                                        i < backend_stage.inputs.size() && backend_stage.inputs[i].node) {
+                                        i < backend_stage.inputs.size()) {
                                         oss << " in" << i << "_src="
-                                            << backend_stage.inputs[i].node->get_friendly_name()
-                                            << ":" << backend_stage.inputs[i].port;
+                                            << describe_source_ref(backend_stage.inputs[i]);
                                     }
                                 }
                                 for (size_t i = 0; i < backend_stage.outputs.size(); ++i) {
@@ -418,10 +448,8 @@ void execute_metal_infer_request(InferRequest& request,
                                     continue;
                                 ov::Shape in_shape = backend_resolved[i]->shape;
                                 if (!internal_input_bindings &&
-                                    in_shape.empty() && backend_stage.node &&
-                                    i < backend_stage.node->get_input_size() &&
-                                    backend_stage.node->get_input_partial_shape(i).is_static()) {
-                                    in_shape = backend_stage.node->get_input_shape(i);
+                                    in_shape.empty()) {
+                                    static_input_shape_from_descriptor(i, in_shape);
                                 }
                                 safe_check(("input" + std::to_string(i)).c_str(),
                                            backend_resolved[i],
@@ -432,10 +460,8 @@ void execute_metal_infer_request(InferRequest& request,
                                 if (!backend_stage.outputs[i])
                                     continue;
                                 ov::Shape out_shape = backend_stage.outputs[i]->shape;
-                                if (out_shape.empty() && backend_stage.node &&
-                                    i < backend_stage.node->get_output_size() &&
-                                    backend_stage.node->get_output_partial_shape(i).is_static()) {
-                                    out_shape = backend_stage.node->get_output_shape(i);
+                                if (out_shape.empty()) {
+                                    static_output_shape_from_descriptor(i, out_shape);
                                 }
                                 safe_check(("output" + std::to_string(i)).c_str(),
                                            backend_stage.outputs[i].get(),

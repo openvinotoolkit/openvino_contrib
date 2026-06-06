@@ -116,14 +116,19 @@ compiler::GfxCompileResult BackendModuleContract::compile_without_graph_pipeline
             compiler::RuntimeExecutableDescriptorBuilder{}.build(
                 compile_result.executable);
         compiler::PipelineStageBuildRequest stage_request;
-        stage_request.runtime_model = compile_result.transformed_model;
+        stage_request.graph = compiler::make_pipeline_stage_graph_snapshot(
+            compile_result.transformed_model,
+            compiler::make_pipeline_stage_fusion_config(
+                backend_module.capabilities().fusion(), true, false));
         stage_request.runtime_descriptor = &runtime_descriptor;
         const compiler::BackendRegistry registry({m_module});
         stage_request.backend_registry = &registry;
         stage_request.target = compile_result.target;
         stage_request.backend_name = compile_result.target.backend_id();
-        runtime_descriptor.stage_plan =
+        runtime_descriptor.pipeline_plan =
             compiler::build_pipeline_stage_runtime_plan(stage_request);
+        compiler::attach_runtime_public_output_descriptors(
+            runtime_descriptor, *runtime_descriptor.pipeline_plan);
         compile_result.runtime_descriptor =
             std::make_shared<const RuntimeExecutableDescriptor>(
                 std::move(runtime_descriptor));
@@ -150,7 +155,7 @@ bool BackendModuleContract::compile_result_obeys_manifest_contract(
         return false;
     }
     if (!compile_result.runtime_descriptor ||
-        !compiler::runtime_executable_stage_plan_valid(
+        !compiler::runtime_executable_descriptor_pipeline_plan_valid(
             *compile_result.runtime_descriptor)) {
         return false;
     }

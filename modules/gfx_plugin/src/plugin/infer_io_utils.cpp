@@ -147,6 +147,7 @@ bool init_stage_output_desc(GpuBackend backend,
                             bool is_model_output,
                             bool skip_view_ops,
                             const char* error_prefix) {
+    (void)backend;
     if (skip_view_ops && is_view_op(stage)) {
         return false;
     }
@@ -157,16 +158,30 @@ bool init_stage_output_desc(GpuBackend backend,
     const auto et = resolve_stage_output_type(stage, out_ref, out_idx, error_prefix);
     size_t bytes = tensor_byte_size(out_shape, et);
 
+    desc.bytes = bytes;
+    desc.type = et;
+    if (const auto* descriptor = runtime_stage_descriptor_or_null(stage);
+        descriptor && !descriptor->stage_name.empty()) {
+        desc.label = descriptor->stage_name.c_str();
+    } else if (stage.stage) {
+        desc.label = stage.stage->name().c_str();
+    } else {
+        desc.label = nullptr;
+    }
+    if (apply_runtime_output_memory_contract(stage,
+                                             out_idx,
+                                             desc,
+                                             out_ref,
+                                             error_prefix)) {
+        return true;
+    }
+
     const bool prefer_private = !is_model_output;
     out_ref.prefer_private = prefer_private;
     desc.cpu_read = !prefer_private;
     desc.cpu_write = !prefer_private;
     desc.prefer_device_local = prefer_private;
-
-    desc.bytes = bytes;
-    desc.type = et;
     desc.usage = is_model_output ? BufferUsage::IO : BufferUsage::Intermediate;
-    desc.label = stage.node ? stage.node->get_friendly_name().c_str() : nullptr;
     return true;
 }
 

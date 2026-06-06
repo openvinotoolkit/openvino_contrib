@@ -96,7 +96,7 @@ find_rms_residual_add(const std::shared_ptr<const ov::Node> &rms,
                       const std::unordered_set<const ov::Node *> &fused_nodes);
 
 PipelineFusionSelectionPlan
-plan_pipeline_fusions(const std::shared_ptr<const ov::Model> &model,
+plan_pipeline_fusions(const FusionPlan &fusion_plan,
                       const std::vector<std::shared_ptr<ov::Node>> &ordered_ops,
                       const ModelOutputPorts &model_outputs,
                       const PipelineFusionSelectionOptions &options);

@@ -5,6 +5,7 @@
 #include "runtime/gfx_stage_runtime_values.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <functional>
 #include <numeric>
 #include <sstream>
@@ -49,6 +50,25 @@
 namespace ov {
 namespace gfx_plugin {
 namespace {
+
+constexpr int64_t kRuntimeSliceMetadataVersion = 1;
+constexpr int64_t kRuntimeSliceKindV8 = 1;
+constexpr int64_t kRuntimeSliceKindStridedSliceV1 = 2;
+
+struct RuntimeSliceDescriptor {
+  int64_t kind = 0;
+  size_t input_count = 0;
+  std::vector<int64_t> begin_mask;
+  std::vector<int64_t> end_mask;
+  std::vector<int64_t> new_axis_mask;
+  std::vector<int64_t> shrink_axis_mask;
+  std::vector<int64_t> ellipsis_mask;
+
+  bool is_slice_v8() const noexcept { return kind == kRuntimeSliceKindV8; }
+  bool is_strided_slice_v1() const noexcept {
+    return kind == kRuntimeSliceKindStridedSliceV1;
+  }
+};
 
 std::vector<size_t> compute_row_major_strides(const ov::Shape &shape) {
   std::vector<size_t> strides(shape.size(), 1);
@@ -101,8 +121,89 @@ int64_t normalize_slice_index(int64_t index, int64_t dim, bool is_begin) {
   return std::clamp<int64_t>(index, -1, dim);
 }
 
+std::vector<int64_t>
+read_counted_i64_vector(const std::vector<int64_t> &metadata, size_t &offset,
+                        std::string_view field_name,
+                        std::string_view stage_name) {
+  OPENVINO_ASSERT(offset < metadata.size(),
+                  "GFX runtime: Slice metadata field '", field_name,
+                  "' is missing for stage ", stage_name);
+  const int64_t count_i64 = metadata[offset++];
+  OPENVINO_ASSERT(count_i64 >= 0,
+                  "GFX runtime: Slice metadata field '", field_name,
+                  "' has negative count for stage ", stage_name);
+  const size_t count = static_cast<size_t>(count_i64);
+  OPENVINO_ASSERT(offset + count <= metadata.size(),
+                  "GFX runtime: Slice metadata field '", field_name,
+                  "' is truncated for stage ", stage_name);
+  std::vector<int64_t> values(metadata.begin() +
+                                  static_cast<std::ptrdiff_t>(offset),
+                              metadata.begin() +
+                                  static_cast<std::ptrdiff_t>(offset + count));
+  offset += count;
+  return values;
+}
+
+RuntimeSliceDescriptor
+parse_runtime_slice_descriptor(const RuntimeStageExecutableDescriptor &descriptor,
+                               std::string_view stage_name) {
+  const auto &metadata = descriptor.runtime_shape_i64_metadata;
+  OPENVINO_ASSERT(metadata.size() >= 3,
+                  "GFX runtime: Slice runtime shape metadata is missing for ",
+                  stage_name);
+  OPENVINO_ASSERT(metadata[0] == kRuntimeSliceMetadataVersion,
+                  "GFX runtime: unsupported Slice metadata version for ",
+                  stage_name);
+  RuntimeSliceDescriptor slice;
+  slice.kind = metadata[1];
+  OPENVINO_ASSERT(slice.is_slice_v8() || slice.is_strided_slice_v1(),
+                  "GFX runtime: unsupported Slice metadata kind for ",
+                  stage_name);
+  OPENVINO_ASSERT(metadata[2] >= 3,
+                  "GFX runtime: Slice metadata input count is invalid for ",
+                  stage_name);
+  slice.input_count = static_cast<size_t>(metadata[2]);
+  if (slice.is_slice_v8()) {
+    OPENVINO_ASSERT(
+        metadata.size() == 3,
+        "GFX runtime: Slice v8 metadata has unexpected trailing fields for ",
+        stage_name);
+    return slice;
+  }
+
+  size_t offset = 3;
+  slice.begin_mask =
+      read_counted_i64_vector(metadata, offset, "begin_mask", stage_name);
+  slice.end_mask =
+      read_counted_i64_vector(metadata, offset, "end_mask", stage_name);
+  slice.new_axis_mask =
+      read_counted_i64_vector(metadata, offset, "new_axis_mask", stage_name);
+  slice.shrink_axis_mask =
+      read_counted_i64_vector(metadata, offset, "shrink_axis_mask", stage_name);
+  slice.ellipsis_mask =
+      read_counted_i64_vector(metadata, offset, "ellipsis_mask", stage_name);
+  OPENVINO_ASSERT(offset == metadata.size(),
+                  "GFX runtime: StridedSlice metadata has trailing fields for ",
+                  stage_name);
+  return slice;
+}
+
+void assert_zero_mask(const std::vector<int64_t> &mask,
+                      std::string_view mask_name,
+                      std::string_view stage_name) {
+  OPENVINO_ASSERT(std::all_of(mask.begin(), mask.end(),
+                              [](int64_t v) { return v == 0; }),
+                  "GFX MLIR: StridedSlice ", mask_name,
+                  " is not supported for stage ", stage_name);
+}
+
+bool descriptor_output_contract_shape(
+    const RuntimeStageExecutableDescriptor *descriptor, size_t output_idx,
+    ov::Shape &shape);
+
 void build_slice_runtime_spec(const RuntimeInputResolver &inputs,
-                              const ov::Node &node, const ov::Shape &in_shape,
+                              const RuntimeSliceDescriptor &slice,
+                              const ov::Shape &in_shape,
                               const ov::Shape &out_shape,
                               std::vector<int32_t> &starts_full,
                               std::vector<int32_t> &steps_full,
@@ -115,7 +216,7 @@ void build_slice_runtime_spec(const RuntimeInputResolver &inputs,
   starts_full.assign(rank, 0);
   steps_full.assign(rank, 1);
 
-  if (auto slice = dynamic_cast<const ov::op::v8::Slice *>(&node)) {
+  if (slice.is_slice_v8()) {
     auto starts = inputs.i64_values(1);
     auto ends = inputs.i64_values(2);
     auto steps = inputs.i64_values(3);
@@ -124,7 +225,7 @@ void build_slice_runtime_spec(const RuntimeInputResolver &inputs,
     OPENVINO_ASSERT(steps, "GFX MLIR: Slice steps must be available for stage ",
                     stage_name);
     std::vector<int64_t> axes;
-    if (slice->get_input_size() > 4) {
+    if (slice.input_count > 4) {
       auto runtime_axes = inputs.i64_values(4);
       OPENVINO_ASSERT(runtime_axes,
                       "GFX MLIR: Slice axes must be available for stage ",
@@ -165,28 +266,12 @@ void build_slice_runtime_spec(const RuntimeInputResolver &inputs,
     return;
   }
 
-  auto slice = dynamic_cast<const ov::op::v1::StridedSlice *>(&node);
-  OPENVINO_ASSERT(slice,
-                  "GFX MLIR: expected Slice/StridedSlice node for stage ",
+  OPENVINO_ASSERT(slice.is_strided_slice_v1(),
+                  "GFX runtime: expected Slice/StridedSlice descriptor for ",
                   stage_name);
-  OPENVINO_ASSERT(
-      std::all_of(slice->get_new_axis_mask().begin(),
-                  slice->get_new_axis_mask().end(),
-                  [](int64_t v) { return v == 0; }),
-      "GFX MLIR: StridedSlice new_axis_mask is not supported for stage ",
-      stage_name);
-  OPENVINO_ASSERT(
-      std::all_of(slice->get_shrink_axis_mask().begin(),
-                  slice->get_shrink_axis_mask().end(),
-                  [](int64_t v) { return v == 0; }),
-      "GFX MLIR: StridedSlice shrink_axis_mask is not supported for stage ",
-      stage_name);
-  OPENVINO_ASSERT(
-      std::all_of(slice->get_ellipsis_mask().begin(),
-                  slice->get_ellipsis_mask().end(),
-                  [](int64_t v) { return v == 0; }),
-      "GFX MLIR: StridedSlice ellipsis_mask is not supported for stage ",
-      stage_name);
+  assert_zero_mask(slice.new_axis_mask, "new_axis_mask", stage_name);
+  assert_zero_mask(slice.shrink_axis_mask, "shrink_axis_mask", stage_name);
+  assert_zero_mask(slice.ellipsis_mask, "ellipsis_mask", stage_name);
 
   auto begin = inputs.i64_values(1);
   OPENVINO_ASSERT(begin,
@@ -194,7 +279,7 @@ void build_slice_runtime_spec(const RuntimeInputResolver &inputs,
                   stage_name);
   auto end = inputs.i64_values(2);
   std::vector<int64_t> strides(rank, 1);
-  if (slice->get_input_size() > 3) {
+  if (slice.input_count > 3) {
     auto values = inputs.i64_values(3);
     OPENVINO_ASSERT(values,
                     "GFX MLIR: StridedSlice strides must be available for stage ",
@@ -207,12 +292,12 @@ void build_slice_runtime_spec(const RuntimeInputResolver &inputs,
   OPENVINO_ASSERT(
       begin->size() <= rank && (!end.has_value() || end->size() <= rank),
       "GFX MLIR: StridedSlice begin/end rank mismatch for stage ", stage_name);
-  const auto &begin_mask = slice->get_begin_mask();
-  const auto &end_mask = slice->get_end_mask();
   for (size_t axis = 0; axis < rank; ++axis) {
     const auto dim = static_cast<int64_t>(in_shape[axis]);
-    const bool masked_begin = axis < begin_mask.size() && begin_mask[axis] != 0;
-    const bool masked_end = axis < end_mask.size() && end_mask[axis] != 0;
+    const bool masked_begin =
+        axis < slice.begin_mask.size() && slice.begin_mask[axis] != 0;
+    const bool masked_end =
+        axis < slice.end_mask.size() && slice.end_mask[axis] != 0;
     const int64_t step = strides[axis];
     OPENVINO_ASSERT(
         step != 0,
@@ -230,35 +315,35 @@ void build_slice_runtime_spec(const RuntimeInputResolver &inputs,
   }
 }
 
-bool slice_requires_runtime_indexing(const ov::Node &node) {
-  if (auto slice = dynamic_cast<const ov::op::v8::Slice *>(&node)) {
-    auto starts = optional_constant_source_i64(slice->input_value(1));
+bool slice_requires_runtime_indexing(const RuntimeInputResolver &inputs,
+                                     const RuntimeSliceDescriptor &slice) {
+  if (slice.is_slice_v8()) {
+    auto starts = inputs.i64_values(1);
     if (!starts) {
       return true;
     }
-    auto steps = optional_constant_source_i64(slice->input_value(3));
+    auto steps = inputs.i64_values(3);
     if (!steps) {
       return true;
     }
-    if (slice->get_input_size() > 4 &&
-        !optional_constant_source_i64(slice->input_value(4))) {
+    if (slice.input_count > 4 && !inputs.i64_values(4)) {
       return true;
     }
     return std::any_of(steps->begin(), steps->end(),
                        [](int64_t step) { return step < 0; });
   }
-  if (auto slice = dynamic_cast<const ov::op::v1::StridedSlice *>(&node)) {
-    auto begin = optional_constant_source_i64(slice->input_value(1));
+  if (slice.is_strided_slice_v1()) {
+    auto begin = inputs.i64_values(1);
     if (!begin) {
       return true;
     }
-    if (!optional_constant_source_i64(slice->input_value(2))) {
+    if (!inputs.i64_values(2)) {
       return true;
     }
-    if (slice->get_input_size() <= 3) {
+    if (slice.input_count <= 3) {
       return false;
     }
-    auto steps = optional_constant_source_i64(slice->input_value(3));
+    auto steps = inputs.i64_values(3);
     if (!steps) {
       return true;
     }
@@ -268,26 +353,27 @@ bool slice_requires_runtime_indexing(const ov::Node &node) {
   return false;
 }
 
-ov::Shape infer_slice_output_shape(const RuntimeInputResolver &inputs,
-                                   const ov::Node &node,
-                                   const ov::Shape &in_shape,
-                                   const std::vector<GpuTensor *> &outputs,
-                                   std::string_view stage_name) {
+ov::Shape infer_slice_output_shape(
+    const RuntimeInputResolver &inputs,
+    const RuntimeStageExecutableDescriptor &descriptor,
+    const RuntimeSliceDescriptor &slice, const ov::Shape &in_shape,
+    const std::vector<GpuTensor *> &outputs, std::string_view stage_name) {
   if (!outputs.empty() && outputs.front() && !outputs.front()->shape.empty()) {
     return outputs.front()->shape;
   }
-  if (node.get_output_partial_shape(0).is_static()) {
-    return node.get_output_shape(0);
+  ov::Shape descriptor_shape;
+  if (descriptor_output_contract_shape(&descriptor, 0, descriptor_shape)) {
+    return descriptor_shape;
   }
 
   const size_t rank = in_shape.size();
   ov::Shape out_shape;
-  if (auto slice = dynamic_cast<const ov::op::v8::Slice *>(&node)) {
+  if (slice.is_slice_v8()) {
     auto starts = inputs.i64_values(1);
     auto ends = inputs.i64_values(2);
     auto steps = inputs.i64_values(3);
     std::optional<std::vector<int64_t>> axes;
-    if (slice->get_input_size() > 4) {
+    if (slice.input_count > 4) {
       axes = inputs.i64_values(4);
     }
     if (starts && ends && steps) {
@@ -326,31 +412,15 @@ ov::Shape infer_slice_output_shape(const RuntimeInputResolver &inputs,
             static_cast<size_t>((extent + step - 1) / step);
       }
     }
-  } else if (auto slice =
-                 dynamic_cast<const ov::op::v1::StridedSlice *>(&node)) {
-    OPENVINO_ASSERT(
-        std::all_of(slice->get_new_axis_mask().begin(),
-                    slice->get_new_axis_mask().end(),
-                    [](int64_t v) { return v == 0; }),
-        "GFX MLIR: StridedSlice new_axis_mask is not supported for stage ",
-        stage_name);
-    OPENVINO_ASSERT(
-        std::all_of(slice->get_shrink_axis_mask().begin(),
-                    slice->get_shrink_axis_mask().end(),
-                    [](int64_t v) { return v == 0; }),
-        "GFX MLIR: StridedSlice shrink_axis_mask is not supported for stage ",
-        stage_name);
-    OPENVINO_ASSERT(
-        std::all_of(slice->get_ellipsis_mask().begin(),
-                    slice->get_ellipsis_mask().end(),
-                    [](int64_t v) { return v == 0; }),
-        "GFX MLIR: StridedSlice ellipsis_mask is not supported for stage ",
-        stage_name);
+  } else if (slice.is_strided_slice_v1()) {
+    assert_zero_mask(slice.new_axis_mask, "new_axis_mask", stage_name);
+    assert_zero_mask(slice.shrink_axis_mask, "shrink_axis_mask", stage_name);
+    assert_zero_mask(slice.ellipsis_mask, "ellipsis_mask", stage_name);
 
     auto begin = inputs.i64_values(1);
     auto end = inputs.i64_values(2);
     std::optional<std::vector<int64_t>> strides;
-    if (slice->get_input_size() > 3) {
+    if (slice.input_count > 3) {
       strides = inputs.i64_values(3);
     }
     if (begin && end) {
@@ -362,8 +432,6 @@ ov::Shape infer_slice_output_shape(const RuntimeInputResolver &inputs,
                         "GFX MLIR: StridedSlice strides rank mismatch for stage ",
                         stage_name);
       }
-      const auto &begin_mask = slice->get_begin_mask();
-      const auto &end_mask = slice->get_end_mask();
       out_shape.reserve(rank);
       for (size_t axis = 0; axis < rank; ++axis) {
         const auto dim = static_cast<int64_t>(in_shape[axis]);
@@ -373,8 +441,9 @@ ov::Shape infer_slice_output_shape(const RuntimeInputResolver &inputs,
                         "GFX MLIR: StridedSlice zero step is not supported for stage ",
                         stage_name);
         const bool masked_begin =
-            axis < begin_mask.size() && begin_mask[axis] != 0;
-        const bool masked_end = axis < end_mask.size() && end_mask[axis] != 0;
+            axis < slice.begin_mask.size() && slice.begin_mask[axis] != 0;
+        const bool masked_end =
+            axis < slice.end_mask.size() && slice.end_mask[axis] != 0;
         int64_t start = axis < begin->size() ? (*begin)[axis] : 0;
         int64_t finish = axis < end->size() ? (*end)[axis] : dim;
         start = masked_begin ? (step < 0 ? dim - 1 : 0)
@@ -387,20 +456,6 @@ ov::Shape infer_slice_output_shape(const RuntimeInputResolver &inputs,
         const int64_t stride = step > 0 ? step : -step;
         out_shape.push_back(static_cast<size_t>((extent + stride - 1) / stride));
       }
-    }
-  }
-  if (!out_shape.empty()) {
-    return out_shape;
-  }
-
-  if (node.get_output_partial_shape(0).rank().is_static()) {
-    const auto pshape = node.get_output_partial_shape(0);
-    out_shape.reserve(static_cast<size_t>(pshape.rank().get_length()));
-    for (size_t i = 0; i < static_cast<size_t>(pshape.rank().get_length());
-         ++i) {
-      out_shape.push_back(pshape[i].is_static()
-                              ? static_cast<size_t>(pshape[i].get_length())
-                              : (i < in_shape.size() ? in_shape[i] : 1));
     }
   }
   return out_shape;
@@ -525,6 +580,55 @@ ov::element::Type descriptor_output_contract_type(
       descriptor.output_bindings[output_idx].element_type);
 }
 
+const RuntimeStageExecutableDescriptor &
+require_descriptor_contract(const RuntimeInputResolver &inputs,
+                            std::string_view rule,
+                            std::string_view stage_name) {
+  OPENVINO_ASSERT(inputs.descriptor,
+                  "GFX runtime: descriptor-owned runtime shape rule '",
+                  rule, "' requires a compiler runtime descriptor for ",
+                  stage_name);
+  return *inputs.descriptor;
+}
+
+ov::element::Type descriptor_required_output_type(
+    const RuntimeStageExecutableDescriptor &descriptor, size_t output_idx,
+    std::string_view stage_name) {
+  auto type = descriptor_output_contract_type(descriptor, output_idx);
+  OPENVINO_ASSERT(type != ov::element::dynamic,
+                  "GFX runtime: descriptor output type is missing for ",
+                  stage_name);
+  return type;
+}
+
+ov::Shape descriptor_required_output_shape(
+    const RuntimeStageExecutableDescriptor &descriptor, size_t output_idx,
+    std::string_view stage_name, std::string_view rule) {
+  ov::Shape shape;
+  OPENVINO_ASSERT(
+      descriptor_output_contract_shape(&descriptor, output_idx, shape),
+      "GFX runtime: descriptor-owned runtime shape rule '", rule,
+      "' requires static output shape contract for ", stage_name);
+  return shape;
+}
+
+size_t descriptor_input_count(const RuntimeStageExecutableDescriptor &descriptor,
+                              const RuntimeInputResolver &inputs) {
+  if (!descriptor.input_bindings.empty()) {
+    return descriptor.input_bindings.size();
+  }
+  return inputs.inputs ? inputs.inputs->size() : 0;
+}
+
+int64_t descriptor_runtime_shape_metadata_at(
+    const RuntimeStageExecutableDescriptor &descriptor, size_t idx,
+    std::string_view stage_name, std::string_view name) {
+  OPENVINO_ASSERT(idx < descriptor.runtime_shape_i64_metadata.size(),
+                  "GFX runtime: descriptor-owned runtime shape metadata '",
+                  name, "' is missing for ", stage_name);
+  return descriptor.runtime_shape_i64_metadata[idx];
+}
+
 ov::AxisSet descriptor_reduce_axes(
     const RuntimeStageExecutableDescriptor &descriptor, const ov::Shape &shape,
     std::string_view stage_name) {
@@ -558,10 +662,6 @@ ov::Shape RuntimeInputResolver::shape(size_t idx) const {
   if (descriptor_input_contract_shape(descriptor, idx, descriptor_shape)) {
     return descriptor_shape;
   }
-  if (node && idx < node->get_input_size() &&
-      node->get_input_partial_shape(idx).is_static()) {
-    return node->get_input_shape(idx);
-  }
   return {};
 }
 
@@ -575,20 +675,7 @@ bool RuntimeInputResolver::shape_known(size_t idx, ov::Shape &out_shape,
   if (descriptor_input_contract_shape(descriptor, idx, out_shape)) {
     return true;
   }
-  if (!node || idx >= node->get_input_size()) {
-    return false;
-  }
-  if (node->get_input_partial_shape(idx).is_static()) {
-    out_shape = node->get_input_shape(idx);
-    return true;
-  }
-  if (policy == RuntimeInputShapePolicy::TensorOrStaticOrConstant) {
-    if (auto input_const =
-            ov::util::get_constant_from_source(node->input_value(idx))) {
-      out_shape = input_const->get_shape();
-      return true;
-    }
-  }
+  (void)policy;
   return false;
 }
 
@@ -614,12 +701,12 @@ RuntimeInputResolver::i64_values(size_t input_idx) const {
       !(*inputs)[input_idx]->i64_values.empty()) {
     return (*inputs)[input_idx]->i64_values;
   }
-  if (!node || input_idx >= node->get_input_size()) {
-    return std::nullopt;
-  }
-  if (auto input_const =
-          ov::util::get_constant_from_source(node->input_value(input_idx))) {
-    return input_const->cast_vector<int64_t>();
+  if (const_buffers && const_buffer_present &&
+      input_idx < const_buffers->size() &&
+      input_idx < const_buffer_present->size() &&
+      (*const_buffer_present)[input_idx] &&
+      !(*const_buffers)[input_idx].i64_values.empty()) {
+    return (*const_buffers)[input_idx].i64_values;
   }
   return std::nullopt;
 }
@@ -633,13 +720,7 @@ void RuntimeInputResolver::ensure_output_shape(size_t output_idx,
   if (descriptor_output_contract_shape(descriptor, output_idx,
                                        descriptor_shape)) {
     out->shape = std::move(descriptor_shape);
-    return;
   }
-  if (!node || output_idx >= node->get_output_size() ||
-      !node->get_output_partial_shape(output_idx).is_static()) {
-    return;
-  }
-  out->shape = node->get_output_shape(output_idx);
 }
 
 ov::Shape compute_binary_broadcast_shape(const ov::Shape &lhs,
@@ -680,7 +761,6 @@ materialize_descriptor_owned_runtime_param_payload(
   }
 
   RuntimeInputResolver descriptor_inputs = inputs;
-  descriptor_inputs.node.reset();
 
   auto direct_input_index = [&](size_t slot) -> size_t {
     return direct_input_indices && slot < direct_input_indices->size()
@@ -869,8 +949,7 @@ materialize_descriptor_owned_runtime_param_payload(
         descriptor_reduce_axes(descriptor, input_shape, stage_name),
         descriptor.runtime_param_reduce_keep_dims};
     const auto reduce_plan = plan_reduce_runtime_values(
-        descriptor_inputs, nullptr, descriptor.op_family, reduce_info,
-        stage_name);
+        descriptor_inputs, descriptor.op_family, reduce_info, stage_name);
     OPENVINO_ASSERT(
         reduce_plan.values.output_shape == output_shape,
         "GFX runtime: Reduce RuntimeParams descriptor output shape drift for ",
@@ -1053,18 +1132,20 @@ plan_shape_preserving_runtime_values(const RuntimeInputResolver &inputs,
 }
 
 RuntimeValuePlan plan_shapeof_runtime_values(const RuntimeInputResolver &inputs,
-                                             const ov::Node *node,
                                              std::string_view stage_name) {
+  const auto &descriptor =
+      require_descriptor_contract(inputs, "shape_of", stage_name);
   ov::Shape in_shape = inputs.shape(0);
   if (in_shape.empty()) {
-    OPENVINO_THROW("GFX MLIR: ShapeOf input shape is unknown for stage ",
+    OPENVINO_THROW("GFX runtime: ShapeOf input shape is unknown for stage ",
                    stage_name);
   }
   const auto output_type =
-      node ? node->get_output_element_type(0) : ov::element::i64;
+      descriptor_required_output_type(descriptor, 0, stage_name);
   OPENVINO_ASSERT(output_type == ov::element::i32 ||
                       output_type == ov::element::i64,
-                  "GFX MLIR: ShapeOf output must be i32/i64");
+                  "GFX runtime: ShapeOf descriptor output must be i32/i64 for ",
+                  stage_name);
 
   RuntimeValuePlan plan;
   plan.output_shape = ov::Shape{in_shape.size()};
@@ -1157,6 +1238,57 @@ RuntimeValuePlan plan_broadcast_runtime_values(
   return plan;
 }
 
+RuntimeValuePlan plan_broadcast_runtime_values(
+    const RuntimeInputResolver &inputs, const ov::Shape &input_shape,
+    std::string_view stage_name) {
+  const auto &descriptor =
+      require_descriptor_contract(inputs, "broadcast", stage_name);
+  const bool bidirectional_broadcast =
+      !descriptor.runtime_shape_i64_metadata.empty() &&
+      descriptor.runtime_shape_i64_metadata[0] != 0;
+  const int64_t descriptor_rank =
+      descriptor.runtime_shape_i64_metadata.size() > 1
+          ? descriptor.runtime_shape_i64_metadata[1]
+          : -1;
+
+  ov::Shape out_shape;
+  if (auto target = inputs.i64_values(1)) {
+    ov::Shape target_shape;
+    target_shape.reserve(target->size());
+    for (auto dim : *target) {
+      target_shape.push_back(static_cast<size_t>(std::max<int64_t>(dim, 0)));
+    }
+    out_shape = bidirectional_broadcast
+                    ? compute_binary_broadcast_shape(input_shape, target_shape,
+                                                     stage_name)
+                    : target_shape;
+  }
+  if (out_shape.empty()) {
+    out_shape =
+        descriptor_required_output_shape(descriptor, 0, stage_name, "broadcast");
+  }
+  if (descriptor_rank >= 0) {
+    OPENVINO_ASSERT(
+        static_cast<size_t>(descriptor_rank) == out_shape.size(),
+        "GFX runtime: Broadcast descriptor output rank drift for ",
+        stage_name);
+  }
+  OPENVINO_ASSERT(input_shape.size() <= out_shape.size(),
+                  "GFX runtime: Broadcast input rank exceeds output rank for ",
+                  stage_name);
+
+  RuntimeValuePlan plan;
+  plan.output_shape = std::move(out_shape);
+  plan.value_shape = input_shape;
+  plan.output_type =
+      descriptor_required_output_type(descriptor, 0, stage_name);
+  if (auto input_values = inputs.i64_values(0)) {
+    plan.i64_values = std::move(*input_values);
+    plan.has_i64_values = true;
+  }
+  return plan;
+}
+
 RuntimeValuePlan plan_convert_runtime_values(const RuntimeInputResolver &inputs,
                                              const ov::Node *node,
                                              std::string_view stage_name) {
@@ -1177,8 +1309,8 @@ RuntimeValuePlan plan_convert_runtime_values(const RuntimeInputResolver &inputs,
 }
 
 RuntimeValuePlan plan_range_runtime_values(const RuntimeInputResolver &inputs,
-                                           const ov::Node *node,
                                            std::string_view stage_name) {
+  const auto &descriptor = require_descriptor_contract(inputs, "range", stage_name);
   auto start_values = inputs.i64_values(0);
   auto stop_values = inputs.i64_values(1);
   auto step_values = inputs.i64_values(2);
@@ -1196,15 +1328,14 @@ RuntimeValuePlan plan_range_runtime_values(const RuntimeInputResolver &inputs,
       plan.i64_values.push_back(start + static_cast<int64_t>(ri) * step);
     }
     plan.has_i64_values = true;
-  } else if (node && node->get_output_partial_shape(0).is_static()) {
-    plan.output_shape = node->get_output_shape(0);
+  } else {
+    plan.output_shape =
+        descriptor_required_output_shape(descriptor, 0, stage_name, "range");
   }
-  OPENVINO_ASSERT(!plan.output_shape.empty(),
-                  "GFX MLIR: Range output shape is unknown for stage ",
-                  stage_name);
 
   plan.value_shape = plan.output_shape;
-  plan.output_type = node ? node->get_output_element_type(0) : ov::element::i64;
+  plan.output_type =
+      descriptor_required_output_type(descriptor, 0, stage_name);
   plan.force_output_type = true;
   return plan;
 }
@@ -1229,20 +1360,51 @@ RuntimeSelectPlan plan_select_runtime_values(const RuntimeInputResolver &inputs,
   return plan;
 }
 
+RuntimeSelectPlan plan_select_runtime_values(const RuntimeInputResolver &inputs,
+                                             std::string_view stage_name) {
+  const auto &descriptor =
+      require_descriptor_contract(inputs, "select", stage_name);
+  RuntimeSelectPlan plan;
+  if (!inputs.shape_known(0, plan.condition_shape) ||
+      !inputs.shape_known(1, plan.true_shape) ||
+      !inputs.shape_known(2, plan.false_shape)) {
+    return plan;
+  }
+
+  const ov::Shape data_shape = compute_binary_broadcast_shape(
+      plan.true_shape, plan.false_shape, stage_name);
+  plan.values.output_shape = compute_binary_broadcast_shape(
+      plan.condition_shape, data_shape, stage_name);
+  ov::Shape descriptor_shape;
+  if (descriptor_output_contract_shape(&descriptor, 0, descriptor_shape)) {
+    OPENVINO_ASSERT(
+        descriptor_shape == plan.values.output_shape,
+        "GFX runtime: Select descriptor output shape drift for ", stage_name);
+    plan.values.output_shape = descriptor_shape;
+  }
+  plan.values.value_shape = plan.values.output_shape;
+  plan.values.output_type =
+      descriptor_required_output_type(descriptor, 0, stage_name);
+  plan.available = true;
+  return plan;
+}
+
 RuntimeReducePlan
 plan_reduce_runtime_values(const RuntimeInputResolver &inputs,
-                           const ov::Node *node, std::string_view reduce_type,
+                           std::string_view reduce_type,
                            const RuntimeReduceInfo &reduce_info,
                            std::string_view stage_name) {
+  const auto &descriptor =
+      require_descriptor_contract(inputs, "reduce", stage_name);
   RuntimeReducePlan plan;
   plan.input_shape = inputs.shape(0);
   OPENVINO_ASSERT(!plan.input_shape.empty(),
-                  "GFX MLIR: Reduce input shape is unknown for stage ",
+                  "GFX runtime: Reduce input shape is unknown for stage ",
                   stage_name);
   const size_t rank = plan.input_shape.size();
   OPENVINO_ASSERT(
       rank <= 8,
-      "GFX MLIR: Reduce rank exceeds kernel metadata capacity for stage ",
+      "GFX runtime: Reduce rank exceeds kernel metadata capacity for stage ",
       stage_name);
 
   plan.values.output_shape.reserve(rank);
@@ -1260,9 +1422,17 @@ plan_reduce_runtime_values(const RuntimeInputResolver &inputs,
     plan.values.output_shape = ov::Shape{1};
   }
 
+  ov::Shape descriptor_shape;
+  if (descriptor_output_contract_shape(&descriptor, 0, descriptor_shape)) {
+    OPENVINO_ASSERT(
+        descriptor_shape == plan.values.output_shape,
+        "GFX runtime: Reduce descriptor output shape drift for ", stage_name);
+    plan.values.output_shape = descriptor_shape;
+  }
   plan.values.value_shape = plan.values.output_shape;
   plan.values.output_type =
-      node ? node->get_output_element_type(0) : ov::element::dynamic;
+      descriptor_required_output_type(descriptor, 0, stage_name);
+  plan.values.force_output_type = true;
   if (auto input_values = inputs.i64_values(0)) {
     if (auto reduced_values = compute_reduce_i64_values(
             reduce_type, *input_values, plan.input_shape, reduce_info,
@@ -1349,10 +1519,9 @@ plan_tile_runtime_values(const RuntimeInputResolver &inputs,
   }
   if (!outputs.front()->shape.empty()) {
     plan.output_shape = outputs.front()->shape;
-  } else if (inputs.node &&
-             inputs.node->get_output_size() > 0 &&
-             inputs.node->get_output_partial_shape(0).is_static()) {
-    plan.output_shape = inputs.node->get_output_shape(0);
+  } else if (inputs.descriptor &&
+             descriptor_output_contract_shape(inputs.descriptor, 0,
+                                              plan.output_shape)) {
   } else if (auto repeats = inputs.i64_values(1)) {
     OPENVINO_ASSERT(repeats->size() == plan.input_shape.size(),
                     "GFX MLIR: Tile repeats rank mismatch for stage ",
@@ -1375,11 +1544,127 @@ plan_tile_runtime_values(const RuntimeInputResolver &inputs,
   }
   plan.values.output_shape = plan.output_shape;
   plan.values.value_shape = plan.output_shape;
-  plan.values.output_type =
-      inputs.node ? inputs.node->get_output_element_type(0) : ov::element::dynamic;
+  if (inputs.descriptor) {
+    plan.values.output_type =
+        descriptor_required_output_type(*inputs.descriptor, 0, stage_name);
+  } else {
+    plan.values.output_type = ov::element::dynamic;
+  }
   plan.scalar_args = {
       static_cast<int32_t>(ov::shape_size(plan.output_shape)),
       static_cast<int32_t>(std::max<size_t>(plan.output_shape.size(), 1))};
+  plan.available = true;
+  return plan;
+}
+
+RuntimeConcatPlan plan_concat_runtime_values(const RuntimeInputResolver &inputs,
+                                             std::string_view stage_name) {
+  const auto &descriptor =
+      require_descriptor_contract(inputs, "concat", stage_name);
+
+  RuntimeConcatPlan plan;
+  const size_t input_count = descriptor_input_count(descriptor, inputs);
+  plan.input_shapes.reserve(input_count);
+  ov::Shape out_shape;
+  for (size_t input_idx = 0; input_idx < input_count; ++input_idx) {
+    const ov::Shape input_shape = inputs.shape(input_idx);
+    if (input_shape.empty()) {
+      OPENVINO_THROW("GFX runtime: Concat input shape is unknown for stage ",
+                     stage_name);
+    }
+    if (out_shape.empty()) {
+      out_shape = input_shape;
+    } else {
+      OPENVINO_ASSERT(input_shape.size() == out_shape.size(),
+                      "GFX runtime: Concat rank mismatch for stage ",
+                      stage_name);
+    }
+    plan.input_shapes.push_back(input_shape);
+  }
+  OPENVINO_ASSERT(!out_shape.empty(),
+                  "GFX runtime: Concat has no resolved inputs for stage ",
+                  stage_name);
+
+  plan.axis_norm = normalize_axis(
+      descriptor_runtime_shape_metadata_at(descriptor, 0, stage_name, "axis"),
+      out_shape.size(), "GFX runtime: Concat");
+  size_t axis_total = 0;
+  for (const auto &input_shape : plan.input_shapes) {
+    OPENVINO_ASSERT(input_shape.size() == out_shape.size(),
+                    "GFX runtime: Concat rank mismatch for stage ",
+                    stage_name);
+    for (size_t dim = 0; dim < out_shape.size(); ++dim) {
+      if (static_cast<int64_t>(dim) == plan.axis_norm) {
+        continue;
+      }
+      OPENVINO_ASSERT(input_shape[dim] == out_shape[dim],
+                      "GFX runtime: Concat non-axis dim mismatch for stage ",
+                      stage_name);
+    }
+    axis_total += input_shape[static_cast<size_t>(plan.axis_norm)];
+  }
+  out_shape[static_cast<size_t>(plan.axis_norm)] = axis_total;
+
+  ov::Shape descriptor_shape;
+  if (descriptor_output_contract_shape(&descriptor, 0, descriptor_shape)) {
+    OPENVINO_ASSERT(descriptor_shape == out_shape,
+                    "GFX runtime: Concat descriptor output shape drift for ",
+                    stage_name);
+    out_shape = descriptor_shape;
+  }
+
+  plan.values.output_shape = out_shape;
+  plan.values.value_shape = out_shape;
+  plan.values.output_type =
+      descriptor_required_output_type(descriptor, 0, stage_name);
+
+  std::vector<std::vector<int64_t>> concat_values;
+  concat_values.reserve(input_count);
+  bool all_values_resolved = true;
+  for (size_t input_idx = 0; input_idx < input_count; ++input_idx) {
+    auto values = inputs.i64_values(input_idx);
+    if (!values.has_value()) {
+      all_values_resolved = false;
+      break;
+    }
+    concat_values.push_back(std::move(*values));
+  }
+  if (all_values_resolved) {
+    const size_t axis = static_cast<size_t>(plan.axis_norm);
+    const size_t inner = std::accumulate(
+        out_shape.begin() + static_cast<std::ptrdiff_t>(axis + 1),
+        out_shape.end(), size_t{1}, std::multiplies<size_t>());
+    const size_t outer =
+        std::accumulate(out_shape.begin(),
+                        out_shape.begin() + static_cast<std::ptrdiff_t>(axis),
+                        size_t{1}, std::multiplies<size_t>());
+    std::vector<int64_t> values;
+    values.reserve(ov::shape_size(out_shape));
+    for (size_t outer_idx = 0; outer_idx < outer; ++outer_idx) {
+      for (size_t input_idx = 0; input_idx < plan.input_shapes.size();
+           ++input_idx) {
+        const auto &input_shape = plan.input_shapes[input_idx];
+        const size_t chunk = input_shape[axis] * inner;
+        const size_t offset = outer_idx * chunk;
+        if (offset + chunk > concat_values[input_idx].size()) {
+          all_values_resolved = false;
+          break;
+        }
+        values.insert(values.end(),
+                      concat_values[input_idx].begin() +
+                          static_cast<std::ptrdiff_t>(offset),
+                      concat_values[input_idx].begin() +
+                          static_cast<std::ptrdiff_t>(offset + chunk));
+      }
+      if (!all_values_resolved) {
+        break;
+      }
+    }
+    if (all_values_resolved && values.size() == ov::shape_size(out_shape)) {
+      plan.values.i64_values = std::move(values);
+      plan.values.has_i64_values = true;
+    }
+  }
   plan.available = true;
   return plan;
 }
@@ -1713,16 +1998,21 @@ plan_slice_runtime_values(const RuntimeInputResolver &inputs,
                           const std::vector<GpuTensor *> &outputs,
                           bool requires_runtime_shape_args,
                           std::string_view stage_name) {
-  OPENVINO_ASSERT(inputs.node,
-                  "GFX MLIR: Slice/StridedSlice node is missing for stage ",
-                  stage_name);
-  const auto &node = *inputs.node;
-
+  const auto &descriptor = require_descriptor_contract(inputs, "slice", stage_name);
+  OPENVINO_ASSERT(descriptor.runtime_shape_rule == "slice",
+                  "GFX runtime: Slice planner received descriptor rule '",
+                  descriptor.runtime_shape_rule, "' for ", stage_name);
+  const auto slice = parse_runtime_slice_descriptor(descriptor, stage_name);
   RuntimeSlicePlan plan;
-  plan.use_runtime_args = requires_runtime_shape_args ||
-                          !node.get_input_partial_shape(0).is_static() ||
-                          !node.get_output_partial_shape(0).is_static() ||
-                          slice_requires_runtime_indexing(node);
+  ov::Shape static_input_shape;
+  ov::Shape static_output_shape;
+  const bool input_shape_static =
+      descriptor_input_contract_shape(&descriptor, 0, static_input_shape);
+  const bool output_shape_static =
+      descriptor_output_contract_shape(&descriptor, 0, static_output_shape);
+  plan.use_runtime_args =
+      requires_runtime_shape_args || !input_shape_static ||
+      !output_shape_static || slice_requires_runtime_indexing(inputs, slice);
   plan.input_shape = inputs.shape(0);
   if (plan.input_shape.empty()) {
     OPENVINO_THROW(
@@ -1731,7 +2021,8 @@ plan_slice_runtime_values(const RuntimeInputResolver &inputs,
   }
 
   plan.values.output_shape =
-      infer_slice_output_shape(inputs, node, plan.input_shape, outputs, stage_name);
+      infer_slice_output_shape(inputs, descriptor, slice, plan.input_shape,
+                               outputs, stage_name);
   OPENVINO_ASSERT(
       !plan.values.output_shape.empty(),
       "GFX MLIR: Slice/StridedSlice output shape is unknown for stage ",
@@ -1740,11 +2031,13 @@ plan_slice_runtime_values(const RuntimeInputResolver &inputs,
                   "GFX MLIR: Slice/StridedSlice rank mismatch for stage ",
                   stage_name);
 
-  build_slice_runtime_spec(inputs, node, plan.input_shape, plan.values.output_shape,
-                           plan.starts_full, plan.steps_full, stage_name);
+  build_slice_runtime_spec(inputs, slice, plan.input_shape,
+                           plan.values.output_shape, plan.starts_full,
+                           plan.steps_full, stage_name);
 
   plan.values.value_shape = plan.values.output_shape;
-  plan.values.output_type = node.get_output_element_type(0);
+  plan.values.output_type =
+      descriptor_required_output_type(descriptor, 0, stage_name);
   plan.values.force_output_type = true;
   plan.linear_view =
       slice_is_runtime_linear_view(plan.input_shape, plan.values.output_shape,
@@ -2085,6 +2378,16 @@ bool bind_small_i64_const_stage_outputs(
     profiler->increment_counter("small_i64_const_stage_count");
   }
   return true;
+}
+
+bool bind_small_i64_const_stage_outputs(
+    GpuBufferManager *buffer_manager, const std::vector<GpuTensor *> &outputs,
+    std::vector<GpuTensor> &cache, GfxProfiler *profiler,
+    bool profiling_enabled, std::string_view stage_name,
+    std::string_view suffix) {
+  return bind_small_i64_const_stage_outputs(
+      buffer_manager, outputs, cache, std::shared_ptr<const ov::Node>{},
+      profiler, profiling_enabled, stage_name, suffix);
 }
 
 } // namespace gfx_plugin

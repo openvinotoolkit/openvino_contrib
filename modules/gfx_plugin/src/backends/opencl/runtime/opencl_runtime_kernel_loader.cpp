@@ -46,6 +46,75 @@ void verify_opencl_source_descriptor(
                       !descriptor.abi_fingerprint.empty() &&
                       !descriptor.artifact_key.empty(),
                   "GFX OpenCL: runtime descriptor identity is incomplete");
+  OPENVINO_ASSERT(
+      descriptor.launch_plan.valid &&
+          !descriptor.launch_plan.buffer_roles.empty(),
+      "GFX OpenCL: runtime descriptor launch plan is incomplete for ",
+      descriptor.stage_name);
+  OPENVINO_ASSERT(
+      descriptor.launch_plan.buffer_roles.size() == descriptor.abi_arg_count,
+      "GFX OpenCL: runtime descriptor launch-plan arg count drift for ",
+      descriptor.stage_name);
+  OPENVINO_ASSERT(
+      descriptor.abi_arg_count == artifact.arg_count,
+      "GFX OpenCL: runtime descriptor/source artifact arg count drift for ",
+      descriptor.stage_name);
+  OPENVINO_ASSERT(
+      descriptor.abi_output_arg_count == artifact.direct_output_count,
+      "GFX OpenCL: runtime descriptor/source artifact output count drift for ",
+      descriptor.stage_name);
+  OPENVINO_ASSERT(
+      descriptor.launch_plan.scalar_arg_kinds.size() ==
+          artifact.scalar_args.size(),
+      "GFX OpenCL: runtime descriptor/source artifact scalar ABI drift for ",
+      descriptor.stage_name);
+  for (const auto &planned : artifact.planned_chunks) {
+    OPENVINO_ASSERT(planned.binding_count != 0,
+                    "GFX OpenCL: planned source dispatch has empty binding "
+                    "range for ",
+                    descriptor.stage_name);
+    OPENVINO_ASSERT(planned.element_count_multiplier != 0 &&
+                        planned.element_count_divisor != 0,
+                    "GFX OpenCL: planned source dispatch has invalid "
+                    "element-count scale for ",
+                    descriptor.stage_name);
+    OPENVINO_ASSERT(
+        planned.artifact && planned.artifact->valid &&
+            planned.artifact->artifact_ref.valid &&
+            planned.artifact->artifact_ref.kind ==
+                GfxKernelArtifactKind::OpenClSource &&
+            planned.artifact->artifact_ref.backend_domain ==
+                GfxKernelBackendDomain::OpenCl &&
+            planned.artifact->planned_chunks.empty(),
+        "GFX OpenCL: planned source dispatch artifact contract is invalid for ",
+        descriptor.stage_name);
+    if (planned.binding_role == GfxOpenClSourceChunkBindingRole::DirectInputs) {
+      OPENVINO_ASSERT(planned.artifact->direct_input_count ==
+                          planned.binding_count,
+                      "GFX OpenCL: planned source dispatch input binding range "
+                      "drift for ",
+                      descriptor.stage_name);
+      OPENVINO_ASSERT(planned.artifact->direct_output_count ==
+                          artifact.direct_output_count,
+                      "GFX OpenCL: planned source dispatch output ABI drift for ",
+                      descriptor.stage_name);
+    } else {
+      OPENVINO_ASSERT(planned.binding_role ==
+                          GfxOpenClSourceChunkBindingRole::DirectOutputs,
+                      "GFX OpenCL: planned source dispatch binding role is "
+                      "unknown for ",
+                      descriptor.stage_name);
+      OPENVINO_ASSERT(planned.artifact->direct_input_count ==
+                          artifact.direct_input_count,
+                      "GFX OpenCL: planned source dispatch input ABI drift for ",
+                      descriptor.stage_name);
+      OPENVINO_ASSERT(planned.artifact->direct_output_count ==
+                          planned.binding_count,
+                      "GFX OpenCL: planned source dispatch output binding "
+                      "range drift for ",
+                      descriptor.stage_name);
+    }
+  }
 }
 
 } // namespace
@@ -59,11 +128,9 @@ OpenClRuntimeKernelLoader::OpenClRuntimeKernelLoader(
 
 std::unique_ptr<GpuStage> OpenClRuntimeKernelLoader::load_source_stage(
     const RuntimeStageExecutableDescriptor &descriptor,
-    GfxOpenClSourceArtifact artifact,
-    std::shared_ptr<const ov::Node> source_node) const {
+    GfxOpenClSourceArtifact artifact) const {
   verify_opencl_source_descriptor(descriptor, artifact);
-  return create_opencl_source_stage(m_context, descriptor, std::move(artifact),
-                                    std::move(source_node));
+  return create_opencl_source_stage(m_context, descriptor, std::move(artifact));
 }
 
 } // namespace gfx_plugin

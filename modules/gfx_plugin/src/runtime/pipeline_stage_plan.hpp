@@ -5,16 +5,13 @@
 
 #include <cstddef>
 #include <limits>
-#include <memory>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "common/gfx_activation.hpp"
 #include "common/gfx_bias.hpp"
 #include "common/gpu_parallelism_profile.hpp"
-#include "openvino/core/node.hpp"
 #include "openvino/core/shape.hpp"
 #include "openvino/core/type/element_type.hpp"
 #include "runtime/executable_descriptor.hpp"
@@ -23,30 +20,56 @@
 namespace ov {
 namespace gfx_plugin {
 
+enum class PipelineStageTensorRefKind {
+  None,
+  Parameter,
+  StageOutput,
+};
+
+struct PipelineStageTensorRef {
+  static constexpr size_t npos = std::numeric_limits<size_t>::max();
+
+  PipelineStageTensorRefKind kind = PipelineStageTensorRefKind::None;
+  size_t index = npos;
+  size_t port = npos;
+
+  bool valid() const noexcept {
+    return kind != PipelineStageTensorRefKind::None && index != npos &&
+           port != npos;
+  }
+};
+
 struct PipelineStageInputLink {
-  std::shared_ptr<const ov::Node> node;
   size_t port = 0;
+  PipelineStageTensorRef source_ref;
 };
 
 struct PipelineStageOutputAlias {
-  std::shared_ptr<const ov::Node> node;
   size_t source_port = 0;
   size_t output_port = 0;
+  PipelineStageTensorRef source_ref;
 };
 
 struct PipelineStageOutputDesc {
   ov::Shape shape;
   ov::element::Type type = ov::element::dynamic;
   bool is_model_output = false;
-  std::shared_ptr<const ov::Node> source_node;
   size_t source_port = 0;
   std::string direct_stateful_assign_variable_id;
+  PipelineStageTensorRef source_ref;
+};
+
+struct PipelineStagePublicOutputDesc {
+  PipelineStageTensorRef source_ref;
+  ov::Shape shape;
+  ov::element::Type type = ov::element::dynamic;
 };
 
 struct PipelineStageIoPlan {
   static constexpr size_t npos = std::numeric_limits<size_t>::max();
 
-  std::shared_ptr<const ov::Node> node;
+  std::string stage_name;
+  std::string op_family;
   size_t runtime_stage_index = npos;
   std::vector<PipelineStageOutputDesc> outputs;
   std::vector<PipelineStageInputLink> inputs;
@@ -67,9 +90,7 @@ struct PipelineStageInputTransformBinding {
   PipelineStageInputTransformPlan transform;
 };
 
-struct PipelineStageResidualAddFusionPlan {
-  std::shared_ptr<const ov::Node> add_node;
-};
+struct PipelineStageResidualAddFusionPlan {};
 
 struct PipelineStageInputActivationFusionPlan {
   size_t input_idx = 0;
@@ -143,11 +164,9 @@ struct PipelineStageRuntimeOptionsPlan {
 };
 
 struct PipelineStageRuntimePlan {
-  std::vector<std::shared_ptr<ov::Node>> ordered_ops;
   std::vector<PipelineStageMaterializationPlan> stage_plans;
+  std::vector<PipelineStagePublicOutputDesc> public_outputs;
   PipelineStageRuntimeOptionsPlan runtime_options;
-  std::unordered_map<const ov::Node *, size_t> node_to_stage;
-  std::unordered_map<const ov::Node *, size_t> param_index;
 };
 
 } // namespace gfx_plugin

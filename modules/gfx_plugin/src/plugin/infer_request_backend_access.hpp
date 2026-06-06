@@ -16,10 +16,6 @@ struct InferRequestBackendAccess final {
         return *request.m_state;
     }
 
-    static const std::vector<ov::Output<const ov::Node>>& outputs(InferRequest& request) {
-        return request.get_outputs();
-    }
-
     static void bind_inputs_before_infer(
         InferRequest& request,
         const compiler::BackendTarget& expected_target,

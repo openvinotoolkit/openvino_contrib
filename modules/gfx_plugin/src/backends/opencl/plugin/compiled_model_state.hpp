@@ -48,14 +48,9 @@ struct OpenClBackendState final : BackendState {
       if (const auto *payload =
               dynamic_cast<const GfxOpenClSourceArtifactPayload *>(
                   descriptor.payload.get())) {
-        std::shared_ptr<const ov::Node> node;
-        if (descriptor.temporary_source_node_bridge_required) {
-          node = materialization.require_source_node(
-              descriptor.temporary_source_node_bridge_reason);
-        }
         return OpenClRuntimeKernelLoader(
                    context ? context : OpenClRuntimeContext::instance())
-            .load_source_stage(descriptor, payload->artifact(), node);
+            .load_source_stage(descriptor, payload->artifact());
       }
       OPENVINO_THROW(
           "GFX OpenCL: runtime descriptor has non-OpenCL source payload for ",

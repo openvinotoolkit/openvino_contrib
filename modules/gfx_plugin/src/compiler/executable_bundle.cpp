@@ -5,10 +5,13 @@
 #include "compiler/executable_bundle.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <iomanip>
 #include <memory>
 #include <sstream>
 #include <utility>
+
+#include "common/constant_tensor_evaluator.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -33,6 +36,67 @@ void append_field(std::ostringstream &os, std::string_view value) {
 
 void append_bool(std::ostringstream &os, bool value) {
   append_field(os, value ? "1" : "0");
+}
+
+void append_u32(std::ostringstream &os, uint32_t value) {
+  append_field(os, std::to_string(value));
+}
+
+void append_size(std::ostringstream &os, size_t value) {
+  append_field(os, std::to_string(value));
+}
+
+void append_i32_vector(std::ostringstream &os,
+                       const std::vector<int32_t> &values) {
+  append_field(os, std::to_string(values.size()));
+  for (const auto value : values) {
+    append_field(os, std::to_string(value));
+  }
+}
+
+void append_i64_vector(std::ostringstream &os,
+                       const std::vector<int64_t> &values) {
+  append_field(os, std::to_string(values.size()));
+  for (const auto value : values) {
+    append_field(os, std::to_string(value));
+  }
+}
+
+void append_u32_vector(std::ostringstream &os,
+                       const std::vector<uint32_t> &values) {
+  append_field(os, std::to_string(values.size()));
+  for (const auto value : values) {
+    append_field(os, std::to_string(value));
+  }
+}
+
+void append_size_vector(std::ostringstream &os,
+                        const std::vector<size_t> &values) {
+  append_field(os, std::to_string(values.size()));
+  for (const auto value : values) {
+    append_field(os, std::to_string(value));
+  }
+}
+
+void append_string_vector(std::ostringstream &os,
+                          const std::vector<std::string> &values) {
+  append_field(os, std::to_string(values.size()));
+  for (const auto &value : values) {
+    append_field(os, value);
+  }
+}
+
+void append_launch_plan(std::ostringstream &os,
+                        const KernelLaunchPlanDescriptor &plan) {
+  append_bool(os, plan.valid);
+  append_string_vector(os, plan.buffer_roles);
+  append_size_vector(os, plan.direct_input_indices);
+  append_size_vector(os, plan.input_indices);
+  append_size(os, plan.input_arg_count);
+  append_i32_vector(os, plan.operand_kinds);
+  append_i32_vector(os, plan.operand_arg_indices);
+  append_i32_vector(os, plan.scalar_args);
+  append_u32_vector(os, plan.scalar_arg_kinds);
 }
 
 std::string hex64(uint64_t value) {
@@ -93,6 +157,18 @@ bool payload_kind_requires_materialized_payload(
          kind == KernelArtifactPayloadKind::OpenClSource;
 }
 
+bool source_payload_kind(KernelArtifactPayloadKind kind) noexcept {
+  return kind == KernelArtifactPayloadKind::MslSource ||
+         kind == KernelArtifactPayloadKind::OpenClSource;
+}
+
+size_t count_launch_plan_role(const KernelLaunchPlanDescriptor &plan,
+                              std::string_view role_name) {
+  return static_cast<size_t>(std::count(plan.buffer_roles.begin(),
+                                        plan.buffer_roles.end(),
+                                        std::string(role_name)));
+}
+
 std::string make_kernel_abi_fingerprint(const KernelDescriptor &kernel) {
   std::ostringstream material;
   append_field(material, kernel.kernel_id);
@@ -103,6 +179,7 @@ std::string make_kernel_abi_fingerprint(const KernelDescriptor &kernel) {
   append_field(material, kernel.precision_contract);
   append_field(material, kernel.dispatch_contract);
   append_field(material, kernel.runtime_shape_rule);
+  append_i64_vector(material, kernel.runtime_shape_i64_metadata);
   append_bool(material, kernel.requires_runtime_shape_args);
   for (const auto &role : kernel.tensor_roles) {
     append_field(material, role);
@@ -113,6 +190,18 @@ std::string make_kernel_abi_fingerprint(const KernelDescriptor &kernel) {
   append_field(material, kernel.exception_ticket);
   append_field(material, kernel.exception_reason);
   append_field(material, kernel.exception_removal_condition);
+  return hex64(stable_hash64(material.str()));
+}
+
+std::string
+make_kernel_abi_fingerprint(const KernelArtifactDescriptor &descriptor) {
+  std::ostringstream material;
+  append_field(material, make_kernel_abi_fingerprint(descriptor.kernel));
+  append_u32(material, descriptor.runtime_param_buffer_count);
+  append_i64_vector(material, descriptor.runtime_param_i64_metadata);
+  append_bool(material, descriptor.runtime_param_reduce_keep_dims);
+  append_bool(material, descriptor.runtime_param_reduce_keep_dims_valid);
+  append_launch_plan(material, descriptor.launch_plan);
   return hex64(stable_hash64(material.str()));
 }
 
@@ -164,6 +253,8 @@ KernelArtifactDescriptor make_artifact_descriptor(const StageRecord &stage) {
   descriptor.kernel.origin = origin_from_route(stage.execution_kind);
   descriptor.kernel.dispatch_contract = stage.dispatch.dispatch_source;
   descriptor.kernel.runtime_shape_rule = stage.runtime_shape.rule;
+  descriptor.kernel.runtime_shape_i64_metadata =
+      stage.runtime_shape.i64_metadata;
   descriptor.kernel.requires_runtime_shape_args =
       stage.requires_runtime_shape_args;
   if (!stage.inputs.empty()) {
@@ -199,7 +290,7 @@ KernelArtifactDescriptor make_artifact_descriptor(const StageRecord &stage) {
     descriptor.kernel.exception_removal_condition =
         stage.handwritten_exception.removal_condition;
   }
-  descriptor.abi_fingerprint = make_kernel_abi_fingerprint(descriptor.kernel);
+  descriptor.abi_fingerprint = make_kernel_abi_fingerprint(descriptor);
   descriptor.manifest_ref =
       make_manifest_ref(stage, descriptor.abi_fingerprint);
   descriptor.artifact_key = make_artifact_key(stage, descriptor.payload_kind,
@@ -212,6 +303,38 @@ materialize_payload_for_stage(KernelArtifactDescriptor &descriptor,
                               const PlannedOperation &op,
                               const KernelArtifactPayloadResolver &resolver) {
   return resolver ? resolver(descriptor, op) : nullptr;
+}
+
+std::vector<KernelArtifactConstTensor>
+materialize_const_tensors_for_stage(const PlannedOperation &op) {
+  std::vector<KernelArtifactConstTensor> tensors;
+  if (!op.source_node) {
+    return tensors;
+  }
+
+  for (size_t input_idx = 0; input_idx < op.source_node->get_input_size();
+       ++input_idx) {
+    auto const_tensor = gfx_evaluate_constant_source_tensor(
+        op.source_node->input_value(input_idx));
+    if (!const_tensor.has_value()) {
+      continue;
+    }
+
+    KernelArtifactConstTensor tensor;
+    tensor.source_input_index = input_idx;
+    tensor.logical_name =
+        op.node_name + ".const_input" + std::to_string(input_idx);
+    tensor.element_type = const_tensor->get_element_type().get_type_name();
+    tensor.shape.assign(const_tensor->get_shape().begin(),
+                        const_tensor->get_shape().end());
+    const auto byte_size = const_tensor->get_byte_size();
+    tensor.bytes.resize(byte_size);
+    if (byte_size != 0) {
+      std::memcpy(tensor.bytes.data(), const_tensor->data(), byte_size);
+    }
+    tensors.push_back(std::move(tensor));
+  }
+  return tensors;
 }
 
 } // namespace
@@ -252,7 +375,7 @@ std::string_view kernel_artifact_payload_kind_to_string(
 
 void finalize_kernel_artifact_descriptor_identity(
     KernelArtifactDescriptor &descriptor) {
-  descriptor.abi_fingerprint = make_kernel_abi_fingerprint(descriptor.kernel);
+  descriptor.abi_fingerprint = make_kernel_abi_fingerprint(descriptor);
   descriptor.manifest_ref = make_manifest_ref(descriptor.stage_record_key,
                                               descriptor.kernel.kernel_id,
                                               descriptor.abi_fingerprint);
@@ -312,7 +435,10 @@ ExecutableBundleVerificationResult ExecutableBundle::verify() const {
     if (artifact.stage_record_key != manifest_stage.stable_record_key ||
         artifact.kernel.kernel_id != manifest_stage.kernel_unit_id ||
         artifact.kernel.backend_domain != manifest_stage.backend_domain ||
-        artifact.kernel.runtime_shape_rule != manifest_stage.runtime_shape.rule ||
+        artifact.kernel.runtime_shape_rule !=
+            manifest_stage.runtime_shape.rule ||
+        artifact.kernel.runtime_shape_i64_metadata !=
+            manifest_stage.runtime_shape.i64_metadata ||
         artifact.kernel.origin !=
             origin_from_route(manifest_stage.execution_kind)) {
       result.diagnostics.push_back("executable bundle artifact drift at " +
@@ -353,6 +479,25 @@ ExecutableBundleVerificationResult ExecutableBundle::verify() const {
         (artifact.abi_arg_count == 0 || artifact.abi_output_arg_count == 0)) {
       result.diagnostics.push_back("source artifact ABI counts are empty at " +
                                    std::to_string(i));
+    }
+    if (source_payload_kind(artifact.payload_kind)) {
+      if (!artifact.launch_plan.valid ||
+          artifact.launch_plan.buffer_roles.empty()) {
+        result.diagnostics.push_back(
+            "source artifact launch plan is incomplete at " +
+            std::to_string(i));
+      }
+      if (artifact.launch_plan.buffer_roles.size() != artifact.abi_arg_count) {
+        result.diagnostics.push_back(
+            "source artifact launch-plan ABI count drift at " +
+            std::to_string(i));
+      }
+      if (count_launch_plan_role(artifact.launch_plan, "tensor_output") !=
+          artifact.abi_output_arg_count) {
+        result.diagnostics.push_back(
+            "source artifact launch-plan output count drift at " +
+            std::to_string(i));
+      }
     }
     if (artifact.payload_kind == KernelArtifactPayloadKind::VendorDescriptor &&
         artifact.kernel.origin != KernelArtifactOrigin::VendorPrimitive) {
@@ -414,6 +559,17 @@ ExecutableBundle::find_artifact_payload(const std::string &artifact_key) const {
   return {};
 }
 
+const std::vector<KernelArtifactConstTensor> *
+ExecutableBundle::find_artifact_const_tensors(
+    const std::string &artifact_key) const {
+  for (const auto &record : artifact_payloads) {
+    if (record.artifact_key == artifact_key) {
+      return &record.const_tensors;
+    }
+  }
+  return nullptr;
+}
+
 ExecutableBundleBuilder::ExecutableBundleBuilder(
     KernelArtifactPayloadResolver resolver)
     : m_payload_resolver(std::move(resolver)) {}
@@ -460,6 +616,8 @@ ExecutableBundleBuilder::build(const ManifestBundle &manifest,
     record.artifact_descriptor_index = descriptor_index;
     record.artifact_key = descriptor.artifact_key;
     record.payload = std::move(payload);
+    record.const_tensors =
+        materialize_const_tensors_for_stage(lowering_plan.operations[i]);
     bundle.artifact_payloads.push_back(std::move(record));
   }
   return bundle;

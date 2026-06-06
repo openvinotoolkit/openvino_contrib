@@ -10,8 +10,8 @@
 #include <string_view>
 #include <vector>
 
-#include "compiler/manifest.hpp"
 #include "common/artifact_payload.hpp"
+#include "compiler/manifest.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -42,6 +42,7 @@ struct KernelDescriptor {
   std::string precision_contract = "inferred";
   std::string dispatch_contract = "manifest";
   std::string runtime_shape_rule = "static_or_descriptor";
+  std::vector<int64_t> runtime_shape_i64_metadata;
   bool requires_runtime_shape_args = false;
   std::string exception_ticket;
   std::string exception_reason;
@@ -59,6 +60,11 @@ struct KernelArtifactDescriptor {
   std::string compile_options_key;
   uint32_t abi_arg_count = 0;
   uint32_t abi_output_arg_count = 0;
+  uint32_t runtime_param_buffer_count = 0;
+  std::vector<int64_t> runtime_param_i64_metadata;
+  bool runtime_param_reduce_keep_dims = false;
+  bool runtime_param_reduce_keep_dims_valid = false;
+  KernelLaunchPlanDescriptor launch_plan;
   bool optional_cache_payload_allowed = true;
 };
 
@@ -66,6 +72,7 @@ struct KernelArtifactPayloadRecord {
   size_t artifact_descriptor_index = 0;
   std::string artifact_key;
   std::shared_ptr<const KernelArtifactPayload> payload;
+  std::vector<KernelArtifactConstTensor> const_tensors;
 };
 
 struct PipelineVendorAttentionArtifact {
@@ -74,7 +81,8 @@ struct PipelineVendorAttentionArtifact {
 
   bool valid() const noexcept {
     return payload && payload->valid() && !descriptor.artifact_key.empty() &&
-           descriptor.payload_kind == KernelArtifactPayloadKind::VendorDescriptor;
+           descriptor.payload_kind ==
+               KernelArtifactPayloadKind::VendorDescriptor;
   }
 };
 
@@ -97,6 +105,8 @@ struct ExecutableBundle {
   bool valid() const;
   std::shared_ptr<const KernelArtifactPayload>
   find_artifact_payload(const std::string &artifact_key) const;
+  const std::vector<KernelArtifactConstTensor> *
+  find_artifact_const_tensors(const std::string &artifact_key) const;
 };
 
 using KernelArtifactPayloadResolver =

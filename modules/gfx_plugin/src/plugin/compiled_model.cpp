@@ -23,6 +23,7 @@
 #include "runtime/gfx_precision.hpp"
 #include "runtime/gfx_profiling_report.hpp"
 #include "runtime/gfx_remote_context.hpp"
+#include "runtime/pipeline_stage_plan.hpp"
 #include "runtime/pipeline_stage_materializer.hpp"
 
 #include "openvino/core/except.hpp"
@@ -136,11 +137,11 @@ CompiledModel::CompiledModel(
       compiler::runtime_executable_descriptor_valid(*runtime_descriptor,
                                                     executable),
       "GFX: compiler executable bundle does not match runtime descriptor");
-  OPENVINO_ASSERT(runtime_descriptor->stage_plan,
-                  "GFX: compiler runtime descriptor has no stage plan");
   OPENVINO_ASSERT(
-      compiler::runtime_executable_stage_plan_valid(*runtime_descriptor),
-      "GFX: compiler runtime descriptor stage plan is inconsistent");
+      compiler::runtime_executable_descriptor_pipeline_plan_valid(
+          *runtime_descriptor),
+      "GFX: compiler runtime descriptor is missing a consistent "
+      "materialization plan");
   m_runtime_descriptor = std::move(runtime_descriptor);
 
   // Preserve user properties; store inference_precision as ov::element::Type.
@@ -342,9 +343,10 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
   OPENVINO_ASSERT(m_runtime_descriptor,
                   "GFX: compiled model is missing compiler-owned runtime "
                   "executable descriptor");
-  OPENVINO_ASSERT(m_runtime_descriptor->stage_plan,
-                  "GFX: compiler-owned runtime descriptor has no stage plan");
-  const auto &runtime_plan = *m_runtime_descriptor->stage_plan;
+  OPENVINO_ASSERT(m_runtime_descriptor->pipeline_plan,
+                  "GFX: compiled model runtime descriptor is missing "
+                  "compiler-owned materialization plan");
+  const auto &runtime_plan = *m_runtime_descriptor->pipeline_plan;
 
   GpuStageRuntimeOptions stage_runtime_options{};
   stage_runtime_options.diagnostic_f32_vendor_image =
@@ -357,13 +359,10 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
   PipelineStageRuntimeMaterializationRequest materialization_request;
   materialization_request.stage_factory = backend_state;
   materialization_request.runtime_descriptor = m_runtime_descriptor.get();
-  materialization_request.runtime_plan = &runtime_plan;
   materialization_request.runtime_options = stage_runtime_options;
   materialization_request.compile_trace = compile_trace;
 
   m_pipeline = materialize_pipeline_stage_descriptors(materialization_request);
-  m_node_to_stage = runtime_plan.node_to_stage;
-  m_param_index = runtime_plan.param_index;
   m_pipeline_built = true;
 }
 

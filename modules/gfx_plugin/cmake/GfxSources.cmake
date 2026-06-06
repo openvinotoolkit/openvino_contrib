@@ -172,6 +172,7 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/backend_runtime.hpp
     ${_gfx_src_dir}/runtime/backend_runtime_provider.hpp
     ${_gfx_src_dir}/runtime/backend_stage_factory.hpp
+    ${_gfx_src_dir}/runtime/descriptor_const_tensor_materializer.hpp
     ${_gfx_src_dir}/runtime/executable_descriptor.hpp
     ${_gfx_src_dir}/runtime/runtime_session.hpp
     ${_gfx_src_dir}/runtime/fused_output_lifetime_plan.hpp
@@ -227,6 +228,7 @@ set(GFX_RUNTIME_COMMON_HEADERS
 )
 
 set(GFX_RUNTIME_COMMON_SOURCES
+    ${_gfx_src_dir}/runtime/descriptor_const_tensor_materializer.cpp
     ${_gfx_src_dir}/runtime/executable_descriptor.cpp
     ${_gfx_src_dir}/runtime/runtime_session.cpp
     ${_gfx_src_dir}/runtime/fused_output_lifetime_plan.cpp
@@ -356,6 +358,7 @@ set(GFX_MLIR_STAGE_SUPPORT_HEADERS
     ${_gfx_src_dir}/mlir/mlir_kernel_plan_utils.hpp
     ${_gfx_src_dir}/mlir/mlir_stage.hpp
     ${_gfx_src_dir}/mlir/mlir_support.hpp
+    ${_gfx_src_dir}/mlir/mlir_stage_runtime_value_bridge.hpp
 )
 
 set(GFX_MLIR_STAGE_SUPPORT_SOURCES

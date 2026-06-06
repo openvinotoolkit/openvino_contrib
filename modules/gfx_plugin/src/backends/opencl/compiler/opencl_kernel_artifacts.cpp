@@ -4,6 +4,7 @@
 
 #include "backends/opencl/compiler/opencl_kernel_artifacts.hpp"
 
+#include <algorithm>
 #include <memory>
 #include <string_view>
 #include <utility>
@@ -37,6 +38,45 @@ bool source_artifact_matches_descriptor(
                                          artifact.artifact_ref.source_id);
 }
 
+uint32_t count_runtime_param_roles(const GfxKernelStageManifest &manifest) {
+  if (!manifest.valid || !manifest.custom_kernel.valid ||
+      !manifest.custom_kernel.external_buffer_abi.valid) {
+    return 0;
+  }
+  const auto roles = materialize_gfx_kernel_external_buffer_roles(
+      manifest.custom_kernel.external_buffer_abi);
+  return static_cast<uint32_t>(std::count(roles.begin(), roles.end(),
+                                          GfxKernelBufferRole::RuntimeParams));
+}
+
+KernelLaunchPlanDescriptor
+make_opencl_launch_plan_descriptor(const GfxOpenClSourceArtifact &artifact) {
+  KernelLaunchPlanDescriptor descriptor;
+  if (!artifact.stage_manifest.valid ||
+      !artifact.stage_manifest.custom_kernel.valid ||
+      !artifact.stage_manifest.custom_kernel.external_buffer_abi.valid) {
+    return descriptor;
+  }
+  const auto roles = materialize_gfx_kernel_external_buffer_roles(
+      artifact.stage_manifest.custom_kernel.external_buffer_abi);
+  if (roles.empty()) {
+    return descriptor;
+  }
+  descriptor.valid = true;
+  descriptor.buffer_roles.reserve(roles.size());
+  for (const auto role : roles) {
+    descriptor.buffer_roles.emplace_back(
+        kernel_buffer_role_descriptor_name(role));
+  }
+  descriptor.direct_input_indices = artifact.direct_input_indices;
+  descriptor.input_arg_count = artifact.direct_input_count;
+  descriptor.scalar_arg_kinds.reserve(artifact.scalar_args.size());
+  for (const auto scalar : artifact.scalar_args) {
+    descriptor.scalar_arg_kinds.push_back(static_cast<uint32_t>(scalar));
+  }
+  return descriptor;
+}
+
 std::shared_ptr<const KernelArtifactPayload>
 materialize_descriptor_owned_opencl_payload(
     KernelArtifactDescriptor &descriptor, GfxOpenClSourceArtifact artifact) {
@@ -49,6 +89,7 @@ materialize_descriptor_owned_opencl_payload(
       gfx_opencl_source_artifact_build_options(artifact);
   descriptor.abi_arg_count = artifact.arg_count;
   descriptor.abi_output_arg_count = artifact.direct_output_count;
+  apply_opencl_runtime_param_artifact_contract(descriptor, artifact);
   return std::make_shared<GfxOpenClSourceArtifactPayload>(std::move(artifact));
 }
 
@@ -109,6 +150,18 @@ KernelArtifactPayloadResolver make_opencl_kernel_artifact_payload_resolver() {
   return [](KernelArtifactDescriptor &descriptor, const PlannedOperation &op) {
     return resolve_opencl_payload(descriptor, op);
   };
+}
+
+void apply_opencl_runtime_param_artifact_contract(
+    KernelArtifactDescriptor &descriptor,
+    const ::ov::gfx_plugin::GfxOpenClSourceArtifact &artifact) {
+  descriptor.runtime_param_buffer_count =
+      count_runtime_param_roles(artifact.stage_manifest);
+  descriptor.runtime_param_i64_metadata.clear();
+  descriptor.runtime_param_reduce_keep_dims = false;
+  descriptor.runtime_param_reduce_keep_dims_valid = false;
+  descriptor.launch_plan = make_opencl_launch_plan_descriptor(artifact);
+  finalize_kernel_artifact_descriptor_identity(descriptor);
 }
 
 } // namespace compiler

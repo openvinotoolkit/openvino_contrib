@@ -5,7 +5,7 @@
 #include "runtime/infer_pipeline.hpp"
 
 #include "runtime/gfx_stage_runtime_values.hpp"
-#include "openvino/op/constant.hpp"
+#include "runtime/tensor_binding_contract.hpp"
 
 #include <limits>
 #include <string_view>
@@ -15,70 +15,6 @@ namespace ov {
 namespace gfx_plugin {
 
 namespace {
-
-bool append_materialized_constant_output(std::vector<InferStage>& pipeline,
-                                         GpuBufferManager* buffer_manager,
-                                         const OutputSource& source,
-                                         const char* error_prefix) {
-    auto constant = ov::as_type_ptr<const ov::op::v0::Constant>(source.node);
-    if (!constant) {
-        return false;
-    }
-    if (!buffer_manager) {
-        OPENVINO_THROW(error_prefix, ": const buffer manager is required for constant output");
-    }
-    if (find_pipeline_output(pipeline, source.node.get(), source.port, nullptr)) {
-        return true;
-    }
-
-    const auto et = constant->get_output_element_type(source.port);
-    const auto shape = constant->get_output_shape(source.port);
-    const size_t bytes = constant->get_byte_size();
-    std::string key = "gfx/output_const/";
-    key += constant->get_friendly_name();
-    key += "/";
-    key += std::to_string(source.port);
-    key += "/";
-    key += std::to_string(bytes);
-
-    GpuBuffer buf = buffer_manager->wrap_const(key, constant->get_data_ptr(), bytes, et);
-    OPENVINO_ASSERT(buf.valid(),
-                    error_prefix,
-                    ": failed to materialize constant output ",
-                    constant->get_friendly_name());
-
-    InferStage stage;
-    stage.node = source.node;
-    auto tensor = std::make_unique<GpuTensor>();
-    tensor->buf = buf;
-    tensor->shape = shape;
-    tensor->expected_type = et;
-    tensor->prefer_private = false;
-    stage.outputs.emplace_back(std::move(tensor));
-    stage.output_is_model_output.push_back(true);
-    stage.output_sources.push_back({source.node, source.port});
-    pipeline.emplace_back(std::move(stage));
-    return true;
-}
-
-void materialize_constant_outputs(std::vector<InferStage>& pipeline,
-                                  GpuBufferManager* buffer_manager,
-                                  const std::shared_ptr<const ov::Model>& runtime_model,
-                                  const std::vector<ov::Output<const ov::Node>>& outputs,
-                                  const std::unordered_map<const ov::Node*, size_t>& node_map,
-                                  const std::unordered_map<const ov::Node*, size_t>& param_map,
-                                  const char* error_prefix) {
-    for (size_t out_idx = 0; out_idx < outputs.size(); ++out_idx) {
-        const auto source = resolve_output_source(outputs, runtime_model, out_idx);
-        if (!source.node) {
-            continue;
-        }
-        if (node_map.count(source.node.get()) || param_map.count(source.node.get())) {
-            continue;
-        }
-        append_materialized_constant_output(pipeline, buffer_manager, source, error_prefix);
-    }
-}
 
 void prepare_stage_runtime_executable(InferStage& stage,
                                       size_t stage_index,
@@ -111,22 +47,73 @@ void prepare_stage_runtime_executable(InferStage& stage,
         std::make_unique<PreparedKernelExecutable>(std::move(prepared));
 }
 
-size_t find_pipeline_stage_index(const std::vector<InferStage>& pipeline,
-                                 const ov::Node* node,
-                                 size_t port) {
-    if (!node) {
-        return pipeline.size();
+bool same_runtime_region_kind(const RuntimeMemoryRegionDescriptor& region,
+                              std::string_view kind) {
+    return region.kind.size() == kind.size() && region.kind.compare(kind) == 0;
+}
+
+BufferUsage usage_for_runtime_memory_region(const RuntimeMemoryRegionDescriptor& region,
+                                            const char* error_prefix) {
+    if (same_runtime_region_kind(region, "external_tensor")) {
+        return BufferUsage::IO;
     }
-    for (size_t stage_idx = 0; stage_idx < pipeline.size(); ++stage_idx) {
-        const auto& stage = pipeline[stage_idx];
-        if (!stage.node || stage.node.get() != node) {
+    if (same_runtime_region_kind(region, "immutable_tensor")) {
+        return BufferUsage::Const;
+    }
+    if (same_runtime_region_kind(region, "transient_tensor")) {
+        return region.host_visible ? BufferUsage::IO : BufferUsage::Intermediate;
+    }
+    OPENVINO_THROW(error_prefix,
+                   ": unsupported runtime memory region kind '",
+                   region.kind,
+                   "' for region ",
+                   region.region_id);
+}
+
+bool region_is_in_transient_arena(const RuntimeMemoryPlanDescriptor& plan,
+                                  const RuntimeMemoryRegionDescriptor& region) {
+    if (!same_runtime_region_kind(region, "transient_tensor") ||
+        region.external_binding || region.host_visible) {
+        return false;
+    }
+    for (const auto& arena : plan.transient_arenas) {
+        if (arena.storage_kind != region.storage_kind) {
             continue;
         }
-        if (port < stage.outputs.size()) {
-            return stage_idx;
+        if (std::find(arena.region_ids.begin(),
+                      arena.region_ids.end(),
+                      region.region_id) != arena.region_ids.end()) {
+            return true;
         }
     }
-    return pipeline.size();
+    return false;
+}
+
+std::string stage_descriptor_name(const InferStage& stage) {
+    const auto* descriptor = runtime_stage_descriptor_or_null(stage);
+    if (descriptor && !descriptor->stage_name.empty()) {
+        return descriptor->stage_name;
+    }
+    return stage.stage ? stage.stage->name() : std::string("<null>");
+}
+
+std::string stage_descriptor_op_family(const InferStage& stage) {
+    const auto* descriptor = runtime_stage_descriptor_or_null(stage);
+    if (descriptor && !descriptor->op_family.empty()) {
+        return descriptor->op_family;
+    }
+    return stage.stage ? stage.stage->type() : std::string("<null>");
+}
+
+bool descriptor_output_static_shape(const InferStage& stage,
+                                    size_t output_idx,
+                                    ov::Shape& shape) {
+    const auto* descriptor = runtime_stage_descriptor_or_null(stage);
+    if (!descriptor || output_idx >= descriptor->output_bindings.size()) {
+        return false;
+    }
+    return parse_static_shape_contract(
+        descriptor->output_bindings[output_idx].partial_shape, shape);
 }
 
 struct StageOutputAllocationPlan {
@@ -140,6 +127,28 @@ struct ActiveStageOutputSlot {
     size_t last_use = 0;
 };
 
+struct StageOutputRef {
+    size_t stage = PipelineStageTensorRef::npos;
+    size_t output = PipelineStageTensorRef::npos;
+};
+
+bool resolve_stage_output_ref(const PipelineStageTensorRef& ref,
+                              const std::vector<InferStage>& pipeline,
+                              StageOutputRef& resolved) {
+    if (ref.kind != PipelineStageTensorRefKind::StageOutput ||
+        ref.index >= pipeline.size()) {
+        return false;
+    }
+    const size_t output_port =
+        ref.port == PipelineStageTensorRef::npos ? 0 : ref.port;
+    if (output_port >= pipeline[ref.index].outputs.size()) {
+        return false;
+    }
+    resolved.stage = ref.index;
+    resolved.output = output_port;
+    return true;
+}
+
 void assign_runtime_shapes_for_stage(InferStage& stage,
                                      const std::vector<GpuTensor*>& inputs,
                                      const char* error_prefix) {
@@ -147,12 +156,18 @@ void assign_runtime_shapes_for_stage(InferStage& stage,
     const std::string_view runtime_shape_rule =
         descriptor ? std::string_view(descriptor->runtime_shape_rule)
                    : std::string_view("static_or_descriptor");
-    if (!stage.node || runtime_shape_rule == "static_or_descriptor") {
+    if (runtime_shape_rule == "static_or_descriptor") {
         for (size_t out_idx = 0; out_idx < stage.outputs.size(); ++out_idx) {
             ensure_stage_output_shape(stage, out_idx);
         }
         return;
     }
+    OPENVINO_ASSERT(descriptor,
+                    error_prefix,
+                    ": compiler-owned runtime stage descriptor is required "
+                    "for runtime shape rule '",
+                    std::string(runtime_shape_rule),
+                    "'");
 
     std::vector<GpuTensor*> outputs;
     outputs.reserve(stage.outputs.size());
@@ -163,11 +178,12 @@ void assign_runtime_shapes_for_stage(InferStage& stage,
     RuntimeInputResolver runtime_inputs;
     runtime_inputs.inputs = &inputs;
     runtime_inputs.descriptor = descriptor;
-    runtime_inputs.node = stage.node;
-    const auto stage_name = stage.node->get_friendly_name();
+    const auto stage_name =
+        !descriptor->stage_name.empty() ? descriptor->stage_name
+                                        : stage_descriptor_name(stage);
 
     if (runtime_shape_rule == "concat") {
-        const auto plan = plan_concat_runtime_values(runtime_inputs, *stage.node, stage_name);
+        const auto plan = plan_concat_runtime_values(runtime_inputs, stage_name);
         assign_runtime_value_outputs(plan.values, outputs);
         return;
     }
@@ -178,13 +194,13 @@ void assign_runtime_shapes_for_stage(InferStage& stage,
                         error_prefix,
                         ": Broadcast input shape is unknown for stage ",
                         stage_name);
-        const auto plan = plan_broadcast_runtime_values(runtime_inputs, *stage.node, in_shape, stage_name);
+        const auto plan = plan_broadcast_runtime_values(runtime_inputs, in_shape, stage_name);
         assign_runtime_value_outputs(plan, outputs);
         return;
     }
 
     if (runtime_shape_rule == "select") {
-        const auto plan = plan_select_runtime_values(runtime_inputs, *stage.node, stage_name);
+        const auto plan = plan_select_runtime_values(runtime_inputs, stage_name);
         OPENVINO_ASSERT(plan.valid(),
                         error_prefix,
                         ": Select runtime shapes are unknown for stage ",
@@ -194,7 +210,7 @@ void assign_runtime_shapes_for_stage(InferStage& stage,
     }
 
     if (runtime_shape_rule == "shape_of") {
-        const auto plan = plan_shapeof_runtime_values(runtime_inputs, stage.node.get(), stage_name);
+        const auto plan = plan_shapeof_runtime_values(runtime_inputs, stage_name);
         assign_runtime_value_outputs(plan, outputs);
         return;
     }
@@ -211,7 +227,7 @@ void assign_runtime_shapes_for_stage(InferStage& stage,
     }
 
     if (runtime_shape_rule == "range") {
-        const auto plan = plan_range_runtime_values(runtime_inputs, stage.node.get(), stage_name);
+        const auto plan = plan_range_runtime_values(runtime_inputs, stage_name);
         assign_runtime_value_outputs(plan, outputs);
         return;
     }
@@ -235,6 +251,87 @@ void assign_runtime_shapes_for_stage(InferStage& stage,
 
 }  // namespace
 
+bool runtime_output_uses_transient_arena(const InferStage& stage,
+                                         size_t output_index) {
+    if (!stage.runtime_session) {
+        return false;
+    }
+    const auto* region = runtime_output_memory_region_or_null(stage, output_index);
+    if (!region) {
+        return false;
+    }
+    return region_is_in_transient_arena(stage.runtime_session->descriptor().memory_plan,
+                                        *region);
+}
+
+bool apply_runtime_output_memory_contract(const InferStage& stage,
+                                          size_t output_index,
+                                          GpuBufferDesc& desc,
+                                          GpuTensor& output,
+                                          const char* error_prefix) {
+    const auto* descriptor = runtime_stage_descriptor_or_null(stage);
+    if (!descriptor) {
+        return false;
+    }
+    OPENVINO_ASSERT(stage.runtime_session,
+                    error_prefix,
+                    ": runtime memory plan is required for stage ",
+                    descriptor->stage_name);
+    const auto& memory_plan = stage.runtime_session->descriptor().memory_plan;
+    OPENVINO_ASSERT(!memory_plan.hidden_host_copies_allowed,
+                    error_prefix,
+                    ": runtime memory plan allows hidden host copies");
+    OPENVINO_ASSERT(output_index < descriptor->output_bindings.size(),
+                    error_prefix,
+                    ": runtime output binding missing for stage ",
+                    descriptor->stage_name,
+                    " output ",
+                    output_index);
+    const auto& binding = descriptor->output_bindings[output_index];
+    OPENVINO_ASSERT(!binding.memory_region_id.empty(),
+                    error_prefix,
+                    ": runtime output binding has no memory region for stage ",
+                    descriptor->stage_name,
+                    " output ",
+                    output_index);
+    const auto* region = runtime_output_memory_region_or_null(stage, output_index);
+    OPENVINO_ASSERT(region,
+                    error_prefix,
+                    ": runtime memory region '",
+                    binding.memory_region_id,
+                    "' is missing for stage ",
+                    descriptor->stage_name,
+                    " output ",
+                    output_index);
+    OPENVINO_ASSERT(region->alias_group == binding.alias_group,
+                    error_prefix,
+                    ": runtime output binding alias group drifts from memory plan for stage ",
+                    descriptor->stage_name,
+                    " output ",
+                    output_index);
+    OPENVINO_ASSERT(region->storage_kind == binding.storage_kind,
+                    error_prefix,
+                    ": runtime output binding storage kind drifts from memory plan for stage ",
+                    descriptor->stage_name,
+                    " output ",
+                    output_index);
+
+    desc.usage = usage_for_runtime_memory_region(*region, error_prefix);
+    if (desc.usage == BufferUsage::Const) {
+        desc.cpu_read = false;
+        desc.cpu_write = region->host_visible;
+        desc.prefer_device_local = !region->host_visible;
+    } else {
+        const bool host_visible =
+            region->host_visible || desc.usage == BufferUsage::IO;
+        desc.cpu_read = host_visible;
+        desc.cpu_write = host_visible;
+        desc.prefer_device_local = !host_visible;
+    }
+    output.prefer_private = desc.prefer_device_local;
+    return true;
+}
+
 bool is_view_op(const InferStage& stage) {
     if (const auto* descriptor = runtime_stage_descriptor_or_null(stage)) {
         return descriptor->tensor_view_only;
@@ -247,16 +344,10 @@ ov::Shape ensure_stage_output_shape(InferStage& stage, size_t out_idx) {
         return {};
     }
     auto& out = stage.outputs[out_idx];
-    if (out->shape.empty() && stage.node &&
-        out_idx < stage.node->get_output_size() &&
-        stage.node->get_output_partial_shape(out_idx).is_static()) {
-        out->shape = stage.node->get_output_shape(out_idx);
-    }
-    if (out->shape.empty() && out_idx < stage.output_sources.size()) {
-        const auto& source = stage.output_sources[out_idx];
-        if (source.node && source.port < source.node->get_output_size() &&
-            source.node->get_output_partial_shape(source.port).is_static()) {
-            out->shape = source.node->get_output_shape(source.port);
+    if (out->shape.empty()) {
+        ov::Shape descriptor_shape;
+        if (descriptor_output_static_shape(stage, out_idx, descriptor_shape)) {
+            out->shape = std::move(descriptor_shape);
         }
     }
     return out->shape;
@@ -266,19 +357,16 @@ ov::element::Type resolve_stage_output_type(const InferStage& stage,
                                             const GpuTensor& out,
                                             size_t out_idx,
                                             const char* error_prefix) {
+    (void)stage;
+    (void)out_idx;
     if (out.expected_type != ov::element::dynamic) {
         return out.expected_type;
     }
-    if (stage.node && out_idx < stage.node->get_output_size()) {
-        return stage.node->get_output_element_type(out_idx);
+    if (out.buf.type != ov::element::dynamic) {
+        return out.buf.type;
     }
-    if (out_idx < stage.output_sources.size()) {
-        const auto& source = stage.output_sources[out_idx];
-        if (source.node && source.port < source.node->get_output_size()) {
-            return source.node->get_output_element_type(source.port);
-        }
-    }
-    OPENVINO_THROW(error_prefix, ": stage output type is not known");
+    OPENVINO_THROW(error_prefix,
+                   ": stage output type is not known from compiler descriptor or tensor binding");
 }
 
 void normalize_remote_tensor(GfxRemoteTensor& remote,
@@ -344,21 +432,23 @@ std::vector<InferStage> build_infer_pipeline(const std::vector<PipelineStageDesc
                         " is out of range for pipeline stage ",
                         stage_id);
         InferStage stage;
-        stage.node = desc.node;
         stage.stage = desc.stage->clone();
-        OPENVINO_ASSERT(stage.stage, "GFX: failed to clone stage for ", desc.node->get_friendly_name());
+        const auto& descriptor = runtime_session->stage_descriptor(runtime_stage_index);
+        const std::string stage_name =
+            !descriptor.stage_name.empty()
+                ? descriptor.stage_name
+                : std::string("<unnamed>");
+        OPENVINO_ASSERT(stage.stage, "GFX: failed to clone stage for ", stage_name);
         stage.runtime_stage_index = runtime_stage_index;
         stage.runtime_stage_descriptor =
             desc.runtime_descriptor
                 ? desc.runtime_descriptor
                 : std::make_shared<RuntimeStageExecutableDescriptor>(
-                      runtime_session->stage_descriptor(runtime_stage_index));
+                      descriptor);
         stage.inputs = desc.inputs;
-        stage.output_aliases = desc.output_aliases;
         stage.output_lifetimes = desc.output_lifetimes;
         stage.outputs.reserve(desc.outputs.size());
         stage.output_is_model_output.reserve(desc.outputs.size());
-        stage.output_sources.reserve(desc.outputs.size());
         stage.direct_stateful_assign_variable_ids.reserve(desc.outputs.size());
         for (const auto& out_desc : desc.outputs) {
             auto out_tensor = std::make_unique<GpuTensor>();
@@ -366,8 +456,6 @@ std::vector<InferStage> build_infer_pipeline(const std::vector<PipelineStageDesc
             out_tensor->expected_type = out_desc.type;
             stage.outputs.emplace_back(std::move(out_tensor));
             stage.output_is_model_output.push_back(out_desc.is_model_output);
-            stage.output_sources.push_back({out_desc.source_node ? out_desc.source_node : desc.node,
-                                            out_desc.source_port});
             stage.direct_stateful_assign_variable_ids.push_back(
                 out_desc.direct_stateful_assign_variable_id);
         }
@@ -379,14 +467,10 @@ std::vector<InferStage> build_infer_pipeline(const std::vector<PipelineStageDesc
         stage.stage->init(buffer_manager);
         stage.stage->enable_profiling(profiling_enabled);
         if (profiling_enabled && profiler) {
-            const std::string node_name =
-                stage.node ? stage.node->get_friendly_name() : stage.stage->name();
-            const std::string node_type =
-                stage.node ? stage.node->get_type_name() : stage.stage->type();
             stage.stage->set_profiler(profiler,
                                       static_cast<uint32_t>(stage_id),
-                                      node_name,
-                                      node_type);
+                                      stage_descriptor_name(stage),
+                                      stage_descriptor_op_family(stage));
         }
         prepare_stage_runtime_executable(stage,
                                          runtime_stage_index,
@@ -397,10 +481,7 @@ std::vector<InferStage> build_infer_pipeline(const std::vector<PipelineStageDesc
     return pipeline;
 }
 
-void bind_remote_outputs(const std::vector<ov::Output<const ov::Node>>& outputs,
-                         const std::shared_ptr<const ov::Model>& runtime_model,
-                         const std::unordered_map<const ov::Node*, size_t>& node_map,
-                         const std::unordered_map<const ov::Node*, size_t>& param_map,
+void bind_remote_outputs(const PreparedInferOutputPlan& output_plan,
                          const std::vector<std::shared_ptr<GfxRemoteTensor>>& remote_outputs,
                          const std::vector<std::shared_ptr<GfxRemoteTensor>>& remote_inputs,
                          std::vector<InferStage>& pipeline,
@@ -408,28 +489,26 @@ void bind_remote_outputs(const std::vector<ov::Output<const ov::Node>>& outputs,
     if (remote_outputs.empty()) {
         return;
     }
-    for (size_t out_idx = 0; out_idx < outputs.size(); ++out_idx) {
+    for (size_t out_idx = 0; out_idx < output_plan.outputs.size(); ++out_idx) {
         if (out_idx >= remote_outputs.size() || !remote_outputs[out_idx]) {
             continue;
         }
-        const auto source = resolve_output_source(outputs, runtime_model, out_idx);
-        auto src_node = source.node;
-        if (!src_node) {
-            OPENVINO_THROW(error_prefix, ": remote output source node is null");
-        }
-        if (auto it = node_map.find(src_node.get()); it != node_map.end()) {
-            size_t src_port = source.port;
-            auto& outs = pipeline[it->second].outputs;
-            OPENVINO_ASSERT(src_port < outs.size(), error_prefix, ": remote output port out of range");
-            auto& dst = outs[src_port];
+        const auto& prepared = output_plan.outputs[out_idx];
+        if (prepared.kind == PreparedOutputSourceKind::StageOutput) {
+            OPENVINO_ASSERT(prepared.index < pipeline.size(),
+                            error_prefix, ": remote output stage index out of range");
+            auto& outs = pipeline[prepared.index].outputs;
+            OPENVINO_ASSERT(prepared.port < outs.size(),
+                            error_prefix, ": remote output port out of range");
+            auto& dst = outs[prepared.port];
             const auto& src_tensor = remote_outputs[out_idx]->gpu_tensor();
             dst->buf = src_tensor.buf;
             dst->shape = src_tensor.shape;
             dst->expected_type = src_tensor.expected_type;
             continue;
         }
-        if (auto pit = param_map.find(src_node.get()); pit != param_map.end()) {
-            const size_t input_idx = pit->second;
+        if (prepared.kind == PreparedOutputSourceKind::Parameter) {
+            const size_t input_idx = prepared.index;
             if (input_idx < remote_inputs.size() && remote_inputs[input_idx]) {
                 auto in_buf = remote_inputs[input_idx]->gpu_tensor().buf.buffer;
                 auto out_buf = remote_outputs[out_idx]->gpu_tensor().buf.buffer;
@@ -439,14 +518,7 @@ void bind_remote_outputs(const std::vector<ov::Output<const ov::Node>>& outputs,
             }
             OPENVINO_THROW(error_prefix, ": remote output cannot be bound to non-remote input passthrough");
         }
-        if (auto* tensor = find_pipeline_output(pipeline, src_node.get(), source.port, nullptr)) {
-            const auto& src_tensor = remote_outputs[out_idx]->gpu_tensor();
-            tensor->buf = src_tensor.buf;
-            tensor->shape = src_tensor.shape;
-            tensor->expected_type = src_tensor.expected_type;
-            continue;
-        }
-        OPENVINO_THROW(error_prefix, ": failed to bind remote output ", out_idx, " (pipeline incomplete)");
+        OPENVINO_THROW(error_prefix, ": remote output descriptor missing for output ", out_idx);
     }
 }
 
@@ -455,44 +527,19 @@ std::vector<InferStage> build_bound_pipeline(
     GpuBufferManager* buffer_manager,
     void* profiler,
     bool profiling_enabled,
-    const std::shared_ptr<const ov::Model>& runtime_model,
-    const std::vector<ov::Output<const ov::Node>>& outputs,
-    const std::unordered_map<const ov::Node*, size_t>& node_map,
-    const std::unordered_map<const ov::Node*, size_t>& param_map,
-    std::vector<std::shared_ptr<GfxRemoteTensor>>& remote_outputs,
-    const std::vector<std::shared_ptr<GfxRemoteTensor>>& remote_inputs,
-    const compiler::BackendTarget& expected_target,
     std::shared_ptr<const RuntimeExecutableDescriptor> runtime_descriptor,
     const char* error_prefix) {
-    auto pipeline = build_infer_pipeline(descs,
-                                         buffer_manager,
-                                         profiler,
-                                         profiling_enabled,
-                                         std::move(runtime_descriptor));
-    materialize_constant_outputs(pipeline,
-                                 buffer_manager,
-                                 runtime_model,
-                                 outputs,
-                                 node_map,
-                                 param_map,
-                                 error_prefix);
-    normalize_remote_outputs(remote_outputs, expected_target, error_prefix);
-    bind_remote_outputs(outputs,
-                        runtime_model,
-                        node_map,
-                        param_map,
-                        remote_outputs,
-                        remote_inputs,
-                        pipeline,
-                        error_prefix);
-    return pipeline;
+    (void)error_prefix;
+    return build_infer_pipeline(descs,
+                                buffer_manager,
+                                profiler,
+                                profiling_enabled,
+                                std::move(runtime_descriptor));
 }
 
 void prepare_reusable_execution_plan(
     PreparedInferExecutionPlan& plan,
-    const std::vector<InferStage>& pipeline,
-    const std::unordered_map<const ov::Node*, size_t>& node_map,
-    const std::unordered_map<const ov::Node*, size_t>& param_map) {
+    const std::vector<InferStage>& pipeline) {
     if (plan.stages.size() == pipeline.size()) {
         bool compatible = true;
         for (size_t stage_idx = 0; stage_idx < pipeline.size(); ++stage_idx) {
@@ -518,24 +565,30 @@ void prepare_reusable_execution_plan(
         for (const auto& link : stage.inputs) {
             PreparedStageInputRef ref{};
             GpuTensor* resolved = nullptr;
-            if (!link.node) {
-                ref.kind = PreparedStageInputKind::None;
-            } else if (auto pit = param_map.find(link.node.get()); pit != param_map.end()) {
+            if (link.source_ref.kind == PipelineStageTensorRefKind::Parameter) {
+                OPENVINO_ASSERT(link.source_ref.index != PipelineStageTensorRef::npos,
+                                "GFX: compiler-owned parameter input ref is incomplete");
                 ref.kind = PreparedStageInputKind::Parameter;
-                ref.index = pit->second;
-            } else if (size_t producer_idx = 0, producer_output = 0;
-                       find_pipeline_output_ref(pipeline, link.node.get(), link.port, producer_idx, producer_output)) {
+                ref.index = link.source_ref.index;
+                ref.port = link.source_ref.port == PipelineStageTensorRef::npos
+                               ? 0
+                               : link.source_ref.port;
+            } else if (link.source_ref.kind == PipelineStageTensorRefKind::StageOutput) {
+                OPENVINO_ASSERT(link.source_ref.index < pipeline.size(),
+                                "GFX: compiler-owned stage input ref points outside the pipeline");
                 ref.kind = PreparedStageInputKind::StageOutput;
-                ref.index = producer_idx;
-                ref.port = producer_output;
-                resolved = pipeline[producer_idx].outputs[producer_output].get();
-            } else if (auto it = node_map.find(link.node.get()); it != node_map.end()) {
-                ref.kind = PreparedStageInputKind::StageOutput;
-                ref.index = it->second;
-                ref.port = link.port;
-                const auto& src_stage = pipeline[it->second];
-                if (link.port < src_stage.outputs.size()) {
-                    resolved = src_stage.outputs[link.port].get();
+                ref.index = link.source_ref.index;
+                ref.port = link.source_ref.port == PipelineStageTensorRef::npos
+                               ? 0
+                               : link.source_ref.port;
+                const auto& src_stage = pipeline[ref.index];
+                OPENVINO_ASSERT(ref.port < src_stage.outputs.size(),
+                                "GFX: compiler-owned stage input ref points outside producer outputs");
+                resolved = src_stage.outputs[ref.port].get();
+            } else {
+                ref.kind = PreparedStageInputKind::None;
+                if (link.source_ref.kind != PipelineStageTensorRefKind::None) {
+                    OPENVINO_THROW("GFX: compiler-owned stage input ref has unsupported kind");
                 }
             }
             prepared.input_refs.push_back(ref);
@@ -591,18 +644,26 @@ void assign_runtime_stage_output_shapes(
 
 void prepare_reusable_output_plan(
     PreparedInferOutputPlan& plan,
-    const std::vector<ov::Output<const ov::Node>>& public_outputs,
-    const std::shared_ptr<const ov::Model>& runtime_model,
+    const RuntimeExecutableDescriptor& runtime_descriptor,
     const std::vector<InferStage>& pipeline,
-    const std::unordered_map<const ov::Node*, size_t>& node_map,
-    const std::unordered_map<const ov::Node*, size_t>& param_map,
     const char* error_prefix) {
+    const auto& public_outputs = runtime_descriptor.public_outputs;
     if (plan.outputs.size() == public_outputs.size()) {
         bool compatible = true;
         for (size_t out_idx = 0; out_idx < public_outputs.size(); ++out_idx) {
-            const auto source = resolve_output_source(public_outputs, runtime_model, out_idx);
+            const auto& descriptor = public_outputs[out_idx];
             const auto& prepared = plan.outputs[out_idx];
-            if (prepared.source.node != source.node || prepared.source.port != source.port) {
+            const bool same_kind =
+                (descriptor.kind == RuntimePublicOutputSourceKind::Parameter &&
+                 prepared.kind == PreparedOutputSourceKind::Parameter) ||
+                (descriptor.kind == RuntimePublicOutputSourceKind::StageOutput &&
+                 prepared.kind == PreparedOutputSourceKind::StageOutput) ||
+                (descriptor.kind == RuntimePublicOutputSourceKind::None &&
+                 prepared.kind == PreparedOutputSourceKind::None);
+            if (!same_kind || prepared.index != descriptor.index ||
+                prepared.port != descriptor.port ||
+                prepared.static_shape != descriptor.static_shape ||
+                prepared.static_type != descriptor.static_type) {
                 compatible = false;
                 break;
             }
@@ -615,63 +676,55 @@ void prepare_reusable_output_plan(
     plan.outputs.assign(public_outputs.size(), {});
     for (size_t out_idx = 0; out_idx < public_outputs.size(); ++out_idx) {
         auto& prepared = plan.outputs[out_idx];
-        prepared.source = resolve_output_source(public_outputs, runtime_model, out_idx);
-        if (!prepared.source.node) {
-            continue;
-        }
-
-        if (auto it = node_map.find(prepared.source.node.get()); it != node_map.end()) {
+        const auto& descriptor = public_outputs[out_idx];
+        prepared.index = descriptor.index;
+        prepared.port = descriptor.port;
+        prepared.static_shape = descriptor.static_shape;
+        prepared.static_type = descriptor.static_type;
+        if (descriptor.kind == RuntimePublicOutputSourceKind::StageOutput) {
             prepared.kind = PreparedOutputSourceKind::StageOutput;
-            prepared.index = it->second;
-            prepared.port = prepared.source.port;
-        } else if (auto stage_idx = find_pipeline_stage_index(pipeline,
-                                                              prepared.source.node.get(),
-                                                              prepared.source.port);
-                   stage_idx < pipeline.size()) {
-            prepared.kind = PreparedOutputSourceKind::StageOutput;
-            prepared.index = stage_idx;
-            prepared.port = prepared.source.port;
-        } else if (auto pit = param_map.find(prepared.source.node.get()); pit != param_map.end()) {
+        } else if (descriptor.kind == RuntimePublicOutputSourceKind::Parameter) {
             prepared.kind = PreparedOutputSourceKind::Parameter;
-            prepared.index = pit->second;
+        } else {
+            prepared.kind = PreparedOutputSourceKind::None;
         }
 
         if (prepared.kind == PreparedOutputSourceKind::StageOutput && prepared.index < pipeline.size() &&
             prepared.port < pipeline[prepared.index].outputs.size() &&
             pipeline[prepared.index].outputs[prepared.port]) {
             const auto& tensor = *pipeline[prepared.index].outputs[prepared.port];
-            prepared.static_shape = resolve_output_shape(public_outputs, prepared.source, tensor, out_idx);
-            prepared.static_type = resolve_output_element_type(prepared.source, tensor, error_prefix);
-            continue;
+            if (prepared.static_shape.empty()) {
+                prepared.static_shape = tensor.shape;
+            }
+            if (prepared.static_type == ov::element::dynamic) {
+                prepared.static_type =
+                    resolve_output_element_type(tensor, error_prefix);
+            }
         }
-
-        if (prepared.source.node->get_output_partial_shape(prepared.source.port).is_static()) {
-            prepared.static_shape = prepared.source.node->get_output_shape(prepared.source.port);
-        } else if (out_idx < public_outputs.size() && public_outputs[out_idx].get_partial_shape().is_static()) {
-            prepared.static_shape = public_outputs[out_idx].get_shape();
+        if (prepared.kind == PreparedOutputSourceKind::StageOutput) {
+            OPENVINO_ASSERT(prepared.index < pipeline.size(),
+                            error_prefix,
+                            ": public output descriptor stage index out of range at ",
+                            out_idx);
+            OPENVINO_ASSERT(prepared.port < pipeline[prepared.index].outputs.size(),
+                            error_prefix,
+                            ": public output descriptor port out of range at ",
+                            out_idx);
+        } else if (prepared.kind == PreparedOutputSourceKind::Parameter) {
+            OPENVINO_ASSERT(prepared.index != PipelineStageTensorRef::npos,
+                            error_prefix,
+                            ": public output descriptor parameter index is missing at ",
+                            out_idx);
+        } else {
+            OPENVINO_THROW(error_prefix,
+                           ": public output descriptor source is missing at ",
+                           out_idx);
         }
-        prepared.static_type = prepared.source.node->get_output_element_type(prepared.source.port);
+        prepared.source = {prepared.kind, prepared.index, prepared.port};
     }
 }
 
-ov::Shape resolve_output_shape(const std::vector<ov::Output<const ov::Node>>& public_outputs,
-                               const OutputSource& source,
-                               const GpuTensor& tensor,
-                               size_t out_idx) {
-    if (!tensor.shape.empty()) {
-        return tensor.shape;
-    }
-    if (source.node && source.node->get_output_partial_shape(source.port).is_static()) {
-        return source.node->get_output_shape(source.port);
-    }
-    if (out_idx < public_outputs.size() && public_outputs[out_idx].get_partial_shape().is_static()) {
-        return public_outputs[out_idx].get_shape();
-    }
-    return {};
-}
-
-ov::element::Type resolve_output_element_type(const OutputSource& source,
-                                              const GpuTensor& tensor,
+ov::element::Type resolve_output_element_type(const GpuTensor& tensor,
                                               const char* error_prefix) {
     if (tensor.expected_type != ov::element::dynamic) {
         return tensor.expected_type;
@@ -679,83 +732,10 @@ ov::element::Type resolve_output_element_type(const OutputSource& source,
     if (tensor.buf.type != ov::element::dynamic) {
         return tensor.buf.type;
     }
-    if (source.node) {
-        return source.node->get_output_element_type(source.port);
-    }
-    OPENVINO_THROW(error_prefix, ": output element type is not known");
+    OPENVINO_THROW(error_prefix,
+                   ": output element type is not known from compiler descriptor or tensor binding");
 }
 
-OutputSource resolve_output_source(const std::vector<ov::Output<const ov::Node>>& public_outputs,
-                                   const std::shared_ptr<const ov::Model>& runtime_model,
-                                   size_t out_idx) {
-    OutputSource src;
-    if (out_idx >= public_outputs.size()) {
-        return src;
-    }
-    const auto runtime_results = runtime_model ? runtime_model->get_results() : ov::ResultVector{};
-    const bool use_runtime_results = runtime_results.size() == public_outputs.size();
-    const ov::Node* res_node = nullptr;
-    if (use_runtime_results) {
-        res_node = runtime_results[out_idx].get();
-    } else {
-        res_node = public_outputs[out_idx].get_node();
-    }
-    if (!res_node) {
-        return src;
-    }
-    const auto input = res_node->input_value(0);
-    src.node = input.get_node_shared_ptr();
-    src.port = input.get_index();
-    return src;
-}
-
-OutputViewInfo resolve_output_view(const std::vector<ov::Output<const ov::Node>>& public_outputs,
-                                   const std::shared_ptr<const ov::Model>& runtime_model,
-                                   GpuTensor& tensor,
-                                   size_t out_idx,
-                                   const char* error_prefix) {
-    OutputViewInfo info;
-    info.source = resolve_output_source(public_outputs, runtime_model, out_idx);
-    info.shape = resolve_output_shape(public_outputs, info.source, tensor, out_idx);
-    if (tensor.shape.empty() && !info.shape.empty()) {
-        tensor.shape = info.shape;
-    }
-    info.type = resolve_output_element_type(info.source, tensor, error_prefix);
-    if (!tensor.shape.empty()) {
-        info.shape = tensor.shape;
-    }
-    return info;
-}
-
-GpuTensor* find_pipeline_output(std::vector<InferStage>& pipeline,
-                                const ov::Node* node,
-                                size_t port,
-                                const char* error_prefix) {
-    if (!node) {
-        return nullptr;
-    }
-    for (auto& stage : pipeline) {
-        if (!stage.node || stage.node.get() != node) {
-            bool matched_alias = false;
-            for (const auto& alias : stage.output_aliases) {
-                if (alias.node.get() == node && alias.source_port == port) {
-                    OPENVINO_ASSERT(alias.output_port < stage.outputs.size(),
-                                    error_prefix ? error_prefix : "GFX",
-                                    ": output alias port out of range");
-                    return stage.outputs[alias.output_port].get();
-                }
-            }
-            if (!matched_alias) {
-                continue;
-            }
-        }
-        OPENVINO_ASSERT(port < stage.outputs.size(),
-                        error_prefix ? error_prefix : "GFX",
-                        ": output port out of range");
-        return stage.outputs[port].get();
-    }
-    return nullptr;
-}
 
 void allocate_stage_outputs(std::vector<InferStage>& pipeline,
                             std::vector<std::vector<BufferHandle>>& handles,
@@ -770,6 +750,7 @@ void allocate_stage_outputs(std::vector<InferStage>& pipeline,
     if (workspace) {
         std::vector<std::vector<StageOutputAllocationPlan>> output_plan(pipeline.size());
         std::vector<std::vector<size_t>> last_use(pipeline.size());
+        std::vector<std::vector<size_t>> output_consumer_count(pipeline.size());
         workspace->output_slots.assign(pipeline.size(), {});
         workspace->last_workspace_outputs = 0;
         workspace->last_direct_outputs = 0;
@@ -781,87 +762,32 @@ void allocate_stage_outputs(std::vector<InferStage>& pipeline,
         }
         workspace->handles.reserve(workspace->handles.size() + max_new_workspace_slots);
 
-        std::unordered_map<NodePortKey, StageOutputRef, NodePortKeyHash> output_by_source;
-        output_by_source.reserve(pipeline.size());
-
         for (size_t stage_idx = 0; stage_idx < pipeline.size(); ++stage_idx) {
             auto& stage = pipeline[stage_idx];
-            auto register_output_source =
-                [&](const std::shared_ptr<const ov::Node>& source_node,
-                    size_t source_port,
-                    size_t output_port) {
-                    if (!source_node || output_port >= stage.outputs.size()) {
-                        return;
-                    }
-                    output_by_source[{source_node.get(), source_port}] =
-                        {stage_idx, output_port};
-                };
-            if (stage.node) {
-                for (size_t oi = 0; oi < stage.outputs.size(); ++oi) {
-                    register_output_source(stage.node, oi, oi);
-                }
-            }
-            for (size_t oi = 0; oi < stage.output_sources.size(); ++oi) {
-                const auto& source = stage.output_sources[oi];
-                register_output_source(source.node, source.port, oi);
-            }
-            for (const auto& alias : stage.output_aliases) {
-                register_output_source(alias.node,
-                                       alias.source_port,
-                                       alias.output_port);
-            }
             auto& stage_handles = handles[stage_idx];
             if (stage_handles.size() < stage.outputs.size()) {
                 stage_handles.resize(stage.outputs.size());
             }
             output_plan[stage_idx].resize(stage.outputs.size());
             last_use[stage_idx].assign(stage.outputs.size(), stage_idx);
+            output_consumer_count[stage_idx].assign(stage.outputs.size(), 0);
             workspace->output_slots[stage_idx].assign(
                 stage.outputs.size(), StageOutputBufferWorkspace::npos);
-
-            for (size_t oi = 0; oi < stage.outputs.size(); ++oi) {
-                auto& out_ref = stage.outputs[oi];
-                if (!out_ref || out_ref->buf.valid()) {
-                    continue;
-                }
-                GpuBufferDesc desc{};
-                if (!describe_output(stage, oi, *out_ref, desc, error_prefix)) {
-                    continue;
-                }
-                auto& plan = output_plan[stage_idx][oi];
-                plan.needs_buffer = true;
-                plan.desc = desc;
-                plan.workspace_managed = desc.usage == BufferUsage::Intermediate &&
-                                         !desc.cpu_read &&
-                                         !desc.cpu_write &&
-                                         !stage_output_has_multiple_graph_consumers(stage, oi);
-                if (!plan.workspace_managed) {
-                    continue;
-                }
-                if (stage_handles[oi].valid()) {
-                    pool.release(stage_handles[oi]);
-                }
-            }
         }
 
         for (size_t consumer_idx = 0; consumer_idx < pipeline.size(); ++consumer_idx) {
             const auto& consumer = pipeline[consumer_idx];
             for (const auto& link : consumer.inputs) {
-                if (!link.node) {
+                StageOutputRef producer_ref;
+                if (!resolve_stage_output_ref(link.source_ref, pipeline, producer_ref) ||
+                    producer_ref.stage == consumer_idx ||
+                    producer_ref.output >= last_use[producer_ref.stage].size()) {
                     continue;
                 }
-                auto it = output_by_source.find({link.node.get(), link.port});
-                if (it == output_by_source.end()) {
-                    continue;
-                }
-                const size_t producer_idx = it->second.stage;
-                const size_t producer_output = it->second.output;
-                if (producer_output >= last_use[producer_idx].size()) {
-                    continue;
-                }
-                last_use[producer_idx][producer_output] =
-                    std::max(last_use[producer_idx][producer_output],
+                last_use[producer_ref.stage][producer_ref.output] =
+                    std::max(last_use[producer_ref.stage][producer_ref.output],
                              consumer_idx);
+                ++output_consumer_count[producer_ref.stage][producer_ref.output];
             }
         }
 
@@ -896,19 +822,42 @@ void allocate_stage_outputs(std::vector<InferStage>& pipeline,
                 view_last_use = std::max(view_last_use, use);
             }
             for (const auto& link : stage.inputs) {
-                if (!link.node) {
+                StageOutputRef producer_ref;
+                if (!resolve_stage_output_ref(link.source_ref, pipeline, producer_ref) ||
+                    producer_ref.output >= last_use[producer_ref.stage].size()) {
                     continue;
                 }
-                auto it = output_by_source.find({link.node.get(), link.port});
-                if (it == output_by_source.end()) {
+                last_use[producer_ref.stage][producer_ref.output] =
+                    std::max(last_use[producer_ref.stage][producer_ref.output],
+                             view_last_use);
+            }
+        }
+
+        for (size_t stage_idx = 0; stage_idx < pipeline.size(); ++stage_idx) {
+            auto& stage = pipeline[stage_idx];
+            auto& stage_handles = handles[stage_idx];
+            for (size_t oi = 0; oi < stage.outputs.size(); ++oi) {
+                auto& out_ref = stage.outputs[oi];
+                if (!out_ref || out_ref->buf.valid()) {
                     continue;
                 }
-                const size_t producer_idx = it->second.stage;
-                const size_t producer_output = it->second.output;
-                if (producer_output < last_use[producer_idx].size()) {
-                    last_use[producer_idx][producer_output] =
-                        std::max(last_use[producer_idx][producer_output],
-                                 view_last_use);
+                GpuBufferDesc desc{};
+                if (!describe_output(stage, oi, *out_ref, desc, error_prefix)) {
+                    continue;
+                }
+                auto& plan = output_plan[stage_idx][oi];
+                plan.needs_buffer = true;
+                plan.desc = desc;
+                plan.workspace_managed = runtime_output_uses_transient_arena(stage, oi) &&
+                                         desc.usage == BufferUsage::Intermediate &&
+                                         !desc.cpu_read &&
+                                         !desc.cpu_write &&
+                                         output_consumer_count[stage_idx][oi] <= 1u;
+                if (!plan.workspace_managed) {
+                    continue;
+                }
+                if (stage_handles[oi].valid()) {
+                    pool.release(stage_handles[oi]);
                 }
             }
         }
@@ -1001,15 +950,12 @@ void allocate_stage_outputs(std::vector<InferStage>& pipeline,
         auto protect_current_stage_input_slots = [&](const InferStage& stage) {
             std::vector<size_t> protected_slots;
             for (const auto& link : stage.inputs) {
-                if (!link.node) {
+                StageOutputRef producer_ref;
+                if (!resolve_stage_output_ref(link.source_ref, pipeline, producer_ref)) {
                     continue;
                 }
-                auto it = output_by_source.find({link.node.get(), link.port});
-                if (it == output_by_source.end()) {
-                    continue;
-                }
-                const size_t producer_idx = it->second.stage;
-                const size_t producer_output = it->second.output;
+                const size_t producer_idx = producer_ref.stage;
+                const size_t producer_output = producer_ref.output;
                 if (producer_idx >= workspace->output_slots.size() ||
                     producer_output >=
                         workspace->output_slots[producer_idx].size()) {

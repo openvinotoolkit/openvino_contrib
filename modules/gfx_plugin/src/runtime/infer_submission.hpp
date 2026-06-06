@@ -8,7 +8,6 @@
 #include <cstdint>
 #include <functional>
 #include <limits>
-#include <unordered_map>
 #include <vector>
 
 #include "openvino/core/node.hpp"
@@ -164,8 +163,6 @@ void record_infer_submission_tuning_counters(const InferSubmissionTuning& tuning
 
 void execute_pipeline_with_submission(
     std::vector<InferStage>& pipeline,
-    const std::unordered_map<const ov::Node*, size_t>& node_map,
-    const std::unordered_map<const ov::Node*, size_t>& param_map,
     const InferInputLookup& input_lookup,
     InferSubmissionSession& submission,
     const InferSubmissionConfig& config,

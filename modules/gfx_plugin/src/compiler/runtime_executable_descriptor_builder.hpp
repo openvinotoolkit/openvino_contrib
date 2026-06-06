@@ -21,11 +21,15 @@ bool runtime_executable_descriptor_valid(
     const ExecutableBundle &executable);
 
 RuntimeExecutableDescriptorVerificationResult
-verify_runtime_executable_stage_plan(
+verify_runtime_executable_descriptor_pipeline_plan(
     const RuntimeExecutableDescriptor &descriptor);
 
-bool runtime_executable_stage_plan_valid(
+bool runtime_executable_descriptor_pipeline_plan_valid(
     const RuntimeExecutableDescriptor &descriptor);
+
+void attach_runtime_public_output_descriptors(
+    RuntimeExecutableDescriptor &descriptor,
+    const ::ov::gfx_plugin::PipelineStageRuntimePlan &pipeline_plan);
 
 class RuntimeExecutableDescriptorBuilder final {
 public:

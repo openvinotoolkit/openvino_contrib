@@ -61,6 +61,7 @@ struct RuntimeParamContract {
 
 struct RuntimeShapeContract {
   std::string rule = "static_or_descriptor";
+  std::vector<int64_t> i64_metadata;
 };
 
 struct StatefulEffectContract {

@@ -166,8 +166,6 @@ protected:
 private:
   std::vector<KernelArg>
   materialize_bound_kernel_args(const std::vector<GpuTensor *> &outputs) const;
-  void
-  prepare_prewarm_kernel_runtime_state(const std::vector<GpuTensor *> &outputs);
   void apply_kernel_metadata(const KernelRuntimeMetadata &meta,
                              size_t scalar_inputs);
   void compile_from_plan(MlirKernelPlanContext &plan_ctx, mlir::ModuleOp module,

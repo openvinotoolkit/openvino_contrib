@@ -56,7 +56,8 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
      runtime pipeline-stage materializer, runtime session, or runtime
      descriptor behavior
    - descriptor-owned tensor binding contracts, generated source
-     `RuntimeParams` ownership, or temporary source-node bridge policy
+     `RuntimeParams` ownership, descriptor-owned `ConstTensor`
+     materialization, or fail-closed source-node boundary policy
    - compiler-owned tensor-layout classification
    - public properties
    - `query_model()` or compile behavior

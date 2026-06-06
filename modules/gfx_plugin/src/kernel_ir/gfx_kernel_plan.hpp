@@ -79,10 +79,8 @@ private:
 
 inline uint32_t infer_kernel_arg_count(mlir::ModuleOp module,
                                        const std::string& entry_point) {
-    const auto sig = infer_kernel_signature(module, entry_point);
-    const size_t fallback = static_cast<size_t>(sig.total());
     return static_cast<uint32_t>(infer_kernel_arg_count_from_module(module,
-                                                                   fallback,
+                                                                   /*fallback=*/0,
                                                                    entry_point));
 }
 
