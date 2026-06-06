@@ -1126,7 +1126,8 @@ GfxKernelStageManifest make_unit_source_stage_manifest(
 
 std::shared_ptr<const KernelArtifactPayload> make_unit_source_payload(
     const compiler::KernelArtifactDescriptor &descriptor,
-    const std::vector<GfxKernelBufferRole> &roles) {
+    const std::vector<GfxKernelBufferRole> &roles,
+    const GfxKernelSourceRuntimeBinding &runtime_binding = {}) {
   if (descriptor.payload_kind == KernelArtifactPayloadKind::OpenClSource) {
     GfxOpenClSourceArtifact artifact;
     artifact.valid = true;
@@ -1145,14 +1146,16 @@ std::shared_ptr<const KernelArtifactPayload> make_unit_source_payload(
       descriptor.kernel.kernel_id, descriptor.kernel.backend_domain,
       descriptor.entry_point, GfxKernelSourceLanguage::MetalShadingLanguage,
       "kernel void unit_source_entry() {}",
-      make_unit_source_stage_manifest(GfxKernelBackendDomain::AppleMsl, roles));
+      make_unit_source_stage_manifest(GfxKernelBackendDomain::AppleMsl, roles),
+      runtime_binding);
 }
 
 compiler::ExecutableBundle make_source_payload_executable(
     std::string backend_domain, std::string op_family,
     const std::vector<GfxKernelBufferRole> &roles,
     const std::vector<std::string> &input_shapes,
-    const std::vector<std::string> &output_shapes) {
+    const std::vector<std::string> &output_shapes,
+    const GfxKernelSourceRuntimeBinding &runtime_binding = {}) {
   auto manifest = make_source_payload_route_manifest(
       std::move(backend_domain), std::move(op_family), input_shapes,
       output_shapes);
@@ -1165,7 +1168,8 @@ compiler::ExecutableBundle make_source_payload_executable(
   compiler::KernelArtifactPayloadRecord payload_record;
   payload_record.artifact_descriptor_index = 0;
   payload_record.artifact_key = descriptor.artifact_key;
-  payload_record.payload = make_unit_source_payload(descriptor, roles);
+  payload_record.payload =
+      make_unit_source_payload(descriptor, roles, runtime_binding);
   executable.artifact_payloads.push_back(std::move(payload_record));
   return executable;
 }
@@ -2440,6 +2444,16 @@ TEST_F(GfxBackendArchitectureContractTest,
         GfxKernelBufferRole::RuntimeParams},
        {"{1,3}", "{1,3}"},
        {"{1,3}"}},
+      {"Broadcast",
+       4,
+       RuntimeParamDescriptorPayloadKind::Broadcast,
+       {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams},
+       {"{1,3}"},
+       {"{2,3}"}},
       {"Select",
        4,
        RuntimeParamDescriptorPayloadKind::Select,
@@ -2491,6 +2505,92 @@ TEST_F(GfxBackendArchitectureContractTest,
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
+       MslRuntimeParamDescriptorContractCoversGeneratedMetadataFamilies) {
+  struct FamilyCase {
+    const char *op_family;
+    size_t runtime_param_count;
+    RuntimeParamDescriptorPayloadKind payload_kind;
+    std::vector<GfxKernelBufferRole> roles;
+    std::vector<std::string> input_shapes;
+    std::vector<std::string> output_shapes;
+    std::vector<int64_t> i64_metadata;
+    bool reduce_keep_dims = false;
+    bool reduce_keep_dims_valid = false;
+  };
+
+  const std::vector<FamilyCase> families = {
+      {"Softmax",
+       1,
+       RuntimeParamDescriptorPayloadKind::Softmax,
+       {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
+        GfxKernelBufferRole::RuntimeParams},
+       {"{2,3}"},
+       {"{2,3}"},
+       {2, 3, 1}},
+      {"Transpose",
+       5,
+       RuntimeParamDescriptorPayloadKind::Transpose,
+       {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams},
+       {"{2,3}"},
+       {"{3,2}"},
+       {1, 0}},
+      {"ReduceSum",
+       5,
+       RuntimeParamDescriptorPayloadKind::Reduce,
+       {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
+        GfxKernelBufferRole::ScalarParam, GfxKernelBufferRole::ScalarParam,
+        GfxKernelBufferRole::ScalarParam, GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams},
+       {"{2,3}"},
+       {"{2}"},
+       {1},
+       false,
+       true},
+  };
+
+  for (const auto &family : families) {
+    SCOPED_TRACE(family.op_family);
+    EXPECT_EQ(descriptor_owned_runtime_param_payload_kind(
+                  family.op_family, family.runtime_param_count),
+              family.payload_kind);
+
+    GfxKernelSourceRuntimeBinding runtime_binding;
+    runtime_binding.runtime_param_i64_metadata = family.i64_metadata;
+    runtime_binding.runtime_param_reduce_keep_dims = family.reduce_keep_dims;
+    runtime_binding.runtime_param_reduce_keep_dims_valid =
+        family.reduce_keep_dims_valid;
+
+    auto executable = make_source_payload_executable(
+        "metal", family.op_family, family.roles, family.input_shapes,
+        family.output_shapes, runtime_binding);
+    ASSERT_TRUE(executable.verify().valid());
+
+    const auto runtime_descriptor =
+        compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
+    ASSERT_TRUE(compiler::runtime_executable_descriptor_valid(
+        runtime_descriptor, executable));
+    ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
+    const auto &stage = runtime_descriptor.stages.front();
+    EXPECT_TRUE(descriptor_owns_runtime_param_payload(
+        stage, family.runtime_param_count));
+    EXPECT_EQ(stage.runtime_param_i64_metadata, family.i64_metadata);
+    EXPECT_EQ(stage.runtime_param_reduce_keep_dims, family.reduce_keep_dims);
+    EXPECT_EQ(stage.runtime_param_reduce_keep_dims_valid,
+              family.reduce_keep_dims_valid);
+    EXPECT_FALSE(stage.temporary_source_node_bridge_required);
+    EXPECT_TRUE(stage.temporary_source_node_bridge_reason.empty());
+  }
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
        DescriptorOwnedRuntimeParamsMaterializeFromDescriptorShapes) {
   const std::vector<GfxKernelBufferRole> binary_roles = {
       GfxKernelBufferRole::TensorInput,   GfxKernelBufferRole::TensorInput,
@@ -2529,6 +2629,108 @@ TEST_F(GfxBackendArchitectureContractTest,
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
+       DescriptorOwnedRuntimeParamsMaterializeFromArtifactMetadata) {
+  struct Case {
+    const char *op_family;
+    size_t runtime_param_count;
+    std::vector<GfxKernelBufferRole> roles;
+    std::vector<std::string> input_shapes;
+    std::vector<std::string> output_shapes;
+    std::vector<int64_t> i64_metadata;
+    bool reduce_keep_dims = false;
+    bool reduce_keep_dims_valid = false;
+    std::vector<int32_t> compiler_scalar_args;
+    size_t expected_extra_inputs = 0;
+    ov::Shape expected_output_shape;
+  };
+
+  const std::vector<Case> cases = {
+      {"Softmax",
+       1,
+       {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
+        GfxKernelBufferRole::RuntimeParams},
+       {"{2,3}"},
+       {"{2,3}"},
+       {2, 3, 1},
+       false,
+       false,
+       {},
+       1,
+       ov::Shape{2, 3}},
+      {"Transpose",
+       5,
+       {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams},
+       {"{2,3}"},
+       {"{3,2}"},
+       {1, 0},
+       false,
+       false,
+       {},
+       5,
+       ov::Shape{3, 2}},
+      {"ReduceSum",
+       5,
+       {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
+        GfxKernelBufferRole::ScalarParam, GfxKernelBufferRole::ScalarParam,
+        GfxKernelBufferRole::ScalarParam, GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams},
+       {"{2,3}"},
+       {"{2}"},
+       {1},
+       false,
+       true,
+       {2, 2, 0},
+       5,
+       ov::Shape{2}},
+  };
+
+  for (const auto &test_case : cases) {
+    SCOPED_TRACE(test_case.op_family);
+    GfxKernelSourceRuntimeBinding runtime_binding;
+    runtime_binding.runtime_param_i64_metadata = test_case.i64_metadata;
+    runtime_binding.runtime_param_reduce_keep_dims =
+        test_case.reduce_keep_dims;
+    runtime_binding.runtime_param_reduce_keep_dims_valid =
+        test_case.reduce_keep_dims_valid;
+
+    auto executable = make_source_payload_executable(
+        "metal", test_case.op_family, test_case.roles, test_case.input_shapes,
+        test_case.output_shapes, runtime_binding);
+    const auto runtime_descriptor =
+        compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
+    ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
+    const auto &stage = runtime_descriptor.stages.front();
+    ASSERT_TRUE(descriptor_owns_runtime_param_payload(
+        stage, test_case.runtime_param_count));
+
+    UnitMetadataBufferManager buffer_manager;
+    RuntimeInputResolver inputs;
+    inputs.descriptor = &stage;
+    GpuTensor output;
+    std::vector<GpuTensor *> outputs = {&output};
+
+    auto materialization = materialize_descriptor_owned_runtime_param_payload(
+        buffer_manager, stage, inputs, outputs,
+        test_case.runtime_param_count, test_case.compiler_scalar_args,
+        test_case.op_family);
+
+    ASSERT_TRUE(materialization.available);
+    EXPECT_TRUE(materialization.descriptor_owned);
+    EXPECT_EQ(materialization.extra_inputs.size(),
+              test_case.expected_extra_inputs);
+    EXPECT_EQ(output.shape, test_case.expected_output_shape);
+  }
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
        DescriptorOwnedRuntimeParamsRejectSourceNodeShapeBridge) {
   const std::vector<GfxKernelBufferRole> binary_roles = {
       GfxKernelBufferRole::TensorInput,   GfxKernelBufferRole::TensorInput,
@@ -2550,7 +2752,8 @@ TEST_F(GfxBackendArchitectureContractTest,
         compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
     ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
     const auto &stage = runtime_descriptor.stages.front();
-    ASSERT_TRUE(stage.temporary_source_node_bridge_required);
+    EXPECT_FALSE(stage.temporary_source_node_bridge_required);
+    EXPECT_TRUE(stage.temporary_source_node_bridge_reason.empty());
     ASSERT_FALSE(descriptor_owns_runtime_param_payload(stage, 3));
 
     UnitMetadataBufferManager buffer_manager;
@@ -2570,7 +2773,7 @@ TEST_F(GfxBackendArchitectureContractTest,
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
-       RuntimeParamsWithoutStaticDescriptorShapeKeepSourceNodeBridge) {
+       RuntimeParamsWithoutStaticDescriptorShapeDoNotKeepSourceNodeBridge) {
   const std::vector<GfxKernelBufferRole> binary_roles = {
       GfxKernelBufferRole::TensorInput,   GfxKernelBufferRole::TensorInput,
       GfxKernelBufferRole::TensorOutput,  GfxKernelBufferRole::ScalarParam,
@@ -2583,13 +2786,17 @@ TEST_F(GfxBackendArchitectureContractTest,
 
   const auto runtime_descriptor =
       compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
-  ASSERT_TRUE(compiler::runtime_executable_descriptor_valid(runtime_descriptor,
-                                                           executable));
+  const auto verification = compiler::verify_runtime_executable_descriptor(
+      runtime_descriptor, executable);
+  ASSERT_FALSE(verification.valid());
+  EXPECT_TRUE(has_diagnostic_containing(verification.diagnostics,
+                                        "RuntimeParams ABI is not "
+                                        "descriptor-owned"));
   ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
   const auto &stage = runtime_descriptor.stages.front();
-  EXPECT_TRUE(stage.temporary_source_node_bridge_required);
-  EXPECT_TRUE(has_diagnostic_containing(
-      {stage.temporary_source_node_bridge_reason}, "RuntimeParams"));
+  EXPECT_FALSE(stage.temporary_source_node_bridge_required);
+  EXPECT_TRUE(stage.temporary_source_node_bridge_reason.empty());
+  EXPECT_FALSE(descriptor_owns_runtime_param_payload(stage, 3));
 }
 
 TEST_F(GfxBackendArchitectureContractTest,

@@ -867,6 +867,16 @@ verify_runtime_executable_descriptor(
     }
     const auto executable_payload =
         executable.find_artifact_payload(stage.artifact_key);
+    const auto source_roles =
+        summarize_source_payload_roles(executable_payload.get());
+    if (source_roles.runtime_param_count != 0 &&
+        !descriptor_owns_runtime_param_payload(
+            stage, source_roles.runtime_param_count)) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor RuntimeParams ABI is not "
+          "descriptor-owned at " +
+          std::to_string(i));
+    }
     const auto expected_runtime_param_metadata =
         runtime_param_metadata_from_source_payload(executable_payload.get());
     if (stage.runtime_param_i64_metadata !=
