@@ -160,7 +160,10 @@ void assign_runtime_shapes_for_stage(InferStage& stage,
         outputs.push_back(out.get());
     }
 
-    RuntimeInputResolver runtime_inputs{&inputs, nullptr, nullptr, stage.node};
+    RuntimeInputResolver runtime_inputs;
+    runtime_inputs.inputs = &inputs;
+    runtime_inputs.descriptor = descriptor;
+    runtime_inputs.node = stage.node;
     const auto stage_name = stage.node->get_friendly_name();
 
     if (runtime_shape_rule == "concat") {

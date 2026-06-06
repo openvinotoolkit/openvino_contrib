@@ -73,6 +73,12 @@ Then inspect the relevant code path:
   `src/runtime/backend_stage_factory.hpp`,
   `src/runtime/pipeline_stage_desc.hpp`, and
   `src/runtime/pipeline_stage_materializer.*`.
+- Keep descriptor element-type/static-shape parsing and generated source
+  `RuntimeParams` ownership rules in `src/runtime/tensor_binding_contract.*`;
+  do not duplicate them in Metal/OpenCL request-time code.
+- Treat `ov::Node` handoff to backend stages as a temporary bridge only when
+  `RuntimeStageExecutableDescriptor` records
+  `temporary_source_node_bridge_required` with a concrete migration reason.
 - Keep compiler memory regions, alias groups, lifetimes, transient arenas, and
   cache-envelope fingerprints in `src/compiler/`; request code consumes runtime
   descriptors and `RuntimeSession`.

@@ -156,7 +156,6 @@ void apply_vendor_descriptor_to_stage(
 
 GfxMpsrtStageDesc make_stage_desc_from_contract(
     const RuntimeStageExecutableDescriptor& descriptor,
-    const std::shared_ptr<const ov::Node>& node,
     const GfxAppleMpsVendorPrimitiveContract& contract) {
   GfxMpsrtStageDesc stage{};
   stage.kind =
@@ -198,7 +197,6 @@ std::vector<GfxMpsrtValue> sequential_values(size_t count,
 
 runtime_mpsrt::MpsrtModel make_mpsrt_model_from_contract(
     const RuntimeStageExecutableDescriptor& descriptor,
-    const std::shared_ptr<const ov::Node>& node,
     const GfxAppleMpsVendorPrimitiveContract& contract) {
   OPENVINO_ASSERT(contract.valid,
                   "GFX Metal MPSRT: vendor primitive contract is invalid");
@@ -216,7 +214,7 @@ runtime_mpsrt::MpsrtModel make_mpsrt_model_from_contract(
   program.external_buffer_abi = contract.external_buffer_abi;
 
   GfxMpsrtBuilderStageSpec stage_spec{};
-  stage_spec.stage = make_stage_desc_from_contract(descriptor, node, contract);
+  stage_spec.stage = make_stage_desc_from_contract(descriptor, contract);
   stage_spec.inputs = sequential_values(contract.input_descs.size());
   stage_spec.outputs =
       sequential_values(contract.output_descs.size(),
@@ -470,8 +468,7 @@ public:
         m_descriptor(descriptor),
         m_name(!descriptor.stage_name.empty()
                    ? descriptor.stage_name
-                   : (node ? node->get_friendly_name()
-                           : descriptor.kernel_id)) {
+                   : descriptor.kernel_id) {
     const auto* payload = vendor_payload_from_descriptor(descriptor);
     OPENVINO_ASSERT(payload && payload->valid(),
                     "GFX Metal MPSRT: invalid vendor primitive descriptor for ",
@@ -494,7 +491,7 @@ public:
                     m_descriptor.kernel_id);
     prepare_vendor_const_inputs(m_node, m_buffer_manager,
                                 m_descriptor.kernel_id, m_const_inputs);
-    m_model = make_mpsrt_model_from_contract(m_descriptor, m_node, m_contract);
+    m_model = make_mpsrt_model_from_contract(m_descriptor, m_contract);
     auto context =
         std::make_shared<metal::mpsrt::MpsrtContext>((id<MTLDevice>)m_device);
     auto prepared = std::make_shared<metal::mpsrt::MpsrtPreparedModel>();

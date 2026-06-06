@@ -5,6 +5,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include "openvino/core/except.hpp"
 #include "openvino/core/node.hpp"
@@ -19,9 +20,13 @@ struct RuntimeStageMaterializationContext {
 
   RuntimeStageMaterializationContext() = default;
 
-  RuntimeStageMaterializationContext(
-      std::shared_ptr<const ov::Node> node,
+  explicit RuntimeStageMaterializationContext(
       const RuntimeStageExecutableDescriptor &runtime_descriptor)
+      : descriptor(&runtime_descriptor) {}
+
+  RuntimeStageMaterializationContext(
+      const RuntimeStageExecutableDescriptor &runtime_descriptor,
+      std::shared_ptr<const ov::Node> node)
       : descriptor(&runtime_descriptor), source_node(std::move(node)) {}
 
   const RuntimeStageExecutableDescriptor &require_descriptor() const {
@@ -36,7 +41,11 @@ struct RuntimeStageMaterializationContext {
     if (descriptor && !descriptor->op_family.empty()) {
       return descriptor->op_family;
     }
-    return source_node ? source_node->get_type_name() : std::string("<null>");
+    if (descriptor && !descriptor->kernel_id.empty()) {
+      return descriptor->kernel_id;
+    }
+    return descriptor ? std::string("<descriptor-missing-op-family>")
+                      : std::string("<null>");
   }
 
   std::string op_friendly_name() const {
@@ -49,8 +58,26 @@ struct RuntimeStageMaterializationContext {
     if (descriptor && !descriptor->kernel_id.empty()) {
       return descriptor->kernel_id;
     }
-    return source_node ? source_node->get_friendly_name()
-                       : std::string("<null>");
+    return descriptor ? std::string("<descriptor-missing-stage-name>")
+                      : std::string("<null>");
+  }
+
+  bool has_source_node() const noexcept {
+    return static_cast<bool>(source_node);
+  }
+
+  const std::shared_ptr<const ov::Node> &
+  require_source_node(std::string_view reason) const {
+    (void)require_descriptor();
+    OPENVINO_ASSERT(
+        source_node,
+        "GFX: backend runtime requested temporary ov::Node materialization "
+        "source for ",
+        op_friendly_name(), " (", op_type_name(),
+        ") while materialization "
+        "context is descriptor-only. Remaining migration reason: ",
+        std::string(reason));
+    return source_node;
   }
 };
 

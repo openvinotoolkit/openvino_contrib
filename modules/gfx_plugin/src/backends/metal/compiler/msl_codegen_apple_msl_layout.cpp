@@ -92,11 +92,18 @@ KernelSource make_transpose_msl_kernel_source(
 
 GfxMslGeneratedKernelSourcePlan make_transpose_msl_kernel_source_plan(
     const std::shared_ptr<const ov::Node> &node, mlir::ModuleOp module) {
+  auto static_desc = make_static_transpose_desc(node);
   auto binding =
       make_backend_custom_kernel_binding_plan(
           "Transpose", "transpose_kernel", GfxKernelBackendDomain::AppleMsl);
-  if (!binding.valid || !make_static_transpose_desc(node)) {
+  if (!binding.valid || !static_desc) {
     return {};
+  }
+  binding.runtime_binding.runtime_param_i64_metadata.reserve(
+      static_desc->perm.size());
+  for (const auto axis : static_desc->perm) {
+    binding.runtime_binding.runtime_param_i64_metadata.push_back(
+        static_cast<int64_t>(axis));
   }
 
   auto plan = make_msl_generated_custom_kernel_source_plan(

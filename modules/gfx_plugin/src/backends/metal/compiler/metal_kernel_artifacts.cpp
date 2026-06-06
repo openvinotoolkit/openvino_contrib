@@ -87,6 +87,12 @@ make_source_runtime_binding(const KernelRuntimeBindingState &binding) {
   payload_binding.operand_kinds = binding.operand_kinds;
   payload_binding.operand_arg_indices = binding.operand_arg_indices;
   payload_binding.scalar_args = binding.scalar_args;
+  payload_binding.runtime_param_i64_metadata =
+      binding.runtime_param_i64_metadata;
+  payload_binding.runtime_param_reduce_keep_dims =
+      binding.runtime_param_reduce_keep_dims;
+  payload_binding.runtime_param_reduce_keep_dims_valid =
+      binding.runtime_param_reduce_keep_dims_valid;
   return payload_binding;
 }
 

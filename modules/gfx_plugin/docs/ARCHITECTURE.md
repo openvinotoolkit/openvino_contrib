@@ -116,6 +116,13 @@ backend-specific stage construction logic.
 entry point, ABI fingerprint, explicit roles, and artifact payload. If a
 descriptor is missing or invalid, the backend must fail or fall back only to a
 supported current path, never to a removed route.
+`src/runtime/tensor_binding_contract.*` is the shared parser for descriptor
+element-type and static-shape contracts and the shared classifier for generated
+source `RuntimeParams` payloads that can be materialized without an OpenVINO
+source node. The current descriptor-owned families are Broadcast, binary
+elementwise broadcast, Select, Tile, Softmax/LogSoftmax, Transpose, and Reduce
+when the descriptor carries the required static tensor contracts and runtime
+metadata.
 
 Kernel preparation is request-local and is mediated by
 `src/runtime/runtime_session.*` so descriptor-owned resource bindings and
@@ -318,6 +325,11 @@ a kernel, source artifact, vendor primitive, or ABI fingerprint consumes the
 matching `RuntimeStageExecutableDescriptor`. The old pattern where a backend
 stage inferred its executable payload from the OpenVINO node is not a current
 route.
+Any remaining `ov::Node` dependency must be recorded as
+`temporary_source_node_bridge_required` with a non-empty migration reason in the
+runtime descriptor. Current bridges are limited to routes whose vendor
+primitive metadata, runtime-shape arguments, `ConstTensor` ABI, or unsupported
+source `RuntimeParams` ABI is not yet fully descriptor-owned.
 
 `BackendTarget`, lowering plans, backend capability objects, buffers, and
 runtime capability records default to `GpuBackend::Unknown` until a backend is
@@ -421,8 +433,12 @@ Kernel contracts are split across the current compiler and kernel IR layers:
   creation, vendor primitive artifact materialization, and fused sequence
   materialization
 - `src/runtime/stage_materialization_context.hpp`: the context object that hands
-  compiler-owned `RuntimeStageExecutableDescriptor` records and source-node
-  identity to backend stage factories
+  compiler-owned `RuntimeStageExecutableDescriptor` records to backend stage
+  factories and exposes source-node identity only for explicitly recorded
+  temporary bridges
+- `src/runtime/tensor_binding_contract.*`: descriptor-owned tensor
+  element-type/static-shape parsing and generated `RuntimeParams` ownership
+  classification shared by Metal and OpenCL runtime code
 - `src/runtime/runtime_session.*`: request-local resource binding tables and
   prepared executable objects that validate tensor bindings against descriptor
   memory-region ids

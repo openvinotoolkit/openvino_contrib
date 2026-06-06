@@ -35,6 +35,9 @@ private:
     std::vector<GpuTensor*> m_inputs;
 };
 
+bool is_stateful_stage_descriptor(
+    const RuntimeStageExecutableDescriptor& descriptor) noexcept;
+
 std::unique_ptr<GpuStage> create_stateful_stage(
     const RuntimeStageExecutableDescriptor& descriptor);
 

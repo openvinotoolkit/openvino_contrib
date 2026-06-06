@@ -70,8 +70,9 @@ Read these files first:
   pipeline/executor/submission helpers, stateful runtime helpers,
   pipeline-stage materialization, fused-output lifetime planning,
   liveness-aware output workspaces, remote context/tensor helpers,
-  descriptor-backed view-only stages, runtime-value and kernel-launch planning,
-  and target profiles
+  descriptor-backed view-only stages, tensor binding contract helpers,
+  descriptor-owned runtime-parameter payload materialization, runtime-value and
+  kernel-launch planning, and target profiles
 - `src/kernel_ir/`: backend-neutral kernel manifests, custom-kernel family
   metadata, cache keys, dispatch descriptions, embedded Metal/OpenCL helper
   sources, and OpenCL source artifacts
@@ -132,6 +133,13 @@ The high-level path is:
    `src/runtime/pipeline_stage_desc.hpp`. Fused output lifetimes are derived
    from runtime memory contracts in
    `src/runtime/fused_output_lifetime_plan.*`.
+   `src/runtime/tensor_binding_contract.*` parses descriptor-owned tensor
+   type/shape contracts and identifies the generated source families whose
+   `RuntimeParams` payload can be materialized without an `ov::Node`.
+   Current descriptor-owned `RuntimeParams` coverage includes Broadcast,
+   binary elementwise broadcast, Select, Tile, Softmax/LogSoftmax, Transpose,
+   and Reduce families when the required static tensor contracts and metadata
+   are present.
 7. `src/compiler/stage_policy.*` selects fusion, precision, submit policy,
    and other shared stage traits. The selected backend `StagePlacementPolicy`,
    `PostOpFusionCapabilities`, and source-kernel dispatch policy are passed
@@ -166,6 +174,12 @@ Backend stage creation is descriptor-owned. Stages that need a kernel, source
 artifact, vendor descriptor, or ABI metadata must consume the matching
 `RuntimeStageExecutableDescriptor`; request-time code must not reconstruct
 payloads from the OpenVINO node.
+Remaining source-node dependencies are explicit temporary bridges. The runtime
+descriptor records `temporary_source_node_bridge_required` and a migration
+reason when a route still needs `ov::Node` metadata, currently for vendor
+primitive materialization, runtime-shape arguments, `ConstTensor` source ABI, or
+source `RuntimeParams` roles not yet covered by descriptor-owned static
+contracts. New routes should avoid widening that bridge.
 
 There is no generic backend-lowering escape route. Metal and OpenCL operation
 support must resolve to common metadata, an explicit generated kernel unit, a
@@ -306,6 +320,10 @@ cache envelope has a persisted format.
 Compiler-owned tensor layout classification lives in
 `src/compiler/tensor_layout.*`; shared stage policy consumes the resulting
 layout contract instead of reclassifying view-only or materialized layout ops.
+Runtime tensor binding contract helpers live in
+`src/runtime/tensor_binding_contract.*`; do not duplicate their element-type,
+static-shape, or generated `RuntimeParams` ownership rules in Metal/OpenCL
+request-time code.
 
 ## Supported Operation Families
 

@@ -6,7 +6,6 @@
 
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <utility>
 
 #include "common/gpu_backend.hpp"
@@ -14,6 +13,7 @@
 #include "runtime/fused_output_lifetime_plan.hpp"
 #include "runtime/fused_sequence_stage.hpp"
 #include "runtime/gfx_compile_profiling.hpp"
+#include "runtime/tensor_binding_contract.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -22,6 +22,48 @@ namespace {
 void apply_pipeline_stage_io_plan(PipelineStageDesc &stage_desc,
                                   PipelineStageIoPlan stage_plan) {
   static_cast<PipelineStageIoPlan &>(stage_desc) = std::move(stage_plan);
+}
+
+std::string materialized_stage_name(const PipelineStageIoPlan &io_plan);
+
+void apply_descriptor_output_contracts(
+    PipelineStageDesc &stage_desc,
+    const RuntimeStageExecutableDescriptor &descriptor) {
+  OPENVINO_ASSERT(
+      descriptor.output_bindings.size() == stage_desc.outputs.size(),
+      "GFX: compiler-owned output binding count drift for materialized "
+      "pipeline stage ",
+      materialized_stage_name(stage_desc),
+      ": descriptor=", descriptor.output_bindings.size(),
+      " plan=", stage_desc.outputs.size());
+
+  for (size_t output_idx = 0; output_idx < stage_desc.outputs.size();
+       ++output_idx) {
+    auto &output = stage_desc.outputs[output_idx];
+    const auto &binding = descriptor.output_bindings[output_idx];
+
+    const auto descriptor_type =
+        element_type_from_contract(binding.element_type);
+    if (descriptor_type != ov::element::dynamic) {
+      OPENVINO_ASSERT(
+          output.type == ov::element::dynamic || output.type == descriptor_type,
+          "GFX: compiler-owned output type contract drift for materialized "
+          "pipeline stage ",
+          materialized_stage_name(stage_desc), " output ", output_idx,
+          ": descriptor=", descriptor_type, " plan=", output.type);
+      output.type = descriptor_type;
+    }
+
+    ov::Shape descriptor_shape;
+    if (parse_static_shape_contract(binding.partial_shape, descriptor_shape)) {
+      OPENVINO_ASSERT(
+          output.shape.empty() || output.shape == descriptor_shape,
+          "GFX: compiler-owned output shape contract drift for materialized "
+          "pipeline stage ",
+          materialized_stage_name(stage_desc), " output ", output_idx);
+      output.shape = std::move(descriptor_shape);
+    }
+  }
 }
 
 void apply_input_transform_plan(
@@ -43,9 +85,8 @@ void apply_single_stage_fusion_plan(
     OPENVINO_ASSERT(stage.fuse_residual_add(),
                     "GFX: runtime stage rejected compiler-owned residual Add "
                     "fusion plan for ",
-                    plan.io_plan.node
-                        ? plan.io_plan.node->get_friendly_name()
-                        : std::string("<null>"));
+                    plan.io_plan.node ? plan.io_plan.node->get_friendly_name()
+                                      : std::string("<null>"));
   }
 
   if (plan.post_ops.input_activation) {
@@ -63,31 +104,27 @@ void apply_single_stage_fusion_plan(
     OPENVINO_ASSERT(stage.fuse_batchnorm(*plan.post_ops.batchnorm),
                     "GFX: runtime stage rejected compiler-owned BatchNorm "
                     "fusion plan for ",
-                    plan.io_plan.node
-                        ? plan.io_plan.node->get_friendly_name()
-                        : std::string("<null>"));
+                    plan.io_plan.node ? plan.io_plan.node->get_friendly_name()
+                                      : std::string("<null>"));
   }
   if (plan.post_ops.bias) {
     OPENVINO_ASSERT(stage.fuse_bias(*plan.post_ops.bias),
                     "GFX: runtime stage rejected compiler-owned bias fusion "
                     "plan for ",
-                    plan.io_plan.node
-                        ? plan.io_plan.node->get_friendly_name()
-                        : std::string("<null>"));
+                    plan.io_plan.node ? plan.io_plan.node->get_friendly_name()
+                                      : std::string("<null>"));
   }
   if (plan.post_ops.activation) {
     OPENVINO_ASSERT(stage.fuse_activation(*plan.post_ops.activation,
                                           plan.post_ops.activation_alpha),
                     "GFX: runtime stage rejected compiler-owned activation "
                     "fusion plan for ",
-                    plan.io_plan.node
-                        ? plan.io_plan.node->get_friendly_name()
-                        : std::string("<null>"));
+                    plan.io_plan.node ? plan.io_plan.node->get_friendly_name()
+                                      : std::string("<null>"));
   }
 }
 
-FusedInputKind
-to_runtime_fused_input_kind(PipelineFusedInputPlan::Kind kind) {
+FusedInputKind to_runtime_fused_input_kind(PipelineFusedInputPlan::Kind kind) {
   switch (kind) {
   case PipelineFusedInputPlan::Kind::External:
     return FusedInputKind::External;
@@ -99,8 +136,8 @@ to_runtime_fused_input_kind(PipelineFusedInputPlan::Kind kind) {
   }
 }
 
-FusedOutputLifetimeInputRef::Kind to_lifetime_fused_input_kind(
-    PipelineFusedInputPlan::Kind kind) {
+FusedOutputLifetimeInputRef::Kind
+to_lifetime_fused_input_kind(PipelineFusedInputPlan::Kind kind) {
   switch (kind) {
   case PipelineFusedInputPlan::Kind::External:
     return FusedOutputLifetimeInputRef::Kind::External;
@@ -125,12 +162,32 @@ std::string materialized_stage_name(const PipelineStageIoPlan &io_plan) {
                       : std::string("<null>");
 }
 
+std::shared_ptr<const ov::Node>
+source_node_bridge_for(const RuntimeStageExecutableDescriptor &descriptor,
+                       const std::shared_ptr<const ov::Node> &source_node) {
+  if (!descriptor.temporary_source_node_bridge_required) {
+    return {};
+  }
+  OPENVINO_ASSERT(
+      !descriptor.temporary_source_node_bridge_reason.empty(),
+      "GFX: runtime executable descriptor requires a temporary source-node "
+      "bridge but does not record the remaining migration reason for ",
+      descriptor.stage_name);
+  OPENVINO_ASSERT(
+      source_node,
+      "GFX: compiler-owned runtime descriptor requires temporary source-node "
+      "bridge for ",
+      descriptor.stage_name,
+      ". Remaining migration reason: ",
+      descriptor.temporary_source_node_bridge_reason);
+  return source_node;
+}
+
 void assert_complete_materialized_binding(
     const RuntimeTensorBindingContract &binding, std::string_view direction,
     const PipelineStageIoPlan &io_plan, size_t binding_idx) {
   OPENVINO_ASSERT(
-      binding_complete(binding),
-      "GFX: compiler-owned materialized ", direction,
+      binding_complete(binding), "GFX: compiler-owned materialized ", direction,
       " binding contract is incomplete for pipeline stage ",
       materialized_stage_name(io_plan), " at index ", binding_idx,
       "; runtime must not synthesize ABI, memory regions or tensor layout");
@@ -139,40 +196,51 @@ void assert_complete_materialized_binding(
 void assert_materialized_descriptor_complete(
     const RuntimeStageExecutableDescriptor &descriptor,
     const PipelineStageMaterializationPlan &plan) {
-  OPENVINO_ASSERT(!descriptor.manifest_ref.empty() &&
-                      !descriptor.abi_fingerprint.empty() &&
-                      !descriptor.artifact_key.empty() &&
-                      !descriptor.backend_domain.empty() &&
-                      !descriptor.kernel_id.empty() &&
-                      !descriptor.op_family.empty() &&
-                      !descriptor.runtime_shape_rule.empty() &&
-      descriptor.stage_record_key != 0,
-                  "GFX: compiler-owned materialized descriptor identity is "
-                  "incomplete for pipeline stage ",
-                  materialized_stage_name(plan.io_plan));
+  OPENVINO_ASSERT(
+      !descriptor.manifest_ref.empty() && !descriptor.abi_fingerprint.empty() &&
+          !descriptor.artifact_key.empty() &&
+          !descriptor.backend_domain.empty() && !descriptor.kernel_id.empty() &&
+          !descriptor.op_family.empty() &&
+          !descriptor.runtime_shape_rule.empty() &&
+          descriptor.stage_record_key != 0,
+      "GFX: compiler-owned materialized descriptor identity is "
+      "incomplete for pipeline stage ",
+      materialized_stage_name(plan.io_plan));
   OPENVINO_ASSERT(!descriptor.stage_name.empty(),
                   "GFX: compiler-owned materialized descriptor stage name is "
                   "incomplete for pipeline stage ",
                   materialized_stage_name(plan.io_plan));
+  OPENVINO_ASSERT(
+      descriptor.temporary_source_node_bridge_required ||
+          descriptor.temporary_source_node_bridge_reason.empty(),
+      "GFX: runtime executable descriptor records a source-node bridge "
+      "migration reason for a descriptor-only materialized stage ",
+      materialized_stage_name(plan.io_plan));
+  OPENVINO_ASSERT(
+      !descriptor.temporary_source_node_bridge_required ||
+          !descriptor.temporary_source_node_bridge_reason.empty(),
+      "GFX: runtime executable descriptor requires a source-node bridge but "
+      "does not carry the migration reason for materialized stage ",
+      materialized_stage_name(plan.io_plan));
 
   if (plan.kind != PipelineStageMaterializationKind::SingleStage) {
     OPENVINO_ASSERT(
         descriptor.input_bindings.size() == plan.io_plan.inputs.size(),
         "GFX: compiler-owned materialized input binding count drift for ",
-        materialized_stage_name(plan.io_plan), ": descriptor=",
-        descriptor.input_bindings.size(), " plan=", plan.io_plan.inputs.size());
+        materialized_stage_name(plan.io_plan),
+        ": descriptor=", descriptor.input_bindings.size(),
+        " plan=", plan.io_plan.inputs.size());
     OPENVINO_ASSERT(
         descriptor.output_bindings.size() == plan.io_plan.outputs.size(),
         "GFX: compiler-owned materialized output binding count drift for ",
-        materialized_stage_name(plan.io_plan), ": descriptor=",
-        descriptor.output_bindings.size(), " plan=",
-        plan.io_plan.outputs.size());
+        materialized_stage_name(plan.io_plan),
+        ": descriptor=", descriptor.output_bindings.size(),
+        " plan=", plan.io_plan.outputs.size());
   }
 
-  OPENVINO_ASSERT(
-      descriptor.abi_arg_count == descriptor.input_bindings.size(),
-      "GFX: compiler-owned materialized input ABI count drift for ",
-      materialized_stage_name(plan.io_plan));
+  OPENVINO_ASSERT(descriptor.abi_arg_count == descriptor.input_bindings.size(),
+                  "GFX: compiler-owned materialized input ABI count drift for ",
+                  materialized_stage_name(plan.io_plan));
   OPENVINO_ASSERT(
       descriptor.abi_output_arg_count == descriptor.output_bindings.size(),
       "GFX: compiler-owned materialized output ABI count drift for ",
@@ -194,69 +262,40 @@ void assert_materialized_descriptor_complete(
 
 PipelineStageMaterializer::PipelineStageMaterializer(
     const BackendStageFactory &stage_factory,
-    const std::vector<std::shared_ptr<ov::Node>> &ordered_ops,
     const RuntimeExecutableDescriptor &runtime_descriptor,
     GpuStageRuntimeOptions runtime_options)
     : m_stage_factory(stage_factory), m_runtime_descriptor(runtime_descriptor),
       m_runtime_options(std::move(runtime_options)) {
-  OPENVINO_ASSERT(
-      runtime_descriptor.stages.size() == ordered_ops.size(),
-      "GFX: runtime executable descriptor stage count drift: descriptor=",
-      runtime_descriptor.stages.size(), " ordered_ops=", ordered_ops.size());
-
-  m_descriptors_by_node.reserve(runtime_descriptor.stages.size());
+  m_descriptors_by_stage_index.assign(runtime_descriptor.stages.size(),
+                                      nullptr);
   for (size_t i = 0; i < runtime_descriptor.stages.size(); ++i) {
-    const auto &node = ordered_ops[i];
     const auto &descriptor = runtime_descriptor.stages[i];
-    OPENVINO_ASSERT(node, "GFX: runtime model ordered op ", i, " is null");
     OPENVINO_ASSERT(
-        descriptor.stage_index == i,
-        "GFX: runtime executable descriptor stage index drift at ordered op ",
-        i);
-    OPENVINO_ASSERT(
-        descriptor.op_family == node->get_type_name(),
-        "GFX: runtime executable descriptor op-family drift at ordered op ", i,
-        ": descriptor=", descriptor.op_family, " node=", node->get_type_name());
-    const auto inserted =
-        m_descriptors_by_node.emplace(node.get(), &descriptor);
-    OPENVINO_ASSERT(inserted.second,
-                    "GFX: duplicate runtime executable descriptor for node ",
-                    node->get_friendly_name(), " (", node->get_type_name(),
-                    ")");
+        descriptor.stage_index != PipelineStageIoPlan::npos &&
+            descriptor.stage_index < runtime_descriptor.stages.size(),
+        "GFX: runtime executable descriptor stage index out of range at ", i);
+    OPENVINO_ASSERT(!m_descriptors_by_stage_index[descriptor.stage_index],
+                    "GFX: duplicate runtime executable descriptor stage index ",
+                    descriptor.stage_index);
+    m_descriptors_by_stage_index[descriptor.stage_index] = &descriptor;
   }
 }
 
 const RuntimeStageExecutableDescriptor *
-PipelineStageMaterializer::descriptor_for(
-    const std::shared_ptr<const ov::Node> &node) const noexcept {
-  if (!node) {
+PipelineStageMaterializer::descriptor_for_stage_index(
+    size_t stage_index) const noexcept {
+  if (stage_index == PipelineStageIoPlan::npos ||
+      stage_index >= m_descriptors_by_stage_index.size()) {
     return nullptr;
   }
-  const auto it = m_descriptors_by_node.find(node.get());
-  return it == m_descriptors_by_node.end() ? nullptr : it->second;
-}
-
-size_t PipelineStageMaterializer::stage_index_for(
-    const std::shared_ptr<const ov::Node> &node) const {
-  const auto *descriptor = descriptor_for(node);
-  OPENVINO_ASSERT(descriptor,
-                  "GFX: missing compiler-owned runtime executable descriptor "
-                  "for stage index of op ",
-                  node ? node->get_friendly_name() : std::string("<null>"),
-                  " (", node ? node->get_type_name() : "<null>", ")");
-  return descriptor->stage_index;
+  return m_descriptors_by_stage_index[stage_index];
 }
 
 std::unique_ptr<GpuStage> PipelineStageMaterializer::create_stage(
-    const std::shared_ptr<const ov::Node> &node) const {
-  const auto *descriptor = descriptor_for(node);
-  OPENVINO_ASSERT(descriptor,
-                  "GFX: missing compiler-owned runtime executable descriptor "
-                  "for op ",
-                  node ? node->get_friendly_name() : std::string("<null>"),
-                  " (", node ? node->get_type_name() : "<null>", ")");
+    const RuntimeStageExecutableDescriptor &descriptor,
+    const std::shared_ptr<const ov::Node> &source_node) const {
   auto stage = m_stage_factory.create_stage(
-      RuntimeStageMaterializationContext{node, *descriptor});
+      RuntimeStageMaterializationContext{descriptor, source_node});
   configure_stage(stage);
   return stage;
 }
@@ -266,10 +305,11 @@ PipelineStageMaterializer::create_vendor_attention_stage(
     const PipelineVendorAttentionStagePlan &plan,
     const std::shared_ptr<const ov::Node> &final_node,
     const RuntimeStageExecutableDescriptor *descriptor) const {
-  const auto *base_descriptor = descriptor_for(final_node);
+  const auto *base_descriptor = descriptor_for_stage_index(
+      descriptor ? descriptor->stage_index : PipelineStageIoPlan::npos);
   OPENVINO_ASSERT(base_descriptor,
                   "GFX: missing compiler-owned runtime executable descriptor "
-                  "for vendor attention output op ",
+                  "for vendor attention stage ",
                   final_node ? final_node->get_friendly_name()
                              : std::string("<null>"));
   OPENVINO_ASSERT(plan.valid(),
@@ -290,8 +330,8 @@ PipelineStageMaterializer::create_vendor_attention_stage(
                   "payload for ",
                   plan.name);
 
-  auto stage = m_stage_factory.create_stage(
-      RuntimeStageMaterializationContext{final_node, *descriptor});
+  auto stage = m_stage_factory.create_stage(RuntimeStageMaterializationContext{
+      *descriptor, source_node_bridge_for(*descriptor, final_node)});
   configure_stage(stage);
   return stage;
 }
@@ -302,7 +342,8 @@ PipelineStageMaterializer::create_attention_sequence_stage(
     const std::vector<std::shared_ptr<ov::Node>> &ordered_ops) const {
   const auto &node_indices = plan.fused_node_indices;
   const size_t stage_count = node_indices.size();
-  if (stage_count < 3 || plan.fused_inner_stages.size() != stage_count) {
+  if (stage_count < 3 || plan.fused_inner_stages.size() != stage_count ||
+      plan.fused_descriptor_stage_indices.size() != stage_count) {
     return std::nullopt;
   }
 
@@ -317,7 +358,14 @@ PipelineStageMaterializer::create_attention_sequence_stage(
       return std::nullopt;
     }
     const auto &stage_node = ordered_ops[idx];
-    auto stage = create_stage(stage_node);
+    const auto *stage_descriptor =
+        descriptor_for_stage_index(plan.fused_descriptor_stage_indices[i]);
+    if (!stage_descriptor) {
+      return std::nullopt;
+    }
+    auto stage =
+        create_stage(*stage_descriptor,
+                     source_node_bridge_for(*stage_descriptor, stage_node));
     if (!stage) {
       return std::nullopt;
     }
@@ -334,7 +382,7 @@ PipelineStageMaterializer::create_attention_sequence_stage(
 
     FusedOutputLifetimeStage lifetime_stage;
     lifetime_stage.output_indices = info.output_indices;
-    lifetime_stage.descriptor = descriptor_for(stage_node);
+    lifetime_stage.descriptor = stage_descriptor;
     lifetime_stage.inputs.reserve(inner_plan.inputs.size());
     for (const auto &input : inner_plan.inputs) {
       FusedOutputLifetimeInputRef lifetime_input;
@@ -366,13 +414,13 @@ PipelineStageMaterializer::create_attention_sequence_stage(
 std::shared_ptr<const RuntimeStageExecutableDescriptor>
 PipelineStageMaterializer::create_materialized_descriptor(
     const PipelineStageMaterializationPlan &plan) const {
-  const auto *base_descriptor = descriptor_for(plan.io_plan.node);
+  const auto *base_descriptor =
+      descriptor_for_stage_index(plan.descriptor_stage_index);
   OPENVINO_ASSERT(base_descriptor,
                   "GFX: missing compiler-owned runtime executable descriptor "
                   "for materialized pipeline stage ",
-                  plan.io_plan.node
-                      ? plan.io_plan.node->get_friendly_name()
-                      : std::string("<null>"));
+                  plan.io_plan.node ? plan.io_plan.node->get_friendly_name()
+                                    : std::string("<null>"));
 
   OPENVINO_ASSERT(
       plan.materialized_descriptor_valid,
@@ -409,9 +457,9 @@ std::vector<PipelineStageDesc> materialize_pipeline_stage_descriptors(
   OPENVINO_ASSERT(request.runtime_plan,
                   "GFX: pipeline materializer requires runtime stage plan");
 
-  PipelineStageMaterializer materializer(
-      *request.stage_factory, request.runtime_plan->ordered_ops,
-      *request.runtime_descriptor, request.runtime_options);
+  PipelineStageMaterializer materializer(*request.stage_factory,
+                                         *request.runtime_descriptor,
+                                         request.runtime_options);
 
   std::vector<PipelineStageDesc> pipeline;
   pipeline.reserve(request.runtime_plan->stage_plans.size());
@@ -420,21 +468,24 @@ std::vector<PipelineStageDesc> materialize_pipeline_stage_descriptors(
     apply_pipeline_stage_io_plan(stage_desc, stage_plan.io_plan);
     stage_desc.runtime_descriptor =
         materializer.create_materialized_descriptor(stage_plan);
+    apply_descriptor_output_contracts(stage_desc,
+                                      *stage_desc.runtime_descriptor);
 
     uint64_t materialized_stage_count = 1;
     switch (stage_plan.kind) {
     case PipelineStageMaterializationKind::SingleStage:
-      stage_desc.stage = materializer.create_stage(stage_plan.io_plan.node);
-      OPENVINO_ASSERT(stage_desc.stage,
-                      "GFX: unsupported op in MLIR pipeline: ",
-                      stage_plan.io_plan.node
-                          ? stage_plan.io_plan.node->get_friendly_name()
-                          : std::string("<null>"),
-                      " (",
-                      stage_plan.io_plan.node
-                          ? stage_plan.io_plan.node->get_type_name()
-                          : std::string("<null>"),
-                      ")");
+      stage_desc.stage = materializer.create_stage(
+          *stage_desc.runtime_descriptor,
+          source_node_bridge_for(*stage_desc.runtime_descriptor,
+                                 stage_plan.io_plan.node));
+      OPENVINO_ASSERT(
+          stage_desc.stage, "GFX: unsupported op in MLIR pipeline: ",
+          stage_plan.io_plan.node ? stage_plan.io_plan.node->get_friendly_name()
+                                  : std::string("<null>"),
+          " (",
+          stage_plan.io_plan.node ? stage_plan.io_plan.node->get_type_name()
+                                  : std::string("<null>"),
+          ")");
       apply_single_stage_fusion_plan(*stage_desc.stage, stage_plan);
       break;
     case PipelineStageMaterializationKind::VendorAttention:
@@ -443,15 +494,13 @@ std::vector<PipelineStageDesc> materialize_pipeline_stage_descriptors(
           stage_desc.runtime_descriptor.get());
       break;
     case PipelineStageMaterializationKind::FusedAttentionSequence: {
-      auto materialized =
-          materializer.create_attention_sequence_stage(
-              stage_plan, request.runtime_plan->ordered_ops);
+      auto materialized = materializer.create_attention_sequence_stage(
+          stage_plan, request.runtime_plan->ordered_ops);
       OPENVINO_ASSERT(materialized,
                       "GFX: failed to materialize compiler-owned fused "
                       "attention sequence plan");
       stage_desc.stage = std::move(materialized->stage);
-      stage_desc.output_lifetimes =
-          std::move(materialized->output_lifetimes);
+      stage_desc.output_lifetimes = std::move(materialized->output_lifetimes);
       materialized_stage_count = materialized->materialized_stage_count;
       break;
     }

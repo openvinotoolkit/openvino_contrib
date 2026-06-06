@@ -21,6 +21,7 @@ namespace gfx_plugin {
 
 class GfxProfiler;
 class GpuBufferManager;
+struct RuntimeStageExecutableDescriptor;
 
 struct RuntimeReduceInfo {
   ov::AxisSet axes;
@@ -36,6 +37,7 @@ struct RuntimeInputResolver {
   const std::vector<GpuTensor *> *inputs = nullptr;
   const std::vector<GpuTensor> *const_buffers = nullptr;
   const std::vector<bool> *const_buffer_present = nullptr;
+  const RuntimeStageExecutableDescriptor *descriptor = nullptr;
   std::shared_ptr<const ov::Node> node;
 
   ov::Shape shape(size_t idx) const;
@@ -172,6 +174,13 @@ struct RuntimeSoftmaxPlan {
   bool valid() const { return available; }
 };
 
+struct DescriptorOwnedRuntimeParamMaterialization {
+  bool available = false;
+  bool descriptor_owned = false;
+  std::vector<GpuTensor> extra_inputs;
+  std::vector<int32_t> scalar_args;
+};
+
 RuntimeValuePlan plan_reshape_runtime_values(const RuntimeInputResolver &inputs,
                                              const ov::Node &node,
                                              std::string_view stage_name);
@@ -260,6 +269,16 @@ RuntimeInterpolatePlan plan_interpolate_runtime_values(
 RuntimeSoftmaxPlan
 plan_softmax_runtime_values(const RuntimeInputResolver &inputs,
                             const ov::Node &node, std::string_view stage_name);
+
+DescriptorOwnedRuntimeParamMaterialization
+materialize_descriptor_owned_runtime_param_payload(
+    GpuBufferManager &buffer_manager,
+    const RuntimeStageExecutableDescriptor &descriptor,
+    const RuntimeInputResolver &inputs, const std::vector<GpuTensor *> &outputs,
+    size_t runtime_param_count,
+    const std::vector<int32_t> &compiler_scalar_args,
+    std::string_view stage_name,
+    const std::vector<size_t> *direct_input_indices = nullptr);
 
 void assign_runtime_value_outputs(const RuntimeValuePlan &plan,
                                   const std::vector<GpuTensor *> &outputs);

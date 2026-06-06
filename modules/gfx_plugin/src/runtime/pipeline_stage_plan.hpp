@@ -125,10 +125,12 @@ struct PipelineStageMaterializationPlan {
   PipelineStageMaterializationKind kind =
       PipelineStageMaterializationKind::SingleStage;
   PipelineStageIoPlan io_plan;
+  size_t descriptor_stage_index = PipelineStageIoPlan::npos;
   RuntimeStageExecutableDescriptor materialized_descriptor;
   bool materialized_descriptor_valid = false;
   PipelineVendorAttentionStagePlan vendor_attention;
   std::vector<size_t> fused_node_indices;
+  std::vector<size_t> fused_descriptor_stage_indices;
   std::vector<PipelineFusedInnerStagePlan> fused_inner_stages;
   std::vector<PipelineStageInputTransformBinding> input_transforms;
   std::optional<PipelineStageResidualAddFusionPlan> residual_add;

@@ -120,13 +120,18 @@ std::optional<KernelSource> make_runtime_params_softmax_source(
   desc.inner = static_cast<int64_t>(dims.inner);
   desc.log_softmax = softmax_is_log(node);
 
-  source.entry_point = binding.stage_manifest.custom_kernel.entry_point;
+  auto configured_binding = binding;
+  configured_binding.runtime_binding.runtime_param_i64_metadata = {
+      static_cast<int64_t>(dims.rows), static_cast<int64_t>(dims.axis_len),
+      static_cast<int64_t>(dims.inner)};
+
+  source.entry_point = configured_binding.stage_manifest.custom_kernel.entry_point;
   source.msl_source.clear();
   source.msl_generator = [desc](mlir::ModuleOp module) mutable {
     return generate_msl_from_mlir(module, desc);
   };
   if (!configure_backend_custom_kernel_source_from_binding_plan(source,
-                                                                binding)) {
+                                                                configured_binding)) {
     return std::nullopt;
   }
   return source;
@@ -250,6 +255,9 @@ make_softmax_runtime_params_msl_kernel_source_plan(
   if (!binding.valid) {
     return {};
   }
+  binding.runtime_binding.runtime_param_i64_metadata = {
+      static_cast<int64_t>(dims.rows), static_cast<int64_t>(dims.axis_len),
+      static_cast<int64_t>(dims.inner)};
 
   auto source = make_kernel_source(module, "softmax_kernel",
                                    generate_msl_from_mlir(module, desc),

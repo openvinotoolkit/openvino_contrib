@@ -1908,9 +1908,13 @@ void MlirStage::prepare_prewarm_kernel_runtime_state(
     return;
   }
 
-  RuntimeInputResolver runtime_inputs{
-      &m_inputs, m_const_buffers ? &m_const_buffers->buffers : nullptr,
-      m_const_buffers ? &m_const_buffers->present : nullptr, m_node};
+  RuntimeInputResolver runtime_inputs;
+  runtime_inputs.inputs = &m_inputs;
+  runtime_inputs.const_buffers =
+      m_const_buffers ? &m_const_buffers->buffers : nullptr;
+  runtime_inputs.const_buffer_present =
+      m_const_buffers ? &m_const_buffers->present : nullptr;
+  runtime_inputs.node = m_node;
 
   if (m_type == "Interpolate") {
     const auto interpolate_plan = plan_interpolate_runtime_values(
@@ -2035,9 +2039,13 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
   if (outputs.empty()) {
     OPENVINO_THROW("GFX MLIR: output tensor is not bound for stage ", m_name);
   }
-  RuntimeInputResolver runtime_inputs{
-      &m_inputs, m_const_buffers ? &m_const_buffers->buffers : nullptr,
-      m_const_buffers ? &m_const_buffers->present : nullptr, m_node};
+  RuntimeInputResolver runtime_inputs;
+  runtime_inputs.inputs = &m_inputs;
+  runtime_inputs.const_buffers =
+      m_const_buffers ? &m_const_buffers->buffers : nullptr;
+  runtime_inputs.const_buffer_present =
+      m_const_buffers ? &m_const_buffers->present : nullptr;
+  runtime_inputs.node = m_node;
 
   std::optional<KernelRuntimeBindingState> kernel_binding_override;
   std::optional<std::vector<int32_t>> kernel_scalar_args_override;

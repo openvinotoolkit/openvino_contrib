@@ -210,6 +210,7 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/pipeline_stage_desc.hpp
     ${_gfx_src_dir}/runtime/pipeline_stage_materializer.hpp
     ${_gfx_src_dir}/runtime/pipeline_stage_plan.hpp
+    ${_gfx_src_dir}/runtime/tensor_binding_contract.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_codegen_backend.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_dispatch.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_manifest.hpp
@@ -255,6 +256,7 @@ set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/runtime/pipeline_stage_materializer.cpp
     ${_gfx_src_dir}/runtime/stateful_execution.cpp
     ${_gfx_src_dir}/runtime/stateful_stage.cpp
+    ${_gfx_src_dir}/runtime/tensor_binding_contract.cpp
 )
 
 set(GFX_OPENCL_KERNEL_ARTIFACT_HEADERS

@@ -7,7 +7,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "openvino/core/node.hpp"
@@ -41,17 +40,15 @@ class PipelineStageMaterializer final {
 public:
   PipelineStageMaterializer(
       const BackendStageFactory &stage_factory,
-      const std::vector<std::shared_ptr<ov::Node>> &ordered_ops,
       const RuntimeExecutableDescriptor &runtime_descriptor,
       GpuStageRuntimeOptions runtime_options);
 
   const RuntimeStageExecutableDescriptor *
-  descriptor_for(const std::shared_ptr<const ov::Node> &node) const noexcept;
-
-  size_t stage_index_for(const std::shared_ptr<const ov::Node> &node) const;
+  descriptor_for_stage_index(size_t stage_index) const noexcept;
 
   std::unique_ptr<GpuStage>
-  create_stage(const std::shared_ptr<const ov::Node> &node) const;
+  create_stage(const RuntimeStageExecutableDescriptor &descriptor,
+               const std::shared_ptr<const ov::Node> &source_node = {}) const;
 
   std::unique_ptr<GpuStage> create_vendor_attention_stage(
       const PipelineVendorAttentionStagePlan &plan,
@@ -72,8 +69,8 @@ private:
   const BackendStageFactory &m_stage_factory;
   const RuntimeExecutableDescriptor &m_runtime_descriptor;
   GpuStageRuntimeOptions m_runtime_options;
-  std::unordered_map<const ov::Node *, const RuntimeStageExecutableDescriptor *>
-      m_descriptors_by_node;
+  std::vector<const RuntimeStageExecutableDescriptor *>
+      m_descriptors_by_stage_index;
 };
 
 std::vector<PipelineStageDesc> materialize_pipeline_stage_descriptors(

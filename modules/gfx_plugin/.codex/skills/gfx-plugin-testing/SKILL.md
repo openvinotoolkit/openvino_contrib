@@ -95,7 +95,9 @@ Prefer:
   `PipelineStageDesc` location changes
 - `tests/unit/infer_pipeline_reuse_test.cpp` when runtime-session, prepared
   executable binding, descriptor-owned view/alias classification,
-  fused-output-lifetime planning, or runtime-shape argument policy moves
+  fused-output-lifetime planning, runtime-shape argument policy,
+  descriptor-owned `RuntimeParams` materialization, or temporary source-node
+  bridge policy moves
 - backend artifact tests when payload materialization reaches Metal or OpenCL
   runtime loaders
 - backend stage-placement contract tests when domain/storage selection moves

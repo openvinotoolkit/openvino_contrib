@@ -54,6 +54,8 @@ struct RuntimeStageExecutableDescriptor {
   std::string layout_contract = "logical";
   std::string runtime_shape_rule = "static_or_descriptor";
   bool requires_runtime_shape_args = false;
+  bool temporary_source_node_bridge_required = false;
+  std::string temporary_source_node_bridge_reason;
   bool tensor_view_only = false;
   uint32_t submission_stage_weight = 1;
   uint64_t submission_macs_estimate = 0;
@@ -62,6 +64,9 @@ struct RuntimeStageExecutableDescriptor {
   std::string stateful_variable_id;
   std::vector<std::string> tensor_roles;
   std::vector<std::string> scalar_roles;
+  std::vector<int64_t> runtime_param_i64_metadata;
+  bool runtime_param_reduce_keep_dims = false;
+  bool runtime_param_reduce_keep_dims_valid = false;
   std::string exception_ticket;
   std::string exception_reason;
   std::string exception_removal_condition;

@@ -34,6 +34,9 @@ struct GfxKernelSourceRuntimeBinding {
     std::vector<int32_t> operand_kinds;
     std::vector<int32_t> operand_arg_indices;
     std::vector<int32_t> scalar_args;
+    std::vector<int64_t> runtime_param_i64_metadata;
+    bool runtime_param_reduce_keep_dims = false;
+    bool runtime_param_reduce_keep_dims_valid = false;
 
     bool valid() const noexcept {
         return operand_kinds.size() == operand_arg_indices.size();

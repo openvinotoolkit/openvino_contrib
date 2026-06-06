@@ -55,6 +55,8 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
      stage-placement policy, stage compiler policy, fused-output lifetime plan,
      runtime pipeline-stage materializer, runtime session, or runtime
      descriptor behavior
+   - descriptor-owned tensor binding contracts, generated source
+     `RuntimeParams` ownership, or temporary source-node bridge policy
    - compiler-owned tensor-layout classification
    - public properties
    - `query_model()` or compile behavior

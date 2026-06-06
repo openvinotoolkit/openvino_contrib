@@ -1,0 +1,286 @@
+// Copyright (C) 2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+
+#include "runtime/tensor_binding_contract.hpp"
+
+#include <cctype>
+#include <limits>
+
+#include "runtime/executable_descriptor.hpp"
+
+namespace ov {
+namespace gfx_plugin {
+namespace {
+
+bool consume_whitespace(std::string_view text, size_t& pos) {
+    while (pos < text.size() &&
+           std::isspace(static_cast<unsigned char>(text[pos]))) {
+        ++pos;
+    }
+    return pos < text.size();
+}
+
+bool descriptor_static_input_shape(
+    const RuntimeStageExecutableDescriptor &descriptor, size_t input_idx,
+    ov::Shape &shape) {
+    if (input_idx >= descriptor.input_bindings.size()) {
+        return false;
+    }
+    return parse_static_shape_contract(
+        descriptor.input_bindings[input_idx].partial_shape, shape);
+}
+
+bool runtime_param_metadata_axes_valid(
+    const RuntimeStageExecutableDescriptor &descriptor, const ov::Shape &shape) {
+    const auto rank = static_cast<int64_t>(shape.size());
+    if (rank < 0 || rank > 8 ||
+        descriptor.runtime_param_i64_metadata.size() > shape.size()) {
+        return false;
+    }
+    uint64_t seen_axes = 0;
+    for (auto axis : descriptor.runtime_param_i64_metadata) {
+        if (axis < 0) {
+            axis += rank;
+        }
+        if (axis < 0 || axis >= rank) {
+            return false;
+        }
+        const uint64_t bit = uint64_t{1} << static_cast<uint64_t>(axis);
+        if ((seen_axes & bit) != 0u) {
+            return false;
+        }
+        seen_axes |= bit;
+    }
+    return !descriptor.runtime_param_i64_metadata.empty();
+}
+
+bool runtime_param_metadata_permutation_valid(
+    const RuntimeStageExecutableDescriptor &descriptor, const ov::Shape &shape) {
+    if (descriptor.runtime_param_i64_metadata.size() != shape.size()) {
+        return false;
+    }
+    std::vector<bool> seen(shape.size(), false);
+    for (auto axis : descriptor.runtime_param_i64_metadata) {
+        if (axis < 0 || static_cast<size_t>(axis) >= shape.size()) {
+            return false;
+        }
+        const auto index = static_cast<size_t>(axis);
+        if (seen[index]) {
+            return false;
+        }
+        seen[index] = true;
+    }
+    return true;
+}
+
+}  // namespace
+
+bool is_binary_runtime_param_stage(std::string_view op_family) noexcept {
+    return op_family == "Add" || op_family == "Subtract" ||
+           op_family == "Multiply" || op_family == "Divide" ||
+           op_family == "Power" || op_family == "Mod" ||
+           op_family == "FloorMod" || op_family == "Minimum" ||
+           op_family == "Maximum" || op_family == "Equal" ||
+           op_family == "NotEqual" || op_family == "Less" ||
+           op_family == "Greater" || op_family == "LessEqual" ||
+           op_family == "GreaterEqual" || op_family == "LogicalAnd" ||
+           op_family == "LogicalOr" || op_family == "LogicalXor" ||
+           op_family == "SquaredDifference" || op_family == "PRelu";
+}
+
+bool is_reduce_runtime_param_stage(std::string_view op_family) noexcept {
+    return op_family == "ReduceSum" || op_family == "ReduceMean" ||
+           op_family == "ReduceMax" || op_family == "ReduceMin" ||
+           op_family == "ReduceProd" || op_family == "ReduceL1" ||
+           op_family == "ReduceL2" || op_family == "ReduceLogicalAnd" ||
+           op_family == "ReduceLogicalOr";
+}
+
+RuntimeParamDescriptorPayloadKind
+descriptor_owned_runtime_param_payload_kind(std::string_view op_family,
+                                            size_t runtime_param_count) noexcept {
+    if (runtime_param_count == 3 && is_binary_runtime_param_stage(op_family)) {
+        return RuntimeParamDescriptorPayloadKind::BinaryBroadcast;
+    }
+    if (runtime_param_count == 4 && op_family == "Broadcast") {
+        return RuntimeParamDescriptorPayloadKind::Broadcast;
+    }
+    if (runtime_param_count == 4 && op_family == "Select") {
+        return RuntimeParamDescriptorPayloadKind::Select;
+    }
+    if (runtime_param_count == 4 && op_family == "Tile") {
+        return RuntimeParamDescriptorPayloadKind::Tile;
+    }
+    if (runtime_param_count == 1 &&
+        (op_family == "Softmax" || op_family == "LogSoftmax")) {
+        return RuntimeParamDescriptorPayloadKind::Softmax;
+    }
+    if (runtime_param_count == 5 && op_family == "Transpose") {
+        return RuntimeParamDescriptorPayloadKind::Transpose;
+    }
+    if (runtime_param_count == 5 &&
+        is_reduce_runtime_param_stage(op_family)) {
+        return RuntimeParamDescriptorPayloadKind::Reduce;
+    }
+    return RuntimeParamDescriptorPayloadKind::None;
+}
+
+ov::element::Type element_type_from_contract(std::string_view name) {
+    if (name == "f32" || name == "float32") {
+        return ov::element::f32;
+    }
+    if (name == "f16" || name == "float16") {
+        return ov::element::f16;
+    }
+    if (name == "bf16") {
+        return ov::element::bf16;
+    }
+    if (name == "i64") {
+        return ov::element::i64;
+    }
+    if (name == "i32") {
+        return ov::element::i32;
+    }
+    if (name == "i16") {
+        return ov::element::i16;
+    }
+    if (name == "i8") {
+        return ov::element::i8;
+    }
+    if (name == "u64") {
+        return ov::element::u64;
+    }
+    if (name == "u32") {
+        return ov::element::u32;
+    }
+    if (name == "u16") {
+        return ov::element::u16;
+    }
+    if (name == "u8") {
+        return ov::element::u8;
+    }
+    if (name == "boolean" || name == "bool") {
+        return ov::element::boolean;
+    }
+    return ov::element::dynamic;
+}
+
+bool parse_static_shape_contract(std::string_view text, ov::Shape& shape) {
+    shape.clear();
+    size_t pos = 0;
+    if (!consume_whitespace(text, pos)) {
+        return false;
+    }
+
+    const char open = text[pos];
+    const char close = open == '{' ? '}' : (open == '[' ? ']' : '\0');
+    if (close == '\0') {
+        return false;
+    }
+    ++pos;
+
+    consume_whitespace(text, pos);
+    if (pos < text.size() && text[pos] == close) {
+        ++pos;
+        consume_whitespace(text, pos);
+        return pos == text.size();
+    }
+
+    while (pos < text.size()) {
+        consume_whitespace(text, pos);
+        if (pos >= text.size() ||
+            !std::isdigit(static_cast<unsigned char>(text[pos]))) {
+            return false;
+        }
+
+        size_t value = 0;
+        while (pos < text.size() &&
+               std::isdigit(static_cast<unsigned char>(text[pos]))) {
+            const size_t digit = static_cast<size_t>(text[pos] - '0');
+            if (value >
+                (std::numeric_limits<size_t>::max() - digit) / 10u) {
+                return false;
+            }
+            value = value * 10u + digit;
+            ++pos;
+        }
+        shape.push_back(value);
+
+        consume_whitespace(text, pos);
+        if (pos >= text.size()) {
+            return false;
+        }
+        if (text[pos] == close) {
+            ++pos;
+            consume_whitespace(text, pos);
+            return pos == text.size();
+        }
+        if (text[pos] != ',') {
+            return false;
+        }
+        ++pos;
+    }
+
+    return false;
+}
+
+bool descriptor_has_static_shape_contracts(
+    const RuntimeStageExecutableDescriptor &descriptor, size_t input_count,
+    size_t output_count) {
+    ov::Shape shape;
+    for (size_t i = 0; i < input_count; ++i) {
+        if (i >= descriptor.input_bindings.size() ||
+            !parse_static_shape_contract(descriptor.input_bindings[i].partial_shape,
+                                         shape)) {
+            return false;
+        }
+    }
+    for (size_t i = 0; i < output_count; ++i) {
+        if (i >= descriptor.output_bindings.size() ||
+            !parse_static_shape_contract(descriptor.output_bindings[i].partial_shape,
+                                         shape)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool descriptor_owns_runtime_param_payload(
+    const RuntimeStageExecutableDescriptor &descriptor,
+    size_t runtime_param_count) {
+    switch (descriptor_owned_runtime_param_payload_kind(descriptor.op_family,
+                                                       runtime_param_count)) {
+    case RuntimeParamDescriptorPayloadKind::None:
+        return runtime_param_count == 0;
+    case RuntimeParamDescriptorPayloadKind::BinaryBroadcast:
+        return descriptor_has_static_shape_contracts(descriptor, 2);
+    case RuntimeParamDescriptorPayloadKind::Broadcast:
+        return descriptor_has_static_shape_contracts(descriptor, 1);
+    case RuntimeParamDescriptorPayloadKind::Select:
+        return descriptor_has_static_shape_contracts(descriptor, 3);
+    case RuntimeParamDescriptorPayloadKind::Tile:
+        return descriptor_has_static_shape_contracts(descriptor, 1);
+    case RuntimeParamDescriptorPayloadKind::Softmax:
+        return descriptor_has_static_shape_contracts(descriptor, 1) &&
+               descriptor.runtime_param_i64_metadata.size() == 3;
+    case RuntimeParamDescriptorPayloadKind::Transpose: {
+        ov::Shape input_shape;
+        return descriptor_has_static_shape_contracts(descriptor, 1) &&
+               descriptor_static_input_shape(descriptor, 0, input_shape) &&
+               runtime_param_metadata_permutation_valid(descriptor,
+                                                        input_shape);
+    }
+    case RuntimeParamDescriptorPayloadKind::Reduce: {
+        ov::Shape input_shape;
+        return descriptor_has_static_shape_contracts(descriptor, 1) &&
+               descriptor.runtime_param_reduce_keep_dims_valid &&
+               descriptor_static_input_shape(descriptor, 0, input_shape) &&
+               runtime_param_metadata_axes_valid(descriptor, input_shape);
+    }
+    }
+    return false;
+}
+
+}  // namespace gfx_plugin
+}  // namespace ov

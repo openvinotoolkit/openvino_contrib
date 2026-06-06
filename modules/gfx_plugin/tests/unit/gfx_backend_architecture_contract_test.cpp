@@ -31,6 +31,8 @@
 #include "compiler/runtime_executable_descriptor_builder.hpp"
 #include "compiler/static_backend_module.hpp"
 #include "compiler/tensor_layout.hpp"
+#include "kernel_ir/gfx_kernel_source.hpp"
+#include "kernel_ir/gfx_opencl_source_artifacts.hpp"
 #include "openvino/op/add.hpp"
 #include "openvino/op/assign.hpp"
 #include "openvino/op/concat.hpp"
@@ -39,6 +41,7 @@
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/range.hpp"
 #include "openvino/op/relu.hpp"
+#include "openvino/op/reshape.hpp"
 #include "openvino/op/result.hpp"
 #include "openvino/op/transpose.hpp"
 #include "runtime/backend_request_state.hpp"
@@ -46,14 +49,17 @@
 #include "runtime/backend_runtime_provider.hpp"
 #include "runtime/backend_stage_factory.hpp"
 #include "runtime/executable_descriptor.hpp"
+#include "runtime/gfx_stage_runtime_values.hpp"
+#include "runtime/gpu_buffer_manager.hpp"
 #include "runtime/execution_dispatcher.hpp"
 #include "runtime/gpu_buffer.hpp"
 #include "runtime/gpu_memory_ops.hpp"
 #include "runtime/kernel_launch_plan.hpp"
 #include "runtime/pipeline_stage_materializer.hpp"
-#include "runtime/stateful_stage.hpp"
-#include "runtime/view_only_stage.hpp"
 #include "runtime/runtime_session.hpp"
+#include "runtime/stateful_stage.hpp"
+#include "runtime/tensor_binding_contract.hpp"
+#include "runtime/view_only_stage.hpp"
 #include "transforms/pipeline.hpp"
 #include "unit/gfx_backend_contracts.hpp"
 
@@ -82,14 +88,12 @@ static_assert(
     "BackendState must materialize stages through the unified compiler-owned "
     "runtime descriptor context");
 
-static_assert(
-    std::is_same_v<
-        decltype(&GpuStageFactory::create),
-        std::unique_ptr<GpuStage> (*)(
-            const RuntimeStageMaterializationContext &, GpuBackend, void *,
-            void *)>,
-    "GpuStageFactory must require the unified compiler-owned stage "
-    "materialization context");
+static_assert(std::is_same_v<decltype(&GpuStageFactory::create),
+                             std::unique_ptr<GpuStage> (*)(
+                                 const RuntimeStageMaterializationContext &,
+                                 GpuBackend, void *, void *)>,
+              "GpuStageFactory must require the unified compiler-owned stage "
+              "materialization context");
 
 static_assert(std::is_same_v<decltype(&RuntimeSession::prepare_stage),
                              PreparedKernelExecutable (RuntimeSession::*)(
@@ -104,24 +108,26 @@ static_assert(
     "Shared stateful runtime stage materialization must use the compiler-owned "
     "stage descriptor, not an ov::Node");
 
-static_assert(
-    std::is_same_v<decltype(&create_view_only_stage),
-                   std::unique_ptr<GpuStage> (*)(
-                       const RuntimeStageExecutableDescriptor &)>,
-    "Shared view-only runtime stage materialization must use the compiler-owned "
-    "stage descriptor, not an ov::Node");
+static_assert(std::is_same_v<decltype(&create_view_only_stage),
+                             std::unique_ptr<GpuStage> (*)(
+                                 const RuntimeStageExecutableDescriptor &)>,
+              "Shared view-only runtime stage materialization must use the "
+              "compiler-owned "
+              "stage descriptor, not an ov::Node");
 
 static_assert(
     std::is_same_v<decltype(&PipelineStageMaterializer::create_stage),
                    std::unique_ptr<GpuStage> (PipelineStageMaterializer::*)(
+                       const RuntimeStageExecutableDescriptor &,
                        const std::shared_ptr<const ov::Node> &) const>,
-    "PipelineStageMaterializer must own descriptor-backed stage prototype "
-    "materialization for CompiledModel");
+    "PipelineStageMaterializer must materialize stages from compiler-owned "
+    "runtime descriptors; ov::Node is only a temporary backend bridge");
 
 static_assert(
-    std::is_same_v<decltype(&PipelineStageMaterializer::stage_index_for),
-                   size_t (PipelineStageMaterializer::*)(
-                       const std::shared_ptr<const ov::Node> &) const>,
+    std::is_same_v<
+        decltype(&PipelineStageMaterializer::descriptor_for_stage_index),
+        const RuntimeStageExecutableDescriptor *(
+            PipelineStageMaterializer::*)(size_t) const noexcept>,
     "PipelineStageMaterializer must expose descriptor-owned runtime stage "
     "indices without fallback repair");
 
@@ -168,9 +174,8 @@ static_assert(
 static_assert(
     std::is_same_v<decltype(BackendRuntimeProvider::create_state),
                    std::unique_ptr<BackendState> (*)(
-                       const compiler::BackendTarget&,
-                       const ov::AnyMap&,
-                       const ov::SoPtr<ov::IRemoteContext>&)>,
+                       const compiler::BackendTarget &, const ov::AnyMap &,
+                       const ov::SoPtr<ov::IRemoteContext> &)>,
     "BackendRuntimeProvider must create runtime state for a concrete "
     "compiler BackendTarget, not for a backend enum alone");
 
@@ -182,17 +187,15 @@ static_assert(
     "instead of requiring common InferRequest backend switches");
 
 static_assert(
-    !std::is_invocable_v<decltype(&create_backend_state),
-                         GpuBackend,
-                         const ov::AnyMap&,
-                         const ov::SoPtr<ov::IRemoteContext>&>,
+    !std::is_invocable_v<decltype(&create_backend_state), GpuBackend,
+                         const ov::AnyMap &,
+                         const ov::SoPtr<ov::IRemoteContext> &>,
     "Runtime state creation must not accept GpuBackend-only identity");
 
 static_assert(
-    !std::is_invocable_v<decltype(&execute_backend_infer),
-                         GpuBackend,
-                         InferRequest&,
-                         const std::shared_ptr<const CompiledModel>&>,
+    !std::is_invocable_v<decltype(&execute_backend_infer), GpuBackend,
+                         InferRequest &,
+                         const std::shared_ptr<const CompiledModel> &>,
     "Runtime infer dispatch must be entered through a compiler BackendTarget");
 
 static_assert(
@@ -240,6 +243,24 @@ GpuTensor make_test_launch_plan_tensor(uint64_t allocation_uid) {
   return tensor;
 }
 
+class UnitMetadataBufferManager final : public GpuBufferManager {
+public:
+  GpuBuffer wrap_const(const std::string &, const void *, size_t bytes,
+                       ov::element::Type type) override {
+    GpuBuffer buffer;
+    buffer.buffer = reinterpret_cast<GpuBufferHandle>(m_next_handle);
+    buffer.size = bytes;
+    buffer.type = type;
+    buffer.persistent = true;
+    buffer.allocation_uid = allocate_gpu_buffer_uid();
+    m_next_handle += 0x1000u;
+    return buffer;
+  }
+
+private:
+  uintptr_t m_next_handle = 0x100000u;
+};
+
 class UnitVendorPayload final : public KernelArtifactPayload {
 public:
   KernelArtifactPayloadKind payload_kind() const noexcept override {
@@ -258,21 +279,69 @@ public:
     return "unit_vendor_entry";
   }
 
-  bool valid() const noexcept override {
-    return true;
+  bool valid() const noexcept override { return true; }
+};
+
+class UnitNoopStage final : public GpuStage {
+public:
+  UnitNoopStage(std::string name, std::string type)
+      : m_name(std::move(name)), m_type(std::move(type)) {}
+
+  void init(GpuBufferManager *) override {}
+  void prepare_runtime_handle(GpuBufferManager *) override {}
+  void execute(GpuCommandBufferHandle) override {}
+  void set_inputs(const std::vector<GpuTensor *> &inputs) override {
+    m_inputs = inputs;
   }
+  void set_output(GpuTensor *output) override { m_output = output; }
+  const std::string &name() const override { return m_name; }
+  const std::string &type() const override { return m_type; }
+  std::unique_ptr<GpuStage> clone() const override {
+    auto stage = std::make_unique<UnitNoopStage>(m_name, m_type);
+    stage->m_inputs = m_inputs;
+    stage->m_output = m_output;
+    return stage;
+  }
+
+private:
+  std::string m_name;
+  std::string m_type;
+  std::vector<GpuTensor *> m_inputs;
+  GpuTensor *m_output = nullptr;
 };
 
 class UnitBackendStageFactory final : public BackendStageFactory {
 public:
-  GpuBackend backend() const override {
-    return GpuBackend::Metal;
-  }
+  GpuBackend backend() const override { return GpuBackend::Metal; }
 
   std::unique_ptr<GpuStage>
   create_stage(const RuntimeStageMaterializationContext &) const override {
     return nullptr;
   }
+};
+
+class CapturingBackendStageFactory final : public BackendStageFactory {
+public:
+  GpuBackend backend() const override { return GpuBackend::Metal; }
+
+  std::unique_ptr<GpuStage> create_stage(
+      const RuntimeStageMaterializationContext &context) const override {
+    source_node_seen.push_back(context.has_source_node());
+    stage_names.push_back(context.op_friendly_name());
+
+    const auto &descriptor = context.require_descriptor();
+    if (auto stateful = create_stateful_stage(descriptor)) {
+      return stateful;
+    }
+    if (auto view = create_view_only_stage(descriptor)) {
+      return view;
+    }
+    return std::make_unique<UnitNoopStage>(context.op_friendly_name(),
+                                           context.op_type_name());
+  }
+
+  mutable std::vector<bool> source_node_seen;
+  mutable std::vector<std::string> stage_names;
 };
 
 RuntimeTensorBindingContract make_runtime_binding(std::string logical_name,
@@ -291,8 +360,8 @@ RuntimeTensorBindingContract make_runtime_binding(std::string logical_name,
   return binding;
 }
 
-RuntimeStageExecutableDescriptor make_materializer_base_descriptor(
-    const std::shared_ptr<ov::Node> &node) {
+RuntimeStageExecutableDescriptor
+make_materializer_base_descriptor(const std::shared_ptr<ov::Node> &node) {
   RuntimeStageExecutableDescriptor descriptor;
   descriptor.stage_index = 0;
   descriptor.stage_record_key = 0x1234u;
@@ -317,18 +386,22 @@ RuntimeStageExecutableDescriptor make_materializer_base_descriptor(
   return descriptor;
 }
 
-PipelineStageMaterializationPlan make_vendor_materialization_plan(
-    const std::shared_ptr<ov::Node> &input,
-    const std::shared_ptr<ov::Node> &node,
-    RuntimeStageExecutableDescriptor descriptor) {
+PipelineStageMaterializationPlan
+make_vendor_materialization_plan(const std::shared_ptr<ov::Node> &input,
+                                 const std::shared_ptr<ov::Node> &node,
+                                 RuntimeStageExecutableDescriptor descriptor) {
   descriptor.payload_kind = KernelArtifactPayloadKind::VendorDescriptor;
   descriptor.payload = std::make_shared<UnitVendorPayload>();
   descriptor.artifact_key = "artifact://unit/vendor_attention";
+  descriptor.temporary_source_node_bridge_required = true;
+  descriptor.temporary_source_node_bridge_reason =
+      "unit vendor bridge migration";
 
   PipelineStageMaterializationPlan plan;
   plan.kind = PipelineStageMaterializationKind::VendorAttention;
   plan.io_plan.node = node;
   plan.io_plan.runtime_stage_index = 0;
+  plan.descriptor_stage_index = descriptor.stage_index;
   plan.io_plan.inputs.push_back({input, 0});
 
   PipelineStageOutputDesc output;
@@ -340,6 +413,27 @@ PipelineStageMaterializationPlan make_vendor_materialization_plan(
 
   plan.vendor_attention.name = "unit_vendor_attention";
   plan.vendor_attention.descriptor = descriptor;
+  plan.materialized_descriptor = std::move(descriptor);
+  plan.materialized_descriptor_valid = true;
+  return plan;
+}
+
+PipelineStageMaterializationPlan
+make_single_materialization_plan(const std::shared_ptr<const ov::Node> &node,
+                                 RuntimeStageExecutableDescriptor descriptor) {
+  PipelineStageMaterializationPlan plan;
+  plan.kind = PipelineStageMaterializationKind::SingleStage;
+  plan.io_plan.node = node;
+  plan.io_plan.runtime_stage_index = descriptor.stage_index;
+  plan.descriptor_stage_index = descriptor.stage_index;
+
+  PipelineStageOutputDesc output;
+  output.shape = ov::Shape{1};
+  output.type = ov::element::f32;
+  output.source_node = node;
+  output.source_port = 0;
+  plan.io_plan.outputs.push_back(std::move(output));
+
   plan.materialized_descriptor = std::move(descriptor);
   plan.materialized_descriptor_valid = true;
   return plan;
@@ -402,13 +496,46 @@ TEST_F(GfxBackendArchitectureContractTest,
   descriptor.manifest_ref = "manifest://unit/descriptor_owned_stage";
   descriptor.kernel_id = "unit/descriptor_owned_stage";
 
-  RuntimeStageMaterializationContext context{
-      std::shared_ptr<const ov::Node>{}, descriptor};
+  RuntimeStageMaterializationContext context{descriptor};
 
   EXPECT_EQ(context.op_type_name(), std::string("DescriptorOwnedOp"));
-  EXPECT_EQ(context.op_friendly_name(),
-            std::string("descriptor_owned_stage"));
+  EXPECT_EQ(context.op_friendly_name(), std::string("descriptor_owned_stage"));
   EXPECT_EQ(&context.require_descriptor(), &descriptor);
+  EXPECT_FALSE(context.has_source_node());
+  EXPECT_THROW((void)context.require_source_node("unit descriptor-only check"),
+               ov::Exception);
+
+  auto parameter =
+      std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
+  auto relu = std::make_shared<ov::op::v0::Relu>(parameter);
+  RuntimeStageMaterializationContext node_backed_context{descriptor, relu};
+  EXPECT_TRUE(node_backed_context.has_source_node());
+  EXPECT_EQ(node_backed_context.op_type_name(),
+            std::string("DescriptorOwnedOp"));
+  EXPECT_EQ(node_backed_context.op_friendly_name(),
+            std::string("descriptor_owned_stage"));
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       RuntimeStageExecutableDescriptorDoesNotOwnSourceNodeBridge) {
+  RuntimeStageExecutableDescriptor descriptor;
+  descriptor.op_family = "Relu";
+  descriptor.stage_name = "unit_relu";
+  descriptor.payload_kind = KernelArtifactPayloadKind::MslSource;
+  EXPECT_FALSE(descriptor.temporary_source_node_bridge_required);
+  EXPECT_TRUE(descriptor.temporary_source_node_bridge_reason.empty());
+
+  RuntimeStageMaterializationContext descriptor_only{descriptor};
+  EXPECT_FALSE(descriptor_only.has_source_node());
+  EXPECT_THROW((void)descriptor_only.require_source_node("unit bridge check"),
+               ov::Exception);
+
+  auto parameter =
+      std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
+  auto relu = std::make_shared<ov::op::v0::Relu>(parameter);
+  RuntimeStageMaterializationContext context{descriptor, relu};
+  EXPECT_TRUE(context.has_source_node());
+  EXPECT_EQ(context.require_source_node("unit bridge check").get(), relu.get());
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
@@ -670,8 +797,8 @@ TEST_F(GfxBackendArchitectureContractTest,
   view_descriptor.payload_kind = KernelArtifactPayloadKind::None;
   view_descriptor.tensor_view_only = true;
   view_descriptor.layout_contract = "view_only";
-  view_descriptor.output_bindings.push_back(
-      make_runtime_binding("reshape.output0", "reshape_output", "TensorOutput"));
+  view_descriptor.output_bindings.push_back(make_runtime_binding(
+      "reshape.output0", "reshape_output", "TensorOutput"));
   view_descriptor.output_bindings.front().partial_shape = "{2,3}";
   view_descriptor.output_bindings.front().element_type = "f32";
 
@@ -697,6 +824,130 @@ TEST_F(GfxBackendArchitectureContractTest,
   EXPECT_TRUE(output.buf.external);
   EXPECT_EQ(output.shape, (ov::Shape{2, 3}));
   EXPECT_EQ(output.expected_type, ov::element::f32);
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       PipelineStageMaterializerPassesSourceNodeOnlyWhenDescriptorRequiresBridge) {
+  auto parameter = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                           ov::Shape{2, 3});
+  auto shape =
+      ov::op::v0::Constant::create(ov::element::i64, ov::Shape{1}, {6});
+  auto reshape = std::make_shared<ov::op::v1::Reshape>(parameter, shape, false);
+  auto relu = std::make_shared<ov::op::v0::Relu>(parameter);
+
+  auto view_descriptor = make_materializer_base_descriptor(reshape);
+  view_descriptor.origin = KernelArtifactOrigin::Metadata;
+  view_descriptor.payload_kind = KernelArtifactPayloadKind::None;
+  view_descriptor.kernel_id = "metadata";
+  view_descriptor.entry_point = "metadata";
+  view_descriptor.layout_contract = "view_only";
+  view_descriptor.tensor_view_only = true;
+  view_descriptor.input_bindings = {make_runtime_binding(
+      "reshape.input0", "compiler_view_input_region", "TensorInput")};
+  view_descriptor.output_bindings = {make_runtime_binding(
+      "reshape.output0", "compiler_view_output_region", "TensorOutput")};
+  view_descriptor.output_bindings.front().partial_shape = "{6}";
+  view_descriptor.abi_arg_count = 1;
+  view_descriptor.abi_output_arg_count = 1;
+
+  auto payload_descriptor = make_materializer_base_descriptor(relu);
+  payload_descriptor.stage_index = 1;
+  payload_descriptor.stage_record_key = 0x2234u;
+  payload_descriptor.manifest_ref = "manifest://unit/relu_payload";
+  payload_descriptor.abi_fingerprint = "abi://unit/relu_payload";
+  payload_descriptor.artifact_key = "artifact://unit/relu_payload";
+
+  RuntimeExecutableDescriptor runtime_descriptor;
+  runtime_descriptor.target_fingerprint = "metal:unit";
+  runtime_descriptor.stages = {view_descriptor, payload_descriptor};
+
+  PipelineStageRuntimePlan runtime_plan;
+  runtime_plan.ordered_ops = {reshape, relu};
+  auto view_plan = make_single_materialization_plan(reshape, view_descriptor);
+  view_plan.io_plan.outputs.front().shape = ov::Shape{6};
+  runtime_plan.stage_plans.push_back(std::move(view_plan));
+  runtime_plan.stage_plans.push_back(
+      make_single_materialization_plan(relu, payload_descriptor));
+
+  CapturingBackendStageFactory stage_factory;
+  PipelineStageRuntimeMaterializationRequest request;
+  request.stage_factory = &stage_factory;
+  request.runtime_descriptor = &runtime_descriptor;
+  request.runtime_plan = &runtime_plan;
+
+  auto pipeline = materialize_pipeline_stage_descriptors(request);
+  ASSERT_EQ(pipeline.size(), 2u);
+  ASSERT_EQ(stage_factory.source_node_seen.size(), 2u);
+  EXPECT_FALSE(stage_factory.source_node_seen[0]);
+  EXPECT_FALSE(stage_factory.source_node_seen[1]);
+
+  payload_descriptor.temporary_source_node_bridge_required = true;
+  payload_descriptor.temporary_source_node_bridge_reason =
+      "unit source bridge migration";
+  payload_descriptor.stage_index = 0;
+  payload_descriptor.stage_record_key = 0x3234u;
+  runtime_descriptor.stages = {payload_descriptor};
+  runtime_plan.ordered_ops = {relu};
+  runtime_plan.stage_plans.clear();
+  runtime_plan.stage_plans.push_back(
+      make_single_materialization_plan(relu, payload_descriptor));
+  stage_factory.source_node_seen.clear();
+
+  auto bridge_pipeline = materialize_pipeline_stage_descriptors(request);
+  ASSERT_EQ(bridge_pipeline.size(), 1u);
+  ASSERT_EQ(stage_factory.source_node_seen.size(), 1u);
+  EXPECT_TRUE(stage_factory.source_node_seen.front());
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       PipelineStageMaterializerProjectsDescriptorOutputContracts) {
+  auto parameter =
+      std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{8});
+  auto relu = std::make_shared<ov::op::v0::Relu>(parameter);
+
+  auto descriptor = make_materializer_base_descriptor(relu);
+  descriptor.origin = KernelArtifactOrigin::Metadata;
+  descriptor.payload_kind = KernelArtifactPayloadKind::None;
+  descriptor.kernel_id = "metadata";
+  descriptor.entry_point = "metadata";
+  descriptor.output_bindings.front().element_type = "i32";
+  descriptor.output_bindings.front().partial_shape = "{4,2}";
+
+  PipelineStageMaterializationPlan plan;
+  plan.kind = PipelineStageMaterializationKind::SingleStage;
+  plan.io_plan.node = relu;
+  plan.io_plan.runtime_stage_index = descriptor.stage_index;
+  plan.descriptor_stage_index = descriptor.stage_index;
+
+  PipelineStageOutputDesc output;
+  output.type = ov::element::dynamic;
+  output.source_node = relu;
+  output.source_port = 0;
+  plan.io_plan.outputs.push_back(std::move(output));
+  plan.materialized_descriptor = descriptor;
+  plan.materialized_descriptor_valid = true;
+
+  RuntimeExecutableDescriptor runtime_descriptor;
+  runtime_descriptor.target_fingerprint = "metal:unit";
+  runtime_descriptor.stages = {descriptor};
+
+  PipelineStageRuntimePlan runtime_plan;
+  runtime_plan.ordered_ops = {relu};
+  runtime_plan.stage_plans.push_back(std::move(plan));
+
+  CapturingBackendStageFactory stage_factory;
+  PipelineStageRuntimeMaterializationRequest request;
+  request.stage_factory = &stage_factory;
+  request.runtime_descriptor = &runtime_descriptor;
+  request.runtime_plan = &runtime_plan;
+
+  auto pipeline = materialize_pipeline_stage_descriptors(request);
+  ASSERT_EQ(pipeline.size(), 1u);
+  ASSERT_EQ(pipeline.front().outputs.size(), 1u);
+  EXPECT_EQ(pipeline.front().outputs.front().type, ov::element::i32);
+  EXPECT_EQ(pipeline.front().outputs.front().shape, (ov::Shape{4, 2}));
+  ASSERT_EQ(stage_factory.source_node_seen.size(), 1u);
+  EXPECT_FALSE(stage_factory.source_node_seen.front());
 }
 
 compiler::TensorContract
@@ -807,6 +1058,118 @@ compiler::ManifestBundle make_single_payload_route_manifest(
   return manifest;
 }
 
+compiler::TensorContract make_source_payload_tensor_contract(
+    compiler::TensorContractRole role, size_t index, std::string shape) {
+  auto contract = make_tensor_contract(role);
+  const bool input = role == compiler::TensorContractRole::TensorInput;
+  contract.logical_name =
+      (input ? "input" : "output") + std::to_string(index);
+  contract.memory_region_id =
+      "stage_0." + contract.logical_name + "_region";
+  contract.partial_shape = std::move(shape);
+  return contract;
+}
+
+compiler::ManifestBundle make_source_payload_route_manifest(
+    std::string backend_domain, std::string op_family,
+    const std::vector<std::string> &input_shapes,
+    const std::vector<std::string> &output_shapes) {
+  compiler::StageRecord stage;
+  stage.stage_id = 0;
+  stage.stable_record_key = 0x1234u;
+  stage.source_node_name = op_family;
+  stage.normalized_op_family = std::move(op_family);
+  stage.execution_kind = LoweringRouteKind::GeneratedKernel;
+  stage.backend_domain = std::move(backend_domain);
+  stage.kernel_unit_id = stage.backend_domain + "/generated/unit_source";
+  stage.kernel_unit_kind = "generated_kernel";
+  for (size_t i = 0; i < input_shapes.size(); ++i) {
+    stage.inputs.push_back(make_source_payload_tensor_contract(
+        compiler::TensorContractRole::TensorInput, i, input_shapes[i]));
+  }
+  for (size_t i = 0; i < output_shapes.size(); ++i) {
+    stage.outputs.push_back(make_source_payload_tensor_contract(
+        compiler::TensorContractRole::TensorOutput, i, output_shapes[i]));
+  }
+  stage.dispatch.execution_kind = stage.execution_kind;
+  stage.dispatch.backend_domain = stage.backend_domain;
+  stage.dispatch.kernel_unit_id = stage.kernel_unit_id;
+  stage.dispatch.kernel_unit_kind = stage.kernel_unit_kind;
+  stage.dispatch.dispatch_source = "manifest";
+  stage.memory.alias_group = "stage_0";
+
+  compiler::ManifestBundle manifest;
+  manifest.schema_version = 2;
+  manifest.target_fingerprint = stage.backend_domain + ":test-target";
+  manifest.memory_plan = make_single_stage_memory_plan(stage);
+  manifest.stages.push_back(std::move(stage));
+  return manifest;
+}
+
+GfxKernelStageManifest make_unit_source_stage_manifest(
+    GfxKernelBackendDomain backend_domain,
+    const std::vector<GfxKernelBufferRole> &roles) {
+  GfxKernelStageManifest manifest;
+  manifest.valid = true;
+  manifest.stage_family = GfxKernelStageFamily::Eltwise;
+  manifest.backend_domain = backend_domain;
+  manifest.execution_kind = GfxKernelExecutionKind::CustomKernel;
+  manifest.storage = GfxKernelStorageKind::Buffer;
+  manifest.compute_precision = GfxKernelComputePrecision::Native;
+  manifest.custom_kernel.valid = true;
+  manifest.custom_kernel.kernel_family = "unit_source";
+  manifest.custom_kernel.kernel_family_id = 1;
+  manifest.custom_kernel.entry_point = "unit_source_entry";
+  manifest.custom_kernel.external_buffer_abi = make_gfx_kernel_roles_abi(roles);
+  return manifest;
+}
+
+std::shared_ptr<const KernelArtifactPayload> make_unit_source_payload(
+    const compiler::KernelArtifactDescriptor &descriptor,
+    const std::vector<GfxKernelBufferRole> &roles) {
+  if (descriptor.payload_kind == KernelArtifactPayloadKind::OpenClSource) {
+    GfxOpenClSourceArtifact artifact;
+    artifact.valid = true;
+    artifact.artifact_ref.valid = true;
+    artifact.artifact_ref.kind = GfxKernelArtifactKind::OpenClSource;
+    artifact.artifact_ref.backend_domain = GfxKernelBackendDomain::OpenCl;
+    artifact.artifact_ref.source_id = descriptor.kernel.kernel_id;
+    artifact.artifact_ref.entry_point = descriptor.entry_point;
+    artifact.source = "__kernel void unit_source_entry() {}";
+    artifact.stage_manifest =
+        make_unit_source_stage_manifest(GfxKernelBackendDomain::OpenCl, roles);
+    return std::make_shared<GfxOpenClSourceArtifactPayload>(std::move(artifact));
+  }
+
+  return std::make_shared<GfxKernelSourcePayload>(
+      descriptor.kernel.kernel_id, descriptor.kernel.backend_domain,
+      descriptor.entry_point, GfxKernelSourceLanguage::MetalShadingLanguage,
+      "kernel void unit_source_entry() {}",
+      make_unit_source_stage_manifest(GfxKernelBackendDomain::AppleMsl, roles));
+}
+
+compiler::ExecutableBundle make_source_payload_executable(
+    std::string backend_domain, std::string op_family,
+    const std::vector<GfxKernelBufferRole> &roles,
+    const std::vector<std::string> &input_shapes,
+    const std::vector<std::string> &output_shapes) {
+  auto manifest = make_source_payload_route_manifest(
+      std::move(backend_domain), std::move(op_family), input_shapes,
+      output_shapes);
+  auto executable = compiler::ExecutableBundleBuilder{}.build(manifest);
+  OPENVINO_ASSERT(executable.artifact_descriptors.size() == 1,
+                  "unit source payload executable must have one descriptor");
+  auto &descriptor = executable.artifact_descriptors.front();
+  descriptor.entry_point = "unit_source_entry";
+  compiler::finalize_kernel_artifact_descriptor_identity(descriptor);
+  compiler::KernelArtifactPayloadRecord payload_record;
+  payload_record.artifact_descriptor_index = 0;
+  payload_record.artifact_key = descriptor.artifact_key;
+  payload_record.payload = make_unit_source_payload(descriptor, roles);
+  executable.artifact_payloads.push_back(std::move(payload_record));
+  return executable;
+}
+
 std::shared_ptr<ov::Model> make_relu_model() {
   auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
                                                        ov::Shape{2, 3});
@@ -893,7 +1256,8 @@ TEST_F(GfxBackendArchitectureContractTest,
         << target_contract.target().fingerprint();
     EXPECT_TRUE(target_contract.avoids_inverse_apple_bucket())
         << target_contract.target().debug_string();
-    EXPECT_TRUE(fingerprints.insert(target_contract.target().fingerprint()).second)
+    EXPECT_TRUE(
+        fingerprints.insert(target_contract.target().fingerprint()).second)
         << target_contract.target().debug_string();
 
     saw_metal_apple |=
@@ -980,14 +1344,15 @@ TEST_F(GfxBackendArchitectureContractTest,
   }
 }
 
-TEST_F(GfxBackendArchitectureContractTest,
-       BackendCapabilitiesDoNotAdvertiseCompiledModelExportImportBeforeEnvelopeRoundTrip) {
+TEST_F(
+    GfxBackendArchitectureContractTest,
+    BackendCapabilitiesDoNotAdvertiseCompiledModelExportImportBeforeEnvelopeRoundTrip) {
   const auto module_contracts = backend_catalog.compiled_module_contracts();
   ASSERT_FALSE(module_contracts.empty());
   for (const auto &module_contract : module_contracts) {
     const auto &capabilities = module_contract.module().capabilities();
-    EXPECT_FALSE(capabilities.artifact_formats()
-                     .supports_compiled_model_export_import)
+    EXPECT_FALSE(
+        capabilities.artifact_formats().supports_compiled_model_export_import)
         << module_contract.target().debug_string();
   }
 }
@@ -1004,8 +1369,8 @@ TEST_F(GfxBackendArchitectureContractTest,
   plan.scale = 0.5f;
 
   const auto &registry = compiler::BackendRegistry::default_registry();
-  if (const auto metal =
-          registry.resolve(compiler::BackendTarget::from_backend(GpuBackend::Metal))) {
+  if (const auto metal = registry.resolve(
+          compiler::BackendTarget::from_backend(GpuBackend::Metal))) {
     auto artifact = metal->materialize_vendor_attention_artifact(0x1234u, plan);
     ASSERT_TRUE(artifact.valid());
     EXPECT_EQ(artifact.descriptor.stage_record_key, 0x1234u);
@@ -1023,8 +1388,8 @@ TEST_F(GfxBackendArchitectureContractTest,
     EXPECT_FALSE(artifact.descriptor.artifact_key.empty());
   }
 
-  if (const auto opencl =
-          registry.resolve(compiler::BackendTarget::from_backend(GpuBackend::OpenCL))) {
+  if (const auto opencl = registry.resolve(
+          compiler::BackendTarget::from_backend(GpuBackend::OpenCL))) {
     EXPECT_FALSE(
         opencl->materialize_vendor_attention_artifact(0x1234u, plan).valid());
   }
@@ -1247,12 +1612,10 @@ TEST_F(GfxBackendArchitectureContractTest,
   auto parameter =
       std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
   auto relu = std::make_shared<ov::op::v0::Relu>(parameter);
-  const std::vector<std::shared_ptr<ov::Node>> ordered_ops{relu};
 
   RuntimeExecutableDescriptor runtime_descriptor;
   runtime_descriptor.target_fingerprint = "metal:unit";
-  runtime_descriptor.stages.push_back(
-      make_materializer_base_descriptor(relu));
+  runtime_descriptor.stages.push_back(make_materializer_base_descriptor(relu));
 
   auto vendor_descriptor = runtime_descriptor.stages.front();
   vendor_descriptor.input_bindings = {make_runtime_binding(
@@ -1265,8 +1628,7 @@ TEST_F(GfxBackendArchitectureContractTest,
   const auto plan =
       make_vendor_materialization_plan(parameter, relu, vendor_descriptor);
   UnitBackendStageFactory stage_factory;
-  PipelineStageMaterializer materializer(stage_factory, ordered_ops,
-                                        runtime_descriptor, {});
+  PipelineStageMaterializer materializer(stage_factory, runtime_descriptor, {});
 
   const auto materialized = materializer.create_materialized_descriptor(plan);
   ASSERT_TRUE(materialized);
@@ -1283,12 +1645,10 @@ TEST_F(GfxBackendArchitectureContractTest,
   auto parameter =
       std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
   auto relu = std::make_shared<ov::op::v0::Relu>(parameter);
-  const std::vector<std::shared_ptr<ov::Node>> ordered_ops{relu};
 
   RuntimeExecutableDescriptor runtime_descriptor;
   runtime_descriptor.target_fingerprint = "metal:unit";
-  runtime_descriptor.stages.push_back(
-      make_materializer_base_descriptor(relu));
+  runtime_descriptor.stages.push_back(make_materializer_base_descriptor(relu));
 
   auto incomplete_vendor_descriptor = runtime_descriptor.stages.front();
   incomplete_vendor_descriptor.input_bindings.clear();
@@ -1299,8 +1659,7 @@ TEST_F(GfxBackendArchitectureContractTest,
   const auto plan = make_vendor_materialization_plan(
       parameter, relu, incomplete_vendor_descriptor);
   UnitBackendStageFactory stage_factory;
-  PipelineStageMaterializer materializer(stage_factory, ordered_ops,
-                                        runtime_descriptor, {});
+  PipelineStageMaterializer materializer(stage_factory, runtime_descriptor, {});
 
   EXPECT_THROW((void)materializer.create_materialized_descriptor(plan),
                ov::Exception);
@@ -1334,6 +1693,7 @@ TEST_F(GfxBackendArchitectureContractTest,
   materialized_stage.kind = PipelineStageMaterializationKind::SingleStage;
   materialized_stage.io_plan.node = relu;
   materialized_stage.io_plan.runtime_stage_index = 0;
+  materialized_stage.descriptor_stage_index = 0;
   unfrozen_stage_plan->stage_plans.push_back(std::move(materialized_stage));
 
   auto descriptor_with_unfrozen_stage_plan = descriptor_without_stage_plan;
@@ -1580,7 +1940,8 @@ TEST_F(GfxBackendArchitectureContractTest,
 
   const auto generic_module =
       compiler::make_opencl_backend_module(generic_target);
-  const auto adreno_module = compiler::make_opencl_backend_module(adreno_target);
+  const auto adreno_module =
+      compiler::make_opencl_backend_module(adreno_target);
   const auto v3d_module = compiler::make_opencl_backend_module(v3d_target);
   ASSERT_TRUE(generic_module);
   ASSERT_TRUE(adreno_module);
@@ -1588,8 +1949,7 @@ TEST_F(GfxBackendArchitectureContractTest,
 
   EXPECT_EQ(generic_module->target().fingerprint(),
             generic_target.fingerprint());
-  EXPECT_EQ(adreno_module->target().fingerprint(),
-            adreno_target.fingerprint());
+  EXPECT_EQ(adreno_module->target().fingerprint(), adreno_target.fingerprint());
   EXPECT_EQ(v3d_module->target().fingerprint(), v3d_target.fingerprint());
 
   const auto &generic_profile =
@@ -1656,17 +2016,15 @@ TEST_F(GfxBackendArchitectureContractTest,
   ASSERT_TRUE(compile_result.runtime_descriptor->stage_plan);
   EXPECT_EQ(compile_result.runtime_descriptor->stage_plan->ordered_ops.size(),
             compile_result.runtime_descriptor->stages.size());
-  EXPECT_EQ(compile_result.runtime_descriptor->stage_plan
-                ->runtime_options.custom_kernel_dispatch_profile
-                .profile_key,
+  EXPECT_EQ(compile_result.runtime_descriptor->stage_plan->runtime_options
+                .custom_kernel_dispatch_profile.profile_key,
             "opencl:broadcom_v3d");
-  EXPECT_EQ(compile_result.runtime_descriptor->stage_plan
-                ->runtime_options.custom_kernel_dispatch_profile
-                .max_total_threads_per_group,
+  EXPECT_EQ(compile_result.runtime_descriptor->stage_plan->runtime_options
+                .custom_kernel_dispatch_profile.max_total_threads_per_group,
             64u);
-  EXPECT_TRUE(compile_result.runtime_descriptor->stage_plan
-                  ->runtime_options.custom_kernel_dispatch_profile
-                  .chunk_dispatch.retune_threads_to_workload);
+  EXPECT_TRUE(compile_result.runtime_descriptor->stage_plan->runtime_options
+                  .custom_kernel_dispatch_profile.chunk_dispatch
+                  .retune_threads_to_workload);
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
@@ -1675,7 +2033,8 @@ TEST_F(GfxBackendArchitectureContractTest,
       compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
   compiler::StaticBackendModuleConfig config;
   config.target = generic_target;
-  config.kernel_registry = compiler::make_common_kernel_registry(generic_target);
+  config.kernel_registry =
+      compiler::make_common_kernel_registry(generic_target);
   const compiler::BackendRegistry generic_only_registry(
       {compiler::make_static_backend_module(std::move(config))});
   const compiler::GfxCompilerService compiler_service(generic_only_registry);
@@ -1712,10 +2071,12 @@ TEST_F(GfxBackendArchitectureContractTest,
                ov::Exception);
 
   stage_request.backend_registry = &registry;
-  const auto stage_plan = compiler::build_pipeline_stage_runtime_plan(stage_request);
+  const auto stage_plan =
+      compiler::build_pipeline_stage_runtime_plan(stage_request);
   ASSERT_TRUE(stage_plan);
-  EXPECT_EQ(stage_plan->runtime_options.custom_kernel_dispatch_profile.profile_key,
-            "opencl:broadcom_v3d");
+  EXPECT_EQ(
+      stage_plan->runtime_options.custom_kernel_dispatch_profile.profile_key,
+      "opencl:broadcom_v3d");
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
@@ -1796,9 +2157,9 @@ TEST_F(GfxBackendArchitectureContractTest,
   EXPECT_EQ(range_unit.backend_domain(), "opencl");
   EXPECT_EQ(range_unit.op_family(), "Range");
   EXPECT_FALSE(range_unit.exception_contract().valid());
-  const auto dynamic_range_unit = opencl_registry.resolve_unit(
-      LoweringRouteKind::GeneratedKernel,
-      "opencl/generated/range_i64_unit_dynamic");
+  const auto dynamic_range_unit =
+      opencl_registry.resolve_unit(LoweringRouteKind::GeneratedKernel,
+                                   "opencl/generated/range_i64_unit_dynamic");
   ASSERT_TRUE(dynamic_range_unit.valid());
   EXPECT_EQ(dynamic_range_unit.kind(), KernelUnitKind::GeneratedKernel);
   EXPECT_EQ(dynamic_range_unit.backend_domain(), "opencl");
@@ -2018,6 +2379,245 @@ TEST_F(GfxBackendArchitectureContractTest,
     EXPECT_TRUE(has_diagnostic_containing(runtime_result.diagnostics,
                                           "requires a materialized payload"))
         << route.kernel_unit_id;
+  }
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       DescriptorOwnedRuntimeParamsDoNotRequireSourceNodeBridge) {
+  struct Case {
+    const char *backend_domain;
+    KernelArtifactPayloadKind payload_kind;
+  };
+
+  const std::vector<GfxKernelBufferRole> binary_roles = {
+      GfxKernelBufferRole::TensorInput,   GfxKernelBufferRole::TensorInput,
+      GfxKernelBufferRole::TensorOutput,  GfxKernelBufferRole::ScalarParam,
+      GfxKernelBufferRole::ScalarParam,   GfxKernelBufferRole::RuntimeParams,
+      GfxKernelBufferRole::RuntimeParams, GfxKernelBufferRole::RuntimeParams};
+
+  for (const auto test_case :
+       {Case{"metal", KernelArtifactPayloadKind::MslSource},
+        Case{"opencl", KernelArtifactPayloadKind::OpenClSource}}) {
+    SCOPED_TRACE(test_case.backend_domain);
+    auto executable = make_source_payload_executable(
+        test_case.backend_domain, "Add", binary_roles, {"{1,3}", "{1,3}"},
+        {"{1,3}"});
+    ASSERT_TRUE(executable.verify().valid());
+    ASSERT_EQ(executable.artifact_descriptors.size(), 1u);
+    EXPECT_EQ(executable.artifact_descriptors.front().payload_kind,
+              test_case.payload_kind);
+
+    const auto runtime_descriptor =
+        compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
+    ASSERT_TRUE(compiler::runtime_executable_descriptor_valid(
+        runtime_descriptor, executable));
+    ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
+    const auto &stage = runtime_descriptor.stages.front();
+    EXPECT_FALSE(stage.temporary_source_node_bridge_required);
+    EXPECT_TRUE(stage.temporary_source_node_bridge_reason.empty());
+  }
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       SharedRuntimeParamDescriptorContractCoversGeneratedSourceFamilies) {
+  struct FamilyCase {
+    const char *op_family;
+    size_t runtime_param_count;
+    RuntimeParamDescriptorPayloadKind payload_kind;
+    std::vector<GfxKernelBufferRole> roles;
+    std::vector<std::string> input_shapes;
+    std::vector<std::string> output_shapes;
+  };
+
+  const std::vector<FamilyCase> families = {
+      {"Add",
+       3,
+       RuntimeParamDescriptorPayloadKind::BinaryBroadcast,
+       {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorInput,
+        GfxKernelBufferRole::TensorOutput, GfxKernelBufferRole::ScalarParam,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams},
+       {"{1,3}", "{1,3}"},
+       {"{1,3}"}},
+      {"Select",
+       4,
+       RuntimeParamDescriptorPayloadKind::Select,
+       {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorInput,
+        GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams},
+       {"{1,3}", "{1,3}", "{1,3}"},
+       {"{1,3}"}},
+      {"Tile",
+       4,
+       RuntimeParamDescriptorPayloadKind::Tile,
+       {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams,
+        GfxKernelBufferRole::RuntimeParams},
+       {"{1,3}"},
+       {"{2,3}"}},
+  };
+
+  for (const auto &family : families) {
+    SCOPED_TRACE(family.op_family);
+    EXPECT_EQ(descriptor_owned_runtime_param_payload_kind(
+                  family.op_family, family.runtime_param_count),
+              family.payload_kind);
+
+    for (const auto backend_domain : {"metal", "opencl"}) {
+      SCOPED_TRACE(backend_domain);
+      auto executable = make_source_payload_executable(
+          backend_domain, family.op_family, family.roles, family.input_shapes,
+          family.output_shapes);
+      ASSERT_TRUE(executable.verify().valid());
+
+      const auto runtime_descriptor =
+          compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
+      ASSERT_TRUE(compiler::runtime_executable_descriptor_valid(
+          runtime_descriptor, executable));
+      ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
+      const auto &stage = runtime_descriptor.stages.front();
+      EXPECT_TRUE(descriptor_owns_runtime_param_payload(
+          stage, family.runtime_param_count));
+      EXPECT_FALSE(stage.temporary_source_node_bridge_required);
+      EXPECT_TRUE(stage.temporary_source_node_bridge_reason.empty());
+    }
+  }
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       DescriptorOwnedRuntimeParamsMaterializeFromDescriptorShapes) {
+  const std::vector<GfxKernelBufferRole> binary_roles = {
+      GfxKernelBufferRole::TensorInput,   GfxKernelBufferRole::TensorInput,
+      GfxKernelBufferRole::TensorOutput,  GfxKernelBufferRole::ScalarParam,
+      GfxKernelBufferRole::RuntimeParams, GfxKernelBufferRole::RuntimeParams,
+      GfxKernelBufferRole::RuntimeParams};
+
+  for (const auto backend_domain : {"metal", "opencl"}) {
+    SCOPED_TRACE(backend_domain);
+    auto executable = make_source_payload_executable(
+        backend_domain, "Add", binary_roles, {"{1,3}", "{1,3}"}, {"{1,3}"});
+    const auto runtime_descriptor =
+        compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
+    ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
+    const auto &stage = runtime_descriptor.stages.front();
+    ASSERT_TRUE(descriptor_owns_runtime_param_payload(stage, 3));
+
+    UnitMetadataBufferManager buffer_manager;
+    RuntimeInputResolver inputs;
+    inputs.descriptor = &stage;
+    GpuTensor output;
+    std::vector<GpuTensor *> outputs = {&output};
+    const std::vector<int32_t> compiler_scalar_args;
+
+    auto materialization = materialize_descriptor_owned_runtime_param_payload(
+        buffer_manager, stage, inputs, outputs, 3, compiler_scalar_args,
+        "unit_descriptor_owned_add");
+
+    ASSERT_TRUE(materialization.available);
+    EXPECT_TRUE(materialization.descriptor_owned);
+    EXPECT_EQ(materialization.extra_inputs.size(), 3u);
+    EXPECT_EQ(output.shape, (ov::Shape{1, 3}));
+    EXPECT_EQ(materialization.scalar_args,
+              (std::vector<int32_t>{3, 2}));
+  }
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       DescriptorOwnedRuntimeParamsRejectSourceNodeShapeBridge) {
+  const std::vector<GfxKernelBufferRole> binary_roles = {
+      GfxKernelBufferRole::TensorInput,   GfxKernelBufferRole::TensorInput,
+      GfxKernelBufferRole::TensorOutput,  GfxKernelBufferRole::ScalarParam,
+      GfxKernelBufferRole::ScalarParam,   GfxKernelBufferRole::RuntimeParams,
+      GfxKernelBufferRole::RuntimeParams, GfxKernelBufferRole::RuntimeParams};
+
+  auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                     ov::Shape{1, 3});
+  auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                     ov::Shape{1, 3});
+  auto add = std::make_shared<ov::op::v1::Add>(lhs, rhs);
+
+  for (const auto backend_domain : {"metal", "opencl"}) {
+    SCOPED_TRACE(backend_domain);
+    auto executable = make_source_payload_executable(
+        backend_domain, "Add", binary_roles, {"{?,3}", "{1,3}"}, {"{1,3}"});
+    const auto runtime_descriptor =
+        compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
+    ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
+    const auto &stage = runtime_descriptor.stages.front();
+    ASSERT_TRUE(stage.temporary_source_node_bridge_required);
+    ASSERT_FALSE(descriptor_owns_runtime_param_payload(stage, 3));
+
+    UnitMetadataBufferManager buffer_manager;
+    RuntimeInputResolver inputs;
+    inputs.descriptor = &stage;
+    inputs.node = add;
+    GpuTensor output;
+    std::vector<GpuTensor *> outputs = {&output};
+    const std::vector<int32_t> compiler_scalar_args;
+
+    EXPECT_THROW(
+        (void)materialize_descriptor_owned_runtime_param_payload(
+            buffer_manager, stage, inputs, outputs, 3, compiler_scalar_args,
+            "unit_no_source_bridge_add"),
+        ov::Exception);
+  }
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       RuntimeParamsWithoutStaticDescriptorShapeKeepSourceNodeBridge) {
+  const std::vector<GfxKernelBufferRole> binary_roles = {
+      GfxKernelBufferRole::TensorInput,   GfxKernelBufferRole::TensorInput,
+      GfxKernelBufferRole::TensorOutput,  GfxKernelBufferRole::ScalarParam,
+      GfxKernelBufferRole::ScalarParam,   GfxKernelBufferRole::RuntimeParams,
+      GfxKernelBufferRole::RuntimeParams, GfxKernelBufferRole::RuntimeParams};
+
+  auto executable = make_source_payload_executable(
+      "opencl", "Add", binary_roles, {"{?,3}", "{1,3}"}, {"{1,3}"});
+  ASSERT_TRUE(executable.verify().valid());
+
+  const auto runtime_descriptor =
+      compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
+  ASSERT_TRUE(compiler::runtime_executable_descriptor_valid(runtime_descriptor,
+                                                           executable));
+  ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
+  const auto &stage = runtime_descriptor.stages.front();
+  EXPECT_TRUE(stage.temporary_source_node_bridge_required);
+  EXPECT_TRUE(has_diagnostic_containing(
+      {stage.temporary_source_node_bridge_reason}, "RuntimeParams"));
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       ConstTensorSourcePayloadsKeepSourceNodeBridgeUntilDescriptorOwned) {
+  struct Case {
+    const char *backend_domain;
+  };
+
+  const std::vector<GfxKernelBufferRole> const_roles = {
+      GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::ConstTensor,
+      GfxKernelBufferRole::TensorOutput};
+
+  for (const auto test_case : {Case{"metal"}, Case{"opencl"}}) {
+    SCOPED_TRACE(test_case.backend_domain);
+    auto executable = make_source_payload_executable(
+        test_case.backend_domain, "Multiply", const_roles, {"{1,3}", "{1,3}"},
+        {"{1,3}"});
+    ASSERT_TRUE(executable.verify().valid());
+
+    const auto runtime_descriptor =
+        compiler::RuntimeExecutableDescriptorBuilder{}.build(executable);
+    ASSERT_TRUE(compiler::runtime_executable_descriptor_valid(
+        runtime_descriptor, executable));
+    ASSERT_EQ(runtime_descriptor.stages.size(), 1u);
+    const auto &stage = runtime_descriptor.stages.front();
+    EXPECT_TRUE(stage.temporary_source_node_bridge_required);
+    EXPECT_TRUE(has_diagnostic_containing(
+        {stage.temporary_source_node_bridge_reason}, "ConstTensor"));
   }
 }
 

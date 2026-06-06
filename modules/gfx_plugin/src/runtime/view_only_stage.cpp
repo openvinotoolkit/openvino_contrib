@@ -4,7 +4,6 @@
 
 #include "runtime/view_only_stage.hpp"
 
-#include <cctype>
 #include <string>
 #include <utility>
 #include <vector>
@@ -12,18 +11,11 @@
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "runtime/gpu_tensor.hpp"
+#include "runtime/tensor_binding_contract.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 namespace {
-
-bool is_compiler_owned_view_descriptor(
-    const RuntimeStageExecutableDescriptor& descriptor) {
-    return descriptor.origin == KernelArtifactOrigin::Metadata &&
-           descriptor.payload_kind == KernelArtifactPayloadKind::None &&
-           descriptor.kernel_id == "metadata" &&
-           descriptor.tensor_view_only;
-}
 
 std::string descriptor_stage_name(
     const RuntimeStageExecutableDescriptor& descriptor) {
@@ -49,104 +41,13 @@ std::string descriptor_stage_type(
                                         : descriptor.op_family;
 }
 
-ov::element::Type element_type_from_contract(const std::string& name) {
-    if (name == "f32" || name == "float32") {
-        return ov::element::f32;
-    }
-    if (name == "f16" || name == "float16") {
-        return ov::element::f16;
-    }
-    if (name == "bf16") {
-        return ov::element::bf16;
-    }
-    if (name == "i64") {
-        return ov::element::i64;
-    }
-    if (name == "i32") {
-        return ov::element::i32;
-    }
-    if (name == "i16") {
-        return ov::element::i16;
-    }
-    if (name == "i8") {
-        return ov::element::i8;
-    }
-    if (name == "u64") {
-        return ov::element::u64;
-    }
-    if (name == "u32") {
-        return ov::element::u32;
-    }
-    if (name == "u16") {
-        return ov::element::u16;
-    }
-    if (name == "u8") {
-        return ov::element::u8;
-    }
-    if (name == "boolean" || name == "bool") {
-        return ov::element::boolean;
-    }
-    return ov::element::dynamic;
-}
-
-bool consume_whitespace(const std::string& text, size_t& pos) {
-    while (pos < text.size() &&
-           std::isspace(static_cast<unsigned char>(text[pos]))) {
-        ++pos;
-    }
-    return pos < text.size();
-}
-
-bool parse_static_shape_contract(const std::string& text, ov::Shape& shape) {
-    shape.clear();
-    size_t pos = 0;
-    if (!consume_whitespace(text, pos) || text[pos] != '{') {
-        return false;
-    }
-    ++pos;
-    consume_whitespace(text, pos);
-    if (pos < text.size() && text[pos] == '}') {
-        ++pos;
-        consume_whitespace(text, pos);
-        return pos == text.size();
-    }
-    while (pos < text.size()) {
-        consume_whitespace(text, pos);
-        if (pos >= text.size() ||
-            !std::isdigit(static_cast<unsigned char>(text[pos]))) {
-            return false;
-        }
-        size_t next = pos;
-        while (next < text.size() &&
-               std::isdigit(static_cast<unsigned char>(text[next]))) {
-            ++next;
-        }
-        shape.push_back(static_cast<size_t>(std::stoull(text.substr(pos, next - pos))));
-        pos = next;
-        consume_whitespace(text, pos);
-        if (pos >= text.size()) {
-            return false;
-        }
-        if (text[pos] == '}') {
-            ++pos;
-            consume_whitespace(text, pos);
-            return pos == text.size();
-        }
-        if (text[pos] != ',') {
-            return false;
-        }
-        ++pos;
-    }
-    return false;
-}
-
 class ViewOnlyStage final : public GpuStage {
 public:
     explicit ViewOnlyStage(RuntimeStageExecutableDescriptor descriptor)
         : m_descriptor(std::move(descriptor)),
           m_name(descriptor_stage_name(m_descriptor)),
           m_type(descriptor_stage_type(m_descriptor)) {
-        OPENVINO_ASSERT(is_compiler_owned_view_descriptor(m_descriptor),
+        OPENVINO_ASSERT(is_compiler_owned_view_stage_descriptor(m_descriptor),
                         "GFX view-only stage requires a compiler-owned metadata descriptor");
     }
 
@@ -250,10 +151,18 @@ private:
 
 std::unique_ptr<GpuStage> create_view_only_stage(
     const RuntimeStageExecutableDescriptor& descriptor) {
-    if (!is_compiler_owned_view_descriptor(descriptor)) {
+    if (!is_compiler_owned_view_stage_descriptor(descriptor)) {
         return {};
     }
     return std::make_unique<ViewOnlyStage>(descriptor);
+}
+
+bool is_compiler_owned_view_stage_descriptor(
+    const RuntimeStageExecutableDescriptor& descriptor) noexcept {
+    return descriptor.origin == KernelArtifactOrigin::Metadata &&
+           descriptor.payload_kind == KernelArtifactPayloadKind::None &&
+           descriptor.kernel_id == "metadata" &&
+           descriptor.tensor_view_only;
 }
 
 }  // namespace gfx_plugin

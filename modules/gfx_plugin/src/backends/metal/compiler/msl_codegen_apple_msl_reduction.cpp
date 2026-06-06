@@ -14,7 +14,17 @@
 #include "mlir/gfx_backend_custom_kernel_adapter.hpp"
 #include "backends/metal/compiler/msl_codegen_apple_msl_binding.hpp"
 #include "backends/metal/compiler/msl_codegen_apple_msl_op_kinds.hpp"
+#include "openvino/core/axis_set.hpp"
 #include "openvino/core/shape_util.hpp"
+#include "openvino/op/reduce_l1.hpp"
+#include "openvino/op/reduce_l2.hpp"
+#include "openvino/op/reduce_logical_and.hpp"
+#include "openvino/op/reduce_logical_or.hpp"
+#include "openvino/op/reduce_max.hpp"
+#include "openvino/op/reduce_mean.hpp"
+#include "openvino/op/reduce_min.hpp"
+#include "openvino/op/reduce_prod.hpp"
+#include "openvino/op/reduce_sum.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -51,6 +61,71 @@ const GfxKernelSource &reduction_msl_source(ReduceKind kind) {
     return metal_generated_reduction_logical_bool_kernel_source();
   }
   return metal_generated_reduction_f32_kernel_source();
+}
+
+struct ReductionRuntimeParamMetadata {
+  std::vector<int64_t> axes;
+  bool keep_dims = false;
+};
+
+template <typename ReduceOp>
+std::optional<ReductionRuntimeParamMetadata>
+reduction_runtime_param_metadata_as(
+    const std::shared_ptr<const ov::Node> &node) {
+  auto reduce = ov::as_type_ptr<const ReduceOp>(node);
+  if (!reduce || !reduce->reduction_axes_constant()) {
+    return std::nullopt;
+  }
+  ReductionRuntimeParamMetadata metadata{};
+  metadata.keep_dims = reduce->get_keep_dims();
+  const ov::AxisSet axes = reduce->get_reduction_axes();
+  metadata.axes.reserve(axes.size());
+  for (const auto axis : axes) {
+    metadata.axes.push_back(static_cast<int64_t>(axis));
+  }
+  return metadata;
+}
+
+std::optional<ReductionRuntimeParamMetadata>
+reduction_runtime_param_metadata(
+    const std::shared_ptr<const ov::Node> &node) {
+  if (auto metadata =
+          reduction_runtime_param_metadata_as<ov::op::v1::ReduceSum>(node)) {
+    return metadata;
+  }
+  if (auto metadata =
+          reduction_runtime_param_metadata_as<ov::op::v1::ReduceMean>(node)) {
+    return metadata;
+  }
+  if (auto metadata =
+          reduction_runtime_param_metadata_as<ov::op::v1::ReduceMax>(node)) {
+    return metadata;
+  }
+  if (auto metadata =
+          reduction_runtime_param_metadata_as<ov::op::v1::ReduceMin>(node)) {
+    return metadata;
+  }
+  if (auto metadata =
+          reduction_runtime_param_metadata_as<ov::op::v1::ReduceProd>(node)) {
+    return metadata;
+  }
+  if (auto metadata =
+          reduction_runtime_param_metadata_as<ov::op::v4::ReduceL1>(node)) {
+    return metadata;
+  }
+  if (auto metadata =
+          reduction_runtime_param_metadata_as<ov::op::v4::ReduceL2>(node)) {
+    return metadata;
+  }
+  if (auto metadata = reduction_runtime_param_metadata_as<
+          ov::op::v1::ReduceLogicalAnd>(node)) {
+    return metadata;
+  }
+  if (auto metadata = reduction_runtime_param_metadata_as<
+          ov::op::v1::ReduceLogicalOr>(node)) {
+    return metadata;
+  }
+  return std::nullopt;
 }
 
 } // namespace
@@ -114,6 +189,10 @@ GfxMslGeneratedKernelSourcePlan make_reduction_msl_kernel_source_plan(
 
   const auto input_shape = node->get_input_shape(0);
   const auto output_shape = node->get_output_shape(0);
+  const auto runtime_metadata = reduction_runtime_param_metadata(node);
+  if (!runtime_metadata) {
+    return {};
+  }
   const std::vector<int32_t> scalar_args{
       static_cast<int32_t>(ov::shape_size(output_shape)),
       static_cast<int32_t>(input_shape.size()),
@@ -126,6 +205,11 @@ GfxMslGeneratedKernelSourcePlan make_reduction_msl_kernel_source_plan(
     return {};
   }
   binding.runtime_binding.scalar_args = scalar_args;
+  binding.runtime_binding.runtime_param_i64_metadata =
+      runtime_metadata->axes;
+  binding.runtime_binding.runtime_param_reduce_keep_dims =
+      runtime_metadata->keep_dims;
+  binding.runtime_binding.runtime_param_reduce_keep_dims_valid = true;
   binding.stage_manifest.custom_kernel.scalar_args = scalar_args;
 
   const auto &kernel_source = reduction_msl_source(*kind);

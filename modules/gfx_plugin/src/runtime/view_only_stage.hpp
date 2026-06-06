@@ -12,6 +12,9 @@
 namespace ov {
 namespace gfx_plugin {
 
+bool is_compiler_owned_view_stage_descriptor(
+    const RuntimeStageExecutableDescriptor& descriptor) noexcept;
+
 std::unique_ptr<GpuStage> create_view_only_stage(
     const RuntimeStageExecutableDescriptor& descriptor);
 

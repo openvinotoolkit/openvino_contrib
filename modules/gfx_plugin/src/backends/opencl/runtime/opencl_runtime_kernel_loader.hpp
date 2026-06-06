@@ -15,16 +15,17 @@ namespace gfx_plugin {
 
 class OpenClRuntimeKernelLoader final {
 public:
-    explicit OpenClRuntimeKernelLoader(std::shared_ptr<OpenClRuntimeContext> context);
+  explicit OpenClRuntimeKernelLoader(
+      std::shared_ptr<OpenClRuntimeContext> context);
 
-    std::unique_ptr<GpuStage> load_source_stage(
-        const std::shared_ptr<const ov::Node>& node,
-        const RuntimeStageExecutableDescriptor& descriptor,
-        GfxOpenClSourceArtifact artifact) const;
+  std::unique_ptr<GpuStage>
+  load_source_stage(const RuntimeStageExecutableDescriptor &descriptor,
+                    GfxOpenClSourceArtifact artifact,
+                    std::shared_ptr<const ov::Node> source_node = {}) const;
 
 private:
-    std::shared_ptr<OpenClRuntimeContext> m_context;
+  std::shared_ptr<OpenClRuntimeContext> m_context;
 };
 
-}  // namespace gfx_plugin
-}  // namespace ov
+} // namespace gfx_plugin
+} // namespace ov

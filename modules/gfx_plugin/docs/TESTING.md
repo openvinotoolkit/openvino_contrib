@@ -146,7 +146,9 @@ For compiler-service, manifest, or executable-descriptor changes:
 - tensor-layout tests when `src/compiler/tensor_layout.*` changes
 - infer-pipeline reuse tests when `RuntimeSession`, prepared executable
   bindings, descriptor-owned view/alias classification, fused-output lifetimes,
-  runtime-shape argument policy, or descriptor memory-region use changes
+  runtime-shape argument policy, descriptor memory-region use, descriptor-owned
+  `RuntimeParams` payload materialization, or temporary source-node bridge
+  policy changes
 - OpenCL runtime-bundle contract tests when dynamic loader candidate ordering
   or CLVK tool-path setup changes
 

@@ -39,9 +39,12 @@
 #include "openvino/op/unsqueeze.hpp"
 #include "openvino/op/variadic_split.hpp"
 #include "runtime/gfx_profiler.hpp"
+#include "runtime/gfx_kernel_runtime_params.hpp"
 #include "runtime/gfx_runtime_value_limits.hpp"
 #include "runtime/gfx_shape_utils.hpp"
 #include "runtime/gpu_buffer_manager.hpp"
+#include "runtime/executable_descriptor.hpp"
+#include "runtime/tensor_binding_contract.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -493,12 +496,67 @@ ov::element::Type resolve_runtime_input_type(const RuntimeInputResolver &inputs,
   return ov::element::dynamic;
 }
 
+bool descriptor_input_contract_shape(
+    const RuntimeStageExecutableDescriptor *descriptor, size_t input_idx,
+    ov::Shape &shape) {
+  if (!descriptor || input_idx >= descriptor->input_bindings.size()) {
+    return false;
+  }
+  return parse_static_shape_contract(
+      descriptor->input_bindings[input_idx].partial_shape, shape);
+}
+
+bool descriptor_output_contract_shape(
+    const RuntimeStageExecutableDescriptor *descriptor, size_t output_idx,
+    ov::Shape &shape) {
+  if (!descriptor || output_idx >= descriptor->output_bindings.size()) {
+    return false;
+  }
+  return parse_static_shape_contract(
+      descriptor->output_bindings[output_idx].partial_shape, shape);
+}
+
+ov::element::Type descriptor_output_contract_type(
+    const RuntimeStageExecutableDescriptor &descriptor, size_t output_idx) {
+  if (output_idx >= descriptor.output_bindings.size()) {
+    return ov::element::dynamic;
+  }
+  return element_type_from_contract(
+      descriptor.output_bindings[output_idx].element_type);
+}
+
+ov::AxisSet descriptor_reduce_axes(
+    const RuntimeStageExecutableDescriptor &descriptor, const ov::Shape &shape,
+    std::string_view stage_name) {
+  const auto rank = static_cast<int64_t>(shape.size());
+  ov::AxisSet axes;
+  for (auto axis : descriptor.runtime_param_i64_metadata) {
+    if (axis < 0) {
+      axis += rank;
+    }
+    OPENVINO_ASSERT(axis >= 0 && axis < rank,
+                    "GFX runtime: Reduce RuntimeParams descriptor axis out of "
+                    "range for ",
+                    stage_name);
+    axes.insert(static_cast<size_t>(axis));
+  }
+  OPENVINO_ASSERT(!axes.empty(),
+                  "GFX runtime: Reduce RuntimeParams descriptor axes are "
+                  "empty for ",
+                  stage_name);
+  return axes;
+}
+
 } // namespace
 
 ov::Shape RuntimeInputResolver::shape(size_t idx) const {
   if (inputs && idx < inputs->size() && (*inputs)[idx] &&
       !(*inputs)[idx]->shape.empty()) {
     return (*inputs)[idx]->shape;
+  }
+  ov::Shape descriptor_shape;
+  if (descriptor_input_contract_shape(descriptor, idx, descriptor_shape)) {
+    return descriptor_shape;
   }
   if (node && idx < node->get_input_size() &&
       node->get_input_partial_shape(idx).is_static()) {
@@ -512,6 +570,9 @@ bool RuntimeInputResolver::shape_known(size_t idx, ov::Shape &out_shape,
   if (inputs && idx < inputs->size() && (*inputs)[idx] &&
       !(*inputs)[idx]->shape.empty()) {
     out_shape = (*inputs)[idx]->shape;
+    return true;
+  }
+  if (descriptor_input_contract_shape(descriptor, idx, out_shape)) {
     return true;
   }
   if (!node || idx >= node->get_input_size()) {
@@ -565,8 +626,16 @@ RuntimeInputResolver::i64_values(size_t input_idx) const {
 
 void RuntimeInputResolver::ensure_output_shape(size_t output_idx,
                                                GpuTensor *out) const {
-  if (!out || !out->shape.empty() || !node ||
-      output_idx >= node->get_output_size() ||
+  if (!out || !out->shape.empty()) {
+    return;
+  }
+  ov::Shape descriptor_shape;
+  if (descriptor_output_contract_shape(descriptor, output_idx,
+                                       descriptor_shape)) {
+    out->shape = std::move(descriptor_shape);
+    return;
+  }
+  if (!node || output_idx >= node->get_output_size() ||
       !node->get_output_partial_shape(output_idx).is_static()) {
     return;
   }
@@ -588,6 +657,246 @@ ov::Shape compute_binary_broadcast_shape(const ov::Shape &lhs,
     out[rank - 1 - i] = std::max(lhs_dim, rhs_dim);
   }
   return out;
+}
+
+DescriptorOwnedRuntimeParamMaterialization
+materialize_descriptor_owned_runtime_param_payload(
+    GpuBufferManager &buffer_manager,
+    const RuntimeStageExecutableDescriptor &descriptor,
+    const RuntimeInputResolver &inputs, const std::vector<GpuTensor *> &outputs,
+    size_t runtime_param_count,
+    const std::vector<int32_t> &compiler_scalar_args,
+    std::string_view stage_name,
+    const std::vector<size_t> *direct_input_indices) {
+  DescriptorOwnedRuntimeParamMaterialization materialization;
+  materialization.scalar_args = compiler_scalar_args;
+  materialization.descriptor_owned =
+      descriptor_owns_runtime_param_payload(descriptor, runtime_param_count);
+
+  const auto payload_kind = descriptor_owned_runtime_param_payload_kind(
+      descriptor.op_family, runtime_param_count);
+  if (payload_kind == RuntimeParamDescriptorPayloadKind::None) {
+    return materialization;
+  }
+
+  RuntimeInputResolver descriptor_inputs = inputs;
+  descriptor_inputs.node.reset();
+
+  auto direct_input_index = [&](size_t slot) -> size_t {
+    return direct_input_indices && slot < direct_input_indices->size()
+               ? (*direct_input_indices)[slot]
+               : slot;
+  };
+
+  auto output_type = descriptor_output_contract_type(descriptor, 0);
+  auto assign_output_contract = [&](const ov::Shape &output_shape) {
+    RuntimeValuePlan output_plan;
+    output_plan.output_shape = output_shape;
+    output_plan.value_shape = output_shape;
+    output_plan.output_type = output_type;
+    assign_runtime_value_outputs(output_plan, outputs);
+  };
+
+  GfxKernelRuntimeParamPayload payload;
+  switch (payload_kind) {
+  case RuntimeParamDescriptorPayloadKind::BinaryBroadcast: {
+    ov::Shape lhs_shape;
+    ov::Shape rhs_shape;
+    OPENVINO_ASSERT(
+        descriptor_inputs.shape_known(direct_input_index(0), lhs_shape) &&
+            descriptor_inputs.shape_known(direct_input_index(1), rhs_shape),
+        "GFX runtime: binary RuntimeParams ABI requires descriptor-owned or "
+        "tensor-owned input shapes for ", stage_name);
+    const ov::Shape broadcast_shape =
+        compute_binary_broadcast_shape(lhs_shape, rhs_shape, stage_name);
+    ov::Shape output_shape;
+    if (descriptor_output_contract_shape(&descriptor, 0, output_shape)) {
+      OPENVINO_ASSERT(
+          output_shape == broadcast_shape,
+          "GFX runtime: binary RuntimeParams descriptor output shape drift for ",
+          stage_name);
+    } else {
+      output_shape = broadcast_shape;
+    }
+    const ov::Shape meta_shape =
+        output_shape.empty() ? ov::Shape{1} : output_shape;
+    payload = make_binary_broadcast_runtime_param_payload(
+        buffer_manager, stage_name, output_shape,
+        compute_broadcast_element_strides(lhs_shape, meta_shape),
+        compute_broadcast_element_strides(rhs_shape, meta_shape));
+    assign_output_contract(output_shape);
+    break;
+  }
+  case RuntimeParamDescriptorPayloadKind::Broadcast: {
+    ov::Shape input_shape;
+    ov::Shape output_shape;
+    OPENVINO_ASSERT(
+        descriptor_inputs.shape_known(direct_input_index(0), input_shape) &&
+            descriptor_output_contract_shape(&descriptor, 0, output_shape),
+        "GFX runtime: Broadcast RuntimeParams ABI requires descriptor-owned "
+        "static input/output shapes for ",
+        stage_name);
+    payload = make_broadcast_runtime_param_payload(buffer_manager, stage_name,
+                                                   input_shape, output_shape);
+    assign_output_contract(output_shape);
+    break;
+  }
+  case RuntimeParamDescriptorPayloadKind::Select: {
+    ov::Shape condition_shape;
+    ov::Shape true_shape;
+    ov::Shape false_shape;
+    OPENVINO_ASSERT(
+        descriptor_inputs.shape_known(direct_input_index(0), condition_shape) &&
+            descriptor_inputs.shape_known(direct_input_index(1), true_shape) &&
+            descriptor_inputs.shape_known(direct_input_index(2), false_shape),
+        "GFX runtime: Select RuntimeParams ABI requires descriptor-owned or "
+        "tensor-owned input shapes for ", stage_name);
+    const auto values_shape =
+        compute_binary_broadcast_shape(true_shape, false_shape, stage_name);
+    const auto computed_output_shape =
+        compute_binary_broadcast_shape(condition_shape, values_shape, stage_name);
+    ov::Shape output_shape;
+    if (descriptor_output_contract_shape(&descriptor, 0, output_shape)) {
+      OPENVINO_ASSERT(
+          output_shape == computed_output_shape,
+          "GFX runtime: Select RuntimeParams descriptor output shape drift for ",
+          stage_name);
+    } else {
+      output_shape = computed_output_shape;
+    }
+    payload = make_select_runtime_param_payload(
+        buffer_manager, stage_name, condition_shape, true_shape, false_shape,
+        output_shape);
+    assign_output_contract(output_shape);
+    break;
+  }
+  case RuntimeParamDescriptorPayloadKind::Tile: {
+    ov::Shape input_shape;
+    ov::Shape output_shape;
+    OPENVINO_ASSERT(
+        descriptor_inputs.shape_known(direct_input_index(0), input_shape) &&
+            descriptor_output_contract_shape(&descriptor, 0, output_shape),
+        "GFX runtime: Tile RuntimeParams ABI requires descriptor-owned static "
+        "input/output shapes for ",
+        stage_name);
+    payload = make_tile_runtime_param_payload(buffer_manager, stage_name,
+                                              input_shape, output_shape);
+    assign_output_contract(output_shape);
+    break;
+  }
+  case RuntimeParamDescriptorPayloadKind::Softmax: {
+    OPENVINO_ASSERT(
+        descriptor.runtime_param_i64_metadata.size() == 3,
+        "GFX runtime: Softmax RuntimeParams descriptor metadata is incomplete "
+        "for ",
+        stage_name);
+    ov::Shape input_shape;
+    ov::Shape output_shape;
+    OPENVINO_ASSERT(
+        descriptor_inputs.shape_known(direct_input_index(0), input_shape) &&
+            descriptor_output_contract_shape(&descriptor, 0, output_shape),
+        "GFX runtime: Softmax RuntimeParams ABI requires descriptor-owned "
+        "static input/output shapes for ",
+        stage_name);
+    OPENVINO_ASSERT(
+        input_shape == output_shape,
+        "GFX runtime: Softmax RuntimeParams descriptor output shape drift for ",
+        stage_name);
+    const auto rows =
+        static_cast<uint64_t>(descriptor.runtime_param_i64_metadata[0]);
+    const auto axis_len =
+        static_cast<uint64_t>(descriptor.runtime_param_i64_metadata[1]);
+    const auto inner =
+        static_cast<uint64_t>(descriptor.runtime_param_i64_metadata[2]);
+    OPENVINO_ASSERT(rows > 0 && axis_len > 0 && inner > 0 &&
+                        rows * axis_len * inner == ov::shape_size(input_shape),
+                    "GFX runtime: Softmax RuntimeParams descriptor metadata "
+                    "does not match tensor shape for ",
+                    stage_name);
+    payload = make_softmax_runtime_param_payload(buffer_manager, stage_name,
+                                                 rows, axis_len, inner);
+    assign_output_contract(output_shape);
+    break;
+  }
+  case RuntimeParamDescriptorPayloadKind::Transpose: {
+    ov::Shape input_shape;
+    ov::Shape output_shape;
+    OPENVINO_ASSERT(
+        descriptor_inputs.shape_known(direct_input_index(0), input_shape) &&
+            descriptor_output_contract_shape(&descriptor, 0, output_shape),
+        "GFX runtime: Transpose RuntimeParams ABI requires descriptor-owned "
+        "static input/output shapes for ",
+        stage_name);
+    const auto &permutation = descriptor.runtime_param_i64_metadata;
+    OPENVINO_ASSERT(
+        permutation.size() == input_shape.size() &&
+            output_shape.size() == input_shape.size(),
+        "GFX runtime: Transpose RuntimeParams descriptor rank mismatch for ",
+        stage_name);
+    for (size_t axis = 0; axis < permutation.size(); ++axis) {
+      const auto input_axis = static_cast<size_t>(permutation[axis]);
+      OPENVINO_ASSERT(
+          permutation[axis] >= 0 && input_axis < input_shape.size(),
+          "GFX runtime: Transpose RuntimeParams descriptor permutation out of "
+          "range for ",
+          stage_name);
+      OPENVINO_ASSERT(
+          output_shape[axis] == input_shape[input_axis],
+          "GFX runtime: Transpose RuntimeParams descriptor output shape drift "
+          "for ",
+          stage_name);
+    }
+    payload = make_transpose_runtime_param_payload(
+        buffer_manager, stage_name, input_shape, output_shape, permutation);
+    assign_output_contract(output_shape);
+    break;
+  }
+  case RuntimeParamDescriptorPayloadKind::Reduce: {
+    ov::Shape input_shape;
+    ov::Shape output_shape;
+    OPENVINO_ASSERT(
+        descriptor_inputs.shape_known(direct_input_index(0), input_shape) &&
+            descriptor_output_contract_shape(&descriptor, 0, output_shape),
+        "GFX runtime: Reduce RuntimeParams ABI requires descriptor-owned "
+        "static input/output shapes for ",
+        stage_name);
+    OPENVINO_ASSERT(
+        descriptor.runtime_param_reduce_keep_dims_valid,
+        "GFX runtime: Reduce RuntimeParams descriptor keep_dims metadata is "
+        "missing for ",
+        stage_name);
+    const RuntimeReduceInfo reduce_info{
+        descriptor_reduce_axes(descriptor, input_shape, stage_name),
+        descriptor.runtime_param_reduce_keep_dims};
+    const auto reduce_plan = plan_reduce_runtime_values(
+        descriptor_inputs, nullptr, descriptor.op_family, reduce_info,
+        stage_name);
+    OPENVINO_ASSERT(
+        reduce_plan.values.output_shape == output_shape,
+        "GFX runtime: Reduce RuntimeParams descriptor output shape drift for ",
+        stage_name);
+    const uint32_t op_code =
+        compiler_scalar_args.size() > 2
+            ? static_cast<uint32_t>(compiler_scalar_args[2])
+            : 0u;
+    payload = make_reduce_runtime_param_payload(
+        buffer_manager, stage_name, input_shape, reduce_info.axes,
+        reduce_info.keep_dims, output_shape, op_code);
+    assign_output_contract(output_shape);
+    break;
+  }
+  case RuntimeParamDescriptorPayloadKind::None:
+    break;
+  }
+
+  OPENVINO_ASSERT(payload.extra_inputs.size() == runtime_param_count,
+                  "GFX runtime: RuntimeParams ABI count does not match "
+                  "materialized payload for ",
+                  stage_name);
+  materialization.available = true;
+  materialization.extra_inputs = std::move(payload.extra_inputs);
+  materialization.scalar_args = std::move(payload.scalar_args);
+  return materialization;
 }
 
 RuntimeValuePlan plan_reshape_runtime_values(const RuntimeInputResolver &inputs,

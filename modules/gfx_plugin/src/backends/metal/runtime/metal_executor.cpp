@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <chrono>
 #include <sstream>
+#include <utility>
 
 #include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "backends/metal/runtime/metal_memory.hpp"
@@ -16,66 +17,64 @@
 #include "kernel_ir/gfx_kernel_args.hpp"
 #include "kernel_ir/gfx_kernel_cache.hpp"
 #include "kernel_ir/gfx_kernel_dispatch.hpp"
-#include "runtime/gfx_kernel_runtime_params.hpp"
 #include "kernel_ir/gfx_kernel_source.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
+#include "runtime/gfx_kernel_runtime_params.hpp"
 #include "runtime/gfx_shape_utils.hpp"
 #include "runtime/gfx_stage_runtime_values.hpp"
 #include "runtime/kernel_launch_plan.hpp"
+#include "runtime/tensor_binding_contract.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 
-MetalStage::MetalStage(const std::shared_ptr<const ov::Node> &node,
+MetalStage::MetalStage(const RuntimeStageExecutableDescriptor &descriptor,
                        MetalDeviceHandle device, MetalCommandQueueHandle queue,
-                       const RuntimeStageExecutableDescriptor *descriptor)
-    : m_device(device), m_queue(queue), m_node(node) {
-  OPENVINO_ASSERT(descriptor,
-                  "MetalStage: compiler-owned runtime descriptor is required");
-  m_descriptor = *descriptor;
-  m_name = !m_descriptor.stage_name.empty()
-               ? m_descriptor.stage_name
-               : (m_node ? m_node->get_friendly_name()
-                         : std::string("metal_stage"));
-  m_type = !m_descriptor.op_family.empty()
-               ? m_descriptor.op_family
-               : (m_node ? m_node->get_type_name() : std::string("Unknown"));
+                       std::shared_ptr<const ov::Node> source_node)
+    : m_device(device), m_queue(queue), m_descriptor(descriptor),
+      m_node(std::move(source_node)) {
+  OPENVINO_ASSERT(!m_descriptor.stage_name.empty(),
+                  "MetalStage: compiler-owned descriptor must provide stage "
+                  "name for MSL source execution");
+  OPENVINO_ASSERT(!m_descriptor.op_family.empty(),
+                  "MetalStage: compiler-owned descriptor must provide op "
+                  "family for MSL source execution");
+  m_name = m_descriptor.stage_name;
+  m_type = m_descriptor.op_family;
 }
 
 namespace {
 
 inline bool is_metal_descriptor_domain(std::string_view domain) {
-  return domain == "metal" || domain == "apple_msl" ||
-         domain == "apple_mps" || domain == "common";
+  return domain == "metal" || domain == "apple_msl" || domain == "apple_mps" ||
+         domain == "common";
 }
 
 constexpr size_t kDefaultMetalSourceThreadsPerGroup = 64;
 
-const GfxKernelSourcePayload *source_payload_or_null(
-    const RuntimeStageExecutableDescriptor &descriptor) {
+const GfxKernelSourcePayload *
+source_payload_or_null(const RuntimeStageExecutableDescriptor &descriptor) {
   if (!descriptor.payload) {
     return nullptr;
   }
   return dynamic_cast<const GfxKernelSourcePayload *>(descriptor.payload.get());
 }
 
-bool is_binary_runtime_param_stage(std::string_view type) {
-  return type == "Add" || type == "Subtract" || type == "Multiply" ||
-         type == "Divide" || type == "Power" || type == "Mod" ||
-         type == "FloorMod" || type == "Minimum" || type == "Maximum" ||
-         type == "Equal" || type == "NotEqual" || type == "Less" ||
-         type == "Greater" || type == "LessEqual" ||
-         type == "GreaterEqual" || type == "LogicalAnd" ||
-         type == "LogicalOr" || type == "LogicalXor" ||
-         type == "SquaredDifference" || type == "PRelu";
-}
-
 size_t count_runtime_param_roles(const GfxKernelSourcePayload &payload) {
   const auto roles = materialize_gfx_kernel_external_buffer_roles(
       payload.stage_manifest().custom_kernel.external_buffer_abi);
-  return static_cast<size_t>(
-      std::count(roles.begin(), roles.end(), GfxKernelBufferRole::RuntimeParams));
+  return static_cast<size_t>(std::count(roles.begin(), roles.end(),
+                                        GfxKernelBufferRole::RuntimeParams));
+}
+
+bool descriptor_output_shape(const RuntimeStageExecutableDescriptor &descriptor,
+                             size_t output_idx, ov::Shape &shape) {
+  if (output_idx >= descriptor.output_bindings.size()) {
+    return false;
+  }
+  return parse_static_shape_contract(
+      descriptor.output_bindings[output_idx].partial_shape, shape);
 }
 
 } // namespace
@@ -103,12 +102,11 @@ struct MetalStage::ProfileState {
 };
 
 void MetalStage::execute(GpuCommandBufferHandle command_buffer) {
-  OPENVINO_ASSERT(m_kernel,
-                  "MetalStage: runtime handle is not prepared for ",
+  OPENVINO_ASSERT(m_kernel, "MetalStage: runtime handle is not prepared for ",
                   m_name);
   const auto outputs = resolve_outputs();
-  OPENVINO_ASSERT(!outputs.empty(), "MetalStage: output tensor is not bound for ",
-                  m_name);
+  OPENVINO_ASSERT(!outputs.empty(),
+                  "MetalStage: output tensor is not bound for ", m_name);
   auto args = materialize_source_args(outputs);
   const auto dispatch = make_source_dispatch(outputs);
 
@@ -166,9 +164,7 @@ bool MetalStage::fuse_input_activation(size_t input_idx, ActivationKind kind,
   return false;
 }
 
-bool MetalStage::fuse_residual_add() {
-  return false;
-}
+bool MetalStage::fuse_residual_add() { return false; }
 
 bool MetalStage::fuse_batchnorm(const BatchNormParams &params) {
   (void)params;
@@ -180,9 +176,7 @@ bool MetalStage::fuse_bias(const BiasParams &params) {
   return false;
 }
 
-void MetalStage::enable_profiling(bool enable) {
-  m_profiling_enabled = enable;
-}
+void MetalStage::enable_profiling(bool enable) { m_profiling_enabled = enable; }
 
 void MetalStage::set_profiler(void *profiler, uint32_t node_id,
                               const std::string &node_name,
@@ -194,8 +188,8 @@ void MetalStage::set_profiler(void *profiler, uint32_t node_id,
 }
 
 std::unique_ptr<GpuStage> MetalStage::clone() const {
-  auto stage = std::make_unique<MetalStage>(m_node, m_device, m_queue,
-                                            &m_descriptor);
+  auto stage =
+      std::make_unique<MetalStage>(m_descriptor, m_device, m_queue, m_node);
   stage->m_name = m_name;
   stage->m_type = m_type;
   stage->m_profiling_enabled = m_profiling_enabled;
@@ -234,8 +228,9 @@ void MetalStage::ensure_prepared() {
       MetalRuntimeKernelLoader::load_msl_source(m_descriptor);
   std::string log;
   m_kernel = backend.compile(descriptor_source, &log);
-  OPENVINO_ASSERT(m_kernel, "MetalStage: failed to compile compiler-owned MSL "
-                           "payload for ",
+  OPENVINO_ASSERT(m_kernel,
+                  "MetalStage: failed to compile compiler-owned MSL "
+                  "payload for ",
                   m_name, ": ", log);
 }
 
@@ -310,8 +305,8 @@ void MetalStage::prepare_constant_input_buffers() {
 }
 
 GpuTensor *MetalStage::resolve_input_tensor(size_t input_idx) const {
-  GpuTensor *tensor = input_idx < m_inputs.size() ? m_inputs[input_idx]
-                                                  : nullptr;
+  GpuTensor *tensor =
+      input_idx < m_inputs.size() ? m_inputs[input_idx] : nullptr;
   if (tensor && tensor->buf.valid()) {
     return tensor;
   }
@@ -330,97 +325,37 @@ std::vector<int32_t> MetalStage::refresh_runtime_param_buffers(
     const std::vector<int32_t> &compiler_scalar_args) {
   std::vector<int32_t> scalar_args = compiler_scalar_args;
   const size_t runtime_param_count = count_runtime_param_roles(payload);
-  if (runtime_param_count == 0 || !m_node) {
+  if (runtime_param_count == 0) {
     return scalar_args;
   }
 
   RuntimeInputResolver runtime_inputs;
   runtime_inputs.inputs = &m_inputs;
-  runtime_inputs.node = m_node;
+  runtime_inputs.descriptor = &m_descriptor;
   if (m_const_buffers) {
     runtime_inputs.const_buffers = &m_const_buffers->buffers;
     runtime_inputs.const_buffer_present = &m_const_buffers->present;
   }
 
-  if (runtime_param_count == 3 && is_binary_runtime_param_stage(m_type) &&
-      m_node->get_input_size() >= 2) {
-    ov::Shape lhs_shape;
-    ov::Shape rhs_shape;
-    if (runtime_inputs.shape_known(0, lhs_shape) &&
-        runtime_inputs.shape_known(1, rhs_shape)) {
-      const ov::Shape output_shape =
-          compute_binary_broadcast_shape(lhs_shape, rhs_shape, m_name);
-      const ov::Shape meta_shape =
-          output_shape.empty() ? ov::Shape{1} : output_shape;
-      auto broadcast_payload = make_binary_broadcast_runtime_param_payload(
-          *m_buffer_manager, m_name, output_shape,
-          compute_broadcast_element_strides(lhs_shape, meta_shape),
-          compute_broadcast_element_strides(rhs_shape, meta_shape));
-      m_kernel_extra_inputs = std::move(broadcast_payload.extra_inputs);
-      scalar_args = std::move(broadcast_payload.scalar_args);
-      for (auto *output : outputs) {
-        if (!output) {
-          continue;
-        }
-        if (output->shape.empty()) {
-          output->shape = output_shape;
-        }
-        if (output->expected_type == ov::element::dynamic &&
-            m_node->get_output_size() != 0) {
-          output->expected_type = m_node->get_output_element_type(0);
-        }
-      }
-    }
+  if (auto materialization = materialize_descriptor_owned_runtime_param_payload(
+          *m_buffer_manager, m_descriptor, runtime_inputs, outputs,
+          runtime_param_count, compiler_scalar_args, m_name);
+      materialization.available) {
+    m_kernel_extra_inputs = std::move(materialization.extra_inputs);
+    scalar_args = std::move(materialization.scalar_args);
     return scalar_args;
   }
 
-  if (runtime_param_count == 5 && m_type == "Transpose") {
-    const auto transpose_plan =
-        plan_transpose_runtime_values(runtime_inputs, *m_node, m_name);
-    auto transpose_payload = make_transpose_runtime_param_payload(
-        *m_buffer_manager, m_name, transpose_plan.input_shape,
-        transpose_plan.values.output_shape, transpose_plan.permutation);
-    m_kernel_extra_inputs = std::move(transpose_payload.extra_inputs);
-    scalar_args = std::move(transpose_payload.scalar_args);
-    assign_runtime_value_outputs(transpose_plan.values, outputs);
-    return scalar_args;
-  }
-
-  if (runtime_param_count == 5) {
-    if (auto reduce_info = get_runtime_reduce_info(m_node)) {
-      const auto reduce_plan = plan_reduce_runtime_values(
-          runtime_inputs, m_node.get(), m_type, *reduce_info, m_name);
-      const uint32_t op_code = compiler_scalar_args.size() > 2
-                                   ? static_cast<uint32_t>(compiler_scalar_args[2])
-                                   : 0u;
-      auto reduce_payload = make_reduce_runtime_param_payload(
-          *m_buffer_manager, m_name, reduce_plan.input_shape, reduce_info->axes,
-          reduce_info->keep_dims, reduce_plan.values.output_shape, op_code);
-      m_kernel_extra_inputs = std::move(reduce_payload.extra_inputs);
-      scalar_args = std::move(reduce_payload.scalar_args);
-      for (auto *output : outputs) {
-        if (!output) {
-          continue;
-        }
-        if (output->shape.empty()) {
-          output->shape = reduce_plan.values.output_shape;
-        }
-        if (output->expected_type == ov::element::dynamic &&
-            m_node->get_output_size() != 0) {
-          output->expected_type = m_node->get_output_element_type(0);
-        }
-      }
-    }
-  }
-
-  return scalar_args;
+  OPENVINO_THROW(
+      "MetalStage: RuntimeParams ABI is not descriptor-owned for ", m_name,
+      "; compiler descriptor/artifact metadata must own runtime payload "
+      "construction");
 }
 
 std::vector<KernelArg>
 MetalStage::materialize_source_args(const std::vector<GpuTensor *> &outputs) {
   OPENVINO_ASSERT(m_buffer_manager,
-                  "MetalStage: buffer manager is not initialized for ",
-                  m_name);
+                  "MetalStage: buffer manager is not initialized for ", m_name);
   const auto *payload = source_payload_or_null(m_descriptor);
   OPENVINO_ASSERT(payload && payload->has_stage_manifest(),
                   "MetalStage: MSL source payload is missing compiler-owned "
@@ -436,9 +371,8 @@ MetalStage::materialize_source_args(const std::vector<GpuTensor *> &outputs) {
     const auto scalar_args =
         refresh_runtime_param_buffers(*payload, outputs, binding.scalar_args);
     auto bundle = build_kernel_args_from_metadata(
-        binding.operand_kinds, binding.operand_arg_indices,
-        scalar_args, binding.inputs, binding.input_arg_count,
-        m_kernel_extra_inputs, outputs,
+        binding.operand_kinds, binding.operand_arg_indices, scalar_args,
+        binding.inputs, binding.input_arg_count, m_kernel_extra_inputs, outputs,
         [&](size_t input_idx) { return resolve_input_tensor(input_idx); },
         m_name.c_str(), nullptr);
     m_scalar_storage = std::move(bundle.scalar_storage);
@@ -462,11 +396,15 @@ std::vector<KernelArg> MetalStage::materialize_role_ordered_source_args(
   std::vector<GpuTensor *> const_tensors;
   const_tensors.reserve(const_count);
   if (const_count != 0) {
+    OPENVINO_ASSERT(
+        m_node,
+        "MetalStage: ConstTensor ABI requires a temporary source-node bridge "
+        "for ",
+        m_name);
     prepare_constant_input_buffers();
     if (m_const_buffers) {
-      for (size_t input_idx = 0;
-           input_idx < m_const_buffers->buffers.size() &&
-           const_tensors.size() < const_count;
+      for (size_t input_idx = 0; input_idx < m_const_buffers->buffers.size() &&
+                                 const_tensors.size() < const_count;
            ++input_idx) {
         if (input_idx < m_const_buffers->present.size() &&
             m_const_buffers->present[input_idx] &&
@@ -494,23 +432,26 @@ std::vector<KernelArg> MetalStage::materialize_role_ordered_source_args(
   return args;
 }
 
-KernelDispatch
-MetalStage::make_source_dispatch(const std::vector<GpuTensor *> &outputs) const {
+KernelDispatch MetalStage::make_source_dispatch(
+    const std::vector<GpuTensor *> &outputs) const {
   ov::Shape shape;
   if (!outputs.empty() && outputs.front() && !outputs.front()->shape.empty()) {
     shape = outputs.front()->shape;
-  } else if (m_node && m_node->get_output_size() > 0 &&
-             m_node->get_output_partial_shape(0).is_static()) {
-    shape = m_node->get_output_shape(0);
+  } else {
+    ov::Shape descriptor_shape;
+    if (descriptor_output_shape(m_descriptor, 0, descriptor_shape)) {
+      shape = std::move(descriptor_shape);
+    }
   }
-  const size_t local = m_kernel
-                           ? m_kernel->clamp_threadgroup_size(
-                                 kDefaultMetalSourceThreadsPerGroup)
-                           : kDefaultMetalSourceThreadsPerGroup;
+  const size_t local =
+      m_kernel
+          ? m_kernel->clamp_threadgroup_size(kDefaultMetalSourceThreadsPerGroup)
+          : kDefaultMetalSourceThreadsPerGroup;
   return make_default_dispatch(shape, local);
 }
 
-KernelExecutionHooks *MetalStage::prepare_profiling(ProfileState &state,
+KernelExecutionHooks *
+MetalStage::prepare_profiling(ProfileState &state,
                               KernelExecutionHooks &hooks) {
   auto *profiler = static_cast<MetalProfiler *>(m_profiler);
   if (!profiler) {

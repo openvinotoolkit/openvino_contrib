@@ -12,8 +12,11 @@
 #include <unordered_set>
 #include <utility>
 
+#include "kernel_ir/gfx_kernel_source.hpp"
+#include "kernel_ir/gfx_opencl_source_artifacts.hpp"
 #include "openvino/core/except.hpp"
 #include "runtime/pipeline_stage_plan.hpp"
+#include "runtime/tensor_binding_contract.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -30,6 +33,116 @@ bool payload_kind_requires_materialized_payload(
     KernelArtifactPayloadKind kind) noexcept {
   return kind == KernelArtifactPayloadKind::VendorDescriptor ||
          source_payload_kind(kind);
+}
+
+struct SourcePayloadRoleSummary {
+  bool has_const_tensor = false;
+  size_t runtime_param_count = 0;
+};
+
+struct SourcePayloadRuntimeParamMetadata {
+  std::vector<int64_t> i64_metadata;
+  bool reduce_keep_dims = false;
+  bool reduce_keep_dims_valid = false;
+};
+
+SourcePayloadRoleSummary
+summarize_stage_manifest_roles(const GfxKernelStageManifest &manifest) {
+  SourcePayloadRoleSummary summary;
+  if (!manifest.valid || !manifest.custom_kernel.valid ||
+      !manifest.custom_kernel.external_buffer_abi.valid) {
+    return summary;
+  }
+  const auto roles = materialize_gfx_kernel_external_buffer_roles(
+      manifest.custom_kernel.external_buffer_abi);
+  for (const auto role : roles) {
+    if (role == GfxKernelBufferRole::ConstTensor) {
+      summary.has_const_tensor = true;
+    } else if (role == GfxKernelBufferRole::RuntimeParams) {
+      ++summary.runtime_param_count;
+    }
+  }
+  return summary;
+}
+
+SourcePayloadRoleSummary summarize_source_payload_roles(
+    const KernelArtifactPayload *payload) {
+  if (!payload) {
+    return {};
+  }
+  if (const auto *msl_payload =
+          dynamic_cast<const GfxKernelSourcePayload *>(payload)) {
+    return summarize_stage_manifest_roles(msl_payload->stage_manifest());
+  }
+  if (const auto *opencl_payload =
+          dynamic_cast<const GfxOpenClSourceArtifactPayload *>(payload)) {
+    return summarize_stage_manifest_roles(
+        opencl_payload->artifact().stage_manifest);
+  }
+  return {};
+}
+
+SourcePayloadRuntimeParamMetadata runtime_param_metadata_from_source_payload(
+    const KernelArtifactPayload *payload) {
+  SourcePayloadRuntimeParamMetadata metadata;
+  if (const auto *msl_payload =
+          dynamic_cast<const GfxKernelSourcePayload *>(payload)) {
+    const auto &binding = msl_payload->runtime_binding();
+    metadata.i64_metadata = binding.runtime_param_i64_metadata;
+    metadata.reduce_keep_dims = binding.runtime_param_reduce_keep_dims;
+    metadata.reduce_keep_dims_valid =
+        binding.runtime_param_reduce_keep_dims_valid;
+  }
+  return metadata;
+}
+
+void apply_runtime_param_metadata_from_source_payload(
+    RuntimeStageExecutableDescriptor &descriptor) {
+  const auto metadata =
+      runtime_param_metadata_from_source_payload(descriptor.payload.get());
+  descriptor.runtime_param_i64_metadata = metadata.i64_metadata;
+  descriptor.runtime_param_reduce_keep_dims = metadata.reduce_keep_dims;
+  descriptor.runtime_param_reduce_keep_dims_valid =
+      metadata.reduce_keep_dims_valid;
+}
+
+void apply_temporary_source_node_bridge_contract(
+    RuntimeStageExecutableDescriptor &descriptor) {
+  descriptor.temporary_source_node_bridge_required = false;
+  descriptor.temporary_source_node_bridge_reason.clear();
+
+  if (descriptor.payload_kind == KernelArtifactPayloadKind::VendorDescriptor) {
+    descriptor.temporary_source_node_bridge_required = true;
+    descriptor.temporary_source_node_bridge_reason =
+        "vendor primitive materialization still needs source-node metadata";
+    return;
+  }
+
+  if (descriptor.requires_runtime_shape_args) {
+    descriptor.temporary_source_node_bridge_required = true;
+    descriptor.temporary_source_node_bridge_reason =
+        "runtime shape arguments are not fully descriptor-owned yet";
+    return;
+  }
+
+  const auto source_roles =
+      summarize_source_payload_roles(descriptor.payload.get());
+  if (source_roles.has_const_tensor) {
+    descriptor.temporary_source_node_bridge_required = true;
+    descriptor.temporary_source_node_bridge_reason =
+        "source artifact ABI contains ConstTensor roles not fully "
+        "descriptor-owned yet";
+    return;
+  }
+  if (source_roles.runtime_param_count != 0 &&
+      !descriptor_owns_runtime_param_payload(
+          descriptor, source_roles.runtime_param_count)) {
+    descriptor.temporary_source_node_bridge_required = true;
+    descriptor.temporary_source_node_bridge_reason =
+        "source artifact ABI contains RuntimeParams roles not fully "
+        "descriptor-owned yet";
+    return;
+  }
 }
 
 bool source_origin(KernelArtifactOrigin origin) noexcept {
@@ -143,6 +256,8 @@ RuntimeStageExecutableDescriptor make_stage_descriptor(
       make_tensor_binding_contracts(manifest_stage.inputs, memory_plan);
   descriptor.output_bindings =
       make_tensor_binding_contracts(manifest_stage.outputs, memory_plan);
+  apply_runtime_param_metadata_from_source_payload(descriptor);
+  apply_temporary_source_node_bridge_contract(descriptor);
   return descriptor;
 }
 
@@ -328,7 +443,6 @@ void append_materialized_descriptor_diagnostics(
         "identity incomplete at " +
         std::to_string(materialized_stage_index));
   }
-
   if (materialized_stage.kind != PipelineStageMaterializationKind::SingleStage) {
     if (materialized.input_bindings.size() !=
         materialized_stage.io_plan.inputs.size()) {
@@ -543,6 +657,11 @@ void append_stage_plan_diagnostics(
     const auto &materialized_stage = stage_plan.stage_plans[i];
     const auto runtime_stage_index =
         materialized_stage.io_plan.runtime_stage_index;
+    if (materialized_stage.descriptor_stage_index != runtime_stage_index) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor stage plan descriptor index drift at " +
+          std::to_string(i));
+    }
     if (runtime_stage_index == PipelineStageIoPlan::npos ||
         runtime_stage_index >= descriptor.stages.size()) {
       result.diagnostics.push_back(
@@ -564,6 +683,17 @@ void append_stage_plan_diagnostics(
     }
     append_materialized_descriptor_diagnostics(
         result, materialized_stage, descriptor_stage, i);
+    for (const auto fused_stage_index :
+         materialized_stage.fused_descriptor_stage_indices) {
+      if (fused_stage_index == PipelineStageIoPlan::npos ||
+          fused_stage_index >= descriptor.stages.size()) {
+        result.diagnostics.push_back(
+            "runtime executable descriptor stage plan fused descriptor index "
+            "out of range at " +
+            std::to_string(i));
+        break;
+      }
+    }
   }
 
   for (const auto &entry : stage_plan.node_to_stage) {
@@ -737,6 +867,38 @@ verify_runtime_executable_descriptor(
     }
     const auto executable_payload =
         executable.find_artifact_payload(stage.artifact_key);
+    const auto expected_runtime_param_metadata =
+        runtime_param_metadata_from_source_payload(executable_payload.get());
+    if (stage.runtime_param_i64_metadata !=
+            expected_runtime_param_metadata.i64_metadata ||
+        stage.runtime_param_reduce_keep_dims !=
+            expected_runtime_param_metadata.reduce_keep_dims ||
+        stage.runtime_param_reduce_keep_dims_valid !=
+            expected_runtime_param_metadata.reduce_keep_dims_valid) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor runtime-param metadata drift at " +
+          std::to_string(i));
+    }
+    RuntimeStageExecutableDescriptor expected_bridge_stage = stage;
+    expected_bridge_stage.payload_kind = artifact.payload_kind;
+    expected_bridge_stage.requires_runtime_shape_args =
+        artifact.kernel.requires_runtime_shape_args;
+    expected_bridge_stage.payload = executable_payload;
+    expected_bridge_stage.runtime_param_i64_metadata =
+        expected_runtime_param_metadata.i64_metadata;
+    expected_bridge_stage.runtime_param_reduce_keep_dims =
+        expected_runtime_param_metadata.reduce_keep_dims;
+    expected_bridge_stage.runtime_param_reduce_keep_dims_valid =
+        expected_runtime_param_metadata.reduce_keep_dims_valid;
+    apply_temporary_source_node_bridge_contract(expected_bridge_stage);
+    if (stage.temporary_source_node_bridge_required !=
+            expected_bridge_stage.temporary_source_node_bridge_required ||
+        stage.temporary_source_node_bridge_reason !=
+            expected_bridge_stage.temporary_source_node_bridge_reason) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor source-node bridge contract drift at " +
+          std::to_string(i));
+    }
     if (stage.payload != executable_payload) {
       result.diagnostics.push_back(
           "runtime executable descriptor payload drift at " +

@@ -138,6 +138,12 @@ RuntimeStageExecutableDescriptor make_runtime_vendor_attention_descriptor(
   descriptor.optional_cache_payload_allowed =
       artifact.optional_cache_payload_allowed;
   descriptor.payload = std::move(payload);
+  descriptor.temporary_source_node_bridge_required =
+      descriptor.payload_kind == KernelArtifactPayloadKind::VendorDescriptor;
+  descriptor.temporary_source_node_bridge_reason =
+      descriptor.temporary_source_node_bridge_required
+          ? "vendor primitive materialization still needs source-node metadata"
+          : std::string{};
   return descriptor;
 }
 
@@ -365,6 +371,8 @@ void finalize_fused_attention_sequence_descriptor(
   descriptor.compile_options_key.clear();
   descriptor.runtime_shape_rule = "static_or_descriptor";
   descriptor.requires_runtime_shape_args = false;
+  descriptor.temporary_source_node_bridge_required = false;
+  descriptor.temporary_source_node_bridge_reason.clear();
   descriptor.tensor_view_only = false;
   descriptor.scalar_roles.clear();
   descriptor.optional_cache_payload_allowed = false;
@@ -533,6 +541,20 @@ make_runtime_materialization_kind(PipelineStageMaterializationKind kind) {
   }
 }
 
+std::vector<size_t> make_runtime_fused_descriptor_stage_indices(
+    const PipelineStageMaterializationPlan &plan,
+    const std::vector<std::shared_ptr<ov::Node>> &ordered_ops,
+    const RuntimeStageDescriptorMap &descriptors) {
+  std::vector<size_t> result;
+  result.reserve(plan.fusion_group.node_indices.size());
+  for (const auto node_idx : plan.fusion_group.node_indices) {
+    OPENVINO_ASSERT(node_idx < ordered_ops.size(),
+                    "GFX: fused compiler stage references missing ordered op");
+    result.push_back(stage_index_for_node(descriptors, ordered_ops[node_idx]));
+  }
+  return result;
+}
+
 ::ov::gfx_plugin::PipelineVendorAttentionStagePlan
 make_runtime_vendor_attention_plan(
     const PipelineStageMaterializationPlan &plan,
@@ -556,11 +578,15 @@ make_runtime_materialization_plan(
   ::ov::gfx_plugin::PipelineStageMaterializationPlan result;
   result.kind = make_runtime_materialization_kind(plan.kind);
   result.io_plan = make_runtime_io_plan(plan.io_plan);
+  result.descriptor_stage_index = result.io_plan.runtime_stage_index;
   result.materialized_descriptor =
       make_materialized_runtime_descriptor(plan, ordered_ops, descriptors);
   result.materialized_descriptor_valid = true;
   result.vendor_attention = make_runtime_vendor_attention_plan(plan, descriptors);
   result.fused_node_indices = plan.fusion_group.node_indices;
+  result.fused_descriptor_stage_indices =
+      make_runtime_fused_descriptor_stage_indices(plan, ordered_ops,
+                                                 descriptors);
   result.fused_inner_stages.reserve(plan.fused_inner_stages.size());
   for (const auto &inner_stage : plan.fused_inner_stages) {
     result.fused_inner_stages.push_back(

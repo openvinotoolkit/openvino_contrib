@@ -107,8 +107,11 @@ Build-system notes:
   descriptor-backed backend stage creation, vendor primitive artifact
   materialization, and fused sequence materialization.
 - `src/runtime/stage_materialization_context.hpp` is the runtime handoff object
-  for compiler-owned `RuntimeStageExecutableDescriptor` records and source-node
-  identity.
+  for compiler-owned `RuntimeStageExecutableDescriptor` records. Source-node
+  identity is available only for descriptor-recorded temporary bridges.
+- `src/runtime/tensor_binding_contract.*` owns descriptor element-type/static
+  shape parsing and the generated source `RuntimeParams` ownership rules shared
+  by Metal and OpenCL runtime code.
 - `src/runtime/output_lifetime.hpp` and
   `src/runtime/fused_output_lifetime_plan.*` own fused-stage output lifetime and
   alias-storage planning from runtime memory descriptors.
@@ -292,6 +295,8 @@ For OpenCL source execution, start with:
      and vendor attention artifact materialization
    - compiler memory plan for region ids, alias groups, lifetimes, and arenas
    - compiler tensor-layout plan for view-only/materialized layout contracts
+   - runtime tensor-binding contract helpers for descriptor-owned element types,
+     static shapes, and generated source `RuntimeParams` payload ownership
    - fused-output lifetime plan for aliasing outputs inside a fused stage
    - backend stage-placement policy for domain/storage selection
    - selected backend compiler policy passed through `GpuStageRuntimeOptions`
@@ -307,6 +312,9 @@ For OpenCL source execution, start with:
    Backend stage creation now requires the matching runtime executable
    descriptor for executable routes; do not reconstruct kernel or vendor
    payloads from the OpenVINO node in request-time code.
+   If a route still needs `ov::Node` metadata, set
+   `temporary_source_node_bridge_required` and a specific migration reason in
+   the descriptor instead of silently relying on source-node availability.
 6. Add focused unit tests first.
 7. Add backend or functional tests when behavior is externally visible.
 8. Update docs when public properties, supported shapes, route selection,
@@ -325,6 +333,10 @@ Common operation families that need extra care:
 - view-style `Split` / `VariadicSplit` aliases
 - runtime-shape argument requirements carried by `KernelUnit`,
   `StageRecord`, artifact descriptors, and runtime descriptors
+- descriptor-owned generated source `RuntimeParams` payloads for Broadcast,
+  binary elementwise broadcast, `Select`, `Tile`, Softmax/LogSoftmax,
+  Transpose, and Reduce families; keep the ownership rules in
+  `src/runtime/tensor_binding_contract.*`
 - Metal MPS/MPSGraph vendor descriptors, vendor attention artifacts, and MPSRT
   storage bridges
 - Metal custom MSL source plans with explicit kernel-buffer order

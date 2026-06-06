@@ -100,8 +100,17 @@ std::unique_ptr<GpuStage> StatefulAssignStage::clone() const {
     return stage;
 }
 
+bool is_stateful_stage_descriptor(
+    const RuntimeStageExecutableDescriptor& descriptor) noexcept {
+    return descriptor.stateful_effect == "assign" ||
+           descriptor.stateful_effect == "read_value";
+}
+
 std::unique_ptr<GpuStage> create_stateful_stage(
     const RuntimeStageExecutableDescriptor& descriptor) {
+    if (!is_stateful_stage_descriptor(descriptor)) {
+        return {};
+    }
     if (descriptor.stateful_effect == "assign") {
         return std::make_unique<StatefulAssignStage>(
             descriptor_stage_name(descriptor, "Assign"));
