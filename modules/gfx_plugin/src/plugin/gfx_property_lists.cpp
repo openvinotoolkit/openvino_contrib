@@ -6,6 +6,7 @@
 
 #include "openvino/gfx_plugin/properties.hpp"
 #include "openvino/runtime/internal_properties.hpp"
+#include "plugin/compiled_model_cache_contract.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -24,7 +25,6 @@ std::vector<ov::PropertyName> gfx_plugin_supported_properties() {
   };
   std::vector<ov::PropertyName> rw{
       ov::device::id,
-      ov::cache_dir,
       ov::enable_profiling,
       ov::PropertyName{kGfxProfilingLevelProperty, ov::PropertyMutability::RW},
       ov::PropertyName{kGfxEnableFusionProperty, ov::PropertyMutability::RW},
@@ -40,6 +40,9 @@ std::vector<ov::PropertyName> gfx_plugin_supported_properties() {
       ov::PropertyName{kGfxBackendProperty, ov::PropertyMutability::RW},
       ov::PropertyName{"PERF_COUNT", ov::PropertyMutability::RW},
   };
+  if (compiled_model_cache_roundtrip_supported()) {
+    rw.push_back(ov::cache_dir);
+  }
   std::vector<ov::PropertyName> supported;
   supported.reserve(ro.size() + rw.size());
   supported.insert(supported.end(), ro.begin(), ro.end());
@@ -48,9 +51,7 @@ std::vector<ov::PropertyName> gfx_plugin_supported_properties() {
 }
 
 std::vector<ov::PropertyName> gfx_internal_supported_properties() {
-  return {
-      ov::PropertyName{ov::internal::caching_properties.name(),
-                       ov::PropertyMutability::RO},
+  std::vector<ov::PropertyName> props{
       ov::PropertyName{ov::internal::exclusive_async_requests.name(),
                        ov::PropertyMutability::RW},
       ov::PropertyName{ov::internal::threads_per_stream.name(),
@@ -60,12 +61,20 @@ std::vector<ov::PropertyName> gfx_internal_supported_properties() {
       ov::PropertyName{
           ov::internal::compiled_model_runtime_properties_supported.name(),
           ov::PropertyMutability::RO},
-      ov::PropertyName{ov::internal::cache_header_alignment.name(),
-                       ov::PropertyMutability::RO},
   };
+  if (compiled_model_cache_roundtrip_supported()) {
+    props.push_back(ov::PropertyName{ov::internal::caching_properties.name(),
+                                     ov::PropertyMutability::RO});
+    props.push_back(ov::PropertyName{ov::internal::cache_header_alignment.name(),
+                                     ov::PropertyMutability::RO});
+  }
+  return props;
 }
 
 std::vector<ov::PropertyName> gfx_caching_properties() {
+  if (!compiled_model_cache_roundtrip_supported()) {
+    return {};
+  }
   return {
       ov::PropertyName{ov::device::architecture.name(),
                        ov::PropertyMutability::RO},
@@ -94,8 +103,10 @@ std::vector<ov::PropertyName> gfx_compiled_model_supported_properties() {
                                    ov::PropertyMutability::RW});
   props.push_back(ov::PropertyName{ov::enable_profiling.name(),
                                    ov::PropertyMutability::RW});
-  props.push_back(
-      ov::PropertyName{ov::cache_dir.name(), ov::PropertyMutability::RW});
+  if (compiled_model_cache_roundtrip_supported()) {
+    props.push_back(
+        ov::PropertyName{ov::cache_dir.name(), ov::PropertyMutability::RW});
+  }
   props.push_back(ov::PropertyName{"PERF_COUNT", ov::PropertyMutability::RW});
   props.push_back(
       ov::PropertyName{kGfxProfilingLevelProperty, ov::PropertyMutability::RW});

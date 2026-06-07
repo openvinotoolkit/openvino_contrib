@@ -34,6 +34,12 @@ using RuntimeStageDescriptorMap =
     std::unordered_map<const ov::Node *,
                        const RuntimeStageExecutableDescriptor *>;
 
+struct RuntimeDescriptorMaterializationDraft {
+  std::vector<::ov::gfx_plugin::PipelineStageMaterializationPlan> stage_plans;
+  std::vector<::ov::gfx_plugin::PipelineStagePublicOutputDesc> public_outputs;
+  ::ov::gfx_plugin::PipelineStageRuntimeOptionsPlan runtime_options;
+};
+
 RuntimeStageDescriptorMap build_runtime_stage_descriptor_map(
     const std::vector<std::shared_ptr<ov::Node>> &ordered_ops,
     const RuntimeExecutableDescriptor &runtime_descriptor) {
@@ -672,10 +678,10 @@ make_runtime_materialization_plan(
 }
 
 size_t compact_stage_index_for_runtime_stage(
-    const ::ov::gfx_plugin::PipelineStageRuntimePlan &runtime_plan,
+    const RuntimeDescriptorMaterializationDraft &draft,
     size_t runtime_stage_index) {
-  for (size_t i = 0; i < runtime_plan.stage_plans.size(); ++i) {
-    if (runtime_plan.stage_plans[i].io_plan.runtime_stage_index ==
+  for (size_t i = 0; i < draft.stage_plans.size(); ++i) {
+    if (draft.stage_plans[i].io_plan.runtime_stage_index ==
         runtime_stage_index) {
       return i;
     }
@@ -747,13 +753,13 @@ RuntimeTensorRefMap build_runtime_tensor_ref_map(
 }
 
 void attach_runtime_public_output_refs(
-    ::ov::gfx_plugin::PipelineStageRuntimePlan &runtime_plan,
+    RuntimeDescriptorMaterializationDraft &draft,
     const std::vector<PipelineStagePublicOutputSource> &public_outputs,
     const RuntimeTensorRefMap &refs,
     const RuntimeStageDescriptorMap &descriptors,
     const ::ov::gfx_plugin::RuntimeExecutableDescriptor *descriptor) {
-  runtime_plan.public_outputs.clear();
-  runtime_plan.public_outputs.reserve(public_outputs.size());
+  draft.public_outputs.clear();
+  draft.public_outputs.reserve(public_outputs.size());
 
   for (size_t result_idx = 0; result_idx < public_outputs.size(); ++result_idx) {
     const auto &source_output = public_outputs[result_idx];
@@ -766,7 +772,7 @@ void attach_runtime_public_output_refs(
       if (const auto *stage_descriptor =
               descriptor_for_node(descriptors, source_node)) {
         const auto compact_stage_index = compact_stage_index_for_runtime_stage(
-            runtime_plan, stage_descriptor->stage_index);
+            draft, stage_descriptor->stage_index);
         if (compact_stage_index !=
             ::ov::gfx_plugin::PipelineStageTensorRef::npos) {
           public_output.source_ref = make_runtime_tensor_ref(
@@ -792,20 +798,20 @@ void attach_runtime_public_output_refs(
     OPENVINO_ASSERT(
         public_output.source_ref.valid(),
         "GFX: compiler failed to materialize public output binding for result ",
-        runtime_plan.public_outputs.size(),
+        draft.public_outputs.size(),
         " source=",
         source_node ? source_node->get_friendly_name() : std::string("<null>"),
         " (", source_node ? source_node->get_type_name() : "<null>",
         ") port=", source_port,
-        " pipeline_stages=", runtime_plan.stage_plans.size(),
+        " pipeline_stages=", draft.stage_plans.size(),
         " descriptor_public_outputs=",
         descriptor ? descriptor->public_outputs.size() : 0,
         "; runtime must not resolve public outputs from graph maps");
-    runtime_plan.public_outputs.push_back(std::move(public_output));
+    draft.public_outputs.push_back(std::move(public_output));
   }
 }
 
-::ov::gfx_plugin::PipelineStageRuntimePlan make_pipeline_stage_runtime_plan(
+RuntimeDescriptorMaterializationDraft make_runtime_descriptor_materialization_draft(
     const std::vector<std::shared_ptr<ov::Node>> &ordered_ops,
     const std::vector<PipelineStageMaterializationPlan> &stage_plans,
     const std::vector<PipelineStagePublicOutputSource> &public_outputs,
@@ -814,7 +820,7 @@ void attach_runtime_public_output_refs(
     const std::unordered_map<const ov::Node *, size_t> &param_index,
     const ::ov::gfx_plugin::RuntimeExecutableDescriptor *runtime_descriptor) {
   const auto refs = build_runtime_tensor_ref_map(stage_plans, param_index);
-  ::ov::gfx_plugin::PipelineStageRuntimePlan result;
+  RuntimeDescriptorMaterializationDraft result;
   result.stage_plans.reserve(stage_plans.size());
   for (size_t stage_idx = 0; stage_idx < stage_plans.size(); ++stage_idx) {
     result.stage_plans.push_back(make_runtime_materialization_plan(
@@ -829,6 +835,34 @@ void attach_runtime_public_output_refs(
   return result;
 }
 
+std::vector<RuntimePublicOutputDescriptor>
+make_runtime_public_output_descriptors(
+    const RuntimeDescriptorMaterializationDraft &draft) {
+  std::vector<RuntimePublicOutputDescriptor> public_outputs;
+  public_outputs.reserve(draft.public_outputs.size());
+  for (const auto &output : draft.public_outputs) {
+    RuntimePublicOutputDescriptor runtime_output;
+    switch (output.source_ref.kind) {
+    case PipelineStageTensorRefKind::Parameter:
+      runtime_output.kind = RuntimePublicOutputSourceKind::Parameter;
+      break;
+    case PipelineStageTensorRefKind::StageOutput:
+      runtime_output.kind = RuntimePublicOutputSourceKind::StageOutput;
+      break;
+    case PipelineStageTensorRefKind::None:
+    default:
+      runtime_output.kind = RuntimePublicOutputSourceKind::None;
+      break;
+    }
+    runtime_output.index = output.source_ref.index;
+    runtime_output.port = output.source_ref.port;
+    runtime_output.static_shape = output.shape;
+    runtime_output.static_type = output.type;
+    public_outputs.push_back(std::move(runtime_output));
+  }
+  return public_outputs;
+}
+
 struct AttentionSequenceStagePlan {
   PipelineStageIoPlan io_plan;
   std::vector<PipelineFusedInnerStagePlan> inner_stages;
@@ -837,7 +871,7 @@ struct AttentionSequenceStagePlan {
 struct PipelineStageBuildState {
   std::vector<std::shared_ptr<ov::Node>> ordered_ops;
   std::vector<PipelineStageMaterializationPlan> stage_plans;
-  PipelineStageRuntimePlan runtime_plan;
+  RuntimeDescriptorMaterializationDraft materialization_draft;
   StageCompilerPolicy stage_compiler_policy;
   std::unordered_map<const ov::Node *, size_t> param_index;
 };
@@ -997,8 +1031,8 @@ FusionConfig make_pipeline_stage_fusion_config(
   return fusion_config;
 }
 
-std::shared_ptr<const PipelineStageRuntimePlan>
-build_pipeline_stage_runtime_plan(const PipelineStageBuildRequest &request) {
+RuntimeExecutableDescriptor build_pipeline_stage_runtime_descriptor(
+    const PipelineStageBuildRequest &request) {
   OPENVINO_ASSERT(request.graph.valid(),
                   "GFX: pipeline stage builder requires compiler-owned graph "
                   "snapshot");
@@ -1466,7 +1500,7 @@ build_pipeline_stage_runtime_plan(const PipelineStageBuildRequest &request) {
         "pipeline_stage_count",
         static_cast<uint64_t>(result.stage_plans.size()));
     request.compile_trace->add_segment(
-        "compile", "build_pipeline_stage_runtime_plan",
+        "compile", "build_pipeline_stage_runtime_descriptor",
         static_cast<uint64_t>(
             std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now() - build_start)
@@ -1475,12 +1509,19 @@ build_pipeline_stage_runtime_plan(const PipelineStageBuildRequest &request) {
   gfx_log_info("StagePlan")
       << "Planned GFX " << backend_name << " pipeline with "
       << result.stage_plans.size() << " stages";
-  result.runtime_plan = make_pipeline_stage_runtime_plan(
+  result.materialization_draft = make_runtime_descriptor_materialization_draft(
       result.ordered_ops, result.stage_plans, request.graph.public_outputs,
       descriptors, result.stage_compiler_policy, result.param_index,
       request.runtime_descriptor);
-  return std::make_shared<const PipelineStageRuntimePlan>(
-      std::move(result.runtime_plan));
+  RuntimeExecutableDescriptor runtime_descriptor = *request.runtime_descriptor;
+  runtime_descriptor.materialization_finalized = true;
+  runtime_descriptor.materialization_stages =
+      std::move(result.materialization_draft.stage_plans);
+  runtime_descriptor.public_outputs =
+      make_runtime_public_output_descriptors(result.materialization_draft);
+  runtime_descriptor.runtime_options =
+      std::move(result.materialization_draft.runtime_options);
+  return runtime_descriptor;
 }
 
 } // namespace compiler

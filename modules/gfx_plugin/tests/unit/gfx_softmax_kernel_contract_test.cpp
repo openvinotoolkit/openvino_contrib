@@ -30,6 +30,7 @@
 #include "mlir/gfx_backend_custom_kernel_adapter.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/mlir_passes.hpp"
+#include "mlir/mlir_stage_runtime_value_bridge.hpp"
 #include "mlir/mlir_support.hpp"
 #include "backends/metal/compiler/msl_codegen_apple_msl_ops.hpp"
 #include "backends/metal/compiler/msl_codegen_apple_msl_softmax.hpp"
@@ -38,6 +39,7 @@
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/result.hpp"
 #include "openvino/op/softmax.hpp"
+#include "runtime/executable_descriptor.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -395,6 +397,52 @@ TEST(SoftmaxRuntimeBindingContractTest,
       std::vector<GfxKernelBufferRole>({GfxKernelBufferRole::TensorInput,
                                         GfxKernelBufferRole::TensorOutput,
                                         GfxKernelBufferRole::RuntimeParams}));
+}
+
+TEST(SoftmaxRuntimeBindingContractTest,
+     AppleMslRuntimeParamsUseRowLaneMetadata) {
+  const auto data = param(ov::element::f32, ov::Shape{2, 3, 4});
+  const auto softmax = std::make_shared<ov::op::v1::Softmax>(data, 1);
+
+  const auto plan = make_softmax_runtime_params_msl_kernel_source_plan(softmax);
+  ASSERT_TRUE(plan.valid());
+  EXPECT_EQ(plan.binding.runtime_binding.runtime_param_i64_metadata,
+            std::vector<int64_t>({8, 3, 4}));
+}
+
+TEST(SoftmaxRuntimeBindingContractTest,
+     RuntimeValuesUseDescriptorMetadataInsteadOfSourceNode) {
+  RuntimeStageExecutableDescriptor descriptor;
+  descriptor.op_family = "LogSoftmax";
+  descriptor.runtime_param_i64_metadata = {30, 4, 5};
+  RuntimeTensorBindingContract input_binding;
+  input_binding.element_type = "f32";
+  input_binding.partial_shape = "{2,3,4,5}";
+  descriptor.input_bindings.push_back(input_binding);
+  RuntimeTensorBindingContract output_binding;
+  output_binding.element_type = "f32";
+  output_binding.partial_shape = "{2,3,4,5}";
+  descriptor.output_bindings.push_back(output_binding);
+
+  GpuTensor input;
+  input.shape = {2, 3, 4, 5};
+  input.expected_type = ov::element::f32;
+  std::vector<GpuTensor *> inputs{&input};
+  RuntimeInputResolver resolver;
+  resolver.inputs = &inputs;
+  resolver.descriptor = &descriptor;
+
+  const auto plan =
+      plan_softmax_runtime_values(resolver, descriptor, "softmax_descriptor");
+  EXPECT_TRUE(plan.valid());
+  EXPECT_TRUE(plan.log_softmax);
+  EXPECT_EQ(plan.axis, 2);
+  EXPECT_EQ(plan.rows, 30u);
+  EXPECT_EQ(plan.axis_len, 4u);
+  EXPECT_EQ(plan.inner, 5u);
+  EXPECT_EQ(plan.values.output_shape, (ov::Shape{2, 3, 4, 5}));
+  EXPECT_EQ(plan.values.output_type, ov::element::f32);
+  EXPECT_TRUE(plan.values.force_output_type);
 }
 
 struct SoftmaxRouteCase {

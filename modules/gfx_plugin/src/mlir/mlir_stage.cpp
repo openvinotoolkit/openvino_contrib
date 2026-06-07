@@ -13,27 +13,27 @@
 #include <sstream>
 
 #include "common/constant_tensor_evaluator.hpp"
+#include "compiler/stage_policy.hpp"
 #include "compiler/tensor_layout.hpp"
 #include "kernel_ir/gfx_codegen_desc.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
 #include "kernel_ir/gfx_kernel_plan.hpp"
 #include "mlir/codegen_common.hpp"
 #include "mlir/gfx_backend_custom_kernel_adapter.hpp"
-#include "runtime/gfx_kernel_runtime_params.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
-#include "mlir/mlir_stage_backend_hooks.hpp"
-#include "mlir/mlir_stage_runtime_value_bridge.hpp"
 #include "mlir/gfx_stage_kernel_binding.hpp"
-#include "runtime/gfx_stage_runtime_values.hpp"
 #include "mlir/mlir_builder.hpp"
 #include "mlir/mlir_kernel_plan_utils.hpp"
+#include "mlir/mlir_stage_backend_hooks.hpp"
+#include "mlir/mlir_stage_runtime_value_bridge.hpp"
+#include "runtime/executable_descriptor.hpp"
 #include "runtime/gfx_compile_profiling.hpp"
+#include "runtime/gfx_kernel_runtime_params.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "runtime/gfx_parallelism.hpp"
 #include "runtime/gfx_profiler.hpp"
 #include "runtime/gfx_shape_utils.hpp"
-#include "compiler/stage_policy.hpp"
-#include "runtime/executable_descriptor.hpp"
+#include "runtime/gfx_stage_runtime_values.hpp"
 #include "runtime/memory_manager.hpp"
 #include "runtime/tensor_binding_contract.hpp"
 #include "transforms/gfx_llm_ops.hpp"
@@ -534,11 +534,14 @@ inline void normalize_operand_segment_sizes(mlir::ModuleOp module) {
   (void)module;
 }
 
+ov::element::Type runtime_descriptor_input_type(
+    const RuntimeStageExecutableDescriptor *descriptor, size_t input_idx);
+
 bool try_alias_contiguous_split_outputs(
-    const std::shared_ptr<const ov::Node> &node, GpuTensor *input,
+    const RuntimeInputResolver &runtime_inputs,
+    const RuntimeStageExecutableDescriptor &descriptor, GpuTensor *input,
     const std::vector<GpuTensor *> &outputs, const char *stage_name) {
-  if (!node || !input || !input->buf.valid() || input->shape.empty() ||
-      outputs.empty()) {
+  if (!input || !input->buf.valid() || input->shape.empty() || outputs.empty()) {
     return false;
   }
   for (const auto *out : outputs) {
@@ -547,7 +550,7 @@ bool try_alias_contiguous_split_outputs(
     }
   }
 
-  const auto plan = plan_split_runtime_values(node.get(), input->shape,
+  const auto plan = plan_split_runtime_values(runtime_inputs, descriptor,
                                               outputs.size(), stage_name);
   size_t outer = 1;
   for (size_t d = 0; d < static_cast<size_t>(plan.axis_norm); ++d) {
@@ -561,7 +564,7 @@ bool try_alias_contiguous_split_outputs(
                                        ? input->buf.type
                                        : input->expected_type;
   if (element_type == ov::element::dynamic) {
-    element_type = node->get_input_element_type(0);
+    element_type = runtime_descriptor_input_type(&descriptor, 0);
   }
   OPENVINO_ASSERT(element_type != ov::element::dynamic,
                   "GFX MLIR: Split input element type is unknown for stage ",
@@ -722,20 +725,58 @@ bool runtime_descriptor_output_shape(
       descriptor->output_bindings[output_idx].partial_shape, shape);
 }
 
+bool runtime_descriptor_input_shape(
+    const RuntimeStageExecutableDescriptor *descriptor, size_t input_idx,
+    ov::Shape &shape) {
+  if (!descriptor || input_idx >= descriptor->input_bindings.size()) {
+    return false;
+  }
+  return parse_static_shape_contract(
+      descriptor->input_bindings[input_idx].partial_shape, shape);
+}
+
+ov::element::Type runtime_descriptor_input_type(
+    const RuntimeStageExecutableDescriptor *descriptor, size_t input_idx) {
+  if (!descriptor || input_idx >= descriptor->input_bindings.size()) {
+    return ov::element::dynamic;
+  }
+  return element_type_from_contract(
+      descriptor->input_bindings[input_idx].element_type);
+}
+
+bool runtime_descriptor_owns_shape_rule(
+    const RuntimeStageExecutableDescriptor *descriptor,
+    std::string_view runtime_shape_rule) {
+  return descriptor && descriptor->runtime_shape_rule == runtime_shape_rule &&
+         descriptor_owns_runtime_shape_rule(descriptor->op_family,
+                                            runtime_shape_rule);
+}
+
+bool runtime_descriptor_has_nonconst_input(
+    const RuntimeStageExecutableDescriptor *descriptor, size_t input_idx) {
+  if (!descriptor || input_idx >= descriptor->input_bindings.size()) {
+    return false;
+  }
+  for (const auto &const_tensor : descriptor->const_tensors) {
+    if (const_tensor.source_input_index == input_idx) {
+      return false;
+    }
+  }
+  return true;
+}
+
 } // namespace
 
 MlirStage::MlirStage(const std::shared_ptr<const ov::Node> &node,
                      const RuntimeStageExecutableDescriptor *descriptor)
-    : m_runtime_descriptor(descriptor
-                               ? std::make_shared<
-                                     RuntimeStageExecutableDescriptor>(
-                                     *descriptor)
-                               : nullptr),
-      m_node(node),
-      m_name(descriptor && !descriptor->stage_name.empty()
-                 ? descriptor->stage_name
-                 : (node ? node->get_friendly_name()
-                         : std::string("mlir_stage"))),
+    : m_runtime_descriptor(
+          descriptor
+              ? std::make_shared<RuntimeStageExecutableDescriptor>(*descriptor)
+              : nullptr),
+      m_node(node), m_name(descriptor && !descriptor->stage_name.empty()
+                               ? descriptor->stage_name
+                               : (node ? node->get_friendly_name()
+                                       : std::string("mlir_stage"))),
       m_type(descriptor && !descriptor->op_family.empty()
                  ? descriptor->op_family
                  : (node ? node->get_type_name() : std::string("Unknown"))) {
@@ -764,8 +805,8 @@ MlirStage::require_backend_hooks(std::string_view reason) const {
   return *hooks;
 }
 
-GfxKernelBackendDomain MlirStage::require_custom_kernel_backend_domain(
-    std::string_view reason) const {
+GfxKernelBackendDomain
+MlirStage::require_custom_kernel_backend_domain(std::string_view reason) const {
   const auto &hooks = require_backend_hooks(reason);
   const auto domain = hooks.custom_kernel_backend_domain();
   OPENVINO_ASSERT(domain != GfxKernelBackendDomain::Unknown,
@@ -812,12 +853,22 @@ void MlirStage::apply_source_plan_kernel_runtime_binding_state(
 KernelRuntimeBindingState
 MlirStage::resolved_kernel_runtime_binding_state() const {
   KernelRuntimeBindingState binding = m_kernel_binding;
-  if (binding.inputs.empty() && m_node) {
-    const size_t in_count = m_node->get_input_size();
-    binding.inputs.reserve(in_count);
-    for (size_t i = 0; i < in_count; ++i) {
-      binding.inputs.push_back(i);
+  if (binding.inputs.empty() && binding.operand_kinds.empty()) {
+    auto descriptor_binding =
+        make_stage_descriptor_kernel_runtime_binding(*m_runtime_descriptor, m_name);
+    if (!binding.scalar_args.empty()) {
+      descriptor_binding.scalar_args = std::move(binding.scalar_args);
     }
+    if (!binding.runtime_param_i64_metadata.empty()) {
+      descriptor_binding.runtime_param_i64_metadata =
+          std::move(binding.runtime_param_i64_metadata);
+    }
+    if (binding.runtime_param_reduce_keep_dims_valid) {
+      descriptor_binding.runtime_param_reduce_keep_dims =
+          binding.runtime_param_reduce_keep_dims;
+      descriptor_binding.runtime_param_reduce_keep_dims_valid = true;
+    }
+    return descriptor_binding;
   }
   return binding;
 }
@@ -1012,10 +1063,11 @@ void MlirStage::compile_prebuilt_kernel_source(
 }
 
 void MlirStage::compile_backend_source_plan(
-    const MlirStageBackendSourcePlan &source_plan, std::string_view stage_kind) {
+    const MlirStageBackendSourcePlan &source_plan,
+    std::string_view stage_kind) {
   OPENVINO_ASSERT(source_plan.valid(),
-                  "GFX MLIR: backend source plan is invalid for stage ",
-                  m_name, " (", m_type, ")");
+                  "GFX MLIR: backend source plan is invalid for stage ", m_name,
+                  " (", m_type, ")");
   OPENVINO_ASSERT(source_plan.has_runtime_binding,
                   "GFX MLIR: backend source plan has no runtime binding for "
                   "stage ",
@@ -1090,11 +1142,11 @@ void MlirStage::compile_from_plan(MlirKernelPlanContext &plan_ctx,
     auto runtime_meta = extract_kernel_runtime_metadata(
         src.module, output_arg_count, buffer_inputs, std::string{},
         custom_domain);
-    OPENVINO_ASSERT(runtime_meta.valid, "GFX MLIR: stage ", m_name, " (",
-                    m_type,
-                    ") is missing compiler-owned custom-kernel manifest ABI for ",
-                    custom_domain == GfxKernelBackendDomain::OpenCl ? "OpenCL"
-                                                                     : "Apple MSL");
+    OPENVINO_ASSERT(
+        runtime_meta.valid, "GFX MLIR: stage ", m_name, " (", m_type,
+        ") is missing compiler-owned custom-kernel manifest ABI for ",
+        custom_domain == GfxKernelBackendDomain::OpenCl ? "OpenCL"
+                                                        : "Apple MSL");
     apply_kernel_metadata(runtime_meta, scalar_inputs);
   } else if (module) {
     auto runtime_meta =
@@ -1163,9 +1215,8 @@ void MlirStage::prepare_constant_input_buffers(bool skip_matmul_weight_const) {
     const void *const_data = const_tensor->data();
     size_t bytes = const_tensor->get_byte_size();
     auto et = const_tensor->get_element_type();
-    if (hooks &&
-        hooks->should_pack_matmul_const_input_as_f16(m_node, i,
-                                                     *const_tensor)) {
+    if (hooks && hooks->should_pack_matmul_const_input_as_f16(m_node, i,
+                                                              *const_tensor)) {
       const size_t original_bytes = bytes;
       packed_f16 = pack_f32_tensor_as_f16(*const_tensor);
       const_data = packed_f16.data();
@@ -1177,8 +1228,7 @@ void MlirStage::prepare_constant_input_buffers(bool skip_matmul_weight_const) {
       increment_compile_counter("matmul_const_f32_to_f16_packed_bytes", bytes);
     }
     if (hooks &&
-        hooks->should_pack_conv2d_const_weights_oc4(m_node, i,
-                                                    *const_tensor)) {
+        hooks->should_pack_conv2d_const_weights_oc4(m_node, i, *const_tensor)) {
       const size_t original_bytes = bytes;
       packed_conv_weights = pack_conv2d_weights_oc4(*const_tensor);
       et = const_tensor->get_element_type();
@@ -1260,8 +1310,9 @@ void MlirStage::prepare_runtime_handle(GpuBufferManager *buffer_manager) {
     return *custom_kernel_backend_domain;
   };
   if (backend_hooks) {
-    const auto reduction_threads = backend_hooks->static_matmul_reduction_threads(
-        m_node, m_has_activation, m_activation, m_activation_alpha);
+    const auto reduction_threads =
+        backend_hooks->static_matmul_reduction_threads(
+            m_node, m_has_activation, m_activation, m_activation_alpha);
     if (reduction_threads != 0) {
       m_matmul_reduction_threads = reduction_threads;
     }
@@ -1300,8 +1351,7 @@ void MlirStage::prepare_runtime_handle(GpuBufferManager *buffer_manager) {
       oss << "compressed MatMul reduction threads="
           << m_matmul_reduction_threads
           << " output_block=" << m_compressed_matmul_output_block
-          << " N=" << m_compressed_matmul_n
-          << " packed_weight_bytes="
+          << " N=" << m_compressed_matmul_n << " packed_weight_bytes="
           << compressed_matmul_plan.packed_weights.size()
           << " packed_scale_bytes="
           << compressed_matmul_plan.packed_scales.size()
@@ -1512,16 +1562,15 @@ void MlirStage::prepare_runtime_handle(GpuBufferManager *buffer_manager) {
     OPENVINO_ASSERT(backend_hooks,
                     "GFX MLIR: ShapeOf source plan requires backend hooks");
     compile_backend_source_plan(
-        backend_hooks->make_shapeof_source_plan(m_node, {}),
-        "direct ShapeOf");
+        backend_hooks->make_shapeof_source_plan(m_node, {}), "direct ShapeOf");
     return;
   }
-  if (m_type == "Concat" && m_node &&
-      !concat_has_runtime_shape(m_node) && !has_absorbed_input_transpose()) {
+  if (m_type == "Concat" && m_node && !concat_has_runtime_shape(m_node) &&
+      !has_absorbed_input_transpose()) {
     OPENVINO_ASSERT(backend_hooks,
                     "GFX MLIR: Concat source plan requires backend hooks");
-    compile_backend_source_plan(backend_hooks->make_concat_source_plan(m_node, {}),
-                                "direct Concat");
+    compile_backend_source_plan(
+        backend_hooks->make_concat_source_plan(m_node, {}), "direct Concat");
     return;
   }
   if (m_type == "GfxSDPAWithCausalMask") {
@@ -1539,10 +1588,9 @@ void MlirStage::prepare_runtime_handle(GpuBufferManager *buffer_manager) {
                     "GFX MLIR: SDPA source plan requires backend hooks");
     const auto sdpa_source_plan = backend_hooks->make_sdpa_source_plan(
         ctx, m_node, m_buffer_manager, m_runtime_traits);
-    compile_backend_source_plan(sdpa_source_plan,
-                                sdpa_source_plan.requires_backend_model
-                                    ? "MPS SDPA"
-                                    : "SDPA");
+    compile_backend_source_plan(
+        sdpa_source_plan,
+        sdpa_source_plan.requires_backend_model ? "MPS SDPA" : "SDPA");
     m_kernel_extra_inputs.clear();
     m_force_single_dispatch = false;
     m_uses_mpsrt_sdpa_plan = sdpa_source_plan.requires_backend_model;
@@ -1582,7 +1630,7 @@ void MlirStage::prepare_runtime_handle(GpuBufferManager *buffer_manager) {
     return plan_builder.build_plan(m_node, ctx, 0);
   }();
   auto module = plan.module();
-  apply_stage_optimization_attrs(module, optimization_plan);
+  apply_stage_optimization_attrs(module, optimization_plan, plan.entry_point());
   apply_input_transform_attrs(module);
   set_parallel_preference(module);
   if (m_conv_weights_packed_oc4 && module) {
@@ -1661,8 +1709,7 @@ void MlirStage::prepare_runtime_handle(GpuBufferManager *buffer_manager) {
     const std::vector<int32_t> gather_elements_scalars;
     (void)annotate_required_backend_custom_kernel_binding(
         module, require_custom_domain(), "GatherElements",
-        "gather_elements_kernel",
-        gather_elements_scalars, m_name);
+        "gather_elements_kernel", gather_elements_scalars, m_name);
   }
   if (auto gather_nd =
           ov::as_type_ptr<const ov::op::util::GatherNDBase>(m_node)) {
@@ -1708,8 +1755,7 @@ void MlirStage::prepare_runtime_handle(GpuBufferManager *buffer_manager) {
         static_cast<uint32_t>(axis_norm));
     m_kernel_extra_inputs = std::move(gather_payload.extra_inputs);
     auto gather_plan = annotate_required_backend_custom_kernel_binding(
-        module, require_custom_domain(), "Gather", "gather_kernel", {},
-        m_name);
+        module, require_custom_domain(), "Gather", "gather_kernel", {}, m_name);
     apply_kernel_runtime_binding_state(gather_plan.runtime_binding);
   }
   auto is_unary_eltwise_compile_stage = [&]() {
@@ -1998,6 +2044,13 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
   runtime_inputs.const_buffer_present =
       m_const_buffers ? &m_const_buffers->present : nullptr;
   runtime_inputs.descriptor = m_runtime_descriptor.get();
+  OPENVINO_ASSERT(
+      descriptor_owns_runtime_shape_rule(m_runtime_descriptor->op_family,
+                                         m_runtime_descriptor->runtime_shape_rule),
+      "GFX MLIR: runtime descriptor shape rule '",
+      m_runtime_descriptor->runtime_shape_rule,
+      "' does not match op family '", m_runtime_descriptor->op_family,
+      "' for stage ", m_name);
 
   std::optional<KernelRuntimeBindingState> kernel_binding_override;
   std::optional<std::vector<int32_t>> kernel_scalar_args_override;
@@ -2005,8 +2058,8 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
 
   const auto require_custom_domain = [&]() {
     if (!custom_kernel_backend_domain.has_value()) {
-      custom_kernel_backend_domain = require_custom_kernel_backend_domain(
-          "runtime custom-kernel binding");
+      custom_kernel_backend_domain =
+          require_custom_kernel_backend_domain("runtime custom-kernel binding");
     }
     return *custom_kernel_backend_domain;
   };
@@ -2036,7 +2089,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
   };
   auto bind_small_i64_const_outputs = [&](std::string_view suffix) -> bool {
     return bind_small_i64_const_stage_outputs(
-        m_buffer_manager, outputs, m_small_i64_const_output_cache, m_node,
+        m_buffer_manager, outputs, m_small_i64_const_output_cache,
         static_cast<GfxProfiler *>(m_profiler), m_profiling_enabled, m_name,
         suffix);
   };
@@ -2194,11 +2247,10 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
     }
   }
 
-  if (auto concat = ov::as_type_ptr<const ov::op::v0::Concat>(m_node)) {
+  if (runtime_descriptor_owns_shape_rule(m_runtime_descriptor.get(), "concat")) {
     OPENVINO_ASSERT(!outputs.empty(),
                     "GFX MLIR: missing concat outputs for stage ", m_name);
-    const auto concat_plan =
-        plan_concat_runtime_values(runtime_inputs, *concat, m_name);
+    const auto concat_plan = plan_concat_runtime_values(runtime_inputs, m_name);
     assign_runtime_value_outputs(concat_plan.values, outputs);
     const ov::Shape &out_shape = concat_plan.values.output_shape;
     if (concat_plan.values.has_i64_values &&
@@ -2219,7 +2271,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
     }
     if (live_input_count == 1 && single_live_input &&
         single_live_input->shape == out_shape) {
-      const auto output_type = m_node->get_output_element_type(0);
+      const auto output_type = concat_plan.values.output_type;
       bool all_aliased = true;
       for (auto *out : outputs) {
         if (!out || !alias_tensor_view(*out, *single_live_input, out_shape,
@@ -2234,12 +2286,9 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
     }
   }
 
-  auto gather_v1 = ov::as_type_ptr<const ov::op::v1::Gather>(m_node);
-  auto gather_v7 = ov::as_type_ptr<const ov::op::v7::Gather>(m_node);
-  auto gather_v8 = ov::as_type_ptr<const ov::op::v8::Gather>(m_node);
-  if (gather_v1 || gather_v7 || gather_v8) {
+  if (m_runtime_descriptor && m_runtime_descriptor->op_family == "Gather") {
     const auto gather_plan =
-        plan_gather_runtime_values(runtime_inputs, *m_node, m_name);
+        plan_gather_runtime_values(runtime_inputs, *m_runtime_descriptor, m_name);
     assign_runtime_value_outputs(gather_plan.values, outputs);
     const ov::Shape &out_shape = gather_plan.values.output_shape;
     m_output_shape = out_shape;
@@ -2273,9 +2322,10 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
     set_backend_custom_kernel_binding_override("Gather", "gather_kernel");
   }
 
-  if (ov::as_type_ptr<const ov::op::v1::Transpose>(m_node)) {
+  if (m_runtime_descriptor && m_runtime_descriptor->op_family == "Transpose") {
     const auto transpose_plan =
-        plan_transpose_runtime_values(runtime_inputs, *m_node, m_name);
+        plan_transpose_runtime_values(runtime_inputs, *m_runtime_descriptor,
+                                      m_name);
     assign_runtime_value_outputs(transpose_plan.values, outputs);
     m_output_shape = transpose_plan.values.output_shape;
 
@@ -2301,7 +2351,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
     m_kernel_extra_inputs = std::move(transpose_payload.extra_inputs);
   }
 
-  if (m_type == "ShapeOf") {
+  if (runtime_descriptor_owns_shape_rule(m_runtime_descriptor.get(), "shape_of")) {
     const auto shapeof_values =
         plan_shapeof_runtime_values(runtime_inputs, m_name);
     assign_runtime_value_outputs(shapeof_values, outputs);
@@ -2395,9 +2445,9 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
         }
       }
     }
-  } else if (ov::as_type_ptr<const ov::op::v1::Select>(m_node)) {
-    const auto select_plan =
-        plan_select_runtime_values(runtime_inputs, *m_node, m_name);
+  } else if (runtime_descriptor_owns_shape_rule(m_runtime_descriptor.get(),
+                                                "select")) {
+    const auto select_plan = plan_select_runtime_values(runtime_inputs, m_name);
     if (select_plan.valid()) {
       assign_runtime_value_outputs(select_plan.values, outputs);
       m_output_shape = select_plan.values.output_shape;
@@ -2476,10 +2526,11 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
           *m_buffer_manager, m_name, data_shape, indices_shape, updates_shape);
       m_kernel_extra_inputs = std::move(scatter_nd_payload.extra_inputs);
     }
-  } else if (auto scatter =
-                 ov::as_type_ptr<const ov::op::v3::ScatterUpdate>(m_node)) {
+  } else if (m_runtime_descriptor &&
+             m_runtime_descriptor->op_family == "ScatterUpdate") {
     const auto scatter_plan =
-        plan_scatter_update_runtime_values(runtime_inputs, *scatter, m_name);
+        plan_scatter_update_runtime_values(runtime_inputs, *m_runtime_descriptor,
+                                           m_name);
     if (scatter_plan.valid()) {
       assign_runtime_value_outputs(scatter_plan.values, outputs);
       m_output_shape = scatter_plan.values.output_shape;
@@ -2490,7 +2541,8 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
           static_cast<uint32_t>(scatter_plan.axis_norm));
       m_kernel_extra_inputs = std::move(scatter_update_payload.extra_inputs);
     }
-  } else if (m_type == "Slice" || m_type == "StridedSlice") {
+  } else if (runtime_descriptor_owns_shape_rule(m_runtime_descriptor.get(),
+                                                "slice")) {
     const auto slice_plan =
         plan_slice_runtime_values(runtime_inputs, outputs, false, m_name);
     assign_runtime_value_outputs(slice_plan.values, outputs);
@@ -2526,9 +2578,10 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
       require_compiler_packaged_kernel(m_type);
       m_last_input_shape = slice_plan.input_shape;
     }
-  } else if (m_type == "Interpolate") {
+  } else if (m_runtime_descriptor &&
+             m_runtime_descriptor->op_family == "Interpolate") {
     const auto interpolate_plan = plan_interpolate_runtime_values(
-        runtime_inputs, outputs, *m_node, m_name);
+        runtime_inputs, outputs, *m_runtime_descriptor, m_name);
     assign_runtime_value_outputs(interpolate_plan.values, outputs);
     m_output_shape = interpolate_plan.values.output_shape;
     m_kernel_extra_inputs.clear();
@@ -2542,14 +2595,14 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
       m_last_input_shape = interpolate_plan.input_shape;
     }
   } else if (m_type == "Softmax" || m_type == "LogSoftmax") {
-    const auto softmax_plan =
-        plan_softmax_runtime_values(runtime_inputs, *m_node, m_name);
+    const auto softmax_plan = plan_softmax_runtime_values(
+        runtime_inputs, *m_runtime_descriptor, m_name);
     assign_runtime_value_outputs(softmax_plan.values, outputs);
     if (gfx_log_debug_enabled()) {
       gfx_log_debug("MLIRSoftmax")
           << "shape_rank=" << softmax_plan.values.output_shape.size()
           << " axis=" << softmax_plan.axis
-          << " rows*inner=" << softmax_plan.rows << " tiled=0";
+          << " row_lanes=" << softmax_plan.rows << " tiled=0";
     }
     auto softmax_payload = make_softmax_runtime_param_payload(
         *m_buffer_manager, m_name, softmax_plan.rows, softmax_plan.axis_len,
@@ -2559,18 +2612,22 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
     if (m_last_input_shape.empty()) {
       m_last_input_shape = softmax_plan.values.output_shape;
     }
-  } else if (m_type == "Split" || m_type == "VariadicSplit") {
+  } else if (m_runtime_descriptor &&
+             (m_runtime_descriptor->op_family == "Split" ||
+              m_runtime_descriptor->op_family == "VariadicSplit")) {
     ov::Shape stage_input_shape = runtime_inputs.shape(0);
     if (stage_input_shape.empty()) {
       OPENVINO_THROW("GFX MLIR: Split input shape is unknown for stage ",
                      m_name);
     }
     ov::Shape logical_input_shape = stage_input_shape;
-    if (m_node && m_node->get_input_partial_shape(0).is_static()) {
-      logical_input_shape = m_node->get_input_shape(0);
+    ov::Shape descriptor_input_shape;
+    if (runtime_descriptor_input_shape(m_runtime_descriptor.get(), 0,
+                                       descriptor_input_shape)) {
+      logical_input_shape = std::move(descriptor_input_shape);
     }
     const auto plan = plan_split_runtime_values(
-        m_node.get(), logical_input_shape, outputs.size(), m_name);
+        runtime_inputs, *m_runtime_descriptor, outputs.size(), m_name);
     for (size_t i = 0; i < outputs.size(); ++i) {
       if (!outputs[i]) {
         continue;
@@ -2730,7 +2787,8 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
   if (m_is_view_op && m_type == "Reshape" && !outputs.empty() &&
       !m_inputs.empty() && m_inputs[0]) {
     const auto reshape_values =
-        plan_reshape_runtime_values(runtime_inputs, *m_node, m_name);
+        plan_reshape_runtime_values(runtime_inputs, *m_runtime_descriptor,
+                                    m_name);
     assign_runtime_value_outputs(reshape_values, outputs);
     if (bind_small_i64_const_outputs("reshape_i64_const")) {
       return;
@@ -2740,44 +2798,56 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
   if (m_is_view_op && (m_type == "Squeeze" || m_type == "Unsqueeze") &&
       !outputs.empty() && !m_inputs.empty() && m_inputs[0]) {
     const auto shape_view_values =
-        plan_squeeze_unsqueeze_runtime_values(runtime_inputs, *m_node, m_name);
+        plan_squeeze_unsqueeze_runtime_values(runtime_inputs,
+                                              *m_runtime_descriptor, m_name);
     assign_runtime_value_outputs(shape_view_values, outputs);
     if (bind_small_i64_const_outputs("shape_view_i64_const")) {
       return;
     }
   }
 
-  if (auto reduce_info = get_runtime_reduce_info(m_node)) {
+  if (m_runtime_descriptor &&
+      is_reduce_runtime_param_stage(m_runtime_descriptor->op_family)) {
+    const auto reduce_info = runtime_reduce_info_from_descriptor(
+        *m_runtime_descriptor, runtime_inputs.shape(0), m_name);
+    OPENVINO_ASSERT(reduce_info,
+                    "GFX MLIR: Reduce descriptor metadata is missing for "
+                    "stage ",
+                    m_name);
     const auto reduce_plan = plan_reduce_runtime_values(
-        runtime_inputs, m_type, *reduce_info, m_name);
+        runtime_inputs, m_runtime_descriptor->op_family, *reduce_info, m_name);
     assign_runtime_value_outputs(reduce_plan.values, outputs);
     if (bind_small_i64_const_outputs("reduce_i64_const")) {
       return;
     }
     m_output_shape = reduce_plan.values.output_shape;
-    const auto *backend_hooks = mlir_stage_backend_hooks_for(backend_kind());
-    const auto reduction_backend_plan =
-        backend_hooks ? backend_hooks->make_reduction_plan(m_node)
-                      : MlirStageBackendReductionPlan{};
+    const auto reduce_dispatch =
+        runtime_reduce_dispatch_from_descriptor(*m_runtime_descriptor, m_name);
+    OPENVINO_ASSERT(reduce_dispatch.valid(),
+                    "GFX MLIR: Reduce dispatch descriptor metadata is missing "
+                    "for stage ",
+                    m_name);
     auto reduce_payload = make_reduce_runtime_param_payload(
         *m_buffer_manager, m_name, reduce_plan.input_shape, reduce_info->axes,
         reduce_info->keep_dims, reduce_plan.values.output_shape,
-        reduction_backend_plan.valid ? reduction_backend_plan.op_code : 0u);
+        reduce_dispatch.op_code);
     const auto reduce_scalars = reduce_payload.scalar_args;
+    OPENVINO_ASSERT(
+        reduce_scalars.size() == reduce_dispatch.compiler_scalar_args.size() &&
+            reduce_scalars.size() > 2 &&
+            reduce_scalars[2] == reduce_dispatch.compiler_scalar_args[2],
+        "GFX MLIR: Reduce runtime scalar ABI drift for stage ", m_name);
     m_kernel_extra_inputs = std::move(reduce_payload.extra_inputs);
     set_backend_custom_kernel_binding_override(
-        m_type,
-        reduction_backend_plan.valid
-            ? std::string_view(reduction_backend_plan.entry_point)
-            : std::string_view("reduce_kernel"),
+        m_runtime_descriptor->op_family, reduce_dispatch.entry_point,
         reduce_scalars);
   }
 
-  if (ov::as_type_ptr<const ov::op::v1::Broadcast>(m_node) ||
-      ov::as_type_ptr<const ov::op::v3::Broadcast>(m_node)) {
+  if (runtime_descriptor_owns_shape_rule(m_runtime_descriptor.get(),
+                                         "broadcast")) {
     ov::Shape in_shape = runtime_inputs.shape(0);
-    const auto broadcast_values = plan_broadcast_runtime_values(
-        runtime_inputs, *m_node, in_shape, m_name);
+    const auto broadcast_values =
+        plan_broadcast_runtime_values(runtime_inputs, in_shape, m_name);
     assign_runtime_value_outputs(broadcast_values, outputs);
     const ov::Shape &out_shape = broadcast_values.output_shape;
     m_output_shape = out_shape;
@@ -2786,7 +2856,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
     }
     if (try_alias_same_shape_unary_view(runtime_inputs.tensor(0), outputs,
                                         out_shape,
-                                        m_node->get_output_element_type(0))) {
+                                        broadcast_values.output_type)) {
       return;
     }
     if (try_alias_gqa_broadcast_view(m_node, runtime_inputs.tensor(0),
@@ -2797,10 +2867,8 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
         *m_buffer_manager, m_name, in_shape, out_shape);
     const auto broadcast_scalars = broadcast_payload.scalar_args;
     m_kernel_extra_inputs = std::move(broadcast_payload.extra_inputs);
-    const bool has_target_shape_input =
-        m_node && m_node->get_input_size() > 1 &&
-        !ov::as_type_ptr<const ov::op::v0::Constant>(
-            m_node->get_input_node_shared_ptr(1));
+    const bool has_target_shape_input = runtime_descriptor_has_nonconst_input(
+        m_runtime_descriptor.get(), 1);
     if (has_target_shape_input) {
       auto binding_plan = make_backend_custom_kernel_roles_binding_plan(
           "Broadcast", "broadcast_kernel",
@@ -2827,7 +2895,8 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
 
   if (m_type == "Convert") {
     const auto convert_values =
-        plan_convert_runtime_values(runtime_inputs, m_node.get(), m_name);
+        plan_convert_runtime_values(runtime_inputs, *m_runtime_descriptor,
+                                    m_name);
     assign_runtime_value_outputs(convert_values, outputs);
     m_output_shape = convert_values.output_shape;
     if (bind_small_i64_const_outputs("convert_i64_const")) {
@@ -2839,9 +2908,8 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
                                                convert_scalars);
   }
 
-  if (m_type == "Range") {
-    const auto range_values =
-        plan_range_runtime_values(runtime_inputs, m_name);
+  if (runtime_descriptor_owns_shape_rule(m_runtime_descriptor.get(), "range")) {
+    const auto range_values = plan_range_runtime_values(runtime_inputs, m_name);
     assign_runtime_value_outputs(range_values, outputs);
     m_output_shape = range_values.output_shape;
     if (bind_small_i64_const_outputs("range_i64_const")) {
@@ -2853,7 +2921,8 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
                                                range_scalars);
   }
 
-  if (m_type == "Tile" && m_node && !outputs.empty()) {
+  if (runtime_descriptor_owns_shape_rule(m_runtime_descriptor.get(), "tile") &&
+      !outputs.empty()) {
     const auto tile_plan =
         plan_tile_runtime_values(runtime_inputs, outputs, m_name);
     if (tile_plan.valid()) {
@@ -2864,14 +2933,16 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
 
   if (m_type == "RMS" && m_node && !outputs.empty()) {
     const auto rms_values =
-        plan_shape_preserving_runtime_values(runtime_inputs, *m_node, m_name);
+        plan_shape_preserving_runtime_values(runtime_inputs,
+                                             *m_runtime_descriptor, m_name);
     assign_runtime_value_outputs(rms_values, outputs);
     m_output_shape = rms_values.output_shape;
   }
 
   if (m_type == "RoPE" && m_node && !outputs.empty()) {
     const auto rope_values =
-        plan_shape_preserving_runtime_values(runtime_inputs, *m_node, m_name);
+        plan_shape_preserving_runtime_values(runtime_inputs,
+                                             *m_runtime_descriptor, m_name);
     assign_runtime_value_outputs(rope_values, outputs);
     m_output_shape = rope_values.output_shape;
   }
@@ -2962,9 +3033,12 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
     out->expected_type = out_type;
   }
 
-  if ((m_type == "Split" || m_type == "VariadicSplit") &&
-      try_alias_contiguous_split_outputs(m_node, runtime_inputs.tensor(0),
-                                         outputs, m_name.c_str())) {
+  if (m_runtime_descriptor &&
+      (m_runtime_descriptor->op_family == "Split" ||
+       m_runtime_descriptor->op_family == "VariadicSplit") &&
+      try_alias_contiguous_split_outputs(runtime_inputs, *m_runtime_descriptor,
+                                         runtime_inputs.tensor(0), outputs,
+                                         m_name.c_str())) {
     return;
   }
 
@@ -3287,10 +3361,11 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
     const size_t requested_threads_per_group_x =
         std::max<uint32_t>(m_parallel_cfg.threads_w, 1u);
     const size_t threads_per_group_x =
-        m_kernel ? m_kernel->clamp_threadgroup_size(requested_threads_per_group_x)
-                 : requested_threads_per_group_x;
-    dispatch =
-        make_parallel_dispatch(dispatch_shape, m_parallel_cfg, threads_per_group_x);
+        m_kernel
+            ? m_kernel->clamp_threadgroup_size(requested_threads_per_group_x)
+            : requested_threads_per_group_x;
+    dispatch = make_parallel_dispatch(dispatch_shape, m_parallel_cfg,
+                                      threads_per_group_x);
     if (gfx_log_debug_enabled()) {
       gfx_log_debug("MLIRExec")
           << "Dispatch grid=(" << dispatch.grid[0] << ", " << dispatch.grid[1]
@@ -3707,7 +3782,8 @@ bool MlirStage::is_conv_like() const {
 bool MlirStage::is_matmul_like() const { return m_type == "MatMul"; }
 
 void MlirStage::apply_stage_optimization_attrs(
-    mlir::ModuleOp module, const GfxStageOptimizationPlan &plan) {
+    mlir::ModuleOp module, const GfxStageOptimizationPlan &plan,
+    std::string_view kernel_entry_point) {
   if (!module) {
     return;
   }
@@ -3715,7 +3791,10 @@ void MlirStage::apply_stage_optimization_attrs(
   module->setAttr(
       "gfx.stage_archetype",
       mlir::StringAttr::get(ctx, stage_archetype_attr(plan.archetype)));
-  if (const auto *hooks = mlir_stage_backend_hooks_for(backend_kind())) {
+  if (plan.placement.domain == GfxStageBackendDomain::OpenCl) {
+    (void)annotate_stage_backend_custom_kernel_module_binding(
+        module, plan.placement.domain, m_type, kernel_entry_point, m_name);
+  } else if (const auto *hooks = mlir_stage_backend_hooks_for(backend_kind())) {
     (void)hooks->apply_stage_optimization(
         module, plan, m_node, m_type, m_has_bias,
         m_has_bias ? &m_bias_params : nullptr, m_has_activation, m_activation);

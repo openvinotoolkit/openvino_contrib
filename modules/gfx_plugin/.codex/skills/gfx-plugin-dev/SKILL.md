@@ -113,6 +113,10 @@ Then inspect the relevant code path:
   policy through `GpuStageRuntimeOptions` and `compiler::StageCompilerPolicy`.
 - When changing plugin-visible behavior, check properties, `query_model()`,
   compiled-model properties, and docs.
+- Keep public compiled-model cache behavior explicit: `ov::cache_dir`,
+  `export_model()`, and `import_model()` are disabled unless
+  `compiled_model_cache_roundtrip_supported()` changes and the public contract
+  tests/docs are updated with the same semantics.
 - Do not modify `third_party/llvm-project/` unless the task explicitly requires
   vendored LLVM changes.
 - Keep `third_party/clvk` and `third_party/clspv` as submodule gitlinks for the
@@ -274,7 +278,9 @@ artifacts, runtime binding, and tests.
 1. Update property parsing and property lists in `src/plugin/`.
 2. Check `ov::available_devices`, `ov::device::id`, `ov::device::full_name`,
    `GFX_BACKEND`, and cache-related properties.
-3. Add or update `tests/unit/plugin_tests.cpp`.
+3. Add or update `tests/unit/plugin_tests.cpp` and
+   `tests/unit/gfx_cache_public_contract_test.cpp` when cache visibility or
+   import/export behavior changes.
 4. Update `README.md` and `docs/USAGE.md`.
 
 ## Validation

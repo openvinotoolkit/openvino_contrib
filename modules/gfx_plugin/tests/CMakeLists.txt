@@ -191,6 +191,7 @@ endif()
 target_sources(${UNIT_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_backend_contracts.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_backend_architecture_contract_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_cache_public_contract_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_runtime_model_runner.cpp
     ${GFX_UNIT_RUNTIME_EXECUTION_POLICY_SOURCE}
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_activation_kernel_contract_test.cpp

@@ -238,7 +238,7 @@ static void fix_subview_memory_spaces(mlir::ModuleOp module) {
     });
 }
 
-// Minimal post-bufferization fix for AttrSizedOperandSegments attrs.
+// Canonicalize AttrSizedOperandSegments attrs before verifier boundaries.
 static void normalize_operand_segment_sizes_simple(mlir::ModuleOp module) {
     if (!module) return;
     mlir::Builder b(module.getContext());
@@ -332,7 +332,7 @@ static void normalize_operand_segment_sizes_simple(mlir::ModuleOp module) {
             vals = {ins, outs};
         }
         if (vals.empty() && operands > 0) {
-            // Fallback: treat all as inputs.
+            // Single-segment ops model all operands as input operands.
             vals.push_back(static_cast<int32_t>(operands));
         }
         if (vals.empty()) {
@@ -641,81 +641,70 @@ static void lower_allocs_to_alloca(mlir::ModuleOp module) {
 
 namespace {
 
-bool is_operand_segments_diag(const std::string& diag) {
-    return diag.find("operandSegmentSizes") != std::string::npos ||
-           diag.find("operand segment sizes") != std::string::npos ||
-           diag.find("AttrSizedOperandSegments") != std::string::npos;
-}
-
-// Run a callable that emits diagnostics; if it fails only because of the known
-// DenseI32ArrayAttr vs DenseArrayAttr verification bug, log and continue.
 template <class Fn>
-void run_with_operand_segments_guard(mlir::MLIRContext* ctx,
-                                     llvm::StringRef stage,
-                                     const Fn& fn) {
-    std::string last_error;
+mlir::LogicalResult run_with_captured_errors(mlir::MLIRContext* ctx,
+                                             std::string& errors,
+                                             const Fn& fn) {
     mlir::ScopedDiagnosticHandler diag(ctx, [&](mlir::Diagnostic& d) {
         if (d.getSeverity() == mlir::DiagnosticSeverity::Error) {
-            last_error.clear();
-            llvm::raw_string_ostream os(last_error);
+            llvm::raw_string_ostream os(errors);
+            if (!errors.empty()) {
+                os << "\n";
+            }
             d.print(os);
+            return mlir::success();
         }
-        return mlir::success();
+        return mlir::failure();
     });
 
-    if (mlir::succeeded(fn())) {
+    return fn();
+}
+
+std::runtime_error make_mlir_error(llvm::StringRef kind,
+                                   llvm::StringRef stage,
+                                   const std::string& errors) {
+    std::string message = kind.str() + " (" + stage.str() + ")";
+    if (!errors.empty()) {
+        message += ": " + errors;
+    }
+    return std::runtime_error(message);
+}
+
+void verify_module_or_throw(mlir::MLIRContext* ctx,
+                            mlir::ModuleOp module,
+                            llvm::StringRef stage) {
+    normalize_operand_segment_sizes_simple(module);
+
+    std::string errors;
+    if (mlir::succeeded(run_with_captured_errors(ctx, errors, [&]() {
+            return mlir::verify(module);
+        }))) {
         return;
     }
 
-    if (is_operand_segments_diag(last_error)) {
-        llvm::errs() << "[GFX][MLIR] Skipping known operandSegmentSizes verifier bug at "
-                     << stage << " : " << last_error << "\n";
-        return;
-    }
-
-    throw std::runtime_error("MLIR stage failed (" + stage.str() + "): " + last_error);
+    throw make_mlir_error("MLIR verifier failed", stage, errors);
 }
 
 template <class BuildPmFn>
-void run_pass_manager_with_guard(mlir::MLIRContext* ctx,
-                                 mlir::ModuleOp module,
-                                 llvm::StringRef stage,
-                                 const BuildPmFn& build) {
-    auto run_pm = [&](bool disable_verifier) -> mlir::LogicalResult {
+void run_pass_manager_checked(mlir::MLIRContext* ctx,
+                              mlir::ModuleOp module,
+                              llvm::StringRef stage,
+                              const BuildPmFn& build) {
+    normalize_operand_segment_sizes_simple(module);
+
+    std::string errors;
+    auto result = run_with_captured_errors(ctx, errors, [&]() -> mlir::LogicalResult {
         mlir::PassManager pm(ctx);
-        if (disable_verifier) {
-            pm.enableVerifier(false);
-        }
         build(pm);
         return pm.run(module);
-    };
-
-    std::string last_error;
-    mlir::ScopedDiagnosticHandler diag(ctx, [&](mlir::Diagnostic& d) {
-        if (d.getSeverity() == mlir::DiagnosticSeverity::Error) {
-            last_error.clear();
-            llvm::raw_string_ostream os(last_error);
-            d.print(os);
-        }
-        return mlir::success();
     });
 
-    if (mlir::succeeded(run_pm(/*disable_verifier=*/false))) {
-        return;
+    if (mlir::failed(result)) {
+        throw make_mlir_error("MLIR pass pipeline failed", stage, errors);
     }
 
-    if (is_operand_segments_diag(last_error)) {
-        llvm::errs() << "[GFX][MLIR] " << stage
-                     << " failed on operandSegmentSizes verification; retrying without verifier\n";
-        last_error.clear();
-        if (mlir::failed(run_pm(/*disable_verifier=*/true))) {
-            throw std::runtime_error("MLIR pass pipeline failed even after verifier bypass (" +
-                                     stage.str() + "): " + last_error);
-        }
-        return;
-    }
-
-    throw std::runtime_error("MLIR pass pipeline failed (" + stage.str() + "): " + last_error);
+    normalize_operand_segment_sizes_simple(module);
+    verify_module_or_throw(ctx, module, stage);
 }
 
 }  // namespace
@@ -740,14 +729,12 @@ void run_mlir_pipeline(mlir::ModuleOp module, bool use_alloca, bool use_parallel
     const bool debug = gfx_mlir_debug_enabled();
     const bool debug_pre = debug;
 
-    run_with_operand_segments_guard(ctx, "verify-before-pipeline", [&]() {
-        return mlir::verify(module);
-    });
+    verify_module_or_throw(ctx, module, "verify-before-pipeline");
 
     if (debug) {
         module.dump();
     }
-    run_pass_manager_with_guard(ctx, module, "pre-bufferization", [&](mlir::PassManager& pm_pre) {
+    run_pass_manager_checked(ctx, module, "pre-bufferization", [&](mlir::PassManager& pm_pre) {
         populate_gfx_pre_bufferization_pipeline(pm_pre);
 
         // Fuse conv -> eltwise chains (bias/add/unary) at the tensor level.
@@ -783,7 +770,7 @@ void run_mlir_pipeline(mlir::ModuleOp module, bool use_alloca, bool use_parallel
         llvm::errs() << "[GFX][MLIR] Module after manual lowerings:\n";
         module.dump();
     }
-    run_pass_manager_with_guard(ctx, module, "post-manual-lowering-cleanup", [&](mlir::PassManager& cleanup_pm) {
+    run_pass_manager_checked(ctx, module, "post-manual-lowering-cleanup", [&](mlir::PassManager& cleanup_pm) {
         cleanup_pm.addPass(mlir::createCanonicalizerPass());
         cleanup_pm.addPass(mlir::createCSEPass());
     });
@@ -791,11 +778,9 @@ void run_mlir_pipeline(mlir::ModuleOp module, bool use_alloca, bool use_parallel
         llvm::errs() << "[GFX][MLIR] Module after post-manual-lowering cleanup:\n";
         module.dump();
     }
-    run_with_operand_segments_guard(ctx, "verify-post-linalg-lowering", [&]() {
-        return mlir::verify(module);
-    });
+    verify_module_or_throw(ctx, module, "verify-post-linalg-lowering");
 
-    run_pass_manager_with_guard(ctx, module, "post-bufferization", [&](mlir::PassManager& pm_post) {
+    run_pass_manager_checked(ctx, module, "post-bufferization", [&](mlir::PassManager& pm_post) {
         GfxMlirTransformPipelineOptions options;
         options.use_parallel_loops = use_parallel_loops;
         options.preserve_compact_memref_abi = preserve_compact_memref_abi;
@@ -842,7 +827,7 @@ void run_mlir_pipeline(mlir::ModuleOp module, bool use_alloca, bool use_parallel
     fix_subview_memory_spaces(module);
     fix_shape_cast_memory_spaces(module);
     inline_simple_subviews(module);
-    run_pass_manager_with_guard(ctx, module, "post-normalization-cleanup", [&](mlir::PassManager& cleanup_pm) {
+    run_pass_manager_checked(ctx, module, "post-normalization-cleanup", [&](mlir::PassManager& cleanup_pm) {
         populate_gfx_post_normalization_cleanup_pipeline(cleanup_pm);
     });
     fix_subview_memory_spaces(module);

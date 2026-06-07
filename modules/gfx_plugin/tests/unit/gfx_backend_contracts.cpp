@@ -9,7 +9,6 @@
 #include "compiler/cache_envelope.hpp"
 #include "compiler/executable_bundle.hpp"
 #include "compiler/manifest.hpp"
-#include "compiler/pipeline_stage_builder.hpp"
 #include "compiler/runtime_executable_descriptor_builder.hpp"
 #include "runtime/executable_descriptor.hpp"
 #include "openvino/core/except.hpp"
@@ -112,23 +111,19 @@ compiler::GfxCompileResult BackendModuleContract::compile_without_graph_pipeline
     compile_result.unsupported = compile_result.lowering_plan.unsupported;
     if (compile_result.lowering_plan.executable() &&
         compile_result.manifest.valid() && compile_result.executable.valid()) {
-        auto runtime_descriptor =
-            compiler::RuntimeExecutableDescriptorBuilder{}.build(
-                compile_result.executable);
-        compiler::PipelineStageBuildRequest stage_request;
-        stage_request.graph = compiler::make_pipeline_stage_graph_snapshot(
-            compile_result.transformed_model,
-            compiler::make_pipeline_stage_fusion_config(
-                backend_module.capabilities().fusion(), true, false));
-        stage_request.runtime_descriptor = &runtime_descriptor;
         const compiler::BackendRegistry registry({m_module});
-        stage_request.backend_registry = &registry;
-        stage_request.target = compile_result.target;
-        stage_request.backend_name = compile_result.target.backend_id();
-        runtime_descriptor.pipeline_plan =
-            compiler::build_pipeline_stage_runtime_plan(stage_request);
-        compiler::attach_runtime_public_output_descriptors(
-            runtime_descriptor, *runtime_descriptor.pipeline_plan);
+        compiler::RuntimeExecutableDescriptorBuildRequest descriptor_request;
+        descriptor_request.executable = &compile_result.executable;
+        descriptor_request.transformed_model =
+            compile_result.transformed_model;
+        descriptor_request.backend_registry = &registry;
+        descriptor_request.target = compile_result.target;
+        descriptor_request.backend_name = compile_result.target.backend_id();
+        descriptor_request.fusion_capabilities =
+            backend_module.capabilities().fusion();
+        auto runtime_descriptor =
+            compiler::RuntimeExecutableDescriptorBuilder{}.build_finalized(
+                descriptor_request);
         compile_result.runtime_descriptor =
             std::make_shared<const RuntimeExecutableDescriptor>(
                 std::move(runtime_descriptor));
@@ -155,7 +150,7 @@ bool BackendModuleContract::compile_result_obeys_manifest_contract(
         return false;
     }
     if (!compile_result.runtime_descriptor ||
-        !compiler::runtime_executable_descriptor_pipeline_plan_valid(
+        !compiler::runtime_executable_descriptor_materialization_valid(
             *compile_result.runtime_descriptor)) {
         return false;
     }

@@ -31,6 +31,13 @@ bool descriptor_static_input_shape(
         descriptor.input_bindings[input_idx].partial_shape, shape);
 }
 
+bool descriptor_has_binding_contracts(
+    const RuntimeStageExecutableDescriptor &descriptor, size_t input_count,
+    size_t output_count = 1) {
+    return descriptor.input_bindings.size() >= input_count &&
+           descriptor.output_bindings.size() >= output_count;
+}
+
 bool runtime_param_metadata_axes_valid(
     const RuntimeStageExecutableDescriptor &descriptor, const ov::Shape &shape) {
     const auto rank = static_cast<int64_t>(shape.size());
@@ -55,6 +62,24 @@ bool runtime_param_metadata_axes_valid(
     return !descriptor.runtime_param_i64_metadata.empty();
 }
 
+bool runtime_param_metadata_axes_schema_valid(
+    const RuntimeStageExecutableDescriptor &descriptor) {
+    if (descriptor.runtime_param_i64_metadata.empty() ||
+        descriptor.runtime_param_i64_metadata.size() > 8) {
+        return false;
+    }
+    for (size_t i = 0; i < descriptor.runtime_param_i64_metadata.size(); ++i) {
+        for (size_t j = i + 1; j < descriptor.runtime_param_i64_metadata.size();
+             ++j) {
+            if (descriptor.runtime_param_i64_metadata[i] ==
+                descriptor.runtime_param_i64_metadata[j]) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 bool runtime_param_metadata_permutation_valid(
     const RuntimeStageExecutableDescriptor &descriptor, const ov::Shape &shape) {
     if (descriptor.runtime_param_i64_metadata.size() != shape.size()) {
@@ -72,6 +97,34 @@ bool runtime_param_metadata_permutation_valid(
         seen[index] = true;
     }
     return true;
+}
+
+bool runtime_param_metadata_permutation_schema_valid(
+    const RuntimeStageExecutableDescriptor &descriptor) {
+    const auto rank = descriptor.runtime_param_i64_metadata.size();
+    if (rank == 0 || rank > 8) {
+        return false;
+    }
+    std::vector<bool> seen(rank, false);
+    for (auto axis : descriptor.runtime_param_i64_metadata) {
+        if (axis < 0 || static_cast<size_t>(axis) >= rank) {
+            return false;
+        }
+        const auto index = static_cast<size_t>(axis);
+        if (seen[index]) {
+            return false;
+        }
+        seen[index] = true;
+    }
+    return true;
+}
+
+bool runtime_param_metadata_positive_triplet(
+    const RuntimeStageExecutableDescriptor &descriptor) {
+    return descriptor.runtime_param_i64_metadata.size() == 3 &&
+           descriptor.runtime_param_i64_metadata[0] > 0 &&
+           descriptor.runtime_param_i64_metadata[1] > 0 &&
+           descriptor.runtime_param_i64_metadata[2] > 0;
 }
 
 }  // namespace
@@ -95,6 +148,35 @@ bool is_reduce_runtime_param_stage(std::string_view op_family) noexcept {
            op_family == "ReduceProd" || op_family == "ReduceL1" ||
            op_family == "ReduceL2" || op_family == "ReduceLogicalAnd" ||
            op_family == "ReduceLogicalOr";
+}
+
+bool descriptor_owns_runtime_shape_rule(std::string_view op_family,
+                                        std::string_view runtime_shape_rule) noexcept {
+    if (runtime_shape_rule == "static_or_descriptor") {
+        return true;
+    }
+    if (runtime_shape_rule == "concat") {
+        return op_family == "Concat";
+    }
+    if (runtime_shape_rule == "broadcast") {
+        return op_family == "Broadcast";
+    }
+    if (runtime_shape_rule == "select") {
+        return op_family == "Select";
+    }
+    if (runtime_shape_rule == "shape_of") {
+        return op_family == "ShapeOf";
+    }
+    if (runtime_shape_rule == "slice") {
+        return op_family == "Slice" || op_family == "StridedSlice";
+    }
+    if (runtime_shape_rule == "range") {
+        return op_family == "Range";
+    }
+    if (runtime_shape_rule == "tile") {
+        return op_family == "Tile";
+    }
+    return false;
 }
 
 RuntimeParamDescriptorPayloadKind
@@ -254,28 +336,33 @@ bool descriptor_owns_runtime_param_payload(
     case RuntimeParamDescriptorPayloadKind::None:
         return runtime_param_count == 0;
     case RuntimeParamDescriptorPayloadKind::BinaryBroadcast:
-        return descriptor_has_static_shape_contracts(descriptor, 2);
+        return descriptor_has_binding_contracts(descriptor, 2);
     case RuntimeParamDescriptorPayloadKind::Broadcast:
-        return descriptor_has_static_shape_contracts(descriptor, 1);
+        return descriptor_has_binding_contracts(descriptor, 1);
     case RuntimeParamDescriptorPayloadKind::Select:
-        return descriptor_has_static_shape_contracts(descriptor, 3);
+        return descriptor_has_binding_contracts(descriptor, 3);
     case RuntimeParamDescriptorPayloadKind::Tile:
-        return descriptor_has_static_shape_contracts(descriptor, 1);
+        return descriptor_has_binding_contracts(descriptor, 1);
     case RuntimeParamDescriptorPayloadKind::Softmax:
-        return descriptor_has_static_shape_contracts(descriptor, 1) &&
-               descriptor.runtime_param_i64_metadata.size() == 3;
+        return descriptor_has_binding_contracts(descriptor, 1) &&
+               runtime_param_metadata_positive_triplet(descriptor);
     case RuntimeParamDescriptorPayloadKind::Transpose: {
         ov::Shape input_shape;
-        return descriptor_has_static_shape_contracts(descriptor, 1) &&
-               descriptor_static_input_shape(descriptor, 0, input_shape) &&
-               runtime_param_metadata_permutation_valid(descriptor,
-                                                        input_shape);
+        if (!descriptor_has_binding_contracts(descriptor, 1) ||
+            !runtime_param_metadata_permutation_schema_valid(descriptor)) {
+            return false;
+        }
+        return !descriptor_static_input_shape(descriptor, 0, input_shape) ||
+               runtime_param_metadata_permutation_valid(descriptor, input_shape);
     }
     case RuntimeParamDescriptorPayloadKind::Reduce: {
         ov::Shape input_shape;
-        return descriptor_has_static_shape_contracts(descriptor, 1) &&
-               descriptor.runtime_param_reduce_keep_dims_valid &&
-               descriptor_static_input_shape(descriptor, 0, input_shape) &&
+        if (!descriptor_has_binding_contracts(descriptor, 1) ||
+            !descriptor.runtime_param_reduce_keep_dims_valid ||
+            !runtime_param_metadata_axes_schema_valid(descriptor)) {
+            return false;
+        }
+        return !descriptor_static_input_shape(descriptor, 0, input_shape) ||
                runtime_param_metadata_axes_valid(descriptor, input_shape);
     }
     }

@@ -38,8 +38,13 @@ Read these files first:
 - Explicit default backend requests are strict: CMake fails when the requested
   backend is unavailable instead of selecting another backend.
 - `query_model()` uses the same backend-aware support path as compilation.
-- `export_model()` and `import_model()` are currently not implemented; they fail
-  because there is no serialized `CacheEnvelope`/`ExecutableBundle` format yet.
+- OpenVINO compiled-model cache round-trip is currently not exposed:
+  `ov::cache_dir`, `export_model()`, and `import_model()` fail through
+  `src/plugin/compiled_model_cache_contract.hpp`.
+- The compiler has an internal serialized `CacheEnvelope` wire/store/load
+  contract for manifest, artifact descriptor, payload identity, and stable-key
+  validation. It is not a public OpenVINO cache format and does not import a
+  full backend executable bundle yet.
 - `GfxRemoteContext` and `GfxRemoteTensor` exist; practical capabilities depend
   on the selected backend.
 
@@ -118,11 +123,11 @@ The high-level path is:
    `src/compiler/runtime_executable_descriptor_builder.*` to build and verify a
    `RuntimeExecutableDescriptor` from the compiler executable bundle. The
    runtime `PipelineStageRuntimePlan` used for stage materialization is a
-   separate compiler output, not part of the cacheable descriptor. Native
-   compiled-model cache round-trip APIs require a
-   serialized `CacheEnvelope`/`ExecutableBundle`; the old OpenVINO-model
-   serialization path is disabled by
-   `src/plugin/compiled_model_cache_contract.hpp`.
+   separate compiler output, not part of the cacheable descriptor. The internal
+   `CacheEnvelope` can be serialized and stored for stable-key validation, but
+   native compiled-model cache round-trip APIs remain disabled until a complete
+   public executable-bundle import/export path exists. The old OpenVINO-model
+   serialization path is disabled by `src/plugin/compiled_model_cache_contract.hpp`.
 5. `CompiledModel::build_op_pipeline()` consumes the compiler-owned runtime
    stage plan and descriptor, then delegates concrete stage materialization to
    `src/runtime/pipeline_stage_materializer.*`. The compiler stage builder uses
@@ -314,10 +319,12 @@ When adding or changing an op, keep support probing, lowering, backend source
 planning, runtime binding, and tests on the same contract.
 
 The current compiler service does not serialize a native backend executable
-cache. It constructs an in-memory manifest/executable bundle for the selected
-backend and the runtime consumes that descriptor during stage creation.
-`export_model()` and `import_model()` are currently not implemented until that
-cache envelope has a persisted format.
+cache. It constructs a manifest/executable bundle for the selected backend,
+builds a serialized `CacheEnvelope` contract for identity validation, and the
+runtime consumes the executable descriptor during stage creation.
+`export_model()` and `import_model()` are currently not implemented because the
+public OpenVINO cache path still lacks full executable-bundle import/export and
+backend-payload materialization.
 Compiler-owned tensor layout classification lives in
 `src/compiler/tensor_layout.*`; shared stage policy consumes the resulting
 layout contract instead of reclassifying view-only or materialized layout ops.

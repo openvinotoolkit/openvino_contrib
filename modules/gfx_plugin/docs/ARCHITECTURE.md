@@ -301,8 +301,10 @@ runtime execution. The main objects are:
 - `ExecutableBundleBuilder`: converts the manifest and lowering plan into
   executable stage records, artifact descriptors, ABI fingerprints, and optional
   artifact payloads.
-- `CacheEnvelopeBuilder`: builds an in-memory cache envelope with model,
-  manifest, backend-capability, compile-option, and kernel-unit fingerprints.
+- `CacheEnvelopeBuilder`: builds a cache envelope with model, manifest,
+  backend-capability, compile-option, kernel-unit, artifact-descriptor, and
+  backend-payload identity fingerprints. The envelope has a deterministic
+  wire/store/load contract used for validation, not for public model import.
 - `PipelineStageBuilder`: converts the transformed model plus runtime
   executable descriptor into `PipelineStageDesc` records using the selected
   backend policy, fusion planner, stage materializer, and pipeline-stage I/O
@@ -311,13 +313,12 @@ runtime execution. The main objects are:
   attention fusion groups from compiler-owned fusion contracts instead of
   runtime stage type probes.
 
-The compiler service currently builds an in-memory executable description and a
-cache-envelope record. It does not emit or load a native backend binary cache.
-`export_model()` and `import_model()` are currently not implemented because
-there is no serialized `CacheEnvelope`/`ExecutableBundle` format.
-Compiled-model cache round-trip entry points fail through
-`src/plugin/compiled_model_cache_contract.hpp` until a serialized
-`CacheEnvelope`/`ExecutableBundle` path exists.
+The compiler service currently builds an executable description and a serialized
+cache-envelope record. It does not emit or load a native backend binary cache,
+and the serialized envelope is not a public OpenVINO cache format.
+`export_model()`, `import_model()`, and `ov::cache_dir` remain disabled through
+`src/plugin/compiled_model_cache_contract.hpp` until a complete
+executable-bundle import/export path and backend-payload materialization exist.
 
 Backend kernel registries are explicit. Generated and vendor routes must name a
 registered `KernelUnit`; generic catch-all ids are rejected by contract tests.
@@ -415,8 +416,9 @@ Kernel contracts are split across the current compiler and kernel IR layers:
   vendor attention planning
 - `src/compiler/memory_plan.*`: compiler-owned memory regions, lifetimes, alias
   groups, transient arenas, and memory-plan fingerprints
-- `src/compiler/cache_envelope.*`: in-memory cache keys and payload records;
-  currently not persisted by `export_model()`
+- `src/compiler/cache_envelope.*`: cache keys, wire-format serialization,
+  store/load helpers, payload identity records, and stable-key validation;
+  currently not exposed through `export_model()` or `import_model()`
 - `src/compiler/executable_bundle.*`: artifact descriptors, ABI fingerprints,
   payload kind, manifest references, memory plan, and runtime-facing stage
   records

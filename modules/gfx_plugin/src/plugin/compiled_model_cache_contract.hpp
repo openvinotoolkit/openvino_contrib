@@ -8,6 +8,8 @@
 namespace ov {
 namespace gfx_plugin {
 
+inline bool compiled_model_cache_roundtrip_supported() noexcept { return false; }
+
 [[noreturn]] inline void
 throw_compiled_model_cache_roundtrip_unavailable(const char *api_name) {
   OPENVINO_THROW("GFX: ", api_name,

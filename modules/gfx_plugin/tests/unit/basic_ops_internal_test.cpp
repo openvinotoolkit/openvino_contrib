@@ -45,6 +45,10 @@
 #include "openvino/op/transpose.hpp"
 #include "openvino/op/variadic_split.hpp"
 #include "openvino/openvino.hpp"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/codegen_common.hpp"
@@ -2641,7 +2645,46 @@ TEST(GfxMlir, AppleStagePipelineRunsNamedPassBoundariesBeforeTypedProgram) {
       module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_runtime_abi_plan")));
 }
 
-TEST(GfxMlir, OpenClStageManifestDoesNotMaterializeAppleMpsrtOps) {
+TEST(GfxMlir, OpenClStageBindingUsesSharedManifestWithoutApplePipeline) {
+  auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                     ov::Shape{1, 4, 2});
+  auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                     ov::Shape{1, 1, 1});
+  auto multiply = std::make_shared<ov::op::v1::Multiply>(lhs, rhs);
+
+  auto &ctx = ov::gfx_plugin::gfx_mlir_context();
+  auto module = ov::gfx_plugin::build_mlir_for_node(multiply, ctx);
+  ASSERT_TRUE(module);
+
+  const auto plan =
+      make_opencl_contract_stage_plan("Multiply", multiply, ov::element::f32);
+  ASSERT_EQ(plan.placement.domain,
+            ov::gfx_plugin::GfxStageBackendDomain::OpenCl);
+
+  const auto binding =
+      ov::gfx_plugin::annotate_stage_backend_custom_kernel_module_binding(
+          module, plan.placement.domain, "Multiply", "eltwise_main",
+          "opencl_multiply_stage");
+  ASSERT_TRUE(binding.valid);
+  ASSERT_FALSE(module->hasAttr("gfx.apple.pipeline.placement.backend_domain"));
+  ASSERT_EQ(binding.stage_manifest.backend_domain,
+            ov::gfx_plugin::GfxKernelBackendDomain::OpenCl);
+  ASSERT_EQ(
+      module
+          ->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.backend_domain")
+          .str(),
+      "opencl");
+  ASSERT_EQ(
+      module
+          ->getAttrOfType<mlir::StringAttr>(
+              "gfx.stage_manifest.kernel.entry_point")
+          .str(),
+      "eltwise_fused_buffer");
+  ASSERT_FALSE(static_cast<bool>(
+      module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_ops")));
+}
+
+TEST(GfxMlir, AppleStagePipelineRejectsOpenClPlacementContract) {
   auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
                                                      ov::Shape{1, 4, 2});
   auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
@@ -2660,13 +2703,9 @@ TEST(GfxMlir, OpenClStageManifestDoesNotMaterializeAppleMpsrtOps) {
   const auto result = ov::gfx_plugin::run_gfx_apple_stage_pipeline(
       module, plan, "Multiply", "eltwise_main",
       /*materialize_typed_program=*/false);
-  ASSERT_TRUE(result.valid);
-  ASSERT_FALSE(result.typed_program_materialized);
+  ASSERT_FALSE(result.valid);
   ASSERT_FALSE(module->hasAttr("gfx.apple.pipeline.placement.backend_domain"));
-  ASSERT_EQ(result.stage_plan.stage.domain,
-            ov::gfx_plugin::GfxStageBackendDomain::OpenCl);
-  ASSERT_EQ(result.stage_plan.stage.stage_manifest.backend_domain,
-            ov::gfx_plugin::GfxKernelBackendDomain::OpenCl);
+  ASSERT_FALSE(module->hasAttr("gfx.stage_manifest.backend_domain"));
   ASSERT_FALSE(static_cast<bool>(
       module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_ops")));
 }
@@ -5325,6 +5364,35 @@ TEST(GfxMlir, MatMulPipelineSucceeds) {
   ASSERT_TRUE(module);
   ASSERT_NO_THROW(ov::gfx_plugin::run_mlir_pipeline(
       module, /*use_alloca=*/true, /*use_parallel_loops=*/false));
+}
+
+TEST(GfxMlir, PipelineRejectsInvalidIrAtVerifierBoundary) {
+  mlir::MLIRContext ctx;
+  ctx.loadDialect<mlir::arith::ArithDialect, mlir::func::FuncDialect>();
+
+  mlir::OpBuilder builder(&ctx);
+  const auto loc = builder.getUnknownLoc();
+  auto module = mlir::ModuleOp::create(loc);
+  auto func =
+      mlir::func::FuncOp::create(loc, "invalid_return_value",
+                                 builder.getFunctionType({}, {}));
+  auto *entry = func.addEntryBlock();
+  builder.setInsertionPointToStart(entry);
+  auto value =
+      mlir::arith::ConstantOp::create(builder, loc,
+                                      builder.getF32FloatAttr(1.0));
+  mlir::func::ReturnOp::create(builder, loc, mlir::ValueRange{value});
+  module.push_back(func);
+
+  try {
+    ov::gfx_plugin::run_mlir_pipeline(module, /*use_alloca=*/true,
+                                      /*use_parallel_loops=*/false);
+    FAIL() << "invalid MLIR reached the pipeline without verifier rejection";
+  } catch (const std::runtime_error &error) {
+    const std::string message = error.what();
+    EXPECT_NE(message.find("MLIR verifier failed"), std::string::npos);
+    EXPECT_NE(message.find("verify-before-pipeline"), std::string::npos);
+  }
 }
 
 TEST(GfxMlir, MatMulKernelPlanPipelineSucceeds) {

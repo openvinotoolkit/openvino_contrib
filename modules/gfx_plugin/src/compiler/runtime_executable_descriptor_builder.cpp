@@ -7,13 +7,16 @@
 #include <algorithm>
 #include <cstddef>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "openvino/core/except.hpp"
-#include "runtime/pipeline_stage_plan.hpp"
+#include "compiler/pipeline_stage_builder.hpp"
+#include "runtime/gfx_logger.hpp"
 #include "runtime/tensor_binding_contract.hpp"
 
 namespace ov {
@@ -97,6 +100,17 @@ bool const_tensor_payloads_match(
 
 bool same_string(std::string_view lhs, const std::string &rhs) {
   return lhs.size() == rhs.size() && lhs.compare(rhs) == 0;
+}
+
+std::string join_diagnostics(const std::vector<std::string> &diagnostics) {
+  std::ostringstream oss;
+  for (size_t i = 0; i < diagnostics.size(); ++i) {
+    if (i) {
+      oss << "; ";
+    }
+    oss << diagnostics[i];
+  }
+  return oss.str();
 }
 
 const compiler::MemoryRegion *
@@ -590,12 +604,11 @@ void append_memory_plan_diagnostics(
   }
 }
 
-void append_stage_plan_diagnostics(
+void append_materialization_diagnostics(
     RuntimeExecutableDescriptorVerificationResult &result,
-    const PipelineStageRuntimePlan &stage_plan,
     const RuntimeExecutableDescriptor &descriptor) {
-  for (size_t i = 0; i < stage_plan.stage_plans.size(); ++i) {
-    const auto &materialized_stage = stage_plan.stage_plans[i];
+  for (size_t i = 0; i < descriptor.materialization_stages.size(); ++i) {
+    const auto &materialized_stage = descriptor.materialization_stages[i];
     const auto runtime_stage_index =
         materialized_stage.io_plan.runtime_stage_index;
     if (materialized_stage.descriptor_stage_index != runtime_stage_index) {
@@ -606,7 +619,7 @@ void append_stage_plan_diagnostics(
     if (runtime_stage_index == PipelineStageIoPlan::npos ||
         runtime_stage_index >= descriptor.stages.size()) {
       result.diagnostics.push_back(
-          "compiler-owned runtime stage plan materialized stage has "
+          "compiler-owned runtime descriptor materialized stage has "
           "invalid descriptor index at " +
           std::to_string(i));
       continue;
@@ -615,7 +628,7 @@ void append_stage_plan_diagnostics(
     if (descriptor_stage.op_family != materialized_stage.io_plan.op_family ||
         descriptor_stage.stage_name != materialized_stage.io_plan.stage_name) {
       result.diagnostics.push_back(
-          "compiler-owned runtime stage plan materialized stage drift "
+          "compiler-owned runtime descriptor materialized stage drift "
           "at " +
           std::to_string(i));
     }
@@ -626,7 +639,7 @@ void append_stage_plan_diagnostics(
       if (fused_stage_index == PipelineStageIoPlan::npos ||
           fused_stage_index >= descriptor.stages.size()) {
         result.diagnostics.push_back(
-            "compiler-owned runtime stage plan fused descriptor index "
+            "compiler-owned runtime descriptor fused descriptor index "
             "out of range at " +
             std::to_string(i));
         break;
@@ -634,39 +647,17 @@ void append_stage_plan_diagnostics(
     }
   }
 
-  if (descriptor.public_outputs.size() != stage_plan.public_outputs.size()) {
-    result.diagnostics.emplace_back(
-        "runtime executable descriptor public output count drift");
-  }
-  const size_t public_output_count =
-      std::min(descriptor.public_outputs.size(), stage_plan.public_outputs.size());
-  for (size_t i = 0; i < public_output_count; ++i) {
+  for (size_t i = 0; i < descriptor.public_outputs.size(); ++i) {
     const auto &descriptor_output = descriptor.public_outputs[i];
-    const auto &plan_output = stage_plan.public_outputs[i];
-    if (!plan_output.source_ref.valid() ||
-        descriptor_output.index != plan_output.source_ref.index ||
-        descriptor_output.port != plan_output.source_ref.port ||
-        descriptor_output.static_shape != plan_output.shape ||
-        descriptor_output.static_type != plan_output.type) {
+    if (descriptor_output.kind == RuntimePublicOutputSourceKind::None ||
+        descriptor_output.index == PipelineStageTensorRef::npos) {
       result.diagnostics.push_back(
-          "runtime executable descriptor public output drift at " +
+          "runtime executable descriptor public output is incomplete at " +
           std::to_string(i));
       continue;
     }
-    if (plan_output.source_ref.kind == PipelineStageTensorRefKind::Parameter &&
-        descriptor_output.kind != RuntimePublicOutputSourceKind::Parameter) {
-      result.diagnostics.push_back(
-          "runtime executable descriptor public output source-kind drift at " +
-          std::to_string(i));
-    }
-    if (plan_output.source_ref.kind == PipelineStageTensorRefKind::StageOutput &&
-        descriptor_output.kind != RuntimePublicOutputSourceKind::StageOutput) {
-      result.diagnostics.push_back(
-          "runtime executable descriptor public output source-kind drift at " +
-          std::to_string(i));
-    }
     if (descriptor_output.kind == RuntimePublicOutputSourceKind::StageOutput &&
-        descriptor_output.index >= stage_plan.stage_plans.size()) {
+        descriptor_output.index >= descriptor.materialization_stages.size()) {
       result.diagnostics.push_back(
           "runtime executable descriptor public output stage index out of range at " +
           std::to_string(i));
@@ -805,6 +796,13 @@ verify_runtime_executable_descriptor(
           "runtime executable descriptor has incomplete identity at " +
           std::to_string(i));
     }
+    if (!descriptor_owns_runtime_shape_rule(stage.op_family,
+                                            stage.runtime_shape_rule)) {
+      result.diagnostics.push_back(
+          "runtime executable descriptor runtime shape rule does not match op "
+          "family at " +
+          std::to_string(i));
+    }
     if (stage.payload_kind == KernelArtifactPayloadKind::VendorDescriptor &&
         stage.origin != KernelArtifactOrigin::VendorPrimitive) {
       result.diagnostics.push_back("runtime executable descriptor vendor "
@@ -934,49 +932,23 @@ bool runtime_executable_descriptor_valid(
 }
 
 RuntimeExecutableDescriptorVerificationResult
-verify_runtime_executable_descriptor_pipeline_plan(
+verify_runtime_executable_descriptor_materialization(
     const RuntimeExecutableDescriptor &descriptor) {
   RuntimeExecutableDescriptorVerificationResult result;
-  if (!descriptor.pipeline_plan) {
+  if (!descriptor.materialization_finalized) {
     result.diagnostics.emplace_back(
-        "runtime executable descriptor is missing compiler-owned pipeline "
-        "materialization plan");
+        "runtime executable descriptor materialization contract is not "
+        "finalized");
     return result;
   }
-  append_stage_plan_diagnostics(result, *descriptor.pipeline_plan, descriptor);
+  append_materialization_diagnostics(result, descriptor);
   return result;
 }
 
-bool runtime_executable_descriptor_pipeline_plan_valid(
+bool runtime_executable_descriptor_materialization_valid(
     const RuntimeExecutableDescriptor &descriptor) {
-  return verify_runtime_executable_descriptor_pipeline_plan(descriptor).valid();
-}
-
-void attach_runtime_public_output_descriptors(
-    RuntimeExecutableDescriptor &descriptor,
-    const PipelineStageRuntimePlan &pipeline_plan) {
-  descriptor.public_outputs.clear();
-  descriptor.public_outputs.reserve(pipeline_plan.public_outputs.size());
-  for (const auto &output : pipeline_plan.public_outputs) {
-    RuntimePublicOutputDescriptor runtime_output;
-    switch (output.source_ref.kind) {
-    case PipelineStageTensorRefKind::Parameter:
-      runtime_output.kind = RuntimePublicOutputSourceKind::Parameter;
-      break;
-    case PipelineStageTensorRefKind::StageOutput:
-      runtime_output.kind = RuntimePublicOutputSourceKind::StageOutput;
-      break;
-    case PipelineStageTensorRefKind::None:
-    default:
-      runtime_output.kind = RuntimePublicOutputSourceKind::None;
-      break;
-    }
-    runtime_output.index = output.source_ref.index;
-    runtime_output.port = output.source_ref.port;
-    runtime_output.static_shape = output.shape;
-    runtime_output.static_type = output.type;
-    descriptor.public_outputs.push_back(std::move(runtime_output));
-  }
+  return verify_runtime_executable_descriptor_materialization(descriptor)
+      .valid();
 }
 
 RuntimeExecutableDescriptor RuntimeExecutableDescriptorBuilder::build(
@@ -1008,6 +980,53 @@ RuntimeExecutableDescriptor RuntimeExecutableDescriptorBuilder::build(
         executable.find_artifact_payload(artifact.artifact_key),
         executable.find_artifact_const_tensors(artifact.artifact_key)));
   }
+  return descriptor;
+}
+
+RuntimeExecutableDescriptor RuntimeExecutableDescriptorBuilder::build_finalized(
+    const RuntimeExecutableDescriptorBuildRequest &request) const {
+  OPENVINO_ASSERT(request.executable,
+                  "GFX: runtime executable descriptor build requires an "
+                  "ExecutableBundle");
+  OPENVINO_ASSERT(request.transformed_model,
+                  "GFX: runtime executable descriptor build requires a "
+                  "compiler-transformed model");
+  OPENVINO_ASSERT(request.backend_registry,
+                  "GFX: runtime executable descriptor build requires an "
+                  "explicit BackendRegistry");
+  OPENVINO_ASSERT(
+      request.target.backend() != GpuBackend::Unknown,
+      "GFX: runtime executable descriptor build requires concrete BackendTarget");
+
+  auto descriptor_seed = build(*request.executable);
+  PipelineStageBuildRequest stage_request;
+  stage_request.graph = make_pipeline_stage_graph_snapshot(
+      request.transformed_model,
+      make_pipeline_stage_fusion_config(request.fusion_capabilities,
+                                        request.enable_fusion,
+                                        gfx_log_debug_enabled()));
+  stage_request.runtime_descriptor = &descriptor_seed;
+  stage_request.backend_registry = request.backend_registry;
+  stage_request.target = request.target;
+  stage_request.backend_name =
+      request.backend_name.empty() ? request.target.backend_id()
+                                   : request.backend_name;
+  stage_request.enable_fusion = request.enable_fusion;
+  stage_request.compile_trace = request.compile_trace;
+
+  auto descriptor = build_pipeline_stage_runtime_descriptor(stage_request);
+  const auto descriptor_verification =
+      verify_runtime_executable_descriptor(descriptor, *request.executable);
+  OPENVINO_ASSERT(
+      descriptor_verification.valid(),
+      "GFX: compiler produced invalid runtime executable descriptor: ",
+      join_diagnostics(descriptor_verification.diagnostics));
+  const auto materialization_verification =
+      verify_runtime_executable_descriptor_materialization(descriptor);
+  OPENVINO_ASSERT(
+      materialization_verification.valid(),
+      "GFX: compiler produced invalid runtime descriptor materialization: ",
+      join_diagnostics(materialization_verification.diagnostics));
   return descriptor;
 }
 

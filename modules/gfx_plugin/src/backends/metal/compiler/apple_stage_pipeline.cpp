@@ -10,7 +10,6 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
-#include "mlir/gfx_backend_custom_kernel_adapter.hpp"
 #include "backends/metal/common/mpsrt/gfx_mpsrt_program.hpp"
 
 namespace ov {
@@ -62,9 +61,6 @@ bool finalize_apple_program_stage_desc(GfxMpsrtStageDesc& stage) {
                 break;
             case GfxKernelBackendDomain::AppleMsl:
                 stage.domain = GfxStageBackendDomain::AppleMsl;
-                break;
-            case GfxKernelBackendDomain::OpenCl:
-                stage.domain = GfxStageBackendDomain::OpenCl;
                 break;
             case GfxKernelBackendDomain::Unknown:
             default:
@@ -272,39 +268,6 @@ bool apply_apple_stage_tensor_desc_overrides(GfxMpsrtModuleStagePlan& stage_plan
             detail::gfx_mpsrt_default_semantic_output_roles(stage_plan.outputs.size());
     }
     return finalize_mpsrt_module_stage_plan(stage_plan);
-}
-
-GfxAppleStagePipelineResult run_opencl_manifest_only_stage_pipeline(
-    mlir::ModuleOp module,
-    const GfxAppleStagePipelineOptions& options) {
-    GfxAppleStagePipelineResult result{};
-    if (!module || options.stage_type.empty() ||
-        options.plan.placement.domain != GfxStageBackendDomain::OpenCl) {
-        return result;
-    }
-
-    auto binding_plan = make_backend_custom_kernel_binding_plan(
-        GfxKernelBackendDomain::OpenCl, options.stage_type,
-        options.kernel_entry_point);
-    if (!binding_plan.valid ||
-        !annotate_backend_custom_kernel_module_with_binding_plan(module,
-                                                                 binding_plan)) {
-        return result;
-    }
-
-    result.valid = true;
-    result.typed_program_materialized = false;
-    result.stage_plan.valid = true;
-    result.stage_plan.stage.domain = GfxStageBackendDomain::OpenCl;
-    result.stage_plan.stage.input_storage =
-        gfx_mpsrt_storage_from_stage_storage(options.plan.placement.storage);
-    result.stage_plan.stage.output_storage = result.stage_plan.stage.input_storage;
-    result.stage_plan.stage.layout =
-        gfx_mpsrt_stage_layout_for_storage(result.stage_plan.stage.output_storage);
-    result.stage_plan.stage.stage_manifest = std::move(binding_plan.stage_manifest);
-    result.stage_plan.stage.kernel_name =
-        result.stage_plan.stage.stage_manifest.custom_kernel.entry_point;
-    return result;
 }
 
 GfxAppleProgramPipelineResult materialize_apple_mps_vendor_program(
@@ -760,10 +723,10 @@ GfxAppleStagePipelineResult run_gfx_apple_stage_pipeline(
     if (!module || options.stage_type.empty()) {
         return result;
     }
-    if (options.plan.placement.domain == GfxStageBackendDomain::OpenCl) {
-        return run_opencl_manifest_only_stage_pipeline(module, options);
+    if (options.plan.placement.domain != GfxStageBackendDomain::AppleMps &&
+        options.plan.placement.domain != GfxStageBackendDomain::AppleMsl) {
+        return result;
     }
-
     mlir::PassManager pm(module.getContext());
     pm.addPass(createGfxAppleCanonicalizePass());
     pm.addPass(mlir::createCSEPass());

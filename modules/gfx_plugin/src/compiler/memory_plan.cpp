@@ -5,10 +5,17 @@
 #include "compiler/memory_plan.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <iomanip>
+#include <optional>
 #include <sstream>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
+
+#include "openvino/op/constant.hpp"
+#include "openvino/op/parameter.hpp"
+#include "openvino/op/result.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -46,12 +53,304 @@ std::string make_region_id(size_t stage_id, std::string_view role, size_t index)
   return os.str();
 }
 
+std::string make_source_region_id(std::string_view prefix, const ov::Node &node,
+                                  size_t output_idx) {
+  std::ostringstream material;
+  material << node.get_friendly_name() << "#" << node.get_type_name() << "#"
+           << output_idx;
+  std::ostringstream os;
+  os << prefix << "_" << hex64(stable_hash64(material.str())) << ".output_"
+     << output_idx;
+  return os.str();
+}
+
 std::string make_logical_tensor_name(const PlannedOperation &op,
                                      std::string_view role, size_t index) {
   std::ostringstream os;
   os << op.node_name << "." << role << index;
   return os.str();
 }
+
+std::string make_source_logical_tensor_name(const ov::Node &node,
+                                            size_t output_idx) {
+  std::ostringstream os;
+  os << node.get_friendly_name() << ".output" << output_idx;
+  return os.str();
+}
+
+struct OutputPortKey {
+  const ov::Node *node = nullptr;
+  size_t output_idx = 0;
+
+  bool operator==(const OutputPortKey &other) const noexcept {
+    return node == other.node && output_idx == other.output_idx;
+  }
+};
+
+struct OutputPortKeyHash {
+  size_t operator()(const OutputPortKey &key) const noexcept {
+    const auto pointer_hash =
+        static_cast<size_t>(reinterpret_cast<std::uintptr_t>(key.node) >> 4);
+    return pointer_hash ^ (key.output_idx + 0x9e3779b97f4a7c15ull +
+                           (pointer_hash << 6) + (pointer_hash >> 2));
+  }
+};
+
+struct PlannedOutputRef {
+  size_t stage_id = 0;
+  size_t output_idx = 0;
+};
+
+struct SourceRegionSummary {
+  MemoryRegionKind kind = MemoryRegionKind::ExternalTensor;
+  std::string region_id;
+  std::string logical_tensor_name;
+  std::string element_type;
+  std::string partial_shape;
+  std::string layout = "logical";
+  size_t first_stage = std::numeric_limits<size_t>::max();
+  size_t last_stage = 0;
+};
+
+class LoweringPlanMemoryGraph final {
+public:
+  explicit LoweringPlanMemoryGraph(const LoweringPlan &plan) : m_plan(plan) {
+    index_planned_outputs();
+    index_consumers();
+  }
+
+  std::string input_region_id(size_t stage_id, size_t input_idx) const {
+    if (auto producer = planned_input_producer(stage_id, input_idx)) {
+      return memory_region_id_for_stage_output(producer->stage_id,
+                                               producer->output_idx);
+    }
+    if (const auto key = input_source_key(stage_id, input_idx); key.node) {
+      return source_region_id(key);
+    }
+    return make_region_id(stage_id, "input", input_idx);
+  }
+
+  std::string output_region_id(size_t stage_id, size_t output_idx) const {
+    return memory_region_id_for_stage_output(stage_id, output_idx);
+  }
+
+  std::vector<SourceRegionSummary> source_regions() const {
+    std::unordered_map<OutputPortKey, SourceRegionSummary, OutputPortKeyHash>
+        summaries;
+    for (size_t stage_id = 0; stage_id < m_plan.operations.size(); ++stage_id) {
+      const auto &op = m_plan.operations[stage_id];
+      for (size_t input_idx = 0; input_idx < op.input_element_types.size();
+           ++input_idx) {
+        if (planned_input_producer(stage_id, input_idx)) {
+          continue;
+        }
+        const auto key = input_source_key(stage_id, input_idx);
+        if (!key.node) {
+          SourceRegionSummary summary;
+          summary.kind = MemoryRegionKind::ExternalTensor;
+          summary.region_id = make_region_id(stage_id, "input", input_idx);
+          summary.logical_tensor_name =
+              make_logical_tensor_name(op, "input", input_idx);
+          summary.element_type = op.input_element_types[input_idx];
+          summary.partial_shape = input_idx < op.input_shapes.size()
+                                      ? op.input_shapes[input_idx]
+                                      : std::string{"?"};
+          summary.layout =
+              std::string(tensor_layout_kind_to_string(op.layout.kind));
+          summary.first_stage = stage_id;
+          summary.last_stage = stage_id;
+          summaries[{nullptr, summaries.size()}] = std::move(summary);
+          continue;
+        }
+
+        auto &summary = summaries[key];
+        if (summary.region_id.empty()) {
+          summary.kind = source_region_kind(*key.node);
+          summary.region_id = source_region_id(key);
+          summary.logical_tensor_name =
+              make_source_logical_tensor_name(*key.node, key.output_idx);
+          summary.element_type = op.input_element_types[input_idx];
+          summary.partial_shape = input_idx < op.input_shapes.size()
+                                      ? op.input_shapes[input_idx]
+                                      : std::string{"?"};
+          summary.layout =
+              std::string(tensor_layout_kind_to_string(op.layout.kind));
+        }
+        summary.first_stage = std::min(summary.first_stage, stage_id);
+        summary.last_stage = std::max(summary.last_stage, stage_id);
+      }
+    }
+
+    std::vector<SourceRegionSummary> result;
+    result.reserve(summaries.size());
+    for (auto &entry : summaries) {
+      if (entry.second.first_stage == std::numeric_limits<size_t>::max()) {
+        entry.second.first_stage = 0;
+      }
+      result.push_back(std::move(entry.second));
+    }
+    std::sort(result.begin(), result.end(),
+              [](const SourceRegionSummary &lhs,
+                 const SourceRegionSummary &rhs) {
+                return lhs.region_id < rhs.region_id;
+              });
+    return result;
+  }
+
+  LifetimeInterval planned_output_lifetime(size_t stage_id,
+                                           size_t output_idx) const {
+    const size_t final_stage =
+        m_plan.operations.empty() ? 0 : m_plan.operations.size() - 1;
+    size_t last_stage = stage_id;
+    const auto key = planned_output_key(stage_id, output_idx);
+    if (auto it = m_consumer_stages.find(key); it != m_consumer_stages.end()) {
+      for (const auto consumer_stage : it->second) {
+        last_stage = std::max(last_stage, consumer_stage);
+      }
+    }
+    if (planned_output_escapes_to_model_boundary(stage_id, output_idx)) {
+      last_stage = std::max(last_stage, final_stage);
+    }
+    return {output_region_kind(stage_id) == MemoryRegionKind::TransientTensor
+                ? stage_id
+                : 0,
+            last_stage};
+  }
+
+  MemoryRegionKind output_region_kind(size_t stage_id) const {
+    if (stage_id >= m_plan.operations.size()) {
+      return MemoryRegionKind::TransientTensor;
+    }
+    const auto &op = m_plan.operations[stage_id];
+    if (ov::as_type_ptr<const ov::op::v0::Parameter>(op.source_node)) {
+      return MemoryRegionKind::ExternalTensor;
+    }
+    if (ov::as_type_ptr<const ov::op::v0::Constant>(op.source_node)) {
+      return MemoryRegionKind::ImmutableTensor;
+    }
+    return MemoryRegionKind::TransientTensor;
+  }
+
+private:
+  OutputPortKey planned_output_key(size_t stage_id, size_t output_idx) const {
+    if (stage_id >= m_plan.operations.size()) {
+      return {};
+    }
+    const auto &op = m_plan.operations[stage_id];
+    if (!op.source_node || output_idx >= op.source_node->get_output_size()) {
+      return {};
+    }
+    return {op.source_node.get(), output_idx};
+  }
+
+  OutputPortKey input_source_key(size_t stage_id, size_t input_idx) const {
+    if (stage_id >= m_plan.operations.size()) {
+      return {};
+    }
+    const auto &op = m_plan.operations[stage_id];
+    if (!op.source_node || input_idx >= op.source_node->get_input_size()) {
+      return {};
+    }
+    const auto source = op.source_node->input_value(input_idx);
+    return {source.get_node(), source.get_index()};
+  }
+
+  std::optional<PlannedOutputRef> planned_input_producer(
+      size_t stage_id, size_t input_idx) const {
+    const auto key = input_source_key(stage_id, input_idx);
+    if (!key.node) {
+      return std::nullopt;
+    }
+    const auto it = m_planned_outputs.find(key);
+    if (it == m_planned_outputs.end()) {
+      return std::nullopt;
+    }
+    return it->second;
+  }
+
+  std::string source_region_id(const OutputPortKey &key) const {
+    if (!key.node) {
+      return {};
+    }
+    const auto kind = source_region_kind(*key.node);
+    const auto prefix =
+        kind == MemoryRegionKind::ImmutableTensor ? "model_const" : "external";
+    return make_source_region_id(prefix, *key.node, key.output_idx);
+  }
+
+  MemoryRegionKind source_region_kind(const ov::Node &node) const {
+    if (dynamic_cast<const ov::op::v0::Constant *>(&node)) {
+      return MemoryRegionKind::ImmutableTensor;
+    }
+    return MemoryRegionKind::ExternalTensor;
+  }
+
+  void index_planned_outputs() {
+    for (size_t stage_id = 0; stage_id < m_plan.operations.size(); ++stage_id) {
+      const auto &op = m_plan.operations[stage_id];
+      if (!op.source_node) {
+        continue;
+      }
+      for (size_t output_idx = 0; output_idx < op.source_node->get_output_size();
+           ++output_idx) {
+        m_planned_outputs[{op.source_node.get(), output_idx}] =
+            PlannedOutputRef{stage_id, output_idx};
+      }
+    }
+  }
+
+  void index_consumers() {
+    for (size_t stage_id = 0; stage_id < m_plan.operations.size(); ++stage_id) {
+      const auto &op = m_plan.operations[stage_id];
+      if (!op.source_node) {
+        continue;
+      }
+      for (size_t input_idx = 0; input_idx < op.source_node->get_input_size();
+           ++input_idx) {
+        const auto key = input_source_key(stage_id, input_idx);
+        if (m_planned_outputs.find(key) != m_planned_outputs.end()) {
+          m_consumer_stages[key].push_back(stage_id);
+        }
+      }
+    }
+  }
+
+  bool planned_output_escapes_to_model_boundary(size_t stage_id,
+                                                size_t output_idx) const {
+    if (stage_id >= m_plan.operations.size()) {
+      return false;
+    }
+    const auto &op = m_plan.operations[stage_id];
+    if (!op.source_node || output_idx >= op.source_node->get_output_size()) {
+      return false;
+    }
+    for (const auto &target :
+         op.source_node->output(output_idx).get_target_inputs()) {
+      const auto *consumer = target.get_node();
+      if (!consumer) {
+        continue;
+      }
+      if (dynamic_cast<const ov::op::v0::Result *>(consumer)) {
+        return true;
+      }
+      const auto consumer_it =
+          std::find_if(m_plan.operations.begin(), m_plan.operations.end(),
+                       [&](const PlannedOperation &planned_op) {
+                         return planned_op.source_node.get() == consumer;
+                       });
+      if (consumer_it == m_plan.operations.end()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  const LoweringPlan &m_plan;
+  std::unordered_map<OutputPortKey, PlannedOutputRef, OutputPortKeyHash>
+      m_planned_outputs;
+  std::unordered_map<OutputPortKey, std::vector<size_t>, OutputPortKeyHash>
+      m_consumer_stages;
+};
 
 void add_region_id_once(std::vector<std::string> &ids, const std::string &id) {
   if (std::find(ids.begin(), ids.end(), id) == ids.end()) {
@@ -92,6 +391,63 @@ void require_nonempty(MemoryPlanVerificationResult &result,
 bool region_id_exists(const std::unordered_set<std::string> &ids,
                       const std::string &id) {
   return ids.find(id) != ids.end();
+}
+
+const MemoryRegion *find_region_by_id(const std::vector<MemoryRegion> &regions,
+                                      const std::string &region_id) {
+  const auto it =
+      std::find_if(regions.begin(), regions.end(),
+                   [&](const MemoryRegion &region) {
+                     return region.region_id == region_id;
+                   });
+  return it == regions.end() ? nullptr : &*it;
+}
+
+bool alias_regions_compatible(const MemoryRegion &lhs,
+                              const MemoryRegion &rhs) {
+  return lhs.kind == MemoryRegionKind::TransientTensor &&
+         rhs.kind == MemoryRegionKind::TransientTensor &&
+         lhs.storage_kind == rhs.storage_kind &&
+         lhs.element_type == rhs.element_type && lhs.layout == rhs.layout &&
+         lhs.partial_shape == rhs.partial_shape &&
+         !lhs.lifetime.overlaps(rhs.lifetime);
+}
+
+void assign_transient_alias_groups(MemoryPlan &plan) {
+  size_t next_group_id = 0;
+  for (auto &region : plan.regions) {
+    if (region.kind != MemoryRegionKind::TransientTensor) {
+      region.alias_group = region.region_id;
+      attach_alias_group(plan, region.alias_group, region.region_id,
+                         /*output_aliasing=*/false);
+      continue;
+    }
+
+    AliasGroup *compatible_group = nullptr;
+    for (auto &group : plan.alias_groups) {
+      bool compatible = true;
+      for (const auto &region_id : group.region_ids) {
+        const auto *other = find_region_by_id(plan.regions, region_id);
+        if (!other || !alias_regions_compatible(region, *other)) {
+          compatible = false;
+          break;
+        }
+      }
+      if (compatible) {
+        compatible_group = &group;
+        break;
+      }
+    }
+
+    if (!compatible_group) {
+      AliasGroup group;
+      group.group_id = "transient_alias_" + std::to_string(next_group_id++);
+      plan.alias_groups.push_back(std::move(group));
+      compatible_group = &plan.alias_groups.back();
+    }
+    region.alias_group = compatible_group->group_id;
+    add_region_id_once(compatible_group->region_ids, region.region_id);
+  }
 }
 
 } // namespace
@@ -160,6 +516,25 @@ MemoryPlanVerificationResult MemoryPlan::verify() const {
                                      " references unknown region " + region_id);
       }
     }
+    if (!group.output_aliasing) {
+      for (size_t i = 0; i < group.region_ids.size(); ++i) {
+        const auto *lhs = find_region_by_id(regions, group.region_ids[i]);
+        if (!lhs || lhs->kind != MemoryRegionKind::TransientTensor) {
+          continue;
+        }
+        for (size_t j = i + 1; j < group.region_ids.size(); ++j) {
+          const auto *rhs = find_region_by_id(regions, group.region_ids[j]);
+          if (!rhs || rhs->kind != MemoryRegionKind::TransientTensor) {
+            continue;
+          }
+          if (lhs->lifetime.overlaps(rhs->lifetime)) {
+            result.diagnostics.push_back(
+                "alias group " + group.group_id +
+                " contains overlapping transient lifetimes");
+          }
+        }
+      }
+    }
   }
 
   std::unordered_set<std::string> arena_ids;
@@ -196,11 +571,17 @@ MemoryPlanVerificationResult MemoryPlan::verify() const {
 
 bool MemoryPlan::valid() const { return verify().valid(); }
 
+const MemoryRegion *MemoryPlan::find_region(std::string_view region_id) const {
+  const auto it =
+      std::find_if(regions.begin(), regions.end(),
+                   [&](const MemoryRegion &region) {
+                     return region.region_id == region_id;
+                   });
+  return it == regions.end() ? nullptr : &*it;
+}
+
 bool MemoryPlan::has_region(std::string_view region_id) const {
-  return std::any_of(regions.begin(), regions.end(),
-                     [&](const MemoryRegion &region) {
-                       return region.region_id == region_id;
-                     });
+  return find_region(region_id) != nullptr;
 }
 
 bool MemoryPlan::has_alias_group(std::string_view group_id) const {
@@ -213,19 +594,41 @@ bool MemoryPlan::has_alias_group(std::string_view group_id) const {
 MemoryPlan MemoryPlanBuilder::build(const LoweringPlan &plan) const {
   MemoryPlan memory_plan;
   memory_plan.schema_version = kMemoryPlanSchemaVersion;
+  const LoweringPlanMemoryGraph graph(plan);
 
   TransientArena transient_arena;
   transient_arena.arena_id = "transient_device_buffer_arena";
   transient_arena.storage_kind = "device_buffer";
 
-  const size_t final_stage =
-      plan.operations.empty() ? 0 : plan.operations.size() - 1;
+  for (const auto &source_region : graph.source_regions()) {
+    MemoryRegion region;
+    region.region_id = source_region.region_id;
+    region.logical_tensor_name = source_region.logical_tensor_name;
+    region.kind = source_region.kind;
+    region.element_type = source_region.element_type;
+    region.partial_shape = source_region.partial_shape;
+    region.layout = source_region.layout;
+    region.storage_kind = "device_buffer";
+    region.alias_group = region.region_id;
+    region.lifetime = {source_region.first_stage, source_region.last_stage};
+    region.external_binding = region.kind == MemoryRegionKind::ExternalTensor;
+    attach_alias_group(memory_plan, region.alias_group, region.region_id,
+                       /*output_aliasing=*/false);
+    memory_plan.regions.push_back(std::move(region));
+  }
+
   for (size_t stage_id = 0; stage_id < plan.operations.size(); ++stage_id) {
     const auto &op = plan.operations[stage_id];
     for (size_t input_idx = 0; input_idx < op.input_element_types.size();
          ++input_idx) {
+      const auto region_id = graph.input_region_id(stage_id, input_idx);
+      if (!region_id.empty() && memory_plan.has_region(region_id)) {
+        continue;
+      }
       MemoryRegion region;
-      region.region_id = make_region_id(stage_id, "input", input_idx);
+      region.region_id =
+          region_id.empty() ? make_region_id(stage_id, "input", input_idx)
+                            : region_id;
       region.logical_tensor_name =
           make_logical_tensor_name(op, "input", input_idx);
       region.kind = MemoryRegionKind::ExternalTensor;
@@ -236,33 +639,37 @@ MemoryPlan MemoryPlanBuilder::build(const LoweringPlan &plan) const {
       region.layout = std::string(tensor_layout_kind_to_string(op.layout.kind));
       region.storage_kind = "device_buffer";
       region.alias_group = region.region_id;
-      region.lifetime = {0, stage_id};
+      region.lifetime = {stage_id, stage_id};
       region.external_binding = true;
       attach_alias_group(memory_plan, region.alias_group, region.region_id,
                          /*output_aliasing=*/false);
       memory_plan.regions.push_back(std::move(region));
     }
 
-    const std::string output_alias_group = "stage_" + std::to_string(stage_id);
     for (size_t output_idx = 0; output_idx < op.output_element_types.size();
          ++output_idx) {
       MemoryRegion region;
-      region.region_id = make_region_id(stage_id, "output", output_idx);
+      region.region_id = graph.output_region_id(stage_id, output_idx);
       region.logical_tensor_name =
           make_logical_tensor_name(op, "output", output_idx);
-      region.kind = MemoryRegionKind::TransientTensor;
+      region.kind = graph.output_region_kind(stage_id);
       region.element_type = op.output_element_types[output_idx];
       region.partial_shape = output_idx < op.output_shapes.size()
                                   ? op.output_shapes[output_idx]
                                   : std::string{"?"};
       region.layout = std::string(tensor_layout_kind_to_string(op.layout.kind));
       region.storage_kind = "device_buffer";
-      region.alias_group = output_alias_group;
-      region.lifetime = {stage_id, final_stage};
-      attach_alias_group(memory_plan, output_alias_group, region.region_id,
-                         /*output_aliasing=*/false);
-      transient_arena.region_ids.push_back(region.region_id);
+      region.lifetime = graph.planned_output_lifetime(stage_id, output_idx);
+      region.external_binding = region.kind == MemoryRegionKind::ExternalTensor;
       memory_plan.regions.push_back(std::move(region));
+    }
+  }
+
+  assign_transient_alias_groups(memory_plan);
+
+  for (const auto &region : memory_plan.regions) {
+    if (region.kind == MemoryRegionKind::TransientTensor) {
+      transient_arena.region_ids.push_back(region.region_id);
     }
   }
 
@@ -270,6 +677,17 @@ MemoryPlan MemoryPlanBuilder::build(const LoweringPlan &plan) const {
     memory_plan.transient_arenas.push_back(std::move(transient_arena));
   }
   return memory_plan;
+}
+
+std::string memory_region_id_for_stage_input(const LoweringPlan &plan,
+                                             size_t stage_id,
+                                             size_t input_idx) {
+  return LoweringPlanMemoryGraph(plan).input_region_id(stage_id, input_idx);
+}
+
+std::string memory_region_id_for_stage_output(size_t stage_id,
+                                              size_t output_idx) {
+  return make_region_id(stage_id, "output", output_idx);
 }
 
 std::string make_memory_plan_fingerprint(const MemoryPlan &plan) {

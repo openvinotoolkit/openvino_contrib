@@ -324,19 +324,6 @@ public:
         q_shape, k_shape, v_shape, mask_shape, has_mask, scale, k_gqa, k_heads,
         v_gqa, v_heads));
   }
-
-  MlirStageBackendReductionPlan make_reduction_plan(
-      const std::shared_ptr<const ov::Node> &node) const override {
-    const auto kind = reduction_kind_from_node(node);
-    if (!kind) {
-      return {};
-    }
-    MlirStageBackendReductionPlan plan;
-    plan.valid = true;
-    plan.op_code = reduction_kernel_op_code(*kind);
-    plan.entry_point = std::string(reduction_msl_kernel_entry_point(*kind));
-    return plan;
-  }
 };
 
 } // namespace

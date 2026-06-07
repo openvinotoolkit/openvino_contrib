@@ -59,12 +59,6 @@ struct MlirStageBackendRuntimeParamsPlan {
   KernelRuntimeBindingState runtime_binding;
 };
 
-struct MlirStageBackendReductionPlan {
-  bool valid = false;
-  uint32_t op_code = 0;
-  std::string entry_point;
-};
-
 struct MlirStageBackendHooks {
   virtual ~MlirStageBackendHooks() = default;
 
@@ -190,11 +184,6 @@ struct MlirStageBackendHooks {
       const ov::Shape & /*v_shape*/, const ov::Shape & /*mask_shape*/,
       bool /*has_mask*/, float /*scale*/, bool /*k_gqa*/, size_t /*k_heads*/,
       bool /*v_gqa*/, size_t /*v_heads*/) const {
-    return {};
-  }
-
-  virtual MlirStageBackendReductionPlan make_reduction_plan(
-      const std::shared_ptr<const ov::Node> & /*node*/) const {
     return {};
   }
 };

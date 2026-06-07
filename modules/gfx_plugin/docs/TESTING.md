@@ -95,6 +95,9 @@ Add or update tests when changing:
   memory plans, cache envelopes, runtime-stage materialization,
   runtime-session binding tables, fused-output lifetime plans, or prepared
   executable binding behavior
+- compiled-model cache public-property boundaries, `export_model()` /
+  `import_model()` failure behavior, cache-envelope wire round-trips, or
+  stable-key store/load behavior
 - compiler-owned tensor-layout classification
 - MLIR builders, passes, source plans, or runtime-value planning
 - backend stage-placement policy, stage fusion, precision, or submit policy

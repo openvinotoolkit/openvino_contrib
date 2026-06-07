@@ -115,6 +115,7 @@ Inspect and extend:
 - `tests/unit/infer_submission_test.cpp`
 - `tests/unit/infer_pipeline_reuse_test.cpp`
 - `tests/unit/gpu_const_cache_test.cpp`
+- `tests/unit/gfx_cache_public_contract_test.cpp`
 - `tests/unit/kernel_arg_reuse_test.cpp`
 - `tests/unit/gpu_backend_base_test.cpp`
 - focused runtime micro tests such as `tests/unit/gfx_add_runtime_test.cpp`,

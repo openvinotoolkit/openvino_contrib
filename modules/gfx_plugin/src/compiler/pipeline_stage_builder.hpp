@@ -122,8 +122,9 @@ FusionConfig make_pipeline_stage_fusion_config(
     const FusionCapabilities &fusion_capabilities, bool enable_fusion,
     bool debug_dump_ir);
 
-std::shared_ptr<const PipelineStageRuntimePlan>
-build_pipeline_stage_runtime_plan(const PipelineStageBuildRequest &request);
+RuntimeExecutableDescriptor
+build_pipeline_stage_runtime_descriptor(
+    const PipelineStageBuildRequest &request);
 
 } // namespace compiler
 } // namespace gfx_plugin

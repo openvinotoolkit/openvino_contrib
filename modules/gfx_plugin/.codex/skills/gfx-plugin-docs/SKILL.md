@@ -55,6 +55,9 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
      stage-placement policy, stage compiler policy, fused-output lifetime plan,
      runtime pipeline-stage materializer, runtime session, or runtime
      descriptor behavior
+   - public compiled-model cache boundaries, including `ov::cache_dir`,
+     `export_model()`, `import_model()`, cache-envelope wire/store/load
+     contracts, and whether the envelope is public or internal-only
    - descriptor-owned tensor binding contracts, generated source
      `RuntimeParams` ownership, descriptor-owned `ConstTensor`
      materialization, or fail-closed source-node boundary policy

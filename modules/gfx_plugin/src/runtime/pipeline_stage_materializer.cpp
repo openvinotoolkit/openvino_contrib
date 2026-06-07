@@ -430,18 +430,19 @@ std::vector<PipelineStageDesc> materialize_pipeline_stage_descriptors(
                   "GFX: pipeline materializer requires backend stage factory");
   OPENVINO_ASSERT(request.runtime_descriptor,
                   "GFX: pipeline materializer requires runtime descriptor");
-  OPENVINO_ASSERT(request.runtime_descriptor->pipeline_plan,
+  OPENVINO_ASSERT(request.runtime_descriptor->materialization_finalized,
                   "GFX: pipeline materializer requires descriptor-owned "
-                  "compiler materialization plan");
-  const auto &runtime_plan = *request.runtime_descriptor->pipeline_plan;
+                  "compiler materialization contract");
+  const auto &materialization_stages =
+      request.runtime_descriptor->materialization_stages;
 
   PipelineStageMaterializer materializer(*request.stage_factory,
                                          *request.runtime_descriptor,
                                          request.runtime_options);
 
   std::vector<PipelineStageDesc> pipeline;
-  pipeline.reserve(runtime_plan.stage_plans.size());
-  for (const auto &stage_plan : runtime_plan.stage_plans) {
+  pipeline.reserve(materialization_stages.size());
+  for (const auto &stage_plan : materialization_stages) {
     PipelineStageDesc stage_desc;
     apply_pipeline_stage_io_plan(stage_desc, stage_plan.io_plan);
     stage_desc.runtime_descriptor =

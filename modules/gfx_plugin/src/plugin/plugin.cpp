@@ -111,6 +111,11 @@ Plugin::compile_model_impl(const std::shared_ptr<const ov::Model> &model,
   for (const auto &kv : properties) {
     compile_properties[kv.first] = kv.second;
   }
+  if (!compiled_model_cache_roundtrip_supported() &&
+      compile_properties.count(ov::cache_dir.name()) != 0) {
+    throw_compiled_model_cache_roundtrip_unavailable(
+        "compile_model(cache_dir)");
+  }
   const auto resolved = resolve_backend_for_properties(
       compile_properties, /*log_fallback=*/true, "Plugin");
   auto compile_target = resolved.target;
@@ -252,6 +257,10 @@ void Plugin::set_property(const ov::AnyMap &properties) {
         OPENVINO_THROW("Unsupported device id");
       }
     } else if (kv.first == ov::cache_dir.name()) {
+      if (!compiled_model_cache_roundtrip_supported()) {
+        throw_compiled_model_cache_roundtrip_unavailable(
+            "set_property(cache_dir)");
+      }
       m_config[kv.first] = kv.second.as<std::string>();
     } else if (kv.first == kGfxBackendProperty) {
       ov::AnyMap tmp{{kGfxBackendProperty, kv.second}};
@@ -301,6 +310,9 @@ ov::Any Plugin::get_property(const std::string &name,
     return decltype(ov::internal::supported_properties)::value_type(
         gfx_internal_supported_properties());
   } else if (ov::internal::caching_properties == name) {
+    if (!compiled_model_cache_roundtrip_supported()) {
+      OPENVINO_THROW("Unsupported property: ", name);
+    }
     return decltype(ov::internal::caching_properties)::value_type(
         gfx_caching_properties());
   } else if (ov::internal::compiled_model_runtime_properties == name) {
@@ -342,6 +354,9 @@ ov::Any Plugin::get_property(const std::string &name,
   } else if (ov::enable_profiling == name) {
     return m_enable_profiling;
   } else if (ov::cache_dir == name) {
+    if (!compiled_model_cache_roundtrip_supported()) {
+      OPENVINO_THROW("Unsupported property: ", name);
+    }
     if (auto it = merged.find(ov::cache_dir.name()); it != merged.end()) {
       return it->second.as<std::string>();
     }
@@ -360,6 +375,9 @@ ov::Any Plugin::get_property(const std::string &name,
     return resolve_backend_name_from_properties(merged, /*log_fallback=*/false,
                                                 "Plugin");
   } else if (ov::internal::cache_header_alignment == name) {
+    if (!compiled_model_cache_roundtrip_supported()) {
+      OPENVINO_THROW("Unsupported property: ", name);
+    }
     // Align cache header to 64 bytes to match Template expectations and
     // CacheHeaderAlignmentTests.
     return decltype(ov::internal::cache_header_alignment)::value_type{64u};

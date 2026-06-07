@@ -138,10 +138,10 @@ CompiledModel::CompiledModel(
                                                     executable),
       "GFX: compiler executable bundle does not match runtime descriptor");
   OPENVINO_ASSERT(
-      compiler::runtime_executable_descriptor_pipeline_plan_valid(
+      compiler::runtime_executable_descriptor_materialization_valid(
           *runtime_descriptor),
       "GFX: compiler runtime descriptor is missing a consistent "
-      "materialization plan");
+      "materialization contract");
   m_runtime_descriptor = std::move(runtime_descriptor);
 
   // Preserve user properties; store inference_precision as ov::element::Type.
@@ -225,6 +225,10 @@ void CompiledModel::set_property(const ov::AnyMap &properties) {
                                         m_profiling_level_set, m_config)) {
       // handled
     } else if (kv.first == ov::cache_dir.name()) {
+      if (!compiled_model_cache_roundtrip_supported()) {
+        throw_compiled_model_cache_roundtrip_unavailable(
+            "compiled_model.set_property(cache_dir)");
+      }
       m_config[kv.first] = kv.second.as<std::string>();
     } else if (kv.first == kGfxEnableFusionProperty) {
       m_enable_fusion = parse_bool_property(kv.second, kv.first);
@@ -275,6 +279,9 @@ ov::Any CompiledModel::get_property(const std::string &name) const {
     return m_enable_profiling;
   }
   if (name == ov::cache_dir.name()) {
+    if (!compiled_model_cache_roundtrip_supported()) {
+      OPENVINO_THROW("Unsupported property: ", name);
+    }
     if (auto it = m_config.find(name); it != m_config.end()) {
       return it->second;
     }
@@ -343,18 +350,14 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
   OPENVINO_ASSERT(m_runtime_descriptor,
                   "GFX: compiled model is missing compiler-owned runtime "
                   "executable descriptor");
-  OPENVINO_ASSERT(m_runtime_descriptor->pipeline_plan,
-                  "GFX: compiled model runtime descriptor is missing "
-                  "compiler-owned materialization plan");
-  const auto &runtime_plan = *m_runtime_descriptor->pipeline_plan;
 
   GpuStageRuntimeOptions stage_runtime_options{};
   stage_runtime_options.diagnostic_f32_vendor_image =
       m_diagnostic_f32_vendor_image;
   stage_runtime_options.custom_kernel_dispatch_enabled =
-      runtime_plan.runtime_options.custom_kernel_dispatch_enabled;
+      m_runtime_descriptor->runtime_options.custom_kernel_dispatch_enabled;
   stage_runtime_options.custom_kernel_dispatch_profile =
-      runtime_plan.runtime_options.custom_kernel_dispatch_profile;
+      m_runtime_descriptor->runtime_options.custom_kernel_dispatch_profile;
 
   PipelineStageRuntimeMaterializationRequest materialization_request;
   materialization_request.stage_factory = backend_state;

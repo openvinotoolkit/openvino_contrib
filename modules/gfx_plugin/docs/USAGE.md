@@ -79,11 +79,13 @@ The plugin also exposes standard OpenVINO properties such as:
 - `ov::execution_devices`
 - `ov::hint::inference_precision`
 - `ov::enable_profiling`
-- `ov::cache_dir`
 
-`ov::cache_dir` participates in normal OpenVINO model caching behavior. The
-current GFX export path serializes the OpenVINO model, not a native backend
-pipeline cache.
+`ov::cache_dir` is not currently advertised by the plugin or compiled model.
+Requests that set `ov::cache_dir`, call `export_model()`, or call any
+`import_model()` overload fail through the compiled-model cache contract. The
+compiler owns an internal serialized `CacheEnvelope` for stable-key and
+artifact-identity validation, but that envelope is not a public OpenVINO cache
+format and does not import a backend executable bundle.
 
 ## Query And Compile
 
@@ -99,12 +101,12 @@ auto supported = core.query_model(model, "GFX", {
 
 There is no partial CPU fallback for unsupported stages.
 
-Internally the selected backend is compiled through an in-memory compiler
-service that builds a lowering plan, manifest, executable bundle, and runtime
-descriptor. That descriptor is not a public cache format and is not exported by
-`export_model()`. `export_model()` and `import_model()` are currently not
-implemented until the cache envelope has a persisted
-`CacheEnvelope`/`ExecutableBundle` format.
+Internally the selected backend is compiled through a compiler service that
+builds a lowering plan, manifest, executable bundle, cache envelope, and runtime
+descriptor. The cache envelope can be serialized and stored by stable key for
+contract validation, but neither the envelope nor the runtime descriptor is a
+public cache format. `export_model()` and `import_model()` are currently not
+implemented.
 
 The compiler registry contains the production backend compiler modules available
 in the configured build, while runtime state creation is checked through the

@@ -13,7 +13,9 @@
 #include "openvino/op/concat.hpp"
 #include "openvino/op/convolution.hpp"
 #include "openvino/op/group_conv.hpp"
+#include "openvino/op/interpolate.hpp"
 #include "openvino/op/matmul.hpp"
+#include "openvino/op/reshape.hpp"
 #include "openvino/op/slice.hpp"
 #include "openvino/op/strided_slice.hpp"
 #include "openvino/op/util/assign_base.hpp"
@@ -193,9 +195,47 @@ RuntimeShapeContract make_strided_slice_runtime_shape_contract(
   return contract;
 }
 
+int64_t interpolate_nearest_mode_code(
+    ov::op::util::InterpolateBase::NearestMode mode) {
+  using Base = ov::op::util::InterpolateBase;
+  switch (mode) {
+  case Base::NearestMode::FLOOR:
+  case Base::NearestMode::ROUND_PREFER_FLOOR:
+    return 1;
+  case Base::NearestMode::CEIL:
+  case Base::NearestMode::ROUND_PREFER_CEIL:
+    return 2;
+  case Base::NearestMode::SIMPLE:
+  default:
+    return 0;
+  }
+}
+
+RuntimeShapeContract make_interpolate_runtime_shape_contract(
+    const ov::op::util::InterpolateBase::InterpolateAttrs &attrs) {
+  using Base = ov::op::util::InterpolateBase;
+  const bool align_corners =
+      attrs.coordinate_transformation_mode ==
+      Base::CoordinateTransformMode::ALIGN_CORNERS;
+  const bool use_half_pixel =
+      attrs.coordinate_transformation_mode ==
+      Base::CoordinateTransformMode::HALF_PIXEL;
+
+  RuntimeShapeContract contract;
+  contract.rule = kRuntimeShapeRuleStaticOrDescriptor;
+  contract.i64_metadata = {align_corners ? 1 : 0, use_half_pixel ? 1 : 0,
+                           interpolate_nearest_mode_code(attrs.nearest_mode)};
+  return contract;
+}
+
 RuntimeShapeContract runtime_shape_contract_for_op(const PlannedOperation &op) {
   RuntimeShapeContract contract;
   contract.rule = runtime_shape_rule_for_op(op);
+
+  if (auto reshape = ov::as_type_ptr<const ov::op::v1::Reshape>(op.source_node)) {
+    contract.i64_metadata.push_back(reshape->get_special_zero() ? 1 : 0);
+    return contract;
+  }
 
   if (auto concat = ov::as_type_ptr<const ov::op::v0::Concat>(op.source_node)) {
     contract.i64_metadata.push_back(concat->get_axis());
@@ -234,6 +274,26 @@ RuntimeShapeContract runtime_shape_contract_for_op(const PlannedOperation &op) {
   if (auto slice =
           ov::as_type_ptr<const ov::op::v1::StridedSlice>(op.source_node)) {
     return make_strided_slice_runtime_shape_contract(*slice);
+  }
+
+  if (auto interpolate =
+          ov::as_type_ptr<const ov::op::v0::Interpolate>(op.source_node)) {
+    RuntimeShapeContract interpolate_contract;
+    interpolate_contract.rule = kRuntimeShapeRuleStaticOrDescriptor;
+    interpolate_contract.i64_metadata = {interpolate->get_attrs().align_corners ? 1 : 0,
+                                         interpolate->get_attrs().align_corners ? 0 : 1,
+                                         0};
+    return interpolate_contract;
+  }
+
+  if (auto interpolate =
+          ov::as_type_ptr<const ov::op::v4::Interpolate>(op.source_node)) {
+    return make_interpolate_runtime_shape_contract(interpolate->get_attrs());
+  }
+
+  if (auto interpolate =
+          ov::as_type_ptr<const ov::op::v11::Interpolate>(op.source_node)) {
+    return make_interpolate_runtime_shape_contract(interpolate->get_attrs());
   }
 
   return contract;
@@ -372,8 +432,50 @@ DispatchContract make_dispatch_contract(const StageRecord &stage) {
   return contract;
 }
 
-MemoryContract make_memory_contract(const StageRecord &stage) {
+std::string lifetime_class_for_region(const MemoryRegion &region,
+                                      TensorContractRole role) {
+  switch (region.kind) {
+  case MemoryRegionKind::ExternalTensor:
+    return "external";
+  case MemoryRegionKind::ImmutableTensor:
+    return "model_owned";
+  case MemoryRegionKind::TransientTensor:
+    return role == TensorContractRole::TensorInput ? "producer" : "transient";
+  }
+  return role == TensorContractRole::TensorInput ? "producer_or_external"
+                                                 : "stage_output";
+}
+
+void attach_memory_plan_region(TensorContract &contract,
+                               const MemoryPlan &memory_plan) {
+  const auto *region = memory_plan.find_region(contract.memory_region_id);
+  if (!region) {
+    return;
+  }
+  contract.storage_kind = region->storage_kind;
+  contract.layout = region->layout;
+  contract.lifetime_class = lifetime_class_for_region(*region, contract.role);
+}
+
+MemoryContract make_memory_contract(const StageRecord &stage,
+                                    const MemoryPlan &memory_plan) {
   MemoryContract contract;
+  contract.input_lifetime = "memory_plan";
+  contract.output_lifetime = "memory_plan";
+  if (!stage.outputs.empty()) {
+    if (const auto *region =
+            memory_plan.find_region(stage.outputs.front().memory_region_id)) {
+      contract.alias_group = region->alias_group;
+      return contract;
+    }
+  }
+  if (!stage.inputs.empty()) {
+    if (const auto *region =
+            memory_plan.find_region(stage.inputs.front().memory_region_id)) {
+      contract.alias_group = region->alias_group;
+      return contract;
+    }
+  }
   contract.alias_group = "stage_" + std::to_string(stage.stage_id);
   return contract;
 }
@@ -726,17 +828,19 @@ ManifestBundle ManifestBuilder::build(const LoweringPlan &plan) const {
     stage.outputs = make_output_contracts(op);
     for (size_t input_idx = 0; input_idx < stage.inputs.size(); ++input_idx) {
       stage.inputs[input_idx].memory_region_id =
-          "stage_" + std::to_string(i) + ".input_" + std::to_string(input_idx);
+          memory_region_id_for_stage_input(plan, i, input_idx);
+      attach_memory_plan_region(stage.inputs[input_idx], manifest.memory_plan);
     }
     for (size_t output_idx = 0; output_idx < stage.outputs.size(); ++output_idx) {
       stage.outputs[output_idx].memory_region_id =
-          "stage_" + std::to_string(i) + ".output_" + std::to_string(output_idx);
+          memory_region_id_for_stage_output(i, output_idx);
+      attach_memory_plan_region(stage.outputs[output_idx], manifest.memory_plan);
     }
     stage.runtime_params = make_runtime_param_contract(stage);
     stage.runtime_shape = runtime_shape_contract_for_op(op);
     stage.stateful_effect = std::move(stateful_effect);
     stage.dispatch = make_dispatch_contract(stage);
-    stage.memory = make_memory_contract(stage);
+    stage.memory = make_memory_contract(stage, manifest.memory_plan);
     stage.submission = make_submission_contract(op);
     stage.handwritten_exception = op.kernel_unit.exception_contract();
     stage.profitability_score = op.profitability_score;

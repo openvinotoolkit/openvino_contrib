@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "compiler/executable_bundle.hpp"
@@ -44,6 +45,13 @@ struct CacheEnvelopeVerificationResult {
   bool valid() const noexcept { return diagnostics.empty(); }
 };
 
+struct ArtifactCacheStoreResult {
+  bool success = false;
+  std::string cache_key;
+  std::string location;
+  std::vector<std::string> diagnostics;
+};
+
 struct CacheEnvelope {
   uint32_t schema_version = 1;
   CacheKey key;
@@ -53,6 +61,13 @@ struct CacheEnvelope {
 
   CacheEnvelopeVerificationResult verify(const ExecutableBundle &executable) const;
   bool valid(const ExecutableBundle &executable) const;
+};
+
+struct CacheEnvelopeWireResult {
+  CacheEnvelope envelope;
+  std::vector<std::string> diagnostics;
+
+  bool valid() const noexcept { return diagnostics.empty(); }
 };
 
 struct CacheEnvelopeBuildOptions {
@@ -71,11 +86,32 @@ public:
                       const CacheEnvelopeBuildOptions &options) const;
 };
 
+class ArtifactCacheStore final {
+public:
+  explicit ArtifactCacheStore(std::string cache_dir);
+
+  bool enabled() const noexcept { return !m_cache_dir.empty(); }
+  const std::string &cache_dir() const noexcept { return m_cache_dir; }
+
+  ArtifactCacheStoreResult store(const CacheEnvelope &envelope) const;
+  CacheEnvelopeWireResult load(const CacheKey &key) const;
+
+private:
+  std::string envelope_path(const CacheKey &key) const;
+
+  std::string m_cache_dir;
+};
+
 std::string make_model_cache_fingerprint(const ov::Model &model);
 std::string make_manifest_cache_hash(const ManifestBundle &manifest);
 std::string make_executable_compile_options_hash(const ExecutableBundle &executable);
 std::string make_backend_capabilities_fingerprint(const BackendCapabilities &capabilities);
 std::vector<std::string> make_kernel_unit_cache_versions(const ExecutableBundle &executable);
+
+std::string serialize_cache_envelope(const CacheEnvelope &envelope);
+CacheEnvelopeWireResult deserialize_cache_envelope(std::string_view wire);
+ExecutableBundle
+make_cache_envelope_executable_contract(const CacheEnvelope &envelope);
 
 } // namespace compiler
 } // namespace gfx_plugin

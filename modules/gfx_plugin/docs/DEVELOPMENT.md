@@ -96,8 +96,10 @@ Build-system notes:
 - `src/compiler/memory_plan.*` owns compiler memory regions, lifetimes, alias
   groups, and transient arenas; request code must consume the runtime descriptor
   instead of reconstructing this information.
-- `src/compiler/cache_envelope.*` builds in-memory cache metadata and
-  fingerprints. It is not a persisted native backend cache in the current code.
+- `src/compiler/cache_envelope.*` builds cache metadata and fingerprints,
+  serializes/deserializes the envelope wire format, and stores/loads envelopes
+  by stable key. It is not a public OpenVINO compiled-model cache or a persisted
+  native backend executable cache in the current code.
 - `src/runtime/runtime_session.*` owns request-local descriptor binding tables
   and prepared executable objects.
 - `src/runtime/backend_stage_factory.hpp` is the backend-facing runtime stage

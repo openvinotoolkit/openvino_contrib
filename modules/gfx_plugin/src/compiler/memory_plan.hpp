@@ -71,6 +71,7 @@ struct MemoryPlan {
 
   MemoryPlanVerificationResult verify() const;
   bool valid() const;
+  const MemoryRegion *find_region(std::string_view region_id) const;
   bool has_region(std::string_view region_id) const;
   bool has_alias_group(std::string_view group_id) const;
 };
@@ -81,6 +82,11 @@ public:
 };
 
 std::string_view memory_region_kind_to_string(MemoryRegionKind kind) noexcept;
+std::string memory_region_id_for_stage_input(const LoweringPlan &plan,
+                                             size_t stage_id,
+                                             size_t input_idx);
+std::string memory_region_id_for_stage_output(size_t stage_id,
+                                              size_t output_idx);
 std::string make_memory_plan_fingerprint(const MemoryPlan &plan);
 
 } // namespace compiler

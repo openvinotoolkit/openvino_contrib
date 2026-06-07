@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -68,6 +69,15 @@ struct RuntimeSelectPlan {
 struct RuntimeReducePlan {
   RuntimeValuePlan values;
   ov::Shape input_shape;
+  bool available = false;
+
+  bool valid() const { return available; }
+};
+
+struct RuntimeReduceDispatchPlan {
+  std::string entry_point;
+  uint32_t op_code = 0;
+  std::vector<int32_t> compiler_scalar_args;
   bool available = false;
 
   bool valid() const { return available; }
@@ -185,9 +195,10 @@ ov::Shape compute_binary_broadcast_shape(const ov::Shape &lhs,
 RuntimeValuePlan plan_shapeof_runtime_values(const RuntimeInputResolver &inputs,
                                              std::string_view stage_name);
 
-RuntimeValuePlan plan_broadcast_runtime_values(
-    const RuntimeInputResolver &inputs, const ov::Shape &input_shape,
-    std::string_view stage_name);
+RuntimeValuePlan
+plan_broadcast_runtime_values(const RuntimeInputResolver &inputs,
+                              const ov::Shape &input_shape,
+                              std::string_view stage_name);
 
 RuntimeValuePlan plan_range_runtime_values(const RuntimeInputResolver &inputs,
                                            std::string_view stage_name);
@@ -195,11 +206,17 @@ RuntimeValuePlan plan_range_runtime_values(const RuntimeInputResolver &inputs,
 RuntimeSelectPlan plan_select_runtime_values(const RuntimeInputResolver &inputs,
                                              std::string_view stage_name);
 
-RuntimeReducePlan
-plan_reduce_runtime_values(const RuntimeInputResolver &inputs,
-                           std::string_view reduce_type,
-                           const RuntimeReduceInfo &reduce_info,
-                           std::string_view stage_name);
+RuntimeReducePlan plan_reduce_runtime_values(
+    const RuntimeInputResolver &inputs, std::string_view reduce_type,
+    const RuntimeReduceInfo &reduce_info, std::string_view stage_name);
+
+std::optional<RuntimeReduceInfo> runtime_reduce_info_from_descriptor(
+    const RuntimeStageExecutableDescriptor &descriptor,
+    const ov::Shape &input_shape, std::string_view stage_name);
+
+RuntimeReduceDispatchPlan runtime_reduce_dispatch_from_descriptor(
+    const RuntimeStageExecutableDescriptor &descriptor,
+    std::string_view stage_name);
 
 RuntimeTilePlan
 plan_tile_runtime_values(const RuntimeInputResolver &inputs,
@@ -209,11 +226,9 @@ plan_tile_runtime_values(const RuntimeInputResolver &inputs,
 RuntimeConcatPlan plan_concat_runtime_values(const RuntimeInputResolver &inputs,
                                              std::string_view stage_name);
 
-RuntimeSlicePlan
-plan_slice_runtime_values(const RuntimeInputResolver &inputs,
-                          const std::vector<GpuTensor *> &outputs,
-                          bool requires_runtime_shape_args,
-                          std::string_view stage_name);
+RuntimeSlicePlan plan_slice_runtime_values(
+    const RuntimeInputResolver &inputs, const std::vector<GpuTensor *> &outputs,
+    bool requires_runtime_shape_args, std::string_view stage_name);
 
 DescriptorOwnedRuntimeParamMaterialization
 materialize_descriptor_owned_runtime_param_payload(
@@ -236,11 +251,13 @@ std::optional<std::vector<int64_t>> compute_reduce_i64_values(
     const ov::Shape &input_shape, const RuntimeReduceInfo &reduce_info,
     const ov::Shape &output_shape);
 
-bool bind_small_i64_const_stage_outputs(
-    GpuBufferManager *buffer_manager, const std::vector<GpuTensor *> &outputs,
-    std::vector<GpuTensor> &cache, GfxProfiler *profiler,
-    bool profiling_enabled, std::string_view stage_name,
-    std::string_view suffix);
+bool bind_small_i64_const_stage_outputs(GpuBufferManager *buffer_manager,
+                                        const std::vector<GpuTensor *> &outputs,
+                                        std::vector<GpuTensor> &cache,
+                                        GfxProfiler *profiler,
+                                        bool profiling_enabled,
+                                        std::string_view stage_name,
+                                        std::string_view suffix);
 
 } // namespace gfx_plugin
 } // namespace ov

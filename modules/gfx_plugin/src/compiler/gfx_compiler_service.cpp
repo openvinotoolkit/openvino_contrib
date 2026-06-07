@@ -10,10 +10,8 @@
 #include <vector>
 
 #include "openvino/core/except.hpp"
-#include "compiler/pipeline_stage_builder.hpp"
 #include "compiler/runtime_executable_descriptor_builder.hpp"
 #include "runtime/executable_descriptor.hpp"
-#include "runtime/gfx_logger.hpp"
 #include "transforms/pipeline.hpp"
 
 namespace ov {
@@ -34,7 +32,7 @@ bool GfxCompileResult::supported() const {
            runtime_descriptor &&
            runtime_executable_descriptor_valid(*runtime_descriptor,
                                                executable) &&
-           runtime_executable_descriptor_pipeline_plan_valid(
+           runtime_executable_descriptor_materialization_valid(
                *runtime_descriptor) &&
            cache_envelope.valid(executable);
 }
@@ -77,19 +75,21 @@ std::string GfxCompileResult::unsupported_message() const {
             contract_diagnostics.emplace_back("runtime descriptor is missing");
         } else {
             const auto descriptor_verification =
-                runtime_executable_descriptor_valid(*runtime_descriptor,
-                                                    executable);
-            if (!descriptor_verification) {
-                contract_diagnostics.emplace_back(
-                    "runtime descriptor does not match executable bundle");
+                verify_runtime_executable_descriptor(*runtime_descriptor,
+                                                     executable);
+            if (!descriptor_verification.valid()) {
+                contract_diagnostics.insert(
+                    contract_diagnostics.end(),
+                    descriptor_verification.diagnostics.begin(),
+                    descriptor_verification.diagnostics.end());
             }
-            const auto pipeline_plan_verification =
-                verify_runtime_executable_descriptor_pipeline_plan(
+            const auto materialization_verification =
+                verify_runtime_executable_descriptor_materialization(
                     *runtime_descriptor);
             contract_diagnostics.insert(
                 contract_diagnostics.end(),
-                pipeline_plan_verification.diagnostics.begin(),
-                pipeline_plan_verification.diagnostics.end());
+                materialization_verification.diagnostics.begin(),
+                materialization_verification.diagnostics.end());
         }
         if (!cache_envelope.valid(executable)) {
             contract_diagnostics.emplace_back(
@@ -149,26 +149,21 @@ GfxCompileResult GfxCompilerService::compile(const GfxCompileRequest& request) c
     result.unsupported = result.lowering_plan.unsupported;
     if (result.lowering_plan.executable() && result.manifest.valid() &&
         result.executable.valid()) {
+        RuntimeExecutableDescriptorBuildRequest descriptor_request;
+        descriptor_request.executable = &result.executable;
+        descriptor_request.transformed_model = result.transformed_model;
+        descriptor_request.backend_registry = m_registry;
+        descriptor_request.target = result.target;
+        descriptor_request.backend_name = request.backend_name.empty()
+                                              ? result.target.backend_id()
+                                              : request.backend_name;
+        descriptor_request.fusion_capabilities =
+            backend_module->capabilities().fusion();
+        descriptor_request.enable_fusion = request.enable_fusion;
+        descriptor_request.compile_trace = request.compile_trace;
         auto runtime_descriptor =
-            RuntimeExecutableDescriptorBuilder{}.build(result.executable);
-        PipelineStageBuildRequest stage_request;
-        stage_request.graph = make_pipeline_stage_graph_snapshot(
-            result.transformed_model,
-            make_pipeline_stage_fusion_config(
-                backend_module->capabilities().fusion(), request.enable_fusion,
-                gfx_log_debug_enabled()));
-        stage_request.runtime_descriptor = &runtime_descriptor;
-        stage_request.backend_registry = m_registry;
-        stage_request.target = result.target;
-        stage_request.backend_name = request.backend_name.empty()
-                                         ? result.target.backend_id()
-                                         : request.backend_name;
-        stage_request.enable_fusion = request.enable_fusion;
-        stage_request.compile_trace = request.compile_trace;
-        runtime_descriptor.pipeline_plan =
-            build_pipeline_stage_runtime_plan(stage_request);
-        attach_runtime_public_output_descriptors(
-            runtime_descriptor, *runtime_descriptor.pipeline_plan);
+            RuntimeExecutableDescriptorBuilder{}.build_finalized(
+                descriptor_request);
         result.runtime_descriptor =
             std::make_shared<const RuntimeExecutableDescriptor>(
                 std::move(runtime_descriptor));

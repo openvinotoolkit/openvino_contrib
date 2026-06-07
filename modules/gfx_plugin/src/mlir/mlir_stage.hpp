@@ -187,7 +187,8 @@ private:
   compile_time_broadcast_strides(size_t input_idx,
                                  const ov::Shape &out_shape) const;
   void apply_stage_optimization_attrs(mlir::ModuleOp module,
-                                      const GfxStageOptimizationPlan &plan);
+                                      const GfxStageOptimizationPlan &plan,
+                                      std::string_view kernel_entry_point);
   void apply_input_transform_attrs(mlir::ModuleOp module) const;
   void set_parallel_preference(mlir::ModuleOp module);
   void apply_fused_operations(mlir::ModuleOp module);
