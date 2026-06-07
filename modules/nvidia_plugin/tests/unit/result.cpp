@@ -5,7 +5,6 @@
 #include <cuda_runtime.h>
 #include <gtest/gtest.h>
 
-#include <cuda_dynamic_operation.hpp>
 #include <cuda_graph_context.hpp>
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
@@ -83,7 +82,6 @@ TEST_F(ResultTest, canExecuteSync) {
     CancellationToken token{};
     SimpleExecutionDelegator simpleExecutionDelegator{};
     ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
-    DynamicOperationCache dynamicOpCache{};
     InferenceRequestContext context{empty_tensor,
                                     empty_mapping,
                                     tensors,
@@ -91,8 +89,7 @@ TEST_F(ResultTest, canExecuteSync) {
                                     threadContext,
                                     token,
                                     simpleExecutionDelegator,
-                                    cudaGraphContext,
-                                    dynamicOpCache};
+                                    cudaGraphContext};
     auto& stream = context.getThreadContext().stream();
     stream.upload(inputs[0].as_mutable(), tensor->data(), size);
     operation->Execute(context, inputs, outputs, {});
@@ -106,7 +103,6 @@ TEST_F(ResultTest, canExecuteAsync) {
     CancellationToken token{};
     SimpleExecutionDelegator simpleExecutionDelegator{};
     ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
-    DynamicOperationCache dynamicOpCache{};
     InferenceRequestContext context{empty_tensor,
                                     empty_mapping,
                                     tensors,
@@ -114,8 +110,7 @@ TEST_F(ResultTest, canExecuteAsync) {
                                     threadContext,
                                     token,
                                     simpleExecutionDelegator,
-                                    cudaGraphContext,
-                                    dynamicOpCache};
+                                    cudaGraphContext};
     auto& stream = context.getThreadContext().stream();
     stream.upload(inputs[0].as_mutable(), tensor->data(), size);
     operation->Execute(context, inputs, outputs, {});
