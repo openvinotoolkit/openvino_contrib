@@ -6,7 +6,6 @@
 
 #include <chrono>
 #include <cuda_config.hpp>
-#include <cuda_dynamic_operation.hpp>
 #include <cuda_graph_context.hpp>
 #include <cuda_operation_registry.hpp>
 #include <cuda_simple_execution_delegator.hpp>
@@ -46,7 +45,6 @@ TEST_F(ConvertTest, DISABLED_benchmark) {
     ov::nvidia_gpu::CancellationToken token{};
     ov::nvidia_gpu::SimpleExecutionDelegator simpleExecutionDelegator{};
     ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
-    ov::nvidia_gpu::DynamicOperationCache dynamicOpCache{};
     ov::nvidia_gpu::InferenceRequestContext context{emptyTensor,
                                                     emptyMapping,
                                                     emptyTensor,
@@ -54,8 +52,7 @@ TEST_F(ConvertTest, DISABLED_benchmark) {
                                                     threadContext,
                                                     token,
                                                     simpleExecutionDelegator,
-                                                    cudaGraphContext,
-                                                    dynamicOpCache};
+                                                    cudaGraphContext};
 
     using Type_t = ov::element::Type_t;
     constexpr Type_t supported_types[] = {Type_t::boolean,

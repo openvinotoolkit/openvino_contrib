@@ -4,7 +4,6 @@
 
 #include <gtest/gtest.h>
 
-#include <cuda_dynamic_operation.hpp>
 #include <cuda_graph_context.hpp>
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
@@ -52,7 +51,6 @@ struct ConcatTest : testing::Test {
         CancellationToken token{};
         SimpleExecutionDelegator simpleExecutionDelegator{};
         ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
-        DynamicOperationCache dynamicOpCache{};
         InferenceRequestContext context{empty_tensor,
                                         empty_mapping,
                                         empty_tensor,
@@ -60,8 +58,7 @@ struct ConcatTest : testing::Test {
                                         threadContext,
                                         token,
                                         simpleExecutionDelegator,
-                                        cudaGraphContext,
-                                        dynamicOpCache};
+                                        cudaGraphContext};
         const auto& stream = threadContext.stream();
         std::vector<cdevptr_t> inputs{};
         std::vector<devptr_t> outputs{};
