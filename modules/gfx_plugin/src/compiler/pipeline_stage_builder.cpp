@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "compiler/pipeline_stage_builder.hpp"
+#include "compiler/pipeline_stage_runtime_descriptor_builder_detail.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -754,7 +754,7 @@ RuntimeTensorRefMap build_runtime_tensor_ref_map(
 
 void attach_runtime_public_output_refs(
     RuntimeDescriptorMaterializationDraft &draft,
-    const std::vector<PipelineStagePublicOutputSource> &public_outputs,
+    const std::vector<detail::PipelineStagePublicOutputSource> &public_outputs,
     const RuntimeTensorRefMap &refs,
     const RuntimeStageDescriptorMap &descriptors,
     const ::ov::gfx_plugin::RuntimeExecutableDescriptor *descriptor) {
@@ -814,7 +814,7 @@ void attach_runtime_public_output_refs(
 RuntimeDescriptorMaterializationDraft make_runtime_descriptor_materialization_draft(
     const std::vector<std::shared_ptr<ov::Node>> &ordered_ops,
     const std::vector<PipelineStageMaterializationPlan> &stage_plans,
-    const std::vector<PipelineStagePublicOutputSource> &public_outputs,
+    const std::vector<detail::PipelineStagePublicOutputSource> &public_outputs,
     const RuntimeStageDescriptorMap &descriptors,
     const StageCompilerPolicy &stage_compiler_policy,
     const std::unordered_map<const ov::Node *, size_t> &param_index,
@@ -984,6 +984,8 @@ std::optional<AttentionSequenceStagePlan> make_attention_sequence_stage_plan(
 }
 
 } // namespace
+
+namespace detail {
 
 PipelineStageGraphSnapshot
 make_pipeline_stage_graph_snapshot(const std::shared_ptr<const ov::Model> &model,
@@ -1523,6 +1525,8 @@ RuntimeExecutableDescriptor build_pipeline_stage_runtime_descriptor(
       std::move(result.materialization_draft.runtime_options);
   return runtime_descriptor;
 }
+
+} // namespace detail
 
 } // namespace compiler
 } // namespace gfx_plugin

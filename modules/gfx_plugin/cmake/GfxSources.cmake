@@ -66,6 +66,10 @@ set(GFX_COMPILER_COMMON_HEADERS
     ${_gfx_src_dir}/compiler/tensor_layout.hpp
 )
 
+set(GFX_COMPILER_COMMON_PRIVATE_HEADERS
+    ${_gfx_src_dir}/compiler/pipeline_stage_runtime_descriptor_builder_detail.hpp
+)
+
 set(GFX_PLUGIN_SOURCES
     ${_gfx_src_dir}/common/gfx_backend_utils.cpp
     ${_gfx_src_dir}/plugin/compiled_model.cpp
@@ -148,8 +152,10 @@ set(GFX_METAL_BACKEND_COMPILER_SOURCES
 
 set(GFX_OPENCL_BACKEND_COMPILER_HEADERS
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_backend_module.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_conv_kernel_unit.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_artifacts.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_operation_support.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_pool_kernel_unit.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_range_kernel_unit.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_softmax_kernel_unit.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_tile_kernel_unit.hpp
@@ -158,9 +164,11 @@ set(GFX_OPENCL_BACKEND_COMPILER_HEADERS
 
 set(GFX_OPENCL_BACKEND_COMPILER_SOURCES
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_backend_module.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_conv_kernel_unit.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_artifacts.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_registry.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_operation_support.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_pool_kernel_unit.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_range_kernel_unit.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_softmax_kernel_unit.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_tile_kernel_unit.cpp
@@ -265,6 +273,8 @@ set(GFX_OPENCL_KERNEL_ARTIFACT_HEADERS
     ${_gfx_src_dir}/kernel_ir/gfx_opencl_source_artifacts.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/activation_kernel.cl
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/activation_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/conv2d_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/conv2d_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_kernel.cl
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_logical_bool_kernel.cl
@@ -288,6 +298,7 @@ set(GFX_OPENCL_KERNEL_ARTIFACT_HEADERS
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_f32_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_f16_kernel.cl
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_f16_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f32_kernel.cl
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f32_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f16_kernel.cl
@@ -308,6 +319,7 @@ set(GFX_OPENCL_KERNEL_ARTIFACT_HEADERS
 set(GFX_OPENCL_KERNEL_ARTIFACT_SOURCES
     ${_gfx_src_dir}/kernel_ir/gfx_opencl_source_artifacts.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/activation_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/conv2d_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_logical_bool_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_compare_select_kernel.cpp
@@ -320,6 +332,7 @@ set(GFX_OPENCL_KERNEL_ARTIFACT_SOURCES
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_f32_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_f16_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f32_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f16_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/matmul_f32_kernel.cpp

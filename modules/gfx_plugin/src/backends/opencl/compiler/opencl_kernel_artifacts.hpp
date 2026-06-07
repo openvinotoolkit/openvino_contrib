@@ -17,11 +17,18 @@ namespace compiler {
 
 ::ov::gfx_plugin::KernelArtifactOrigin
 classify_opencl_kernel_artifact_origin(std::string_view kernel_unit_id) noexcept;
+bool is_explicit_opencl_source_artifact_unit(
+    std::string_view kernel_unit_id) noexcept;
 
 KernelArtifactPayloadResolver make_opencl_kernel_artifact_payload_resolver();
+KernelArtifactDescriptorResolver
+make_opencl_kernel_artifact_descriptor_resolver();
 
-void apply_opencl_runtime_param_artifact_contract(
+bool finalize_opencl_kernel_artifact_descriptor_contract(
     KernelArtifactDescriptor &descriptor,
+    const ::ov::gfx_plugin::GfxOpenClSourceArtifact &artifact);
+bool opencl_source_artifact_matches_descriptor_contract(
+    const KernelArtifactDescriptor &descriptor,
     const ::ov::gfx_plugin::GfxOpenClSourceArtifact &artifact);
 
 } // namespace compiler

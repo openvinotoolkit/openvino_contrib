@@ -21,18 +21,18 @@ namespace compiler {
 struct KernelArtifactDescriptor;
 struct PlannedOperation;
 
-bool is_opencl_softmax_node(const std::shared_ptr<const ov::Node> &node);
+bool is_opencl_conv2d_node(const std::shared_ptr<const ov::Node> &node);
 
 KernelUnit
-resolve_opencl_softmax_kernel_unit(const std::shared_ptr<const ov::Node> &node,
-                                   const KernelRegistry &registry);
+resolve_opencl_conv2d_kernel_unit(const std::shared_ptr<const ov::Node> &node,
+                                  const KernelRegistry &registry);
 
 OperationSupportResult
-query_opencl_softmax_operation(const std::shared_ptr<const ov::Node> &node,
-                               const KernelRegistry &registry);
+query_opencl_conv2d_operation(const std::shared_ptr<const ov::Node> &node,
+                              const KernelRegistry &registry);
 
 std::shared_ptr<const ::ov::gfx_plugin::KernelArtifactPayload>
-build_opencl_softmax_kernel_artifact_payload(
+build_opencl_conv2d_kernel_artifact_payload(
     const KernelArtifactDescriptor &descriptor, const PlannedOperation &op);
 
 } // namespace compiler

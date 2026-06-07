@@ -111,7 +111,11 @@ struct ExecutableBundle {
 
 using KernelArtifactPayloadResolver =
     std::function<std::shared_ptr<const KernelArtifactPayload>(
-        KernelArtifactDescriptor &descriptor, const PlannedOperation &op)>;
+        const KernelArtifactDescriptor &descriptor,
+        const PlannedOperation &op)>;
+using KernelArtifactDescriptorResolver =
+    std::function<bool(KernelArtifactDescriptor &descriptor,
+                       const PlannedOperation &op)>;
 using PipelineVendorAttentionArtifactResolver =
     std::function<PipelineVendorAttentionArtifact(
         uint64_t stage_record_key, const PipelineVendorAttentionPlan &plan)>;
@@ -122,12 +126,15 @@ void finalize_kernel_artifact_descriptor_identity(
 class ExecutableBundleBuilder final {
 public:
   explicit ExecutableBundleBuilder(KernelArtifactPayloadResolver resolver = {});
+  ExecutableBundleBuilder(KernelArtifactDescriptorResolver descriptor_resolver,
+                          KernelArtifactPayloadResolver payload_resolver);
 
   ExecutableBundle build(const ManifestBundle &manifest) const;
   ExecutableBundle build(const ManifestBundle &manifest,
                          const LoweringPlan &lowering_plan) const;
 
 private:
+  KernelArtifactDescriptorResolver m_descriptor_resolver;
   KernelArtifactPayloadResolver m_payload_resolver;
 };
 

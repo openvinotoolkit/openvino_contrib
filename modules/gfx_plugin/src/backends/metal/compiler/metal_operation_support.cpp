@@ -18,6 +18,8 @@
 #include "openvino/op/avg_pool.hpp"
 #include "openvino/op/concat.hpp"
 #include "openvino/op/constant.hpp"
+#include "openvino/op/convolution.hpp"
+#include "openvino/op/group_conv.hpp"
 #include "openvino/op/max_pool.hpp"
 #include "openvino/op/range.hpp"
 #include "openvino/op/scaled_dot_product_attention.hpp"
@@ -216,6 +218,28 @@ bool supports_mps_gemm_vendor(const std::shared_ptr<const ov::Node> &node) {
   return gfx_apple_make_mps_gemm_contract(node, contract);
 }
 
+bool supports_mps_conv2d_vendor(const std::shared_ptr<const ov::Node> &node) {
+  GfxAppleMpsVendorPrimitiveContract contract{};
+  return gfx_apple_make_mps_conv2d_contract(
+      node, false, nullptr, false, ActivationKind::Identity, contract);
+}
+
+bool is_convolution_node(const std::shared_ptr<const ov::Node> &node) {
+  return static_cast<bool>(
+      ov::as_type_ptr<const ov::op::v1::Convolution>(node));
+}
+
+bool is_group_convolution_node(const std::shared_ptr<const ov::Node> &node) {
+  return static_cast<bool>(
+      ov::as_type_ptr<const ov::op::v1::GroupConvolution>(node));
+}
+
+std::string mps_conv2d_kernel_unit_id(
+    const std::shared_ptr<const ov::Node> &node) {
+  return is_group_convolution_node(node) ? "metal/vendor/mps_group_conv2d"
+                                         : "metal/vendor/mps_conv2d";
+}
+
 bool supports_mps_pool2d_vendor(const std::shared_ptr<const ov::Node> &node) {
   GfxMpsrtPool2DAbiDesc desc{};
   if (!gfx_apple_make_mps_pool2d_desc(node, desc)) {
@@ -272,6 +296,19 @@ query_metal_operation(const std::shared_ptr<const ov::Node> &node) {
       return make_supported_operation("mps_vendor_primitive",
                                       LoweringRouteKind::VendorPrimitive, 0.80,
                                       "metal/vendor/mps_gemm");
+    }
+    if (node && supports_mps_conv2d_vendor(node)) {
+      return make_supported_operation("mps_vendor_primitive",
+                                      LoweringRouteKind::VendorPrimitive, 0.80,
+                                      mps_conv2d_kernel_unit_id(node));
+    }
+    if (node && is_convolution_node(node)) {
+      return make_unsupported_operation(
+          "missing_apple_convolution_mps_family_route");
+    }
+    if (node && is_group_convolution_node(node)) {
+      return make_unsupported_operation(
+          "missing_apple_group_convolution_mps_family_route");
     }
     if (node && supports_mps_softmax_vendor(node)) {
       return make_supported_operation("mps_vendor_primitive",

@@ -82,6 +82,9 @@ operation checks. Do not restore the removed Metal-only
 test registration or target composition; it fails on duplicate registrations,
 `DISABLED_` tests, and matrix drift. The CMake `gfx_gtest_matrix_capture`
 target uses the tool in `--check-only` mode when host execution is possible.
+`gfx_gtest_matrix_compare` requires explicit
+`GFX_GTEST_MATRIX_REFERENCE_ROOTS`, and cross-build host capture fails unless
+`CMAKE_CROSSCOMPILING_EMULATOR` is configured.
 
 ## What To Test
 
@@ -188,6 +191,9 @@ For OpenCL source-artifact changes:
 - include `tests/unit/gfx_softmax_kernel_contract_test.cpp` when generated
   Metal Softmax/LogSoftmax payloads, OpenCL static or dynamic-static-rank
   Softmax artifacts, axis metadata, or Softmax kernel-unit routing changes
+- include `tests/unit/gfx_conv_kernel_contract_test.cpp` when OpenCL generated
+  Conv2D/GroupConv2D f32 source ids, constant-weight tensor bindings, scalar
+  metadata, Metal MPS vendor routes, or Conv kernel-unit registration changes
 - include `tests/unit/gfx_pool_kernel_contract_test.cpp` when OpenCL generated
   Pool2D artifacts, Metal MPS Pool2D vendor routing, or Pooling kernel-unit
   registration changes

@@ -25,6 +25,8 @@ public:
         m_kernel_registry(std::move(config.kernel_registry)),
         m_lowering_planner(m_target, m_kernel_registry),
         m_pipeline_options(config.pipeline_options),
+        m_artifact_descriptor_resolver(
+            std::move(config.artifact_descriptor_resolver)),
         m_artifact_payload_resolver(
             std::move(config.artifact_payload_resolver)),
         m_vendor_attention_artifact_resolver(
@@ -55,8 +57,17 @@ public:
     return m_pipeline_options;
   }
 
+  bool finalize_artifact_descriptor(KernelArtifactDescriptor &descriptor,
+                                    const PlannedOperation &op) const override {
+    if (!m_artifact_descriptor_resolver) {
+      finalize_kernel_artifact_descriptor_identity(descriptor);
+      return true;
+    }
+    return m_artifact_descriptor_resolver(descriptor, op);
+  }
+
   std::shared_ptr<const KernelArtifactPayload>
-  materialize_artifact_payload(KernelArtifactDescriptor &descriptor,
+  materialize_artifact_payload(const KernelArtifactDescriptor &descriptor,
                                const PlannedOperation &op) const override {
     if (!m_artifact_payload_resolver) {
       return {};
@@ -81,6 +92,7 @@ private:
   KernelRegistry m_kernel_registry;
   LoweringPlanner m_lowering_planner;
   transforms::PipelineOptions m_pipeline_options;
+  KernelArtifactDescriptorResolver m_artifact_descriptor_resolver;
   KernelArtifactPayloadResolver m_artifact_payload_resolver;
   PipelineVendorAttentionArtifactResolver m_vendor_attention_artifact_resolver;
 };

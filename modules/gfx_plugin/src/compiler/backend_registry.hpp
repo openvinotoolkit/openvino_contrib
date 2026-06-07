@@ -34,8 +34,11 @@ public:
   virtual const LoweringPlanner &lowering_planner() const noexcept = 0;
   virtual const transforms::PipelineOptions &
   pipeline_options() const noexcept = 0;
+  virtual bool finalize_artifact_descriptor(
+      KernelArtifactDescriptor &descriptor,
+      const PlannedOperation &op) const = 0;
   virtual std::shared_ptr<const KernelArtifactPayload>
-  materialize_artifact_payload(KernelArtifactDescriptor &descriptor,
+  materialize_artifact_payload(const KernelArtifactDescriptor &descriptor,
                                const PlannedOperation &op) const = 0;
   virtual PipelineVendorAttentionArtifact materialize_vendor_attention_artifact(
       uint64_t stage_record_key,

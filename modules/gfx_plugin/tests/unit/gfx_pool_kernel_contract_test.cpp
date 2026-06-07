@@ -11,20 +11,21 @@
 #include <utility>
 #include <vector>
 
+#include "backends/metal/compiler/apple_vendor_descriptors.hpp"
 #include "backends/metal/compiler/metal_kernel_artifacts.hpp"
 #include "backends/metal/compiler/metal_operation_support.hpp"
 #include "backends/opencl/compiler/opencl_kernel_artifacts.hpp"
 #include "backends/opencl/compiler/opencl_operation_support.hpp"
+#include "backends/opencl/compiler/opencl_pool_kernel_unit.hpp"
 #include "compiler/executable_bundle.hpp"
 #include "compiler/kernel_registry.hpp"
 #include "compiler/manifest.hpp"
 #include "compiler/operation_legalizer.hpp"
-#include "gfx_opencl_source_artifact_verifier.hpp"
 #include "gfx_runtime_model_runner.hpp"
 #include "gfx_runtime_scenario.hpp"
+#include "kernel_ir/opencl_kernels/pool2d_kernel.hpp"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "backends/metal/compiler/apple_vendor_descriptors.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/mlir_passes.hpp"
 #include "mlir/mlir_support.hpp"
@@ -46,7 +47,6 @@ using compiler::KernelArtifactPayloadKind;
 using compiler::LoweringPlan;
 using compiler::LoweringRouteKind;
 using compiler::ManifestBundle;
-using test::OpenClSourceArtifactVerifier;
 
 std::shared_ptr<ov::op::v0::Parameter> param(const ov::element::Type &type,
                                              ov::PartialShape shape) {
@@ -108,10 +108,9 @@ public:
     auto &ctx = gfx_mlir_context();
     auto module = build_mlir_for_node(node, ctx);
     ASSERT_TRUE(module);
-    ASSERT_TRUE(static_cast<bool>(
-        module.lookupSymbol<mlir::func::FuncOp>(
-            node->get_type_name() == std::string("AvgPool") ? "avgpool_main"
-                                                             : "maxpool_main")));
+    ASSERT_TRUE(static_cast<bool>(module.lookupSymbol<mlir::func::FuncOp>(
+        node->get_type_name() == std::string("AvgPool") ? "avgpool_main"
+                                                        : "maxpool_main")));
     EXPECT_TRUE(mlir_supports_node(node));
     ASSERT_NO_THROW(run_mlir_pipeline(module, /*use_alloca=*/true,
                                       /*use_parallel_loops=*/false));
@@ -121,8 +120,8 @@ private:
   PoolMlirCase m_case;
 };
 
-std::string pool_mlir_case_name(
-    const ::testing::TestParamInfo<PoolMlirCase> &info) {
+std::string
+pool_mlir_case_name(const ::testing::TestParamInfo<PoolMlirCase> &info) {
   return info.param.name;
 }
 
@@ -169,13 +168,50 @@ public:
 
   void verify() const {
     const auto node = m_case.make_node();
-    OpenClSourceArtifactVerifier(node)
-        .expect_artifact(GfxKernelStageFamily::Pooling,
-                         m_case.expected_source_id, m_case.expected_entry_point,
-                         21u, 1u, pool2d_static_scalar_args(), {0},
-                         m_case.expected_static_u32_scalars)
-        .has_op(m_case.expected_op)
-        .supports_opencl_compiler();
+    EXPECT_FALSE(resolve_gfx_opencl_source_artifact(node).has_value());
+
+    auto artifact = make_opencl_pool2d_source_artifact(node);
+    ASSERT_TRUE(artifact.has_value());
+    EXPECT_TRUE(artifact->valid);
+    EXPECT_EQ(artifact->stage_manifest.stage_family,
+              GfxKernelStageFamily::Pooling);
+    EXPECT_EQ(artifact->stage_manifest.backend_domain,
+              GfxKernelBackendDomain::OpenCl);
+    EXPECT_EQ(artifact->stage_manifest.execution_kind,
+              GfxKernelExecutionKind::CustomKernel);
+    EXPECT_EQ(artifact->stage_manifest.storage, GfxKernelStorageKind::Buffer);
+    EXPECT_TRUE(artifact->stage_manifest.custom_kernel.valid);
+    EXPECT_EQ(artifact->stage_manifest.custom_kernel.entry_point,
+              m_case.expected_entry_point);
+    EXPECT_EQ(artifact->artifact_ref.kind, GfxKernelArtifactKind::OpenClSource);
+    EXPECT_EQ(artifact->artifact_ref.backend_domain,
+              GfxKernelBackendDomain::OpenCl);
+    EXPECT_EQ(artifact->artifact_ref.source_id, m_case.expected_source_id);
+    EXPECT_EQ(artifact->artifact_ref.entry_point, m_case.expected_entry_point);
+    EXPECT_EQ(artifact->arg_count, 21u);
+    EXPECT_EQ(artifact->direct_input_count, 1u);
+    EXPECT_EQ(artifact->direct_output_count, 1u);
+    EXPECT_EQ(artifact->direct_input_indices, std::vector<size_t>{0});
+    EXPECT_EQ(artifact->local_size_hint, 64u);
+    EXPECT_EQ(artifact->scalar_args, pool2d_static_scalar_args());
+    EXPECT_EQ(artifact->static_u32_scalars, m_case.expected_static_u32_scalars);
+    EXPECT_EQ(artifact->op, m_case.expected_op);
+    EXPECT_EQ(artifact->input_mode, GfxOpenClArtifactInputMode::Direct);
+
+    const auto target =
+        compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
+    const auto registry = compiler::make_opencl_kernel_registry(target);
+    const auto unit =
+        compiler::resolve_opencl_pool2d_kernel_unit(node, registry);
+    ASSERT_TRUE(unit.valid());
+    EXPECT_EQ(unit.route_kind(), LoweringRouteKind::GeneratedKernel);
+    EXPECT_EQ(unit.id(), m_case.expected_source_id);
+    const compiler::BackendCapabilities capabilities(
+        target, compiler::make_opencl_operation_support_policy(registry));
+    const auto support = capabilities.query_operation({node});
+    ASSERT_TRUE(support.semantic_legal) << support.semantic_reason;
+    EXPECT_EQ(support.preferred_route_kind, unit.route_kind());
+    EXPECT_EQ(support.preferred_route, unit.id());
   }
 
 private:
@@ -203,6 +239,7 @@ struct PoolRouteCase {
   compiler::BackendTarget target;
   std::shared_ptr<const compiler::OperationSupportPolicy> policy;
   compiler::KernelRegistry kernel_registry;
+  compiler::KernelArtifactDescriptorResolver descriptor_resolver;
   compiler::KernelArtifactPayloadResolver payload_resolver;
   LoweringRouteKind expected_route = LoweringRouteKind::Unsupported;
   KernelArtifactOrigin expected_origin = KernelArtifactOrigin::Unknown;
@@ -222,8 +259,7 @@ struct PoolCompiledContract {
 
 class PoolRouteContract final {
 public:
-  explicit PoolRouteContract(PoolRouteCase route)
-      : m_route(std::move(route)) {}
+  explicit PoolRouteContract(PoolRouteCase route) : m_route(std::move(route)) {}
 
   PoolCompiledContract compile() const {
     const compiler::BackendCapabilities capabilities(m_route.target,
@@ -235,7 +271,8 @@ public:
     compiled.plan = planner.plan(m_route.make_model(), legalizer);
     compiled.manifest = compiler::ManifestBuilder{}.build(compiled.plan);
     compiled.executable =
-        compiler::ExecutableBundleBuilder(m_route.payload_resolver)
+        compiler::ExecutableBundleBuilder(m_route.descriptor_resolver,
+                                          m_route.payload_resolver)
             .build(compiled.manifest, compiled.plan);
     return compiled;
   }
@@ -272,12 +309,12 @@ public:
 private:
   const compiler::StageRecord &
   find_pool_stage(const ManifestBundle &manifest) const {
-    const auto it = std::find_if(
-        manifest.stages.begin(), manifest.stages.end(),
-        [](const compiler::StageRecord &stage) {
-          return stage.normalized_op_family == "MaxPool" ||
-                 stage.normalized_op_family == "AvgPool";
-        });
+    const auto it =
+        std::find_if(manifest.stages.begin(), manifest.stages.end(),
+                     [](const compiler::StageRecord &stage) {
+                       return stage.normalized_op_family == "MaxPool" ||
+                              stage.normalized_op_family == "AvgPool";
+                     });
     OPENVINO_ASSERT(it != manifest.stages.end(),
                     "Pooling stage is missing from manifest");
     return *it;
@@ -309,13 +346,15 @@ private:
       return;
     }
 
-    const auto *vendor_payload = dynamic_cast<
-        const compiler::GfxMetalVendorPrimitiveArtifactPayload *>(payload);
+    const auto *vendor_payload =
+        dynamic_cast<const compiler::GfxMetalVendorPrimitiveArtifactPayload *>(
+            payload);
     ASSERT_NE(vendor_payload, nullptr);
     const auto &contract = vendor_payload->contract();
     ASSERT_TRUE(contract.valid);
     EXPECT_EQ(contract.descriptor.kind, GfxAppleMpsVendorPrimitiveKind::Pool2D);
-    EXPECT_EQ(contract.descriptor.pool2d.is_avg, m_route.expected_avg ? 1u : 0u);
+    EXPECT_EQ(contract.descriptor.pool2d.is_avg,
+              m_route.expected_avg ? 1u : 0u);
     ASSERT_EQ(contract.input_descs.size(), 1u);
     ASSERT_EQ(contract.output_descs.size(), 1u);
     EXPECT_EQ(contract.input_descs.front().image_feature_channels, 1u);
@@ -330,38 +369,38 @@ private:
 
 std::shared_ptr<ov::Model> opencl_maxpool_model() {
   auto data = param(ov::element::f32, ov::Shape{1, 3, 4, 4});
-  return model_from_node(
-      std::make_shared<ov::op::v1::MaxPool>(
-          data, ov::Strides{2, 2}, ov::Shape{0, 0}, ov::Shape{0, 0},
-          ov::Shape{2, 2}, ov::op::RoundingType::FLOOR),
-      {data});
+  return model_from_node(std::make_shared<ov::op::v1::MaxPool>(
+                             data, ov::Strides{2, 2}, ov::Shape{0, 0},
+                             ov::Shape{0, 0}, ov::Shape{2, 2},
+                             ov::op::RoundingType::FLOOR),
+                         {data});
 }
 
 std::shared_ptr<ov::Model> opencl_avgpool_model() {
   auto data = param(ov::element::f16, ov::Shape{1, 2, 4, 4});
-  return model_from_node(
-      std::make_shared<ov::op::v1::AvgPool>(
-          data, ov::Strides{2, 2}, ov::Shape{0, 0}, ov::Shape{0, 0},
-          ov::Shape{2, 2}, true, ov::op::RoundingType::FLOOR),
-      {data});
+  return model_from_node(std::make_shared<ov::op::v1::AvgPool>(
+                             data, ov::Strides{2, 2}, ov::Shape{0, 0},
+                             ov::Shape{0, 0}, ov::Shape{2, 2}, true,
+                             ov::op::RoundingType::FLOOR),
+                         {data});
 }
 
 std::shared_ptr<ov::Model> metal_maxpool_model() {
   auto data = param(ov::element::f32, ov::Shape{1, 1, 4, 4});
-  return model_from_node(
-      std::make_shared<ov::op::v1::MaxPool>(
-          data, ov::Strides{2, 2}, ov::Shape{0, 0}, ov::Shape{0, 0},
-          ov::Shape{2, 2}, ov::op::RoundingType::FLOOR),
-      {data});
+  return model_from_node(std::make_shared<ov::op::v1::MaxPool>(
+                             data, ov::Strides{2, 2}, ov::Shape{0, 0},
+                             ov::Shape{0, 0}, ov::Shape{2, 2},
+                             ov::op::RoundingType::FLOOR),
+                         {data});
 }
 
 std::shared_ptr<ov::Model> metal_avgpool_model() {
   auto data = param(ov::element::f32, ov::Shape{1, 1, 4, 4});
-  return model_from_node(
-      std::make_shared<ov::op::v1::AvgPool>(
-          data, ov::Strides{2, 2}, ov::Shape{0, 0}, ov::Shape{0, 0},
-          ov::Shape{2, 2}, true, ov::op::RoundingType::FLOOR),
-      {data});
+  return model_from_node(std::make_shared<ov::op::v1::AvgPool>(
+                             data, ov::Strides{2, 2}, ov::Shape{0, 0},
+                             ov::Shape{0, 0}, ov::Shape{2, 2}, true,
+                             ov::op::RoundingType::FLOOR),
+                         {data});
 }
 
 std::shared_ptr<ov::Node> indexed_maxpool_node() {
@@ -372,12 +411,19 @@ std::shared_ptr<ov::Node> indexed_maxpool_node() {
       ov::op::PadType::EXPLICIT, ov::element::i64, 0);
 }
 
+TEST(PoolOpenClArtifactStandaloneTest, RejectsIndexedMaxPoolWithoutArtifact) {
+  const auto node = indexed_maxpool_node();
+  EXPECT_FALSE(make_opencl_pool2d_source_artifact(node).has_value());
+  EXPECT_FALSE(resolve_gfx_opencl_source_artifact(node).has_value());
+}
+
 PoolRouteCase opencl_maxpool_case() {
   const auto target = compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
   return {"OpenClGeneratedMaxPoolF32",
           target,
           compiler::make_opencl_operation_support_policy(),
           compiler::make_opencl_kernel_registry(target),
+          compiler::make_opencl_kernel_artifact_descriptor_resolver(),
           compiler::make_opencl_kernel_artifact_payload_resolver(),
           LoweringRouteKind::GeneratedKernel,
           KernelArtifactOrigin::Generated,
@@ -395,6 +441,7 @@ PoolRouteCase opencl_avgpool_case() {
           target,
           compiler::make_opencl_operation_support_policy(),
           compiler::make_opencl_kernel_registry(target),
+          compiler::make_opencl_kernel_artifact_descriptor_resolver(),
           compiler::make_opencl_kernel_artifact_payload_resolver(),
           LoweringRouteKind::GeneratedKernel,
           KernelArtifactOrigin::Generated,
@@ -412,6 +459,7 @@ PoolRouteCase metal_mps_maxpool_case() {
           target,
           compiler::make_metal_operation_support_policy(),
           compiler::make_metal_kernel_registry(target),
+          compiler::make_metal_kernel_artifact_descriptor_resolver(),
           compiler::make_metal_kernel_artifact_payload_resolver(),
           LoweringRouteKind::VendorPrimitive,
           KernelArtifactOrigin::VendorPrimitive,
@@ -429,6 +477,7 @@ PoolRouteCase metal_mps_avgpool_case() {
           target,
           compiler::make_metal_operation_support_policy(),
           compiler::make_metal_kernel_registry(target),
+          compiler::make_metal_kernel_artifact_descriptor_resolver(),
           compiler::make_metal_kernel_artifact_payload_resolver(),
           LoweringRouteKind::VendorPrimitive,
           KernelArtifactOrigin::VendorPrimitive,
@@ -440,8 +489,8 @@ PoolRouteCase metal_mps_avgpool_case() {
           metal_avgpool_model};
 }
 
-std::string pool_route_case_name(
-    const ::testing::TestParamInfo<PoolRouteCase> &info) {
+std::string
+pool_route_case_name(const ::testing::TestParamInfo<PoolRouteCase> &info) {
   return info.param.name;
 }
 
@@ -488,19 +537,15 @@ private:
 
 PoolUnsupportedRouteCase opencl_indexed_maxpool_reject_case() {
   const auto target = compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
-  return {"OpenClRejectsIndexedMaxPoolWithoutKernelUnit",
-          target,
+  return {"OpenClRejectsIndexedMaxPoolWithoutKernelUnit", target,
           compiler::make_opencl_operation_support_policy(),
-          indexed_maxpool_node,
-          "missing_opencl_pooling_kernel_unit"};
+          indexed_maxpool_node, "missing_opencl_pooling_kernel_unit"};
 }
 
 PoolUnsupportedRouteCase metal_indexed_maxpool_reject_case() {
   const auto target = compiler::BackendTarget::from_backend(GpuBackend::Metal);
-  return {"MetalRejectsIndexedMaxPoolWithoutMpsFamilyRoute",
-          target,
-          compiler::make_metal_operation_support_policy(),
-          indexed_maxpool_node,
+  return {"MetalRejectsIndexedMaxPoolWithoutMpsFamilyRoute", target,
+          compiler::make_metal_operation_support_policy(), indexed_maxpool_node,
           "missing_apple_pooling_mps_family_route"};
 }
 
@@ -516,11 +561,10 @@ TEST_P(PoolUnsupportedRouteContractTest, RejectsMissingExplicitRoute) {
   PoolUnsupportedRouteContract(GetParam()).verify();
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    PoolingBackends, PoolUnsupportedRouteContractTest,
-    ::testing::Values(opencl_indexed_maxpool_reject_case(),
-                      metal_indexed_maxpool_reject_case()),
-    pool_unsupported_case_name);
+INSTANTIATE_TEST_SUITE_P(PoolingBackends, PoolUnsupportedRouteContractTest,
+                         ::testing::Values(opencl_indexed_maxpool_reject_case(),
+                                           metal_indexed_maxpool_reject_case()),
+                         pool_unsupported_case_name);
 
 TEST(PoolLoweringPlannerContractTest,
      OpenClPoolSupportRequiresRegisteredKernelUnit) {
@@ -561,8 +605,7 @@ ov::Tensor filled_f32(const ov::Shape &shape, int modulus, int shift,
   ov::Tensor tensor(ov::element::f32, shape);
   auto *data = tensor.data<float>();
   for (size_t i = 0; i < tensor.get_size(); ++i) {
-    data[i] =
-        static_cast<float>(static_cast<int>(i % modulus) - shift) * scale;
+    data[i] = static_cast<float>(static_cast<int>(i % modulus) - shift) * scale;
   }
   return tensor;
 }
@@ -623,9 +666,7 @@ std::vector<RuntimeScenarioPtr> pool_runtime_scenarios() {
             return std::vector<ov::Tensor>{
                 filled_f16({1, 4, 4, 4}, 17, 8, 0.25f)};
           },
-          90,
-          2e-3f,
-          2e-3f),
+          90, 2e-3f, 2e-3f),
       ov::test::gfx::runtime_scenario(
           "AvgPool2DF16",
           [] {
@@ -640,9 +681,7 @@ std::vector<RuntimeScenarioPtr> pool_runtime_scenarios() {
             return std::vector<ov::Tensor>{
                 filled_f16({1, 4, 4, 4}, 23, 11, 0.125f)};
           },
-          90,
-          2e-3f,
-          2e-3f),
+          90, 2e-3f, 2e-3f),
   };
 }
 

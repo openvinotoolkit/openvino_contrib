@@ -11,6 +11,21 @@
 
 namespace ov {
 namespace gfx_plugin {
+namespace {
+
+bool runtime_descriptor_stateful_stage_kind(
+    std::string_view stateful_effect) noexcept {
+  return stateful_effect == "assign" || stateful_effect == "read_value";
+}
+
+bool runtime_descriptor_view_stage_contract(
+    const RuntimeStageExecutableDescriptor &descriptor) noexcept {
+  return descriptor.origin == KernelArtifactOrigin::Metadata &&
+         descriptor.payload_kind == KernelArtifactPayloadKind::None &&
+         descriptor.kernel_id == "metadata" && descriptor.tensor_view_only;
+}
+
+} // namespace
 
 bool RuntimeMemoryPlanDescriptor::has_region(std::string_view region_id) const {
   return std::any_of(regions.begin(), regions.end(),
@@ -42,6 +57,40 @@ std::vector<GfxKernelBufferRole> materialize_descriptor_launch_roles(
     roles.push_back(role);
   }
   return roles;
+}
+
+bool runtime_descriptor_source_payload_kind(
+    KernelArtifactPayloadKind kind) noexcept {
+  return kind == KernelArtifactPayloadKind::MslSource ||
+         kind == KernelArtifactPayloadKind::OpenClSource;
+}
+
+bool runtime_descriptor_payload_kind_requires_payload(
+    KernelArtifactPayloadKind kind) noexcept {
+  return kind == KernelArtifactPayloadKind::VendorDescriptor ||
+         runtime_descriptor_source_payload_kind(kind);
+}
+
+bool runtime_stage_descriptor_is_materializable(
+    const RuntimeStageExecutableDescriptor &descriptor) noexcept {
+  if (runtime_descriptor_stateful_stage_kind(descriptor.stateful_effect)) {
+    return true;
+  }
+  if (runtime_descriptor_view_stage_contract(descriptor)) {
+    return true;
+  }
+  if (!runtime_descriptor_payload_kind_requires_payload(
+          descriptor.payload_kind)) {
+    return false;
+  }
+  if (!descriptor.payload || !descriptor.payload->valid()) {
+    return false;
+  }
+  if (descriptor.payload_kind == KernelArtifactPayloadKind::VendorDescriptor) {
+    return descriptor.origin == KernelArtifactOrigin::VendorPrimitive;
+  }
+  return descriptor.origin == KernelArtifactOrigin::Generated ||
+         descriptor.origin == KernelArtifactOrigin::HandwrittenException;
 }
 
 } // namespace gfx_plugin

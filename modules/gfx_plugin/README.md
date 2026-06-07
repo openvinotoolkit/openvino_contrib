@@ -251,14 +251,15 @@ Backend operation support and kernel-unit registration live under
 `src/backends/opencl/runtime/`.
 
 Embedded OpenCL source units live under `src/kernel_ir/opencl_kernels/`.
-Current generated units include activation, elementwise, f32 MatMul, f32/f16
-Interpolate, f32 reduction, boolean reduction, f32/f16 Softmax,
-dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D, f32/f16/i64 Range,
-ShapeOf, Tile, Transpose, logical-bool elementwise, compare/select, and
-generated Concat/Split helpers.
+Current generated units include activation, elementwise, f32 MatMul,
+f32 Conv2D/GroupConv2D, f32/f16 Interpolate, f32 reduction, boolean reduction,
+f32/f16 Softmax, dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D,
+f32/f16/i64 Range, ShapeOf, Tile, Transpose, logical-bool elementwise,
+compare/select, and generated Concat/Split helpers.
 There is no active handwritten OpenCL kernel-unit exception in the current
 registry.
 Family-specific OpenCL compiler adapters such as
+`opencl_conv_kernel_unit.*`, `opencl_pool_kernel_unit.*`,
 `opencl_range_kernel_unit.*`, `opencl_softmax_kernel_unit.*`, and
 `opencl_tile_kernel_unit.*` resolve generated `KernelUnit` records and
 materialize source payloads. Keep new family routes in those backend compiler
@@ -299,6 +300,12 @@ under `src/runtime/gfx_stage_runtime_values.*`.
 Activation lowering keeps OpenCL and Metal source plans on the same operation
 contract. `Swish` beta is represented either as a static scalar payload or as a
 second scalar tensor input when the runtime-beta path is supported.
+
+Convolution lowering is family-owned. Metal Conv2D and GroupConv2D use
+descriptor-backed MPS vendor routes when the external-buffer ABI contract can be
+built. OpenCL generated Conv2D/GroupConv2D covers f32 static 4D NCHW data/output
+with constant weights, 2D stride/dilation/padding metadata, and explicit
+generated kernel units.
 
 Reduction lowering uses the same source-plan boundary. Numeric reductions cover
 the current f32 generated-kernel contract; logical reductions cover the current
@@ -411,9 +418,12 @@ profiling/microbench triage. Do not use microbench output as correctness
 evidence, and do not use compare-runner timing as performance evidence.
 The test CMake flow uses `tests/tools/gfx_gtest_matrix.py` to capture
 `--gtest_list_tests` from real GFX test binaries and compare executable test
-matrices. Do not use source/file/string-presence checks as test readiness or
-architecture evidence; use executed contract coverage, route coverage,
-conformance tests, and profiling evidence instead.
+matrices. `gfx_gtest_matrix_compare` is fail-closed: it requires explicit
+`GFX_GTEST_MATRIX_REFERENCE_ROOTS` for cross-target comparisons, and cross-build
+host capture fails unless an emulator is configured. Do not use
+source/file/string-presence checks as test readiness or architecture evidence;
+use executed contract coverage, route coverage, conformance tests, and
+profiling evidence instead.
 
 ## Adding A New Operation
 

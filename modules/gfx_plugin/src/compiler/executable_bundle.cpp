@@ -299,10 +299,20 @@ KernelArtifactDescriptor make_artifact_descriptor(const StageRecord &stage) {
 }
 
 std::shared_ptr<const KernelArtifactPayload>
-materialize_payload_for_stage(KernelArtifactDescriptor &descriptor,
+materialize_payload_for_stage(const KernelArtifactDescriptor &descriptor,
                               const PlannedOperation &op,
                               const KernelArtifactPayloadResolver &resolver) {
   return resolver ? resolver(descriptor, op) : nullptr;
+}
+
+bool finalize_descriptor_for_stage(
+    KernelArtifactDescriptor &descriptor, const PlannedOperation &op,
+    const KernelArtifactDescriptorResolver &resolver) {
+  if (!resolver) {
+    finalize_kernel_artifact_descriptor_identity(descriptor);
+    return true;
+  }
+  return resolver(descriptor, op);
 }
 
 std::vector<KernelArtifactConstTensor>
@@ -574,6 +584,12 @@ ExecutableBundleBuilder::ExecutableBundleBuilder(
     KernelArtifactPayloadResolver resolver)
     : m_payload_resolver(std::move(resolver)) {}
 
+ExecutableBundleBuilder::ExecutableBundleBuilder(
+    KernelArtifactDescriptorResolver descriptor_resolver,
+    KernelArtifactPayloadResolver payload_resolver)
+    : m_descriptor_resolver(std::move(descriptor_resolver)),
+      m_payload_resolver(std::move(payload_resolver)) {}
+
 ExecutableBundle
 ExecutableBundleBuilder::build(const ManifestBundle &manifest) const {
   ExecutableBundle bundle;
@@ -607,6 +623,10 @@ ExecutableBundleBuilder::build(const ManifestBundle &manifest,
       continue;
     }
     auto &descriptor = bundle.artifact_descriptors[descriptor_index];
+    if (!finalize_descriptor_for_stage(descriptor, lowering_plan.operations[i],
+                                       m_descriptor_resolver)) {
+      continue;
+    }
     auto payload = materialize_payload_for_stage(
         descriptor, lowering_plan.operations[i], m_payload_resolver);
     if (!payload) {

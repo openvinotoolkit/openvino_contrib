@@ -343,6 +343,13 @@ PipelineStageMaterializer::create_attention_sequence_stage(
     if (!stage_descriptor) {
       return std::nullopt;
     }
+    OPENVINO_ASSERT(
+        runtime_stage_descriptor_is_materializable(*stage_descriptor),
+        "GFX: compiler-owned fused stage child descriptor is not "
+        "materializable for ",
+        materialized_stage_name(plan.io_plan), " child ", i,
+        "; runtime must not route common metadata containers to a backend "
+        "source executor");
     auto stage = create_stage(*stage_descriptor);
     if (!stage) {
       return std::nullopt;

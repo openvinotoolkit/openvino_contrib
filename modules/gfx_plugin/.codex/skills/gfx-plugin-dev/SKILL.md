@@ -218,24 +218,26 @@ For OpenCL source-artifact work:
    `tests/unit/gfx_*_contract_cases.*` files.
    For reduction source units, update
    `tests/unit/gfx_reduction_kernel_contract_test.cpp` and the shared
-   `tests/unit/gfx_opencl_source_artifact_verifier.hpp` helper. For Softmax
-   and Pool2D source units, update
+   `tests/unit/gfx_opencl_source_artifact_verifier.hpp` helper. For Conv2D,
+   Softmax, and Pool2D source units, update
+   `tests/unit/gfx_conv_kernel_contract_test.cpp`,
    `tests/unit/gfx_softmax_kernel_contract_test.cpp`,
    `tests/unit/gfx_pool_kernel_contract_test.cpp`, and the shared verifier.
 8. Add runtime coverage only when dynamic OpenCL loading, memory, command
    enqueue, or runtime-shape behavior changed.
 
 Current generated OpenCL routes include activation, elementwise, f32 MatMul,
-f32/f16 Interpolate, f32 reduction, boolean reduction, f32/f16 Softmax,
-dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D, f32/f16/i64 Range,
-ShapeOf, Tile, Transpose, compare/select, logical-bool elementwise, and
-generated Concat/Split helpers. Range, Softmax, and Tile have family-specific
-OpenCL kernel-unit adapters under `src/backends/opencl/compiler/`. The current
-OpenCL kernel registry has no active handwritten kernel-unit exception.
+f32 Conv2D/GroupConv2D, f32/f16 Interpolate, f32 reduction, boolean reduction,
+f32/f16 Softmax, dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D,
+f32/f16/i64 Range, ShapeOf, Tile, Transpose, compare/select, logical-bool
+elementwise, and generated Concat/Split helpers. Conv2D/GroupConv2D, Pool2D,
+Range, Softmax, and Tile have family-specific OpenCL kernel-unit adapters under
+`src/backends/opencl/compiler/`. The current OpenCL kernel registry has no
+active handwritten kernel-unit exception.
 
-Standalone OpenCL Conv2D microbench tools are experiments. A result there is
-not plugin support until it is promoted through support probing, source
-artifacts, runtime binding, and tests.
+Standalone OpenCL Conv2D microbench tools remain experimental probes. Plugin
+support must flow through `opencl_conv_kernel_unit.*`, support probing,
+generated source artifacts, runtime binding, and contract tests.
 
 ## Common Workflows
 

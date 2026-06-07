@@ -68,6 +68,10 @@ void append_opencl_concat_kernel_units(const BackendTarget &target,
 KernelRegistry make_opencl_kernel_registry(const BackendTarget &target) {
   auto units = make_common_kernel_units(target);
   units.push_back(make_opencl_generated_kernel_unit(
+      target, "opencl/generated/conv2d_f32", "Convolution"));
+  units.push_back(make_opencl_generated_kernel_unit(
+      target, "opencl/generated/group_conv2d_f32", "GroupConvolution"));
+  units.push_back(make_opencl_generated_kernel_unit(
       target, "opencl/generated/interpolate_f32", "Interpolate"));
   units.push_back(make_opencl_generated_kernel_unit(
       target, "opencl/generated/interpolate_f16", "Interpolate"));

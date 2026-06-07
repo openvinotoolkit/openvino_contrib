@@ -420,6 +420,7 @@ struct ReductionRouteCase {
   compiler::BackendTarget target;
   std::shared_ptr<const compiler::OperationSupportPolicy> policy;
   compiler::KernelRegistry kernel_registry;
+  compiler::KernelArtifactDescriptorResolver descriptor_resolver;
   compiler::KernelArtifactPayloadResolver payload_resolver;
   LoweringRouteKind expected_route = LoweringRouteKind::GeneratedKernel;
   KernelArtifactOrigin expected_origin = KernelArtifactOrigin::Generated;
@@ -451,7 +452,8 @@ public:
     compiled.plan = planner.plan(m_route.make_model(), legalizer);
     compiled.manifest = compiler::ManifestBuilder{}.build(compiled.plan);
     compiled.executable =
-        compiler::ExecutableBundleBuilder(m_route.payload_resolver)
+        compiler::ExecutableBundleBuilder(m_route.descriptor_resolver,
+                                          m_route.payload_resolver)
             .build(compiled.manifest, compiled.plan);
     return compiled;
   }
@@ -554,6 +556,7 @@ ReductionRouteCase opencl_reduction_f32_case() {
           target,
           compiler::make_opencl_operation_support_policy(),
           compiler::make_opencl_kernel_registry(target),
+          compiler::make_opencl_kernel_artifact_descriptor_resolver(),
           compiler::make_opencl_kernel_artifact_payload_resolver(),
           LoweringRouteKind::GeneratedKernel,
           KernelArtifactOrigin::Generated,
@@ -570,6 +573,7 @@ ReductionRouteCase opencl_reduction_logical_case() {
           target,
           compiler::make_opencl_operation_support_policy(),
           compiler::make_opencl_kernel_registry(target),
+          compiler::make_opencl_kernel_artifact_descriptor_resolver(),
           compiler::make_opencl_kernel_artifact_payload_resolver(),
           LoweringRouteKind::GeneratedKernel,
           KernelArtifactOrigin::Generated,
@@ -586,6 +590,7 @@ ReductionRouteCase metal_reduction_f32_case() {
           target,
           compiler::make_metal_operation_support_policy(),
           compiler::make_metal_kernel_registry(target),
+          compiler::make_metal_kernel_artifact_descriptor_resolver(),
           compiler::make_metal_kernel_artifact_payload_resolver(),
           LoweringRouteKind::GeneratedKernel,
           KernelArtifactOrigin::Generated,
@@ -602,6 +607,7 @@ ReductionRouteCase metal_reduction_logical_case() {
           target,
           compiler::make_metal_operation_support_policy(),
           compiler::make_metal_kernel_registry(target),
+          compiler::make_metal_kernel_artifact_descriptor_resolver(),
           compiler::make_metal_kernel_artifact_payload_resolver(),
           LoweringRouteKind::GeneratedKernel,
           KernelArtifactOrigin::Generated,

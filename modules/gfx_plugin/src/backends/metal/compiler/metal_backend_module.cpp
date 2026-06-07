@@ -68,6 +68,8 @@ make_metal_backend_module(BackendTarget target) {
   config.post_op_fusion_capabilities = make_metal_post_op_fusion_capabilities();
   config.stage_placement_policy = make_metal_stage_placement_policy();
   config.execution_capabilities = make_metal_execution_capabilities();
+  config.artifact_descriptor_resolver =
+      make_metal_kernel_artifact_descriptor_resolver();
   config.artifact_payload_resolver =
       make_metal_kernel_artifact_payload_resolver();
   config.vendor_attention_artifact_resolver =

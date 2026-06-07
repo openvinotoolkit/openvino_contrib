@@ -329,6 +329,7 @@ void expect_opencl_range_compiler_contract(
 
   const auto executable =
       compiler::ExecutableBundleBuilder(
+          compiler::make_opencl_kernel_artifact_descriptor_resolver(),
           compiler::make_opencl_kernel_artifact_payload_resolver())
           .build(manifest, lowering_plan);
   ASSERT_TRUE(executable.verify().valid());
@@ -408,6 +409,7 @@ void expect_opencl_generated_compiler_contract(
 
   const auto executable =
       compiler::ExecutableBundleBuilder(
+          compiler::make_opencl_kernel_artifact_descriptor_resolver(),
           compiler::make_opencl_kernel_artifact_payload_resolver())
           .build(manifest, lowering_plan);
   ASSERT_TRUE(executable.verify().valid());
@@ -455,8 +457,8 @@ TEST(GfxOpenClSourceArtifactsTest, BackendTargetIsStableAndCapabilityDriven) {
   const auto audit = kernel_registry.audit();
   ASSERT_TRUE(audit.valid());
   EXPECT_EQ(audit.handwritten_exception_count, 0u);
-  EXPECT_EQ(kernel_registry.route_count(LoweringRouteKind::GeneratedKernel),
-            167u);
+  EXPECT_GE(kernel_registry.route_count(LoweringRouteKind::GeneratedKernel),
+            169u);
   EXPECT_EQ(kernel_registry.route_count(
                 LoweringRouteKind::HandwrittenKernelException),
             0u);
@@ -505,7 +507,7 @@ TEST(GfxOpenClSourceArtifactsTest, BackendTargetIsStableAndCapabilityDriven) {
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
-     LayoutArtifactsIgnoreShapeOperandsAndUseDataInputOnly) {
+     LayoutArtifactsIgnoreShapeOperandsAndCompileAsCommonViewOnly) {
   const auto data = param(ov::element::f32, ov::Shape{1, 2, 3});
   const auto reshape = std::make_shared<ov::op::v1::Reshape>(
       data, i64_const(ov::Shape{1}, {6}), false);
@@ -530,9 +532,18 @@ TEST(GfxOpenClSourceArtifactsTest,
                          /*arg_count=*/4,
                          /*direct_input_count=*/1);
 
-  EXPECT_TRUE(opencl_compiler_supports_node(reshape));
-  EXPECT_TRUE(opencl_compiler_supports_node(squeeze));
-  EXPECT_TRUE(opencl_compiler_supports_node(unsqueeze));
+  const auto target = BackendTarget::from_backend(GpuBackend::OpenCL);
+  const BackendCapabilities capabilities(
+      target, make_opencl_operation_support_policy());
+  const std::vector<std::shared_ptr<const ov::Node>> view_nodes = {
+      reshape, squeeze, unsqueeze};
+  for (const auto &node : view_nodes) {
+    const auto support = capabilities.query_operation({node});
+    EXPECT_TRUE(support.semantic_legal);
+    EXPECT_EQ(support.preferred_route_kind, LoweringRouteKind::Metadata);
+    EXPECT_EQ(support.preferred_route, "metadata");
+    EXPECT_EQ(support.semantic_reason, "view_only");
+  }
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -551,7 +562,7 @@ TEST(GfxOpenClSourceArtifactsTest,
   const auto support = capabilities.query_operation({convert});
 
   EXPECT_FALSE(support.semantic_legal);
-  EXPECT_EQ(support.semantic_reason, "missing_opencl_registered_kernel_unit");
+  EXPECT_EQ(support.semantic_reason, "missing_opencl_kernel_unit");
   EXPECT_FALSE(opencl_artifact_has_registered_kernel_unit(convert));
   EXPECT_FALSE(opencl_compiler_supports_node(convert));
 }

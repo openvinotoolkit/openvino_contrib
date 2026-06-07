@@ -30,14 +30,12 @@ std::string support_reason_for_range_unit(const KernelUnit &unit) {
 }
 
 std::shared_ptr<const ::ov::gfx_plugin::KernelArtifactPayload>
-materialize_range_payload(KernelArtifactDescriptor &descriptor,
+materialize_range_payload(const KernelArtifactDescriptor &descriptor,
                           GfxOpenClSourceArtifact artifact) {
-  descriptor.entry_point = artifact.artifact_ref.entry_point;
-  descriptor.compile_options_key =
-      gfx_opencl_source_artifact_build_options(artifact);
-  descriptor.abi_arg_count = artifact.arg_count;
-  descriptor.abi_output_arg_count = artifact.direct_output_count;
-  apply_opencl_runtime_param_artifact_contract(descriptor, artifact);
+  if (!opencl_source_artifact_matches_descriptor_contract(descriptor,
+                                                          artifact)) {
+    return {};
+  }
   return std::make_shared<GfxOpenClSourceArtifactPayload>(std::move(artifact));
 }
 
@@ -69,8 +67,8 @@ query_opencl_range_operation(const std::shared_ptr<const ov::Node> &node,
 }
 
 std::shared_ptr<const ::ov::gfx_plugin::KernelArtifactPayload>
-build_opencl_range_kernel_artifact_payload(KernelArtifactDescriptor &descriptor,
-                                           const PlannedOperation &op) {
+build_opencl_range_kernel_artifact_payload(
+    const KernelArtifactDescriptor &descriptor, const PlannedOperation &op) {
   if (descriptor.kernel.backend_domain != "opencl" ||
       descriptor.payload_kind != KernelArtifactPayloadKind::OpenClSource ||
       !op.source_node || !is_opencl_range_node(op.source_node)) {

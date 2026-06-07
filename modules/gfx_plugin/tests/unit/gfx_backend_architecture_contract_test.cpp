@@ -16,6 +16,8 @@
 #include <vector>
 
 #include "backends/metal/compiler/apple_vendor_descriptors.hpp"
+#include "backends/metal/compiler/metal_backend_module.hpp"
+#include "backends/metal/compiler/metal_kernel_artifacts.hpp"
 #include "backends/metal/compiler/metal_operation_support.hpp"
 #include "backends/opencl/compiler/opencl_backend_module.hpp"
 #include "backends/opencl/compiler/opencl_kernel_artifacts.hpp"
@@ -28,7 +30,6 @@
 #include "compiler/executable_bundle.hpp"
 #include "compiler/gfx_compiler_service.hpp"
 #include "compiler/memory_plan.hpp"
-#include "compiler/pipeline_stage_builder.hpp"
 #include "compiler/pipeline_stage_fusion.hpp"
 #include "compiler/pipeline_stage_plan.hpp"
 #include "compiler/runtime_executable_descriptor_builder.hpp"
@@ -414,12 +415,15 @@ static_assert(
     "RuntimeExecutableDescriptorBuilder must own final graph snapshot, stage "
     "materialization and descriptor verification for all backend targets");
 
+using RuntimeExecutableDescriptorBuildRequestValidFn =
+    bool (compiler::RuntimeExecutableDescriptorBuildRequest::*)() const noexcept;
+
 static_assert(
-    std::is_same_v<decltype(&compiler::build_pipeline_stage_runtime_descriptor),
-                   RuntimeExecutableDescriptor (*)(
-                       const compiler::PipelineStageBuildRequest &)>,
-    "Compiler pipeline stage builder must return the final runtime descriptor "
-    "instead of exposing a parallel runtime-facing stage plan");
+    std::is_same_v<
+        decltype(&compiler::RuntimeExecutableDescriptorBuildRequest::valid),
+        RuntimeExecutableDescriptorBuildRequestValidFn>,
+    "RuntimeExecutableDescriptorBuildRequest must expose a backend-neutral "
+    "validity contract without leaking compiler detail stage-builder types");
 
 static_assert(
     std::is_same_v<decltype(&materialize_pipeline_stage_descriptors),
@@ -496,6 +500,40 @@ bool has_diagnostic_containing(const std::vector<std::string> &diagnostics,
     }
   }
   return false;
+}
+
+bool launch_plan_contract_equal(const KernelLaunchPlanDescriptor &lhs,
+                                const KernelLaunchPlanDescriptor &rhs) {
+  return lhs.valid == rhs.valid && lhs.buffer_roles == rhs.buffer_roles &&
+         lhs.direct_input_indices == rhs.direct_input_indices &&
+         lhs.input_indices == rhs.input_indices &&
+         lhs.input_arg_count == rhs.input_arg_count &&
+         lhs.operand_kinds == rhs.operand_kinds &&
+         lhs.operand_arg_indices == rhs.operand_arg_indices &&
+         lhs.scalar_args == rhs.scalar_args &&
+         lhs.scalar_arg_kinds == rhs.scalar_arg_kinds;
+}
+
+void expect_artifact_descriptor_abi_equal(
+    const compiler::KernelArtifactDescriptor &actual,
+    const compiler::KernelArtifactDescriptor &expected) {
+  EXPECT_EQ(actual.manifest_ref, expected.manifest_ref);
+  EXPECT_EQ(actual.abi_fingerprint, expected.abi_fingerprint);
+  EXPECT_EQ(actual.artifact_key, expected.artifact_key);
+  EXPECT_EQ(actual.entry_point, expected.entry_point);
+  EXPECT_EQ(actual.compile_options_key, expected.compile_options_key);
+  EXPECT_EQ(actual.abi_arg_count, expected.abi_arg_count);
+  EXPECT_EQ(actual.abi_output_arg_count, expected.abi_output_arg_count);
+  EXPECT_EQ(actual.runtime_param_buffer_count,
+            expected.runtime_param_buffer_count);
+  EXPECT_EQ(actual.runtime_param_i64_metadata,
+            expected.runtime_param_i64_metadata);
+  EXPECT_EQ(actual.runtime_param_reduce_keep_dims,
+            expected.runtime_param_reduce_keep_dims);
+  EXPECT_EQ(actual.runtime_param_reduce_keep_dims_valid,
+            expected.runtime_param_reduce_keep_dims_valid);
+  EXPECT_TRUE(launch_plan_contract_equal(actual.launch_plan,
+                                         expected.launch_plan));
 }
 
 bool target_has_feature(const compiler::BackendTarget &target,
@@ -1859,12 +1897,14 @@ TEST_F(GfxBackendArchitectureContractTest,
   compiler::GfxCompileRequest compile_request;
   EXPECT_EQ(compile_request.target.backend(), GpuBackend::Unknown);
 
-  compiler::PipelineStageBuildRequest stage_build_request;
-  EXPECT_EQ(stage_build_request.target.backend(), GpuBackend::Unknown);
-  EXPECT_FALSE(stage_build_request.graph.valid());
-
   compiler::RuntimeExecutableDescriptorBuildRequest descriptor_build_request;
   EXPECT_EQ(descriptor_build_request.target.backend(), GpuBackend::Unknown);
+  EXPECT_EQ(descriptor_build_request.executable, nullptr);
+  EXPECT_FALSE(descriptor_build_request.transformed_model);
+  EXPECT_EQ(descriptor_build_request.backend_registry, nullptr);
+  EXPECT_TRUE(descriptor_build_request.backend_name.empty());
+  EXPECT_TRUE(descriptor_build_request.enable_fusion);
+  EXPECT_EQ(descriptor_build_request.compile_trace, nullptr);
   EXPECT_FALSE(descriptor_build_request.valid());
 
   compiler::StageCompilerPolicy stage_compiler_policy;
@@ -2327,6 +2367,94 @@ TEST_F(GfxBackendArchitectureContractTest,
   EXPECT_FALSE(unfrozen_verification.valid());
   EXPECT_TRUE(has_diagnostic_containing(unfrozen_verification.diagnostics,
                                         "materialized descriptor missing"));
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       RuntimeExecutableDescriptorRejectsNonMaterializableFusedChild) {
+  auto parameter =
+      std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
+  auto relu0 = std::make_shared<ov::op::v0::Relu>(parameter);
+  auto relu1 = std::make_shared<ov::op::v0::Relu>(relu0);
+  auto relu2 = std::make_shared<ov::op::v0::Relu>(relu1);
+
+  auto child0 = make_materializer_base_descriptor(relu0);
+  child0.origin = KernelArtifactOrigin::Metadata;
+  child0.payload_kind = KernelArtifactPayloadKind::None;
+  child0.kernel_id = "metadata";
+  child0.entry_point = "metadata";
+  child0.layout_contract = "view_only";
+  child0.tensor_view_only = true;
+
+  auto child1 = make_materializer_base_descriptor(relu1);
+  child1.stage_index = 1;
+  child1.stage_record_key = 0x2234u;
+  child1.manifest_ref = "manifest://unit/fused_child1";
+  child1.abi_fingerprint = "abi://unit/fused_child1";
+  child1.artifact_key = "artifact://unit/fused_child1";
+  child1.origin = KernelArtifactOrigin::Common;
+  child1.payload_kind = KernelArtifactPayloadKind::None;
+  child1.kernel_id = "materialized/fused_attention_sequence/child1";
+  child1.entry_point.clear();
+  child1.tensor_view_only = false;
+
+  auto child2 = make_materializer_base_descriptor(relu2);
+  child2.stage_index = 2;
+  child2.stage_record_key = 0x3234u;
+  child2.manifest_ref = "manifest://unit/fused_child2";
+  child2.abi_fingerprint = "abi://unit/fused_child2";
+  child2.artifact_key = "artifact://unit/fused_child2";
+  child2.origin = KernelArtifactOrigin::Metadata;
+  child2.payload_kind = KernelArtifactPayloadKind::None;
+  child2.kernel_id = "metadata";
+  child2.entry_point = "metadata";
+  child2.layout_contract = "view_only";
+  child2.tensor_view_only = true;
+
+  PipelineStageMaterializationPlan plan;
+  plan.kind = PipelineStageMaterializationKind::FusedAttentionSequence;
+  plan.io_plan.stage_name = relu2->get_friendly_name();
+  plan.io_plan.op_family = relu2->get_type_name();
+  plan.io_plan.runtime_stage_index = child2.stage_index;
+  PipelineStageInputLink input;
+  input.port = 0;
+  input.source_ref.kind = PipelineStageTensorRefKind::Parameter;
+  input.source_ref.index = 0;
+  input.source_ref.port = 0;
+  plan.io_plan.inputs.push_back(std::move(input));
+  PipelineStageOutputDesc output;
+  output.shape = ov::Shape{1};
+  output.type = ov::element::f32;
+  output.source_port = 0;
+  output.source_ref.kind = PipelineStageTensorRefKind::StageOutput;
+  output.source_ref.index = child2.stage_index;
+  output.source_ref.port = 0;
+  plan.io_plan.outputs.push_back(std::move(output));
+  plan.descriptor_stage_index = child2.stage_index;
+  plan.fused_descriptor_stage_indices = {child0.stage_index, child1.stage_index,
+                                         child2.stage_index};
+  plan.fused_inner_stages.resize(plan.fused_descriptor_stage_indices.size());
+  plan.materialized_descriptor = child2;
+  plan.materialized_descriptor.origin = KernelArtifactOrigin::Common;
+  plan.materialized_descriptor.payload_kind = KernelArtifactPayloadKind::None;
+  plan.materialized_descriptor.payload.reset();
+  plan.materialized_descriptor.kernel_id =
+      "materialized/fused_attention_sequence/unit";
+  plan.materialized_descriptor.op_family = "FusedAttentionSequence";
+  plan.materialized_descriptor_valid = true;
+
+  RuntimeExecutableDescriptor runtime_descriptor;
+  runtime_descriptor.target_fingerprint = "metal:unit";
+  runtime_descriptor.stages = {child0, child1, child2};
+  runtime_descriptor.materialization_finalized = true;
+  runtime_descriptor.materialization_stages.push_back(std::move(plan));
+
+  const auto verification =
+      compiler::verify_runtime_executable_descriptor_materialization(
+          runtime_descriptor);
+  EXPECT_FALSE(verification.valid());
+  EXPECT_TRUE(has_diagnostic_containing(
+      verification.diagnostics,
+      "fused child descriptor is not materializable"));
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
@@ -2883,6 +3011,86 @@ TEST_F(GfxBackendArchitectureContractTest,
       runtime_descriptor.runtime_options.custom_kernel_dispatch_profile
           .profile_key,
       "opencl:broadcom_v3d");
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       RuntimeDescriptorFinalizationIsOwnedBySharedCompilerBuilder) {
+  struct TargetCase {
+    std::string name;
+    compiler::BackendTarget target;
+    std::shared_ptr<const compiler::BackendModule> module;
+  };
+
+  const std::vector<TargetCase> target_cases = {
+      {"macos_metal",
+       compiler::BackendTarget::from_backend(GpuBackend::Metal),
+       compiler::make_metal_backend_module(
+           compiler::BackendTarget::from_backend(GpuBackend::Metal))},
+      {"android_opencl_adreno",
+       compiler::BackendTarget::from_backend_device_family(
+           GpuBackend::OpenCL, GpuDeviceFamily::QualcommAdreno),
+       compiler::make_opencl_backend_module(
+           compiler::BackendTarget::from_backend_device_family(
+               GpuBackend::OpenCL, GpuDeviceFamily::QualcommAdreno))},
+      {"rpi4_v3d_opencl",
+       compiler::BackendTarget::from_backend_device_family(
+           GpuBackend::OpenCL, GpuDeviceFamily::BroadcomV3D),
+       compiler::make_opencl_backend_module(
+           compiler::BackendTarget::from_backend_device_family(
+               GpuBackend::OpenCL, GpuDeviceFamily::BroadcomV3D))},
+      {"rpi5_v3d_opencl",
+       compiler::BackendTarget::from_backend_device_family(
+           GpuBackend::OpenCL, GpuDeviceFamily::BroadcomV3D),
+       compiler::make_opencl_backend_module(
+           compiler::BackendTarget::from_backend_device_family(
+               GpuBackend::OpenCL, GpuDeviceFamily::BroadcomV3D))},
+  };
+
+  std::vector<std::shared_ptr<const compiler::BackendModule>> modules;
+  modules.reserve(target_cases.size());
+  for (const auto &target_case : target_cases) {
+    modules.push_back(target_case.module);
+  }
+
+  const compiler::BackendRegistry registry(std::move(modules));
+  const compiler::GfxCompilerService compiler_service(registry);
+
+  for (const auto &target_case : target_cases) {
+    SCOPED_TRACE(target_case.name);
+
+    const auto compile_result = compiler_service.compile(
+        {make_static_range_model(), target_case.target});
+    ASSERT_TRUE(compile_result.supported())
+        << compile_result.unsupported_message();
+
+    const auto seed_descriptor =
+        compiler::RuntimeExecutableDescriptorBuilder{}.build(
+            compile_result.executable);
+    EXPECT_FALSE(seed_descriptor.materialization_finalized);
+    EXPECT_FALSE(compiler::runtime_executable_descriptor_materialization_valid(
+        seed_descriptor));
+
+    compiler::RuntimeExecutableDescriptorBuildRequest descriptor_request;
+    descriptor_request.executable = &compile_result.executable;
+    descriptor_request.transformed_model = compile_result.transformed_model;
+    descriptor_request.backend_registry = &registry;
+    descriptor_request.target = target_case.target;
+    descriptor_request.backend_name = target_case.target.backend_id();
+    descriptor_request.fusion_capabilities =
+        target_case.module->capabilities().fusion();
+    ASSERT_TRUE(descriptor_request.valid());
+
+    const auto finalized_descriptor =
+        compiler::RuntimeExecutableDescriptorBuilder{}.build_finalized(
+            descriptor_request);
+    EXPECT_TRUE(finalized_descriptor.materialization_finalized);
+    EXPECT_TRUE(compiler::runtime_executable_descriptor_valid(
+        finalized_descriptor, compile_result.executable));
+    EXPECT_TRUE(compiler::runtime_executable_descriptor_materialization_valid(
+        finalized_descriptor));
+    EXPECT_EQ(finalized_descriptor.target_fingerprint,
+              compile_result.executable.target_fingerprint);
+  }
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
@@ -4436,6 +4644,7 @@ TEST_F(GfxBackendArchitectureContractTest,
 
   const auto backend_executable =
       compiler::ExecutableBundleBuilder(
+          compiler::make_opencl_kernel_artifact_descriptor_resolver(),
           compiler::make_opencl_kernel_artifact_payload_resolver())
           .build(manifest, lowering_plan);
   ASSERT_TRUE(backend_executable.verify().valid());
@@ -4450,6 +4659,82 @@ TEST_F(GfxBackendArchitectureContractTest,
   EXPECT_EQ(artifact.payload_kind,
             compiler::KernelArtifactPayloadKind::OpenClSource);
   EXPECT_EQ(artifact.entry_point, "gfx_opencl_generated_activation_f32");
+}
+
+TEST_F(GfxBackendArchitectureContractTest,
+       PayloadResolverCannotOwnOrMutateArtifactAbi) {
+  struct Case {
+    compiler::BackendTarget target;
+    std::shared_ptr<const compiler::OperationSupportPolicy> policy;
+    compiler::KernelRegistry registry;
+    compiler::KernelArtifactDescriptorResolver descriptor_resolver;
+    compiler::KernelArtifactPayloadResolver payload_resolver;
+  };
+
+  const auto opencl_target =
+      compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
+  const auto metal_target =
+      compiler::BackendTarget::from_backend(GpuBackend::Metal);
+  const std::vector<Case> cases = {
+      {opencl_target, compiler::make_opencl_operation_support_policy(),
+       compiler::make_opencl_kernel_registry(opencl_target),
+       compiler::make_opencl_kernel_artifact_descriptor_resolver(),
+       compiler::make_opencl_kernel_artifact_payload_resolver()},
+      {metal_target, compiler::make_metal_operation_support_policy(),
+       compiler::make_metal_kernel_registry(metal_target),
+       compiler::make_metal_kernel_artifact_descriptor_resolver(),
+       compiler::make_metal_kernel_artifact_payload_resolver()},
+  };
+
+  for (const auto &test_case : cases) {
+    const compiler::BackendCapabilities capabilities(test_case.target,
+                                                     test_case.policy);
+    const compiler::OperationLegalizer legalizer(capabilities);
+    const compiler::LoweringPlanner planner(test_case.target,
+                                            test_case.registry);
+    const auto lowering_plan = planner.plan(make_relu_model(), legalizer);
+    ASSERT_TRUE(lowering_plan.executable()) << test_case.target.debug_string();
+    const auto manifest = compiler::ManifestBuilder{}.build(lowering_plan);
+    ASSERT_TRUE(manifest.valid()) << test_case.target.debug_string();
+
+    const auto descriptor_only_executable =
+        compiler::ExecutableBundleBuilder(test_case.descriptor_resolver, {})
+            .build(manifest, lowering_plan);
+    size_t checked_payload_descriptors = 0;
+    const auto count = std::min(descriptor_only_executable.stages.size(),
+                                lowering_plan.operations.size());
+    for (size_t i = 0; i < count; ++i) {
+      const auto descriptor_index =
+          descriptor_only_executable.stages[i].artifact_descriptor_index;
+      ASSERT_LT(descriptor_index,
+                descriptor_only_executable.artifact_descriptors.size())
+          << test_case.target.debug_string();
+      const auto descriptor_before =
+          descriptor_only_executable.artifact_descriptors[descriptor_index];
+      if (descriptor_before.payload_kind ==
+          compiler::KernelArtifactPayloadKind::None) {
+        continue;
+      }
+      ASSERT_FALSE(descriptor_before.entry_point.empty())
+          << test_case.target.debug_string();
+      ASSERT_NE(descriptor_before.abi_arg_count, 0u)
+          << test_case.target.debug_string();
+      ASSERT_TRUE(descriptor_before.launch_plan.valid)
+          << test_case.target.debug_string();
+      ASSERT_FALSE(descriptor_before.artifact_key.empty())
+          << test_case.target.debug_string();
+
+      auto descriptor_after = descriptor_before;
+      const auto payload =
+          test_case.payload_resolver(descriptor_after, lowering_plan.operations[i]);
+      ASSERT_TRUE(payload) << test_case.target.debug_string() << " "
+                           << descriptor_before.kernel.kernel_id;
+      expect_artifact_descriptor_abi_equal(descriptor_after, descriptor_before);
+      ++checked_payload_descriptors;
+    }
+    EXPECT_GT(checked_payload_descriptors, 0u)
+        << test_case.target.debug_string();
+  }
 }
 
 TEST_F(GfxBackendArchitectureContractTest,
@@ -4482,6 +4767,7 @@ TEST_F(GfxBackendArchitectureContractTest,
   ASSERT_TRUE(manifest.valid());
   const auto backend_executable =
       compiler::ExecutableBundleBuilder(
+          compiler::make_opencl_kernel_artifact_descriptor_resolver(),
           compiler::make_opencl_kernel_artifact_payload_resolver())
           .build(manifest, lowering_plan);
   ASSERT_TRUE(backend_executable.verify().valid());

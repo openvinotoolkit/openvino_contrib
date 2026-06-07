@@ -67,6 +67,10 @@ KernelRegistry make_metal_kernel_registry(const BackendTarget &target) {
       make_metal_vendor_unit(target, "metal/vendor/mps_gemm", "MatMul"));
   units.push_back(
       make_metal_vendor_unit(target, "metal/vendor/mps_softmax", "Softmax"));
+  units.push_back(make_metal_vendor_unit(target, "metal/vendor/mps_conv2d",
+                                         "Convolution"));
+  units.push_back(make_metal_vendor_unit(
+      target, "metal/vendor/mps_group_conv2d", "GroupConvolution"));
   units.push_back(
       make_metal_vendor_unit(target, "metal/vendor/mps_pool2d", "Pooling"));
   units.push_back(make_metal_vendor_unit(target, "metal/vendor/mps_resize2d",

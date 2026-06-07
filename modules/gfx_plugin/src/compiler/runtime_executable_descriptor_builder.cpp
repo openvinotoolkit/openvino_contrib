@@ -15,7 +15,7 @@
 #include <vector>
 
 #include "openvino/core/except.hpp"
-#include "compiler/pipeline_stage_builder.hpp"
+#include "compiler/pipeline_stage_runtime_descriptor_builder_detail.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "runtime/tensor_binding_contract.hpp"
 
@@ -26,14 +26,12 @@ namespace {
 constexpr uint32_t kRuntimeExecutableDescriptorSchemaVersion = 1;
 
 bool source_payload_kind(KernelArtifactPayloadKind kind) noexcept {
-  return kind == KernelArtifactPayloadKind::MslSource ||
-         kind == KernelArtifactPayloadKind::OpenClSource;
+  return runtime_descriptor_source_payload_kind(kind);
 }
 
 bool payload_kind_requires_materialized_payload(
     KernelArtifactPayloadKind kind) noexcept {
-  return kind == KernelArtifactPayloadKind::VendorDescriptor ||
-         source_payload_kind(kind);
+  return runtime_descriptor_payload_kind_requires_payload(kind);
 }
 
 struct LaunchPlanRoleSummary {
@@ -634,15 +632,35 @@ void append_materialization_diagnostics(
     }
     append_materialized_descriptor_diagnostics(result, materialized_stage,
                                                descriptor_stage, i);
-    for (const auto fused_stage_index :
-         materialized_stage.fused_descriptor_stage_indices) {
-      if (fused_stage_index == PipelineStageIoPlan::npos ||
-          fused_stage_index >= descriptor.stages.size()) {
+    if (materialized_stage.kind ==
+        PipelineStageMaterializationKind::FusedAttentionSequence) {
+      const auto fused_stage_count =
+          materialized_stage.fused_descriptor_stage_indices.size();
+      if (fused_stage_count < 3 ||
+          materialized_stage.fused_inner_stages.size() != fused_stage_count) {
         result.diagnostics.push_back(
-            "compiler-owned runtime descriptor fused descriptor index "
-            "out of range at " +
+            "compiler-owned runtime descriptor fused materialization stage "
+            "count drift at " +
             std::to_string(i));
-        break;
+      }
+      for (const auto fused_stage_index :
+           materialized_stage.fused_descriptor_stage_indices) {
+        if (fused_stage_index == PipelineStageIoPlan::npos ||
+            fused_stage_index >= descriptor.stages.size()) {
+          result.diagnostics.push_back(
+              "compiler-owned runtime descriptor fused descriptor index "
+              "out of range at " +
+              std::to_string(i));
+          break;
+        }
+        if (!runtime_stage_descriptor_is_materializable(
+                descriptor.stages[fused_stage_index])) {
+          result.diagnostics.push_back(
+              "compiler-owned runtime descriptor fused child descriptor is "
+              "not materializable at " +
+              std::to_string(i) + ":" +
+              std::to_string(fused_stage_index));
+        }
       }
     }
   }
@@ -999,12 +1017,12 @@ RuntimeExecutableDescriptor RuntimeExecutableDescriptorBuilder::build_finalized(
       "GFX: runtime executable descriptor build requires concrete BackendTarget");
 
   auto descriptor_seed = build(*request.executable);
-  PipelineStageBuildRequest stage_request;
-  stage_request.graph = make_pipeline_stage_graph_snapshot(
+  detail::PipelineStageBuildRequest stage_request;
+  stage_request.graph = detail::make_pipeline_stage_graph_snapshot(
       request.transformed_model,
-      make_pipeline_stage_fusion_config(request.fusion_capabilities,
-                                        request.enable_fusion,
-                                        gfx_log_debug_enabled()));
+      detail::make_pipeline_stage_fusion_config(request.fusion_capabilities,
+                                                request.enable_fusion,
+                                                gfx_log_debug_enabled()));
   stage_request.runtime_descriptor = &descriptor_seed;
   stage_request.backend_registry = request.backend_registry;
   stage_request.target = request.target;
@@ -1014,7 +1032,8 @@ RuntimeExecutableDescriptor RuntimeExecutableDescriptorBuilder::build_finalized(
   stage_request.enable_fusion = request.enable_fusion;
   stage_request.compile_trace = request.compile_trace;
 
-  auto descriptor = build_pipeline_stage_runtime_descriptor(stage_request);
+  auto descriptor =
+      detail::build_pipeline_stage_runtime_descriptor(stage_request);
   const auto descriptor_verification =
       verify_runtime_executable_descriptor(descriptor, *request.executable);
   OPENVINO_ASSERT(

@@ -38,6 +38,10 @@ gfx_embed_kernel_source(
     "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/activation_kernel_source.hpp"
     "kOpenClGeneratedActivationKernelSource")
 gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/conv2d_kernel.cl"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/conv2d_kernel_source.hpp"
+    "kOpenClGeneratedConv2DF32KernelSource")
+gfx_embed_kernel_source(
     "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/reduction_f32_kernel.cl"
     "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/reduction_f32_kernel_source.hpp"
     "kOpenClGeneratedReductionF32KernelSource")
@@ -313,6 +317,7 @@ endif()
 add_library(gfx_compiler_common STATIC)
 target_sources(gfx_compiler_common PRIVATE
     ${GFX_COMPILER_COMMON_HEADERS}
+    ${GFX_COMPILER_COMMON_PRIVATE_HEADERS}
     ${GFX_COMPILER_COMMON_SOURCES})
 target_link_libraries(gfx_compiler_common PRIVATE
     gfx_plugin_build_settings

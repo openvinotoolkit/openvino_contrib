@@ -170,6 +170,7 @@ struct ActivationRouteCase {
   compiler::BackendTarget target;
   std::shared_ptr<const compiler::OperationSupportPolicy> policy;
   compiler::KernelRegistry kernel_registry;
+  compiler::KernelArtifactDescriptorResolver descriptor_resolver;
   compiler::KernelArtifactPayloadResolver payload_resolver;
   KernelArtifactPayloadKind expected_payload = KernelArtifactPayloadKind::None;
   std::string expected_kernel_id;
@@ -219,7 +220,8 @@ public:
     compiled.plan = planner.plan(model, legalizer);
     compiled.manifest = compiler::ManifestBuilder{}.build(compiled.plan);
     compiled.executable =
-        compiler::ExecutableBundleBuilder(m_route.payload_resolver)
+        compiler::ExecutableBundleBuilder(m_route.descriptor_resolver,
+                                          m_route.payload_resolver)
             .build(compiled.manifest, compiled.plan);
     return compiled;
   }
@@ -309,6 +311,7 @@ ActivationRouteCase opencl_activation_case() {
                              target,
                              compiler::make_opencl_operation_support_policy(),
                              compiler::make_opencl_kernel_registry(target),
+                             compiler::make_opencl_kernel_artifact_descriptor_resolver(),
                              compiler::make_opencl_kernel_artifact_payload_resolver(),
                              KernelArtifactPayloadKind::OpenClSource,
                              "opencl/generated/activation_f32",
@@ -323,6 +326,7 @@ ActivationRouteCase metal_activation_case() {
       target,
       compiler::make_metal_operation_support_policy(),
       compiler::make_metal_kernel_registry(target),
+      compiler::make_metal_kernel_artifact_descriptor_resolver(),
       compiler::make_metal_kernel_artifact_payload_resolver(),
       KernelArtifactPayloadKind::MslSource,
       "metal/generated/activation",

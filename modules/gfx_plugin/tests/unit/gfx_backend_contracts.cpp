@@ -94,6 +94,10 @@ compiler::GfxCompileResult BackendModuleContract::compile_without_graph_pipeline
     compile_result.executable = compiler::ExecutableBundleBuilder(
         [&backend_module](compiler::KernelArtifactDescriptor& descriptor,
                           const compiler::PlannedOperation& op) {
+            return backend_module.finalize_artifact_descriptor(descriptor, op);
+        },
+        [&backend_module](const compiler::KernelArtifactDescriptor& descriptor,
+                          const compiler::PlannedOperation& op) {
             return backend_module.materialize_artifact_payload(descriptor, op);
         }).build(compile_result.manifest, compile_result.lowering_plan);
     compiler::CacheEnvelopeBuildOptions cache_options;

@@ -32,8 +32,8 @@ query_opencl_tile_operation(const std::shared_ptr<const ov::Node> &node,
                             const KernelRegistry &registry);
 
 std::shared_ptr<const ::ov::gfx_plugin::KernelArtifactPayload>
-build_opencl_tile_kernel_artifact_payload(KernelArtifactDescriptor &descriptor,
-                                          const PlannedOperation &op);
+build_opencl_tile_kernel_artifact_payload(
+    const KernelArtifactDescriptor &descriptor, const PlannedOperation &op);
 
 } // namespace compiler
 } // namespace gfx_plugin

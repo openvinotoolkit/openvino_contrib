@@ -175,6 +175,9 @@ For OpenCL source-artifact changes:
 - include `tests/unit/gfx_softmax_kernel_contract_test.cpp` when generated
   static or dynamic-static-rank Softmax source ids, scalar metadata, or backend
   kernel-unit routes change
+- include `tests/unit/gfx_conv_kernel_contract_test.cpp` when generated
+  Conv2D/GroupConv2D f32 source ids, constant-weight tensor bindings, scalar
+  metadata, Metal MPS vendor routes, or backend kernel-unit routes change
 - include `tests/unit/gfx_pool_kernel_contract_test.cpp` when generated Pool2D
   source ids, static 4D NCHW window metadata, or backend kernel-unit routes
   change
@@ -218,8 +221,11 @@ unless the user explicitly requests build or test targets.
 When changing test target composition, use the gtest matrix tool for
 registration capture or comparison. The CMake `gfx_gtest_matrix_capture` target
 runs the matrix tool in `--check-only` mode when host execution is possible.
-Keep native backend and backend-unavailable coverage aligned through executable
-registration, contract tests, and route coverage, not source parsing.
+`gfx_gtest_matrix_compare` requires explicit
+`GFX_GTEST_MATRIX_REFERENCE_ROOTS`, and cross-build host capture fails unless
+`CMAKE_CROSSCOMPILING_EMULATOR` is configured. Keep native backend and
+backend-unavailable coverage aligned through executable registration, contract
+tests, and route coverage, not source parsing.
 
 ## Compare And Profiling Tools
 
@@ -232,6 +238,8 @@ registration, contract tests, and route coverage, not source parsing.
 - Use `ov_gfx_conv_shape_bench` for quick Conv2D compile/infer probes.
 - Use standalone OpenCL Conv2D microbenches only before promoting a kernel
   family into the shared plugin contract.
+- Current OpenCL Conv2D/GroupConv2D plugin support is generated-source f32,
+  static 4D NCHW, and constant-weight only.
 - Use `tools/gfx_profile_runbook.py`, `tools/gfx_microbench_smoke.py`,
   `tools/gfx_calibration_diff.py`, and `tools/gfx_external_trace_summary.py`
   for operational profiling workflows.

@@ -300,5 +300,14 @@ struct RuntimeExecutableDescriptor {
   PipelineStageRuntimeOptionsPlan runtime_options;
 };
 
+bool runtime_descriptor_source_payload_kind(
+    KernelArtifactPayloadKind kind) noexcept;
+
+bool runtime_descriptor_payload_kind_requires_payload(
+    KernelArtifactPayloadKind kind) noexcept;
+
+bool runtime_stage_descriptor_is_materializable(
+    const RuntimeStageExecutableDescriptor &descriptor) noexcept;
+
 } // namespace gfx_plugin
 } // namespace ov

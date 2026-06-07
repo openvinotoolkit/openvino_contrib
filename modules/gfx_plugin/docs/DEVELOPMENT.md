@@ -354,10 +354,10 @@ Common operation families that need extra care:
 - backend-owned OpenCL source payload materialization in
   `src/backends/opencl/compiler/opencl_kernel_artifacts.*`
 - OpenCL generated kernel units such as activation, elementwise, f32 MatMul,
-  bounded f32/f16 Interpolate, f32 reduction, boolean reduction, f32/f16
-  Softmax, dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D, f32/f16/i64
-  Range, ShapeOf, Tile, Transpose, compare/select, logical-bool elementwise, and
-  generated Concat/Split
+  f32 Conv2D/GroupConv2D, bounded f32/f16 Interpolate, f32 reduction, boolean
+  reduction, f32/f16 Softmax, dynamic-static-rank f32/f16 Softmax,
+  f32/f16 Pool2D, f32/f16/i64 Range, ShapeOf, Tile, Transpose, compare/select,
+  logical-bool elementwise, and generated Concat/Split
 - OpenCL reduction routes, where numeric f32 reductions and logical boolean
   reductions use separate generated source ids but the same static axis
   metadata contract
@@ -367,6 +367,9 @@ Common operation families that need extra care:
 - generated Softmax routes, where Metal `Softmax`/`LogSoftmax` and OpenCL
   `Softmax` must keep axis normalization, scalar metadata, and kernel-unit ids
   aligned with their backend-specific contracts
+- Convolution routes, where OpenCL generated Conv2D/GroupConv2D covers f32
+  static 4D NCHW data/output with constant weights and Metal Conv2D/GroupConv2D
+  must use valid descriptor-backed MPS vendor routes
 - Pooling routes, where OpenCL generated Pool2D covers static f32/f16 NCHW
   window contracts and Metal Pool2D must use a valid MPS-family vendor route
 - LLM-oriented fusions such as `RoPE`, compressed `MatMul`, and SDPA variants
@@ -475,6 +478,13 @@ For Softmax source-unit changes, update
 f32/f16 Softmax and LogSoftmax source ids, OpenCL static and dynamic-static-rank
 Softmax source ids, runtime-parameter roles, scalar metadata, and kernel
 registry entries aligned.
+
+For Conv2D source-unit changes, update
+`tests/unit/gfx_conv_kernel_contract_test.cpp`,
+`tests/unit/gfx_backend_architecture_contract_test.cpp`, and the shared
+`tests/unit/gfx_opencl_source_artifact_verifier.hpp` helper. Keep OpenCL
+Conv2D/GroupConv2D f32 generated source ids, constant-weight tensor bindings,
+scalar metadata, descriptor finalization, and Metal MPS vendor routes aligned.
 
 For Pool2D source-unit changes, update
 `tests/unit/gfx_pool_kernel_contract_test.cpp`,
@@ -591,9 +601,11 @@ or the matching `*_unavailable_test.cpp` adapter when it is not.
 Use `tests/tools/gfx_gtest_matrix.py` to capture or compare
 `--gtest_list_tests` output across production test targets. It detects
 duplicates, forbidden `DISABLED_` registrations, and matrix drift; it does not
-skip or filter tests. Native backend and unavailable-adapter coverage must be
-kept aligned through executable test registration, contract coverage, and route
-coverage rather than source parsing.
+skip or filter tests. `gfx_gtest_matrix_compare` requires explicit
+`GFX_GTEST_MATRIX_REFERENCE_ROOTS`, and cross-build host capture fails unless
+`CMAKE_CROSSCOMPILING_EMULATOR` is configured. Native backend and
+unavailable-adapter coverage must be kept aligned through executable test
+registration, contract coverage, and route coverage rather than source parsing.
 
 ## Public Repository Hygiene
 

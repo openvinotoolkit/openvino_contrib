@@ -15,6 +15,7 @@ namespace compiler {
 using ::ov::gfx_plugin::GfxMetalVendorPrimitiveArtifactPayload;
 
 KernelArtifactPayloadResolver make_metal_kernel_artifact_payload_resolver();
+KernelArtifactDescriptorResolver make_metal_kernel_artifact_descriptor_resolver();
 std::string_view metal_mpsgraph_sdpa_vendor_kernel_unit_id() noexcept;
 PipelineVendorAttentionArtifactResolver
 make_metal_vendor_attention_artifact_resolver();

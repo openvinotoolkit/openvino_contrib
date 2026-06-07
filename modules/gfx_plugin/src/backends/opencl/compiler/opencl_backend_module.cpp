@@ -68,6 +68,8 @@ make_opencl_backend_module(BackendTarget target) {
   config.stage_placement_policy = make_opencl_stage_placement_policy();
   config.execution_capabilities =
       make_opencl_execution_capabilities(config.target);
+  config.artifact_descriptor_resolver =
+      make_opencl_kernel_artifact_descriptor_resolver();
   config.artifact_payload_resolver =
       make_opencl_kernel_artifact_payload_resolver();
   return make_static_backend_module(std::move(config));

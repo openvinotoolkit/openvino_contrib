@@ -202,6 +202,7 @@ target_sources(${UNIT_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_eltwise_opencl_source_artifacts_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_reduction_kernel_contract_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_softmax_kernel_contract_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_conv_kernel_contract_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_pool_kernel_contract_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_matmul_kernel_contract_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_backend_base_test.cpp
@@ -390,7 +391,30 @@ if(GFX_GTEST_MATRIX_CAPTURE_ON_HOST)
             LABELS "OV;GFX"
             WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
             DEPENDS ov_gfx_gtest_matrix_capture)
+    else()
+        add_custom_target(gfx_gtest_matrix_compare
+            COMMAND "${CMAKE_COMMAND}" -E echo
+                "GFX: cross-target gtest matrix comparison requires GFX_GTEST_MATRIX_REFERENCE_ROOTS entries for macos, android, rpi4 and rpi5"
+            COMMAND "${CMAKE_COMMAND}" -E false
+            DEPENDS gfx_gtest_matrix_capture
+            WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+            COMMENT "Reject incomplete GFX cross-target --gtest_list_tests comparison"
+            VERBATIM)
     endif()
+else()
+    add_custom_target(gfx_gtest_matrix_capture
+        COMMAND "${CMAKE_COMMAND}" -E echo
+            "GFX: host --gtest_list_tests capture is unavailable for this cross-build; run the test binaries on the target device or configure CMAKE_CROSSCOMPILING_EMULATOR"
+        COMMAND "${CMAKE_COMMAND}" -E false
+        COMMENT "Reject host-only GFX gtest matrix capture for cross-build"
+        VERBATIM)
+
+    add_custom_target(gfx_gtest_matrix_compare
+        COMMAND "${CMAKE_COMMAND}" -E echo
+            "GFX: cross-target gtest matrix comparison requires device-captured reference roots for macos, android, rpi4 and rpi5"
+        COMMAND "${CMAKE_COMMAND}" -E false
+        COMMENT "Reject incomplete GFX cross-target --gtest_list_tests comparison"
+        VERBATIM)
 endif()
 
 add_executable(ov_gfx_compare_runner

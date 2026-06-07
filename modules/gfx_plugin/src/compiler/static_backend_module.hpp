@@ -23,6 +23,7 @@ struct StaticBackendModuleConfig {
   BackendExecutionCapabilities execution_capabilities = {};
   PrecisionCapabilities precision_capabilities = {};
   ArtifactFormatCapabilities artifact_format_capabilities = {};
+  KernelArtifactDescriptorResolver artifact_descriptor_resolver = {};
   KernelArtifactPayloadResolver artifact_payload_resolver = {};
   PipelineVendorAttentionArtifactResolver vendor_attention_artifact_resolver =
       {};

@@ -560,6 +560,7 @@ Op-specific behavior should reach it through artifact metadata, generated chunk
 artifacts, shared runtime-value planners, static u32/f32 scalar payloads,
 constant materialization, and boolean-buffer contracts.
 Family-specific backend compiler adapters, currently including
+`opencl_conv_kernel_unit.*`, `opencl_pool_kernel_unit.*`,
 `opencl_range_kernel_unit.*`, `opencl_softmax_kernel_unit.*`, and
 `opencl_tile_kernel_unit.*`, resolve generated `KernelUnit` records and
 materialize operation payloads before runtime descriptor construction.
@@ -572,17 +573,19 @@ policy intentionally does not fall back to generic MLIR support when no source
 artifact exists.
 
 Current OpenCL source artifacts cover data movement, selected converts, MatMul,
-Softmax, Pool2D, bounded static NCHW spatial Interpolate, Range, Tile,
-gather/scatter families, ShapeOf, Concat/Split, unary and binary elementwise
-families, compare/select, and boolean logical/reduction families when shapes
-and element types match their contracts.
+Conv2D/GroupConv2D, Softmax, Pool2D, bounded static NCHW spatial Interpolate,
+Range, Tile, gather/scatter families, ShapeOf, Concat/Split, unary and binary
+elementwise families, compare/select, and boolean logical/reduction families
+when shapes and element types match their contracts.
 
-OpenCL source coverage is mostly generated-kernel based. Softmax uses generated
-f32/f16 units, including dynamic-output static-rank variants whose scalar ABI
-carries runtime shape metadata. Range uses generated f32/f16/i64 units,
-including a specialized i64 unit-step source. Pool2D uses generated f32/f16
-units for static 4D NCHW MaxPool and AvgPool. Interpolate uses embedded f32/f16
-generated kernel units with explicit scalar metadata for resize mode,
+OpenCL source coverage is mostly generated-kernel based. Conv2D and
+GroupConv2D use generated f32 units for static 4D NCHW data/output with
+constant weights and explicit 2D stride/dilation/padding metadata. Softmax uses
+generated f32/f16 units, including dynamic-output static-rank variants whose
+scalar ABI carries runtime shape metadata. Range uses generated f32/f16/i64
+units, including a specialized i64 unit-step source. Pool2D uses generated
+f32/f16 units for static 4D NCHW MaxPool and AvgPool. Interpolate uses embedded
+f32/f16 generated kernel units with explicit scalar metadata for resize mode,
 coordinate transform, nearest rounding, and NCHW spatial dimensions. ShapeOf,
 Tile, logical-bool elementwise, compare/select, boolean reduction, generated
 Concat/Split helpers, and Transpose also use explicit `opencl/generated/*`

@@ -24,11 +24,9 @@
 #include "kernel_ir/opencl_kernels/interpolate_f16_kernel.hpp"
 #include "kernel_ir/opencl_kernels/interpolate_f32_kernel.hpp"
 #include "kernel_ir/opencl_kernels/matmul_f32_kernel.hpp"
-#include "kernel_ir/opencl_kernels/pool2d_f16_kernel.hpp"
-#include "kernel_ir/opencl_kernels/pool2d_f32_kernel.hpp"
+#include "kernel_ir/opencl_kernels/range_kernel.hpp"
 #include "kernel_ir/opencl_kernels/reduction_f32_kernel.hpp"
 #include "kernel_ir/opencl_kernels/reduction_logical_bool_kernel.hpp"
-#include "kernel_ir/opencl_kernels/range_kernel.hpp"
 #include "kernel_ir/opencl_kernels/shapeof_kernel.hpp"
 #include "kernel_ir/opencl_kernels/softmax_kernel.hpp"
 #include "kernel_ir/opencl_kernels/tile_kernel.hpp"
@@ -42,7 +40,6 @@
 #include "openvino/op/asinh.hpp"
 #include "openvino/op/atan.hpp"
 #include "openvino/op/atanh.hpp"
-#include "openvino/op/avg_pool.hpp"
 #include "openvino/op/broadcast.hpp"
 #include "openvino/op/ceiling.hpp"
 #include "openvino/op/clamp.hpp"
@@ -65,7 +62,6 @@
 #include "openvino/op/interpolate.hpp"
 #include "openvino/op/log.hpp"
 #include "openvino/op/matmul.hpp"
-#include "openvino/op/max_pool.hpp"
 #include "openvino/op/maximum.hpp"
 #include "openvino/op/minimum.hpp"
 #include "openvino/op/mish.hpp"
@@ -3646,95 +3642,6 @@ matmul_static_u32_scalars(const std::shared_ptr<const ov::Node> &node) {
   };
 }
 
-std::optional<std::vector<uint32_t>>
-pool2d_static_u32_scalars(const std::shared_ptr<const ov::Node> &node,
-                          GfxOpenClArtifactOp &op) {
-  if (!node || node->get_input_size() != 1 || node->get_output_size() != 1 ||
-      !node->get_input_partial_shape(0).is_static() ||
-      !node->get_output_partial_shape(0).is_static() ||
-      node->get_input_element_type(0) != node->get_output_element_type(0) ||
-      (!is_f32_tensor_type(node->get_output_element_type(0)) &&
-       !is_f16_tensor_type(node->get_output_element_type(0)))) {
-    return std::nullopt;
-  }
-
-  const auto &input_shape = node->get_input_shape(0);
-  const auto &output_shape = node->get_output_shape(0);
-  if (input_shape.size() != 4 || output_shape.size() != 4 ||
-      ov::shape_size(input_shape) == 0 || ov::shape_size(output_shape) == 0) {
-    return std::nullopt;
-  }
-
-  ov::Shape kernel;
-  ov::Strides strides;
-  ov::Strides dilations;
-  ov::Shape pads_begin;
-  ov::Shape pads_end;
-  bool is_avg = false;
-  bool exclude_pad = true;
-
-  if (auto maxpool = ov::as_type_ptr<const ov::op::util::MaxPoolBase>(node)) {
-    op = GfxOpenClArtifactOp::MaxPool;
-    kernel = maxpool->get_kernel();
-    strides = maxpool->get_strides();
-    dilations = ov::Strides(kernel.size(), 1);
-    if (auto p = ov::as_type_ptr<const ov::op::v8::MaxPool>(node)) {
-      dilations = p->get_dilations();
-    } else if (auto p = ov::as_type_ptr<const ov::op::v14::MaxPool>(node)) {
-      dilations = p->get_dilations();
-    }
-    pads_begin = maxpool->get_pads_begin();
-    pads_end = maxpool->get_pads_end();
-  } else if (auto avgpool =
-                 ov::as_type_ptr<const ov::op::util::AvgPoolBase>(node)) {
-    op = GfxOpenClArtifactOp::AvgPool;
-    is_avg = true;
-    kernel = avgpool->get_kernel();
-    strides = avgpool->get_strides();
-    dilations = ov::Strides(kernel.size(), 1);
-    if (auto p = ov::as_type_ptr<const ov::op::v16::AvgPool>(node)) {
-      dilations = p->get_dilations();
-    }
-    pads_begin = avgpool->get_pads_begin();
-    pads_end = avgpool->get_pads_end();
-    exclude_pad = avgpool->get_exclude_pad();
-  } else {
-    return std::nullopt;
-  }
-
-  if (kernel.size() != 2 || strides.size() != 2 || dilations.size() != 2 ||
-      pads_begin.size() != 2 || pads_end.size() != 2 || kernel[0] == 0 ||
-      kernel[1] == 0 || strides[0] == 0 || strides[1] == 0 ||
-      dilations[0] == 0 || dilations[1] == 0) {
-    return std::nullopt;
-  }
-
-  std::vector<uint32_t> scalars;
-  scalars.reserve(18);
-  for (const auto value :
-       {input_shape[0], input_shape[1], input_shape[2], input_shape[3],
-        kernel[0], kernel[1], strides[0], strides[1], dilations[0],
-        dilations[1], pads_begin[0], pads_begin[1], pads_end[0], pads_end[1],
-        output_shape[2], output_shape[3]}) {
-    uint32_t scalar = 0;
-    if (!checked_u32(value, scalar)) {
-      return std::nullopt;
-    }
-    scalars.push_back(scalar);
-  }
-  scalars.push_back(is_avg ? 1u : 0u);
-  scalars.push_back(exclude_pad ? 1u : 0u);
-  return scalars;
-}
-
-std::vector<GfxOpenClSourceScalarArg> pool2d_static_scalar_args() {
-  std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-      GfxOpenClSourceScalarArg::ElementCount};
-  scalar_args.insert(scalar_args.end(), 18,
-                     GfxOpenClSourceScalarArg::StaticU32);
-  return scalar_args;
-}
-
 std::optional<std::vector<uint32_t>> gather_elements_static_u32_scalars(
     const std::shared_ptr<const ov::Node> &node) {
   auto gather = ov::as_type_ptr<const ov::op::v6::GatherElements>(node);
@@ -5001,7 +4908,8 @@ split_output_count_from_entry_point(std::string_view entry_point,
     return std::nullopt;
   }
   if (entry_point.size() <= prefix.size() + type_suffix.size() + 1 ||
-      entry_point.substr(entry_point.size() - type_suffix.size()) != type_suffix ||
+      entry_point.substr(entry_point.size() - type_suffix.size()) !=
+          type_suffix ||
       entry_point[entry_point.size() - type_suffix.size() - 1] != '_') {
     return std::nullopt;
   }
@@ -5193,16 +5101,16 @@ std::string make_opencl_static_concat_f16_source(
   return cl.str();
 }
 
-std::string make_opencl_dynamic_concat_f16_source(
-    std::string_view entry_point) {
+std::string
+make_opencl_dynamic_concat_f16_source(std::string_view entry_point) {
   std::string source = kOpenClDynamicDataMovementF16Source;
-  const auto input_count = concat_input_count_from_entry_point(entry_point,
-                                                              "f16");
+  const auto input_count =
+      concat_input_count_from_entry_point(entry_point, "f16");
   if (!input_count) {
     return source;
   }
-  const std::string baseline_name = "gfx_opencl_generated_concat" +
-                                    std::to_string(*input_count) + "_f16";
+  const std::string baseline_name =
+      "gfx_opencl_generated_concat" + std::to_string(*input_count) + "_f16";
   const auto pos = source.find(baseline_name);
   if (pos == std::string::npos) {
     return {};
@@ -5418,8 +5326,9 @@ GfxOpenClSourceArtifact make_opencl_source_artifact(
              std::string_view("gfx_opencl_generated_activation_")) {
     artifact.source = opencl_generated_activation_kernel_source().source;
   } else if (std::string_view(artifact.artifact_ref.entry_point)
-                 .substr(0, std::string_view("gfx_opencl_baseline_convert_")
-                                .size()) ==
+                 .substr(
+                     0,
+                     std::string_view("gfx_opencl_baseline_convert_").size()) ==
              std::string_view("gfx_opencl_baseline_convert_")) {
     artifact.source = kOpenClConvertSource;
   } else if (artifact.artifact_ref.entry_point ==
@@ -5439,12 +5348,6 @@ GfxOpenClSourceArtifact make_opencl_source_artifact(
              "gfx_opencl_generated_softmax_dynamic_f16") {
     artifact.source =
         opencl_generated_softmax_f16_dynamic_kernel_source().source;
-  } else if (artifact.artifact_ref.entry_point ==
-             "gfx_opencl_generated_pool2d_f32") {
-    artifact.source = opencl_generated_pool2d_f32_kernel_source().source;
-  } else if (artifact.artifact_ref.entry_point ==
-             "gfx_opencl_generated_pool2d_f16") {
-    artifact.source = opencl_generated_pool2d_f16_kernel_source().source;
   } else if (artifact.artifact_ref.entry_point ==
              "gfx_opencl_generated_interpolate_f32") {
     artifact.source = opencl_generated_interpolate_f32_kernel_source().source;
@@ -5540,8 +5443,8 @@ GfxOpenClSourceArtifact make_opencl_source_artifact(
                  artifact.artifact_ref.entry_point, "f16");
              concat_inputs && *concat_inputs >= 2 && *concat_inputs <= 4 &&
              static_u32_scalars.size() == 1) {
-    artifact.source =
-        make_opencl_dynamic_concat_f16_source(artifact.artifact_ref.entry_point);
+    artifact.source = make_opencl_dynamic_concat_f16_source(
+        artifact.artifact_ref.entry_point);
   } else if (artifact.artifact_ref.entry_point ==
                  "gfx_opencl_baseline_broadcast_f16_i64shape" ||
              artifact.artifact_ref.entry_point ==
@@ -5596,9 +5499,8 @@ void materialize_gfx_opencl_source_chunk_plan(
   if (artifact.input_chunk_size != 0) {
     for (uint32_t input_begin = 0; input_begin < artifact.direct_input_count;
          input_begin += artifact.input_chunk_size) {
-      const uint32_t input_count =
-          std::min<uint32_t>(artifact.input_chunk_size,
-                             artifact.direct_input_count - input_begin);
+      const uint32_t input_count = std::min<uint32_t>(
+          artifact.input_chunk_size, artifact.direct_input_count - input_begin);
       auto chunk_artifact = make_gfx_opencl_concat_chunk_source_artifact(
           artifact, input_begin, input_count);
       if (!chunk_artifact || !chunk_artifact->valid) {
@@ -5607,8 +5509,7 @@ void materialize_gfx_opencl_source_chunk_plan(
         return;
       }
       const auto &chunk_static_u32 = chunk_artifact->source_static_u32_scalars;
-      if (chunk_static_u32.size() !=
-              2 + static_cast<size_t>(input_count) * 2 ||
+      if (chunk_static_u32.size() != 2 + static_cast<size_t>(input_count) * 2 ||
           chunk_static_u32[0] == 0) {
         artifact.valid = false;
         artifact.planned_chunks.clear();
@@ -5688,7 +5589,8 @@ std::string_view GfxOpenClSourceArtifactPayload::entry_point() const noexcept {
 bool GfxOpenClSourceArtifactPayload::valid() const noexcept {
   if (!m_artifact.valid || !m_artifact.artifact_ref.valid ||
       m_artifact.artifact_ref.kind != GfxKernelArtifactKind::OpenClSource ||
-      m_artifact.artifact_ref.backend_domain != GfxKernelBackendDomain::OpenCl ||
+      m_artifact.artifact_ref.backend_domain !=
+          GfxKernelBackendDomain::OpenCl ||
       m_artifact.source.empty()) {
     return false;
   }
@@ -5903,32 +5805,6 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
 
   if (type == "Tile") {
     return make_opencl_tile_source_artifact(node);
-  }
-
-  if (type == "MaxPool" || type == "AvgPool") {
-    const auto element_type = node->get_output_element_type(0);
-    if (!is_f32_tensor_type(element_type) &&
-        !is_f16_tensor_type(element_type)) {
-      return std::nullopt;
-    }
-    GfxOpenClArtifactOp op = GfxOpenClArtifactOp::Identity;
-    auto static_u32_scalars = pool2d_static_u32_scalars(node, op);
-    if (!static_u32_scalars) {
-      return std::nullopt;
-    }
-    const std::string type_suffix = opencl_scalar_type_suffix(element_type);
-    const std::string entry_point =
-        "gfx_opencl_generated_pool2d_" + type_suffix;
-    auto manifest = make_opencl_source_manifest(
-        GfxKernelStageFamily::Pooling,
-        "opencl:generated:" + type + ":" + type_suffix, entry_point,
-        /*direct_inputs=*/1,
-        static_cast<uint32_t>(1 + static_u32_scalars->size()));
-    return make_opencl_source_artifact(std::move(manifest),
-                                       "opencl/generated/pool2d_" + type_suffix,
-                                       pool2d_static_scalar_args(), {0}, op,
-                                       GfxOpenClArtifactInputMode::Direct, 0.0f,
-                                       std::move(*static_u32_scalars));
   }
 
   if (type == "Softmax") {
@@ -6594,8 +6470,7 @@ make_gfx_opencl_concat_chunk_source_artifact(
     uint32_t input_count) {
   if (!base_artifact.valid || base_artifact.input_chunk_size == 0 ||
       input_count < 1 || input_count > base_artifact.input_chunk_size ||
-      input_count > 4 ||
-      base_artifact.direct_output_count != 1 ||
+      input_count > 4 || base_artifact.direct_output_count != 1 ||
       base_artifact.direct_input_indices.size() !=
           base_artifact.direct_input_count) {
     return std::nullopt;
@@ -6668,8 +6543,7 @@ make_gfx_opencl_split_chunk_source_artifact(
     uint32_t output_count) {
   if (!base_artifact.valid || base_artifact.output_chunk_size == 0 ||
       output_count < 1 || output_count > base_artifact.output_chunk_size ||
-      output_count > 4 ||
-      base_artifact.direct_input_count != 1 ||
+      output_count > 4 || base_artifact.direct_input_count != 1 ||
       base_artifact.direct_input_indices.empty()) {
     return std::nullopt;
   }

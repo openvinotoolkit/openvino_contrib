@@ -45,6 +45,7 @@ struct MatMulRouteCase {
     compiler::BackendTarget target;
     std::shared_ptr<const compiler::OperationSupportPolicy> policy;
     compiler::KernelRegistry kernel_registry;
+    compiler::KernelArtifactDescriptorResolver descriptor_resolver;
     compiler::KernelArtifactPayloadResolver payload_resolver;
     LoweringRouteKind expected_route = LoweringRouteKind::Unsupported;
     KernelArtifactOrigin expected_origin = KernelArtifactOrigin::Unknown;
@@ -103,7 +104,8 @@ public:
         compiled.plan = planner.plan(model, legalizer);
         compiled.manifest = compiler::ManifestBuilder{}.build(compiled.plan);
         compiled.executable =
-            compiler::ExecutableBundleBuilder(m_route.payload_resolver)
+            compiler::ExecutableBundleBuilder(m_route.descriptor_resolver,
+                                              m_route.payload_resolver)
                 .build(compiled.manifest, compiled.plan);
         return compiled;
     }
@@ -248,6 +250,7 @@ MatMulRouteCase opencl_generated_matmul_case() {
         target,
         compiler::make_opencl_operation_support_policy(),
         compiler::make_opencl_kernel_registry(target),
+        compiler::make_opencl_kernel_artifact_descriptor_resolver(),
         compiler::make_opencl_kernel_artifact_payload_resolver(),
         LoweringRouteKind::GeneratedKernel,
         KernelArtifactOrigin::Generated,
@@ -265,6 +268,7 @@ MatMulRouteCase apple_mps_gemm_matmul_case() {
         target,
         compiler::make_metal_operation_support_policy(),
         compiler::make_metal_kernel_registry(target),
+        compiler::make_metal_kernel_artifact_descriptor_resolver(),
         compiler::make_metal_kernel_artifact_payload_resolver(),
         LoweringRouteKind::VendorPrimitive,
         KernelArtifactOrigin::VendorPrimitive,

@@ -32,24 +32,12 @@ std::string support_reason_for_softmax_unit(const KernelUnit &unit) {
 }
 
 std::shared_ptr<const ::ov::gfx_plugin::KernelArtifactPayload>
-materialize_softmax_payload(KernelArtifactDescriptor &descriptor,
+materialize_softmax_payload(const KernelArtifactDescriptor &descriptor,
                             GfxOpenClSourceArtifact artifact) {
-  if (!artifact.valid || !artifact.artifact_ref.valid ||
-      artifact.artifact_ref.kind != GfxKernelArtifactKind::OpenClSource ||
-      artifact.artifact_ref.backend_domain != GfxKernelBackendDomain::OpenCl ||
-      descriptor.kernel.backend_domain != "opencl" ||
-      descriptor.payload_kind != KernelArtifactPayloadKind::OpenClSource ||
-      descriptor.kernel.origin != KernelArtifactOrigin::Generated ||
-      descriptor.kernel.kernel_id != artifact.artifact_ref.source_id) {
+  if (!opencl_source_artifact_matches_descriptor_contract(descriptor,
+                                                          artifact)) {
     return {};
   }
-
-  descriptor.entry_point = artifact.artifact_ref.entry_point;
-  descriptor.compile_options_key =
-      gfx_opencl_source_artifact_build_options(artifact);
-  descriptor.abi_arg_count = artifact.arg_count;
-  descriptor.abi_output_arg_count = artifact.direct_output_count;
-  apply_opencl_runtime_param_artifact_contract(descriptor, artifact);
   return std::make_shared<GfxOpenClSourceArtifactPayload>(std::move(artifact));
 }
 
@@ -82,7 +70,7 @@ query_opencl_softmax_operation(const std::shared_ptr<const ov::Node> &node,
 
 std::shared_ptr<const ::ov::gfx_plugin::KernelArtifactPayload>
 build_opencl_softmax_kernel_artifact_payload(
-    KernelArtifactDescriptor &descriptor, const PlannedOperation &op) {
+    const KernelArtifactDescriptor &descriptor, const PlannedOperation &op) {
   if (descriptor.kernel.backend_domain != "opencl" ||
       descriptor.payload_kind != KernelArtifactPayloadKind::OpenClSource ||
       !op.source_node || !is_opencl_softmax_node(op.source_node)) {

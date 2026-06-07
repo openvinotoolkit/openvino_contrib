@@ -135,6 +135,10 @@ GfxCompileResult GfxCompilerService::compile(const GfxCompileRequest& request) c
     result.executable = ExecutableBundleBuilder(
         [backend_module](KernelArtifactDescriptor& descriptor,
                          const PlannedOperation& op) {
+            return backend_module->finalize_artifact_descriptor(descriptor, op);
+        },
+        [backend_module](const KernelArtifactDescriptor& descriptor,
+                         const PlannedOperation& op) {
             return backend_module->materialize_artifact_payload(descriptor, op);
         }).build(result.manifest, result.lowering_plan);
     CacheEnvelopeBuildOptions cache_options;

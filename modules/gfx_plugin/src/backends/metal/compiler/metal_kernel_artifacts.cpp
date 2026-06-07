@@ -56,6 +56,9 @@ constexpr const char *kMetalLogSoftmaxF16MslKernelUnit =
     "metal/generated/logsoftmax_f16";
 constexpr const char *kMetalMpsSoftmaxVendorUnit = "metal/vendor/mps_softmax";
 constexpr const char *kMetalMpsGemmVendorUnit = "metal/vendor/mps_gemm";
+constexpr const char *kMetalMpsConv2DVendorUnit = "metal/vendor/mps_conv2d";
+constexpr const char *kMetalMpsGroupConv2DVendorUnit =
+    "metal/vendor/mps_group_conv2d";
 constexpr const char *kMetalMpsPool2DVendorUnit = "metal/vendor/mps_pool2d";
 constexpr const char *kMetalMpsResize2DVendorUnit = "metal/vendor/mps_resize2d";
 constexpr const char *kMetalMpsGraphSdpaVendorUnit =
@@ -134,9 +137,44 @@ make_msl_launch_plan_descriptor(const GfxKernelRuntimeBindingPlan &plan) {
   return descriptor;
 }
 
-void apply_runtime_param_artifact_contract(
+bool launch_plan_contract_matches(const KernelLaunchPlanDescriptor &lhs,
+                                  const KernelLaunchPlanDescriptor &rhs) {
+  return lhs.valid == rhs.valid && lhs.buffer_roles == rhs.buffer_roles &&
+         lhs.direct_input_indices == rhs.direct_input_indices &&
+         lhs.input_indices == rhs.input_indices &&
+         lhs.input_arg_count == rhs.input_arg_count &&
+         lhs.operand_kinds == rhs.operand_kinds &&
+         lhs.operand_arg_indices == rhs.operand_arg_indices &&
+         lhs.scalar_args == rhs.scalar_args &&
+         lhs.scalar_arg_kinds == rhs.scalar_arg_kinds;
+}
+
+bool descriptor_contract_matches(const KernelArtifactDescriptor &lhs,
+                                 const KernelArtifactDescriptor &rhs) {
+  return lhs.entry_point == rhs.entry_point &&
+         lhs.compile_options_key == rhs.compile_options_key &&
+         lhs.abi_arg_count == rhs.abi_arg_count &&
+         lhs.abi_output_arg_count == rhs.abi_output_arg_count &&
+         lhs.runtime_param_buffer_count == rhs.runtime_param_buffer_count &&
+         lhs.runtime_param_i64_metadata == rhs.runtime_param_i64_metadata &&
+         lhs.runtime_param_reduce_keep_dims ==
+             rhs.runtime_param_reduce_keep_dims &&
+         lhs.runtime_param_reduce_keep_dims_valid ==
+             rhs.runtime_param_reduce_keep_dims_valid &&
+         launch_plan_contract_matches(lhs.launch_plan, rhs.launch_plan) &&
+         lhs.abi_fingerprint == rhs.abi_fingerprint &&
+         lhs.manifest_ref == rhs.manifest_ref &&
+         lhs.artifact_key == rhs.artifact_key;
+}
+
+bool finalize_generated_msl_descriptor_contract(
     KernelArtifactDescriptor &descriptor,
     const GfxKernelRuntimeBindingPlan &binding_plan) {
+  if (!binding_plan.stage_manifest.valid ||
+      descriptor.payload_kind != KernelArtifactPayloadKind::MslSource ||
+      descriptor.kernel.backend_domain != "metal") {
+    return false;
+  }
   descriptor.runtime_param_buffer_count =
       count_runtime_param_roles(binding_plan.stage_manifest);
   descriptor.runtime_param_i64_metadata =
@@ -147,20 +185,52 @@ void apply_runtime_param_artifact_contract(
       binding_plan.runtime_binding.runtime_param_reduce_keep_dims_valid;
   descriptor.launch_plan = make_msl_launch_plan_descriptor(binding_plan);
   finalize_kernel_artifact_descriptor_identity(descriptor);
+  return true;
 }
 
-std::shared_ptr<const KernelArtifactPayload>
-materialize_generated_msl_payload(KernelArtifactDescriptor &descriptor,
-                                  GfxMslGeneratedKernelSourcePlan source_plan) {
+bool finalize_generated_msl_descriptor_contract(
+    KernelArtifactDescriptor &descriptor,
+    const GfxMslGeneratedKernelSourcePlan &source_plan) {
   if (!source_plan.valid()) {
-    return {};
+    return false;
   }
   descriptor.entry_point = source_plan.source.entry_point;
   descriptor.compile_options_key = "metal_msl_source";
   descriptor.abi_arg_count = source_plan.source.signature.arg_count;
   descriptor.abi_output_arg_count =
       source_plan.source.signature.output_arg_count;
-  apply_runtime_param_artifact_contract(descriptor, source_plan.binding);
+  return finalize_generated_msl_descriptor_contract(descriptor,
+                                                    source_plan.binding);
+}
+
+bool finalize_vendor_descriptor_contract(
+    KernelArtifactDescriptor &descriptor, const char *entry_point,
+    const GfxAppleMpsVendorPrimitiveContract &contract) {
+  if (!contract.valid ||
+      contract.descriptor.kind == GfxAppleMpsVendorPrimitiveKind::None ||
+      descriptor.payload_kind != KernelArtifactPayloadKind::VendorDescriptor ||
+      descriptor.kernel.backend_domain != "metal") {
+    return false;
+  }
+  descriptor.entry_point = entry_point;
+  descriptor.compile_options_key = "metal_vendor_descriptor";
+  descriptor.abi_arg_count = vendor_abi_arg_count(contract);
+  descriptor.abi_output_arg_count = vendor_abi_output_arg_count(contract);
+  finalize_kernel_artifact_descriptor_identity(descriptor);
+  return true;
+}
+
+std::shared_ptr<const KernelArtifactPayload>
+materialize_generated_msl_payload(const KernelArtifactDescriptor &descriptor,
+                                  GfxMslGeneratedKernelSourcePlan source_plan) {
+  if (!source_plan.valid()) {
+    return {};
+  }
+  KernelArtifactDescriptor expected = descriptor;
+  if (!finalize_generated_msl_descriptor_contract(expected, source_plan) ||
+      !descriptor_contract_matches(descriptor, expected)) {
+    return {};
+  }
   return std::make_shared<GfxKernelSourcePayload>(
       descriptor.kernel.kernel_id, descriptor.kernel.backend_domain,
       descriptor.entry_point, GfxKernelSourceLanguage::MetalShadingLanguage,
@@ -170,24 +240,25 @@ materialize_generated_msl_payload(KernelArtifactDescriptor &descriptor,
 }
 
 std::shared_ptr<const KernelArtifactPayload>
-materialize_vendor_payload(KernelArtifactDescriptor &descriptor,
+materialize_vendor_payload(const KernelArtifactDescriptor &descriptor,
                            const char *entry_point,
                            GfxAppleMpsVendorPrimitiveContract contract) {
   if (!contract.valid ||
       contract.descriptor.kind == GfxAppleMpsVendorPrimitiveKind::None) {
     return {};
   }
-  descriptor.entry_point = entry_point;
-  descriptor.compile_options_key = "metal_vendor_descriptor";
-  descriptor.abi_arg_count = vendor_abi_arg_count(contract);
-  descriptor.abi_output_arg_count = vendor_abi_output_arg_count(contract);
+  KernelArtifactDescriptor expected = descriptor;
+  if (!finalize_vendor_descriptor_contract(expected, entry_point, contract) ||
+      !descriptor_contract_matches(descriptor, expected)) {
+    return {};
+  }
   return std::make_shared<GfxMetalVendorPrimitiveArtifactPayload>(
       descriptor.kernel.kernel_id, descriptor.kernel.backend_domain,
       descriptor.entry_point, std::move(contract));
 }
 
 std::shared_ptr<const KernelArtifactPayload>
-materialize_mps_softmax_payload(KernelArtifactDescriptor &descriptor,
+materialize_mps_softmax_payload(const KernelArtifactDescriptor &descriptor,
                                 const std::shared_ptr<const ov::Node> &node) {
   GfxMpsrtSoftmaxAbiDesc desc{};
   if (!gfx_apple_make_mps_softmax_desc(node, desc)) {
@@ -202,7 +273,7 @@ materialize_mps_softmax_payload(KernelArtifactDescriptor &descriptor,
 }
 
 std::shared_ptr<const KernelArtifactPayload>
-materialize_mps_gemm_payload(KernelArtifactDescriptor &descriptor,
+materialize_mps_gemm_payload(const KernelArtifactDescriptor &descriptor,
                              const std::shared_ptr<const ov::Node> &node) {
   GfxAppleMpsVendorPrimitiveContract contract{};
   if (!gfx_apple_make_mps_gemm_contract(node, contract)) {
@@ -213,7 +284,20 @@ materialize_mps_gemm_payload(KernelArtifactDescriptor &descriptor,
 }
 
 std::shared_ptr<const KernelArtifactPayload>
-materialize_mps_pool2d_payload(KernelArtifactDescriptor &descriptor,
+materialize_mps_conv2d_payload(const KernelArtifactDescriptor &descriptor,
+                               const std::shared_ptr<const ov::Node> &node,
+                               const char *entry_point) {
+  GfxAppleMpsVendorPrimitiveContract contract{};
+  if (!gfx_apple_make_mps_conv2d_contract(
+          node, false, nullptr, false, ActivationKind::Identity, contract)) {
+    return {};
+  }
+  return materialize_vendor_payload(descriptor, entry_point,
+                                    std::move(contract));
+}
+
+std::shared_ptr<const KernelArtifactPayload>
+materialize_mps_pool2d_payload(const KernelArtifactDescriptor &descriptor,
                                const std::shared_ptr<const ov::Node> &node) {
   GfxMpsrtPool2DAbiDesc desc{};
   if (!gfx_apple_make_mps_pool2d_desc(node, desc)) {
@@ -228,7 +312,7 @@ materialize_mps_pool2d_payload(KernelArtifactDescriptor &descriptor,
 }
 
 std::shared_ptr<const KernelArtifactPayload>
-materialize_mps_resize2d_payload(KernelArtifactDescriptor &descriptor,
+materialize_mps_resize2d_payload(const KernelArtifactDescriptor &descriptor,
                                  const std::shared_ptr<const ov::Node> &node) {
   GfxMpsrtResize2DAbiDesc desc{};
   if (!gfx_apple_make_mps_resize2d_desc(node, desc)) {
@@ -243,7 +327,7 @@ materialize_mps_resize2d_payload(KernelArtifactDescriptor &descriptor,
 }
 
 std::shared_ptr<const KernelArtifactPayload>
-materialize_mpsgraph_sdpa_payload(KernelArtifactDescriptor &descriptor,
+materialize_mpsgraph_sdpa_payload(const KernelArtifactDescriptor &descriptor,
                                   const std::shared_ptr<const ov::Node> &node) {
   GfxMpsrtSdpaAbiDesc desc{};
   if (!gfx_apple_make_mps_sdpa_desc(node, desc)) {
@@ -259,7 +343,7 @@ materialize_mpsgraph_sdpa_payload(KernelArtifactDescriptor &descriptor,
 
 std::shared_ptr<const KernelArtifactPayload>
 materialize_fused_mpsgraph_sdpa_payload(
-    KernelArtifactDescriptor &descriptor,
+    const KernelArtifactDescriptor &descriptor,
     const PipelineVendorAttentionPlan &plan) {
   if (descriptor.kernel.backend_domain != "metal" ||
       descriptor.payload_kind != KernelArtifactPayloadKind::VendorDescriptor ||
@@ -315,7 +399,7 @@ PipelineVendorAttentionArtifact materialize_fused_mpsgraph_sdpa_artifact(
 }
 
 std::shared_ptr<const KernelArtifactPayload>
-resolve_metal_payload(KernelArtifactDescriptor &descriptor,
+resolve_metal_payload(const KernelArtifactDescriptor &descriptor,
                       const PlannedOperation &op) {
   if (descriptor.kernel.backend_domain != "metal" || !op.source_node) {
     return {};
@@ -326,6 +410,14 @@ resolve_metal_payload(KernelArtifactDescriptor &descriptor,
     }
     if (descriptor.kernel.kernel_id == kMetalMpsSoftmaxVendorUnit) {
       return materialize_mps_softmax_payload(descriptor, op.source_node);
+    }
+    if (descriptor.kernel.kernel_id == kMetalMpsConv2DVendorUnit) {
+      return materialize_mps_conv2d_payload(descriptor, op.source_node,
+                                            "mps_conv2d");
+    }
+    if (descriptor.kernel.kernel_id == kMetalMpsGroupConv2DVendorUnit) {
+      return materialize_mps_conv2d_payload(descriptor, op.source_node,
+                                            "mps_group_conv2d");
     }
     if (descriptor.kernel.kernel_id == kMetalMpsPool2DVendorUnit) {
       return materialize_mps_pool2d_payload(descriptor, op.source_node);
@@ -402,11 +494,151 @@ resolve_metal_payload(KernelArtifactDescriptor &descriptor,
   return {};
 }
 
+bool finalize_metal_descriptor(KernelArtifactDescriptor &descriptor,
+                               const PlannedOperation &op) {
+  if (descriptor.kernel.backend_domain != "metal" || !op.source_node) {
+    finalize_kernel_artifact_descriptor_identity(descriptor);
+    return true;
+  }
+  if (descriptor.payload_kind == KernelArtifactPayloadKind::VendorDescriptor) {
+    if (descriptor.kernel.kernel_id == kMetalMpsGemmVendorUnit) {
+      GfxAppleMpsVendorPrimitiveContract contract{};
+      return gfx_apple_make_mps_gemm_contract(op.source_node, contract) &&
+             finalize_vendor_descriptor_contract(descriptor, "mps_gemm",
+                                                 contract);
+    }
+    if (descriptor.kernel.kernel_id == kMetalMpsSoftmaxVendorUnit) {
+      GfxMpsrtSoftmaxAbiDesc desc{};
+      GfxAppleMpsVendorPrimitiveContract contract{};
+      return gfx_apple_make_mps_softmax_desc(op.source_node, desc) &&
+             gfx_apple_make_mps_softmax_contract(op.source_node, desc,
+                                                 contract) &&
+             finalize_vendor_descriptor_contract(descriptor, "mps_softmax",
+                                                 contract);
+    }
+    if (descriptor.kernel.kernel_id == kMetalMpsConv2DVendorUnit) {
+      GfxAppleMpsVendorPrimitiveContract contract{};
+      return gfx_apple_make_mps_conv2d_contract(
+                 op.source_node, false, nullptr, false,
+                 ActivationKind::Identity, contract) &&
+             finalize_vendor_descriptor_contract(descriptor, "mps_conv2d",
+                                                 contract);
+    }
+    if (descriptor.kernel.kernel_id == kMetalMpsGroupConv2DVendorUnit) {
+      GfxAppleMpsVendorPrimitiveContract contract{};
+      return gfx_apple_make_mps_conv2d_contract(
+                 op.source_node, false, nullptr, false,
+                 ActivationKind::Identity, contract) &&
+             finalize_vendor_descriptor_contract(descriptor,
+                                                 "mps_group_conv2d", contract);
+    }
+    if (descriptor.kernel.kernel_id == kMetalMpsPool2DVendorUnit) {
+      GfxMpsrtPool2DAbiDesc desc{};
+      GfxAppleMpsVendorPrimitiveContract contract{};
+      return gfx_apple_make_mps_pool2d_desc(op.source_node, desc) &&
+             gfx_apple_make_mps_pool2d_contract(op.source_node, desc,
+                                                contract) &&
+             finalize_vendor_descriptor_contract(descriptor, "mps_pool2d",
+                                                 contract);
+    }
+    if (descriptor.kernel.kernel_id == kMetalMpsResize2DVendorUnit) {
+      GfxMpsrtResize2DAbiDesc desc{};
+      GfxAppleMpsVendorPrimitiveContract contract{};
+      return gfx_apple_make_mps_resize2d_desc(op.source_node, desc) &&
+             gfx_apple_make_mps_resize2d_contract(op.source_node, desc,
+                                                  contract) &&
+             finalize_vendor_descriptor_contract(descriptor, "mps_resize2d",
+                                                 contract);
+    }
+    if (descriptor.kernel.kernel_id == kMetalMpsGraphSdpaVendorUnit) {
+      GfxMpsrtSdpaAbiDesc desc{};
+      GfxAppleMpsVendorPrimitiveContract contract{};
+      return gfx_apple_make_mps_sdpa_desc(op.source_node, desc) &&
+             gfx_apple_make_mps_sdpa_contract(op.source_node, desc,
+                                              contract) &&
+             finalize_vendor_descriptor_contract(descriptor, "mps_sdpa",
+                                                 contract);
+    }
+    return false;
+  }
+  if (descriptor.payload_kind != KernelArtifactPayloadKind::MslSource) {
+    finalize_kernel_artifact_descriptor_identity(descriptor);
+    return true;
+  }
+
+  if (descriptor.kernel.kernel_id == kMetalShapeOfMslKernelUnit) {
+    return finalize_generated_msl_descriptor_contract(
+        descriptor, make_shapeof_msl_kernel_source_plan(op.source_node));
+  }
+  if (descriptor.kernel.kernel_id == kMetalRangeMslKernelUnit) {
+    return finalize_generated_msl_descriptor_contract(
+        descriptor, make_range_msl_kernel_source_plan(op.source_node));
+  }
+  if (descriptor.kernel.kernel_id == kMetalTileMslKernelUnit) {
+    return finalize_generated_msl_descriptor_contract(
+        descriptor, make_tile_msl_kernel_source_plan(op.source_node));
+  }
+  if (descriptor.kernel.kernel_id == kMetalConcatMslKernelUnit) {
+    return finalize_generated_msl_descriptor_contract(
+        descriptor, make_concat_msl_kernel_source_plan(op.source_node));
+  }
+  if (descriptor.kernel.kernel_id == kMetalSplitMslKernelUnit) {
+    return finalize_generated_msl_descriptor_contract(
+        descriptor, make_split_msl_kernel_source_plan(op.source_node));
+  }
+  if (descriptor.kernel.kernel_id == kMetalSliceMslKernelUnit) {
+    return finalize_generated_msl_descriptor_contract(
+        descriptor,
+        make_direct_static_slice_msl_kernel_source_plan(
+            op.source_node, op.source_node->get_output_element_type(0)));
+  }
+  if (descriptor.kernel.kernel_id == kMetalTransposeF32MslKernelUnit) {
+    return finalize_generated_msl_descriptor_contract(
+        descriptor, make_transpose_msl_kernel_source_plan(op.source_node));
+  }
+  if (descriptor.kernel.kernel_id == kMetalCausalSdpaMslKernelUnit) {
+    return finalize_generated_msl_descriptor_contract(
+        descriptor, make_causal_sdpa_msl_kernel_source_plan(
+                        op.source_node->get_output_element_type(0)));
+  }
+  if (descriptor.kernel.kernel_id == kMetalActivationMslKernelUnit) {
+    return finalize_generated_msl_descriptor_contract(
+        descriptor, make_activation_msl_kernel_source_plan(op.source_node));
+  }
+  if (descriptor.kernel.kernel_id == kMetalEltwiseMslKernelUnit) {
+    return finalize_generated_msl_descriptor_contract(
+        descriptor, make_eltwise_msl_kernel_source_plan(op.source_node));
+  }
+  if (descriptor.kernel.kernel_id == kMetalReductionF32MslKernelUnit ||
+      descriptor.kernel.kernel_id == kMetalReductionLogicalBoolMslKernelUnit) {
+    return finalize_generated_msl_descriptor_contract(
+        descriptor, make_reduction_msl_kernel_source_plan(op.source_node));
+  }
+  if (descriptor.kernel.kernel_id == kMetalSoftmaxF32MslKernelUnit ||
+      descriptor.kernel.kernel_id == kMetalSoftmaxF16MslKernelUnit ||
+      descriptor.kernel.kernel_id == kMetalLogSoftmaxF32MslKernelUnit ||
+      descriptor.kernel.kernel_id == kMetalLogSoftmaxF16MslKernelUnit) {
+    return finalize_generated_msl_descriptor_contract(
+        descriptor,
+        make_softmax_runtime_params_msl_kernel_source_plan(op.source_node));
+  }
+  return false;
+}
+
 } // namespace
 
 KernelArtifactPayloadResolver make_metal_kernel_artifact_payload_resolver() {
-  return [](KernelArtifactDescriptor &descriptor, const PlannedOperation &op) {
+  return [](const KernelArtifactDescriptor &descriptor,
+            const PlannedOperation &op) {
     return resolve_metal_payload(descriptor, op);
+  };
+}
+
+KernelArtifactDescriptorResolver
+make_metal_kernel_artifact_descriptor_resolver() {
+  return [](KernelArtifactDescriptor &descriptor,
+            const PlannedOperation &op) {
+    return finalize_metal_descriptor(descriptor, op);
   };
 }
 

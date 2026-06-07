@@ -72,12 +72,13 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
      Pool2D vendor-route-only behavior, or MSL binding
    - OpenCL source-artifact coverage, runtime-shape handling, static f32
      scalars, constants, generated activation/elementwise/MatMul units,
-     generated f32 and boolean reduction units, generated f32/f16 Softmax
-     units, dynamic-static-rank Softmax units, generated f32/f16 Pool2D units,
-     generated f32/f16/i64 Range units, generated ShapeOf/Tile/Transpose units,
-     generated compare/select and logical-bool elementwise units, generated
-     Concat/Split helpers, family-specific OpenCL kernel-unit adapters,
-     `Swish` default/static/runtime beta artifacts, chunking, or
+     generated f32 Conv2D/GroupConv2D units, generated f32 and boolean
+     reduction units, generated f32/f16 Softmax units, dynamic-static-rank
+     Softmax units, generated f32/f16 Pool2D units, generated f32/f16/i64 Range
+     units, generated ShapeOf/Tile/Transpose units, generated compare/select
+     and logical-bool elementwise units, generated Concat/Split helpers,
+     family-specific OpenCL kernel-unit adapters, `Swish` default/static/runtime
+     beta artifacts, chunking, or
      boolean-buffer behavior
    - CLVK/CLSPV Raspberry OpenCL bundle wiring, OpenCL dynamic-loader search
      order, or third-party submodule publication
