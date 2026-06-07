@@ -144,8 +144,13 @@ StridedSliceKernelOp<T_INT>::StridedSliceKernelOp(const std::vector<T_INT> src_m
       threads_per_block_{threads_per_block},
       element_type_{element_type},
       element_type_integer_{element_type_integer} {
-    using StridedSliceElementTypesSwitch =
-        ElementTypesSwitch<Type_t::f32, Type_t::i32, Type_t::f16, Type_t::i16, Type_t::i8, Type_t::u8>;
+    using StridedSliceElementTypesSwitch = ElementTypesSwitch<Type_t::boolean,
+                                                              Type_t::f32,
+                                                              Type_t::i32,
+                                                              Type_t::f16,
+                                                              Type_t::i16,
+                                                              Type_t::i8,
+                                                              Type_t::u8>;
     TypeValidator<StridedSliceElementTypesSwitch>::check(element_type_);
     using StridedSliceIntegerElementTypesSwitch = ElementTypesSwitch<Type_t::i32, Type_t::i64>;
     TypeValidator<StridedSliceIntegerElementTypesSwitch>::check(element_type_integer_);
@@ -161,6 +166,8 @@ void StridedSliceKernelOp<T_INT>::operator()(const cudaStream_t stream,
                                              const T_INT* dst_matrix_sizes,
                                              void* dst) const {
     switch (element_type_) {
+        case Type_t::boolean:
+            return callKernels<bool>(stream, src_matrix_sizes, src, begin, end, stride, dst_matrix_sizes, dst);
         case Type_t::f32:
             return callKernels<float>(stream, src_matrix_sizes, src, begin, end, stride, dst_matrix_sizes, dst);
         case Type_t::i32:
