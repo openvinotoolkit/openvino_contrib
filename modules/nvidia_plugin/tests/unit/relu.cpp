@@ -6,7 +6,6 @@
 #include <gtest/gtest.h>
 
 #include <cuda_config.hpp>
-#include <cuda_dynamic_operation.hpp>
 #include <cuda_graph_context.hpp>
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
@@ -65,7 +64,6 @@ TEST_F(ReluTest, canExecuteSync) {
     ov::nvidia_gpu::CancellationToken token{};
     ov::nvidia_gpu::SimpleExecutionDelegator simpleExecutionDelegator{};
     ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
-    ov::nvidia_gpu::DynamicOperationCache dynamicOpCache{};
     ov::nvidia_gpu::InferenceRequestContext context{empty_tensor,
                                                     empty_mapping,
                                                     empty_tensor,
@@ -73,8 +71,7 @@ TEST_F(ReluTest, canExecuteSync) {
                                                     threadContext,
                                                     token,
                                                     simpleExecutionDelegator,
-                                                    cudaGraphContext,
-                                                    dynamicOpCache};
+                                                    cudaGraphContext};
     auto& stream = context.getThreadContext().stream();
     std::array<ElementType, length> in{-1, 1, -5, 5, 0};
     std::array<ElementType, length> correct;

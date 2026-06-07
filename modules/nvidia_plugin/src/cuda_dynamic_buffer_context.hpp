@@ -9,23 +9,22 @@
 
 #include "cuda/runtime.hpp"
 #include "memory_manager/tensor_types.hpp"
-#include "openvino/core/shape.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
 
 /**
- * @brief Per-inference-request context for dynamically shaped tensors.
+ * @brief Per-inference-request registry of dynamically allocated output buffers.
  *
- * Stores both GPU allocations and runtime shapes for dynamic outputs.
  * When a DynamicOperation allocates GPU memory for its outputs, it registers
- * the device pointer and shape here. Downstream operations query this context
- * for both pointer resolution (via MemoryManager) and shape information.
+ * the device pointer here. Downstream operations (via MemoryManager) check
+ * this context before falling back to static memory offsets.
  *
- * Allocations are released either:
- *  - Early, via releaseDynamicBuffer() when the last consumer finishes.
+ * Allocations are stored as CUDA::Allocation (stream-ordered, ref-counted).
+ * They are released either:
+ *  - Early, via releaseDynamicBuffer() when the last consumer finishes
+ *    (driven by DynamicOperation's release list).
  *  - At end of inference, when DynamicBufferContext is destroyed.
- * Shapes persist for the entire inference (not erased on buffer release).
  */
 class DynamicBufferContext {
 public:
@@ -35,16 +34,15 @@ public:
     DynamicBufferContext(const DynamicBufferContext&) = delete;
     DynamicBufferContext& operator=(const DynamicBufferContext&) = delete;
 
-    void registerDynamicBuffer(BufferID id, CUDA::Allocation allocation, ov::Shape shape) {
+    void registerDynamicOutput(BufferID id, CUDA::Allocation allocation) {
         allocations_.insert_or_assign(id, std::move(allocation));
-        shapes_[id] = std::move(shape);
     }
 
     void releaseDynamicBuffer(BufferID id) {
         allocations_.erase(id);
     }
 
-    std::optional<CUDA::DevicePointer<void*>> getDynamicBuffer(BufferID id) const {
+    std::optional<CUDA::DevicePointer<void*>> getDynamicOutput(BufferID id) const {
         auto it = allocations_.find(id);
         if (it != allocations_.end()) {
             return CUDA::DevicePointer<void*>{it->second.get()};
@@ -52,31 +50,12 @@ public:
         return std::nullopt;
     }
 
-    bool hasDynamicBuffer(BufferID id) const {
+    bool hasDynamicOutput(BufferID id) const {
         return allocations_.count(id) > 0;
-    }
-
-    const ov::Shape& getShape(BufferID id) const {
-        auto it = shapes_.find(id);
-        OPENVINO_ASSERT(it != shapes_.end(), "Shape not found for BufferID: ", id);
-        return it->second;
-    }
-
-    bool hasShape(BufferID id) const {
-        return shapes_.count(id) > 0;
-    }
-
-    // Update only the logical shape of an already-registered buffer, keeping
-    // its allocation intact. Used by reshape-only ops (Reshape/Squeeze/
-    // Unsqueeze) whose output aliases the input buffer: no data is moved, only
-    // the shape metadata changes.
-    void updateShape(BufferID id, ov::Shape shape) {
-        shapes_[id] = std::move(shape);
     }
 
 private:
     std::unordered_map<BufferID, CUDA::Allocation> allocations_;
-    std::unordered_map<BufferID, ov::Shape> shapes_;
 };
 
 }  // namespace nvidia_gpu

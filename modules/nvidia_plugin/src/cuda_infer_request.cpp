@@ -172,7 +172,6 @@ void CudaInferRequest::start_pipeline(const ThreadContext& threadContext) {
                                                     cancellation_token_,
                                                     *executionDelegator_,
                                                     cudaGraphContext,
-                                                    compiled_model->dynamic_op_cache_,
                                                     is_benchmark_mode_};
         if (!variable_context_.empty()) {
             inferRequestContext.setVariableContext(variable_context_);
@@ -235,7 +234,6 @@ void CudaInferRequest::infer() {
         this->infer_preprocess();
     }
     auto cuda_thread_pool = std::dynamic_pointer_cast<CudaThreadPool>(wait_executor_);
-    OPENVINO_ASSERT(cuda_thread_pool, "wait_executor_ must be a CudaThreadPool");
     wait_executor_->run_and_wait({[this, cuda_thread_pool] {
         auto& threadContext = cuda_thread_pool->get_thread_context();
         {
