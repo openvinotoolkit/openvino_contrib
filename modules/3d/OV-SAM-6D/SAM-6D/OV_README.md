@@ -70,16 +70,10 @@ sudo apt install -y libeigen3-dev
 
 # 4. Render Templates
 
-Install BlenderProc:
-
-```bash
-pip install blenderproc==2.6.1
-```
-
 Navigate to the render directory:
 
 ```bash
-cd JiehongLin-SAM-6D/SAM-6D/Render
+cd openvino_contrib/modules/3d/OV-SAM-6D/SAM-6D/Render
 ```
 
 ## Render Templates Automatically
@@ -119,7 +113,7 @@ blenderproc run \
 Navigate to the ISM directory:
 
 ```bash
-cd JiehongLin-SAM-6D/SAM-6D/Instance_Segmentation_Model
+cd openvino_contrib/modules/3d/OV-SAM-6D/SAM-6D/Instance_Segmentation_Model
 ```
 
 ## Download Required Models
@@ -184,7 +178,7 @@ python infer_ism_ov.py \
 # 6. Download Pose Estimation Model
 
 ```bash
-cd JiehongLin-SAM-6D/SAM-6D/Pose_Estimation_Model
+cd openvino_contrib/modules/3d/OV-SAM-6D/SAM-6D/Pose_Estimation_Model
 
 python download_sam6d-pem.py
 ```
@@ -196,7 +190,7 @@ python download_sam6d-pem.py
 Navigate to the OpenVINO PointNet2 operator directory:
 
 ```bash
-cd JiehongLin-SAM-6D/SAM-6D/Pose_Estimation_Model/model/ov_pointnet2_op
+cd openvino_contrib/modules/3d/OV-SAM-6D/SAM-6D/Pose_Estimation_Model/model/ov_pointnet2_op
 ```
 
 Create build directory:
@@ -227,7 +221,7 @@ make
 # 8. Install PointNet2
 
 ```bash
-cd JiehongLin-SAM-6D/SAM-6D/Pose_Estimation_Model/model/pointnet2
+cd openvino_contrib/modules/3d/OV-SAM-6D/SAM-6D/Pose_Estimation_Model/model/pointnet2
 
 python setup.py install
 ```
@@ -239,7 +233,7 @@ python setup.py install
 Navigate to Pose Estimation Model directory:
 
 ```bash
-cd JiehongLin-SAM-6D/SAM-6D/Pose_Estimation_Model
+cd openvino_contrib/modules/3d/OV-SAM-6D/SAM-6D/Pose_Estimation_Model
 ```
 
 Run conversion:
@@ -255,7 +249,7 @@ python pem_model_convert_cpu.py
 # FP32 baseline:
 
 ```bash
-cd JiehongLin-SAM-6D/SAM-6D/Pose_Estimation_Model
+cd openvino_contrib/modules/3d/OV-SAM-6D/SAM-6D/Pose_Estimation_Model
 
 python run_inference_custom_openvino.py \
     --device GPU \
@@ -265,7 +259,7 @@ python run_inference_custom_openvino.py \
 # FP16 recommended mode:
 
 ```bash
-cd JiehongLin-SAM-6D/SAM-6D/Pose_Estimation_Model
+cd openvino_contrib/modules/3d/OV-SAM-6D/SAM-6D/Pose_Estimation_Model
 
 python run_inference_custom_openvino.py \
     --device GPU \
@@ -305,14 +299,14 @@ Prerequisites:
 # FP32 baseline:
 
 ```bash
-cd JiehongLin-SAM-6D/SAM-6D/Instance_Segmentation_Model
+cd openvino_contrib/modules/3d/OV-SAM-6D/SAM-6D/Instance_Segmentation_Model
 MAX_IMAGES=2 OV_DEVICE=GPU OV_SAM_DEVICE=GPU OV_PRECISION=fp32 python run_inference_ov_10.py dataset_name=lmo
 ```
 
 # FP16 recommended mode:
 
 ```bash
-cd JiehongLin-SAM-6D/SAM-6D/Instance_Segmentation_Model
+cd openvino_contrib/modules/3d/OV-SAM-6D/SAM-6D/Instance_Segmentation_Model
 MAX_IMAGES=2 OV_DEVICE=GPU OV_SAM_DEVICE=GPU OV_PRECISION=fp16 python run_inference_ov_10.py dataset_name=lmo
 ```
 
@@ -334,7 +328,7 @@ FP16 mAP@[.5:.95] ≈ 0.4750
 # FP32 baseline:
 
 ```bash
-cd JiehongLin-SAM-6D/SAM-6D/Pose_Estimation_Model
+cd openvino_contrib/modules/3d/OV-SAM-6D/SAM-6D/Pose_Estimation_Model
 python test_bop_subset_eval_ov.py --device GPU --dataset lmo --max_samples 2 \
         --precision fp32 \
         --detection_path "../Instance_Segmentation_Model/log/sam_ov/result_lmo_2imgs_fp32.json"
