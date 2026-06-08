@@ -102,6 +102,7 @@ else:
 def build_sam(checkpoint_dir: str, model_type: str = "vit_h") -> "Sam":
     """Load the SAM model from checkpoint."""
     from segment_anything import sam_model_registry
+    from ov_sam_layer_norm import use_ov_layer_norm2d_for_sam
     weight_map = {
         "vit_h": "sam_vit_h_4b8939.pth",
         "vit_l": "sam_vit_l_0b3195.pth",
@@ -109,7 +110,9 @@ def build_sam(checkpoint_dir: str, model_type: str = "vit_h") -> "Sam":
     }
     ckpt = os.path.join(checkpoint_dir, weight_map[model_type])
     print(f"[export] Loading SAM ({model_type}) from {ckpt}")
-    sam = sam_model_registry[model_type](checkpoint=ckpt)
+    print("[export] Using OpenVINO SAM LayerNorm2d")
+    with use_ov_layer_norm2d_for_sam():
+        sam = sam_model_registry[model_type](checkpoint=ckpt)
     sam.eval()
     return sam
 
