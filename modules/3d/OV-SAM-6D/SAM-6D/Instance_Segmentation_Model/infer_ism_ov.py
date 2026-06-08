@@ -17,7 +17,6 @@ Example usage:
 
 from __future__ import annotations
 
-import logging
 import glob
 import json
 import os
@@ -366,7 +365,7 @@ class OVCustomSamAutomaticMaskGenerator:
 
         # Persistent request: buffers reused every NMS call.
         self._nms_request = self._nms_compiled.create_infer_request()
-        logging.info(f"OV NMS model compiled on {device}")
+        print(f"OV NMS model compiled on {device}")
 
     def _ov_nms(self, boxes: torch.Tensor, scores: torch.Tensor,
                 iou_threshold: float) -> torch.Tensor:
@@ -711,7 +710,7 @@ class OVCustomDINOv2:
 
         # Persistent InferRequest: one GPU buffer allocation, reused every call.
         self._dinov2_request = dinov2_compiled.create_infer_request()
-        logging.info("OVCustomDINOv2 initialised")
+        print("OVCustomDINOv2 initialised")
 
     # ---- internal OV call ----
 
@@ -1036,7 +1035,7 @@ class OVCustomDINOv2Ext:
         )
         self.rgb_proposal_processor = CropResizePad(self.proposal_size)
         self._dinov2_request = dinov2_compiled.create_infer_request()
-        logging.info("OVCustomDINOv2Ext initialised")
+        print("OVCustomDINOv2Ext initialised")
 
     def _ov_forward_ext(
         self, images_tensor: torch.Tensor, masks_tensor: torch.Tensor
@@ -1386,7 +1385,7 @@ def init_model_ov(
     # -- Compile OV models ------------------------------------------
     core = ov.Core()
 
-    logging.info(
+    print(
         f"Compiling OV models from {ov_model_dir} on device={ov_device}"
     )
 
@@ -1514,7 +1513,7 @@ def init_model_ov(
 
     proposal_processor = CropResizePad(224)
 
-    logging.info(
+    print(
         f"OV ISM pipeline ready  (device={ov_device})"
     )
     return model, cfg, torch_device, selected_poses, proposal_processor
@@ -1565,15 +1564,17 @@ def init_model_ov_ext(
 
     core = ov.Core()
 
-    def _compile(core, xml_path, device):
-        model_ir = core.read_model(xml_path)
+    def _compile(core, xml_path, device, model_ir=None):
+        if model_ir is None:
+            model_ir = core.read_model(xml_path)
+
         if device.upper().startswith("GPU"):
             _name = os.path.basename(xml_path)
             if precision == "fp32":
                 _prec = "f32"
             else:
                 _prec = (
-                    "f32" if "sam_mask_decoder" in _name or "fastsam" in _name
+                    "f32" if "fastsam" in _name
                     else "f16"
                 )
             config = {"PERFORMANCE_HINT": "LATENCY",
@@ -1594,7 +1595,7 @@ def init_model_ov_ext(
         return core.compile_model(model_ir, device, config)
 
     # Compile extended OV models
-    logging.info(f"Compiling extended OV models from {ov_model_dir} on {ov_device}")
+    print(f"Compiling extended OV models from {ov_model_dir} on {ov_device}")
 
     if segmentor_model_name == "sam":
         sam_encoder_xml = os.path.join(ov_model_dir, "sam_image_encoder_ext.xml")
@@ -1603,18 +1604,35 @@ def init_model_ov_ext(
         sam_decoder_v1_xml = os.path.join(ov_model_dir, "sam_mask_decoder_ext.xml")
         if os.path.isfile(sam_decoder_v2_xml):
             sam_decoder_xml = sam_decoder_v2_xml
-            logging.info("Using v2 decoder")
+            print("Using v2 decoder")
         else:
             sam_decoder_xml = sam_decoder_v1_xml
-            logging.info("Using v1 decoder")
+            print("Using v1 decoder")
 
         for p in (sam_encoder_xml, sam_decoder_xml):
             if not os.path.isfile(p):
                 raise FileNotFoundError(
                     f"Extended OV IR not found: {p}  "
                     f"(run export_ism.py --ext first)")
+
         encoder_compiled = _compile(core, sam_encoder_xml, ov_device)
-        decoder_compiled = _compile(core, sam_decoder_xml, ov_device)
+
+        _ppb = int(cfg.model.segmentor_model.points_per_batch)
+        _dec_ir = core.read_model(sam_decoder_xml)
+        _static_shapes = {}
+        for _inp in _dec_ir.inputs:
+            _shape = []
+            for _i, _dim in enumerate(_inp.partial_shape):
+                if not _dim.is_dynamic:
+                    _shape.append(_dim.get_length())
+                elif _i == 0:
+                    _shape.append(_ppb)   # batch dim → points_per_batch
+                else:
+                    _shape.append(1)      # remaining dynamic → num_points_per_prompt
+            _static_shapes[_inp.any_name] = _shape
+        _dec_ir.reshape(_static_shapes)
+        print(f"Decoder static shapes={_static_shapes} (reshaped for GPU performance)")
+        decoder_compiled = _compile(core, sam_decoder_xml, ov_device, model_ir=_dec_ir)
     else:  # fastsam
         fastsam_xml = os.path.join(ov_model_dir, "fastsam_x_dynamic.xml")
         if not os.path.isfile(fastsam_xml):
@@ -1697,7 +1715,7 @@ def init_model_ov_ext(
 
     proposal_processor = CropResizePad(224)
 
-    logging.info(
+    print(
         f"OV ISM ext pipeline ready  (device={ov_device})")
 
     return model, cfg, torch_device, selected_poses, proposal_processor
@@ -1782,7 +1800,6 @@ if __name__ == "__main__":
              "Default: OV_PRECISION env var or fp16.",
     )
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO)
 
     # -- random seeds for reproducibility -----------------------
     np.random.seed(42)
