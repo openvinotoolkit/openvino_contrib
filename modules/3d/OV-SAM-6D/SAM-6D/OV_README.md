@@ -239,7 +239,7 @@ cd openvino_contrib/modules/3d/OV-SAM-6D/SAM-6D/Pose_Estimation_Model
 Run conversion:
 
 ```bash
-python pem_model_convert_cpu.py
+python pem_model_convert_ov_ir.py
 ```
 
 ---
