@@ -12,6 +12,7 @@ SPDX-License-Identifier: Apache-2.0 -->
         <Tensor arg-index="1" type="input" port-index="1" />   <!-- npoint scalar -->
         <Tensor arg-index="2" type="output" port-index="0" format="BFYX"/>  <!-- output -->
         <Tensor arg-index="3" type="internal" port-index="0" size="INPUT0_DIMS[0]*INPUT0_DIMS[1]*4" format="BFYX" /> <!-- FP32 dist -->
+        <Tensor arg-index="4" type="internal" port-index="1" size="INPUT0_DIMS[0]*INPUT0_DIMS[1]*3*4" format="BFYX" /> <!-- FP32 pts cache -->
     </Buffers>
 
     <CompilerOptions options="-cl-mad-enable"/>
