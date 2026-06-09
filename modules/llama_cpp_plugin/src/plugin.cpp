@@ -54,6 +54,7 @@ void LlamaCppPlugin::set_property(const ov::AnyMap& properties) {
             int num_threads = map_entry.second.as<int>();
             OPENVINO_ASSERT(num_threads >= 0, "INFERENCE_NUM_THREADS cannot be negative");
             m_num_threads = num_threads;
+            continue;
         }
         OPENVINO_THROW_NOT_IMPLEMENTED("llama_cpp_plugin: setting property ", map_entry.first, "not implemented");
     }
