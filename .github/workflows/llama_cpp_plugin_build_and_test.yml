@@ -57,6 +57,7 @@ jobs:
         uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
         with:
           repository: ggerganov/llama.cpp
+          ref: b2417
           path: llama.cpp
 
       - uses: actions/setup-python@v4
@@ -65,26 +66,10 @@ jobs:
 
       - name: Prepare test data - convert test model files
         run: |
-          # Current llama.cpp GPT-2 converter incorrectly maps attention bias buffers.
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path("llama.cpp/conversion/gpt2.py")
-          text = path.read_text()
-          old = '''        if name.endswith((".attn.bias", ".attn.masked_bias")):
-                      yield from super().modify_tensors(data_torch, name, bid)
-                      return
-          '''
-          new = '''        if name.endswith((".attn.bias", ".attn.masked_bias")):
-                      return
-          '''
-          if old in text:
-              path.write_text(text.replace(old, new, 1))
-          PY
-          python3 -m pip install -r llama.cpp/requirements/requirements-convert_hf_to_gguf.txt
+          python3 -m pip install -r llama.cpp/requirements/requirements-convert-hf-to-gguf.txt transformers==4.39.3
           hf download gpt2 model.safetensors tokenizer.json tokenizer_config.json vocab.json config.json merges.txt --local-dir hf_gpt2
           mkdir -p ${{ github.workspace }}/test_data
-          python3 llama.cpp/convert_hf_to_gguf.py hf_gpt2 --outtype f32 --outfile ${{ github.workspace }}/test_data/gpt2.gguf
+          python3 llama.cpp/convert-hf-to-gguf.py hf_gpt2 --outtype f32 --outfile ${{ github.workspace }}/test_data/gpt2.gguf
 
       - name: Install libtbb2
         run: |
