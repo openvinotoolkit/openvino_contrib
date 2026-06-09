@@ -16,7 +16,7 @@ SPDX-License-Identifier: Apache-2.0 -->
     </Buffers>
 
     <CompilerOptions options="-cl-mad-enable"/>
-    <WorkSizes global="256,B,1" local="256,1,1"/>
+    <WorkSizes global="1024,B,1" local="1024,1,1"/>
 </CustomLayer>
 
 <CustomLayer name="GatherOperation" type="SimpleGPU" version="1">
