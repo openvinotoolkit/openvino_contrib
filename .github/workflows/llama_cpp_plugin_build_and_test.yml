@@ -9,8 +9,8 @@ on:
 permissions: read-all
 
 jobs:
-  build_ubuntu20:
-    runs-on: ubuntu-20.04
+  build_ubuntu22:
+    runs-on: ubuntu-22.04
     steps:
       - name: Setup cmake
         uses: jwlawson/actions-setup-cmake@d06b37b47cfd043ec794ffa3e40e0b6b5858a7ec # v1.14.2
@@ -43,9 +43,9 @@ jobs:
           name: build_artifacts
           path: ${{ github.workspace }}/openvino/bin/intel64/Release/
 
-  test_ubuntu20:
-    needs: build_ubuntu20
-    runs-on: ubuntu-20.04
+  test_ubuntu22:
+    needs: build_ubuntu22
+    runs-on: ubuntu-22.04
     steps:
       - name: Download build artifacts
         uses: actions/download-artifact@65a9edc5881444af0b9093a5e628f2fe47ea3b2e # v4.1.7
