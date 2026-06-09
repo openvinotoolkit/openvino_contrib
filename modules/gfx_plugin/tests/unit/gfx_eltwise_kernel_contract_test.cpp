@@ -12,6 +12,7 @@
 
 #include "backends/metal/compiler/metal_kernel_artifacts.hpp"
 #include "backends/metal/compiler/metal_operation_support.hpp"
+#include "backends/opencl/compiler/opencl_eltwise_kernel_unit.hpp"
 #include "backends/opencl/compiler/opencl_kernel_artifacts.hpp"
 #include "backends/opencl/compiler/opencl_operation_support.hpp"
 #include "compiler/executable_bundle.hpp"
@@ -20,7 +21,9 @@
 #include "compiler/operation_legalizer.hpp"
 #include "kernel_ir/gfx_kernel_source.hpp"
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
+#include "kernel_ir/opencl_kernels/eltwise_compare_select_kernel.hpp"
 #include "kernel_ir/opencl_kernels/eltwise_kernel.hpp"
+#include "kernel_ir/opencl_kernels/eltwise_logical_bool_kernel.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/op/add.hpp"
 #include "openvino/op/parameter.hpp"
@@ -52,7 +55,8 @@ public:
 
   void verify() const {
     const auto node = m_case.make_node();
-    const auto artifact = resolve_gfx_opencl_source_artifact(node);
+    const auto artifact =
+        make_opencl_eltwise_source_artifact(node, m_case.expected_source_id);
     ASSERT_TRUE(artifact.has_value());
     ASSERT_TRUE(artifact->valid);
     EXPECT_EQ(artifact->stage_manifest.stage_family,
@@ -67,16 +71,52 @@ public:
     EXPECT_EQ(artifact->op, m_case.expected_op);
     EXPECT_EQ(artifact->input_mode, m_case.expected_input_mode);
     EXPECT_EQ(artifact->source,
-              opencl_generated_eltwise_kernel_source().source);
+              expected_opencl_eltwise_source(m_case.expected_entry_point)
+                  .source);
     EXPECT_NE(
         artifact->source.find("__kernel void " + m_case.expected_entry_point),
         std::string::npos);
-    EXPECT_NE(artifact->source.find("uint op"), std::string::npos);
+    if (std::find(artifact->scalar_args.begin(), artifact->scalar_args.end(),
+                  GfxOpenClSourceScalarArg::OpCode) !=
+        artifact->scalar_args.end()) {
+      EXPECT_NE(artifact->source.find("uint op"), std::string::npos);
+    }
     EXPECT_EQ(artifact->source.find("gfx_opencl_generated_add"),
               std::string::npos);
   }
 
 private:
+  const GfxKernelSource &
+  expected_opencl_eltwise_source(const std::string &entry_point) const {
+    if (entry_point == "gfx_opencl_generated_eltwise_compare_f32") {
+      return opencl_generated_eltwise_compare_f32_kernel_source();
+    }
+    if (entry_point ==
+        "gfx_opencl_generated_eltwise_compare_broadcast_f32") {
+      return opencl_generated_eltwise_compare_broadcast_f32_kernel_source();
+    }
+    if (entry_point == "gfx_opencl_generated_eltwise_select_f32") {
+      return opencl_generated_eltwise_select_f32_kernel_source();
+    }
+    if (entry_point == "gfx_opencl_generated_eltwise_select_broadcast_f32") {
+      return opencl_generated_eltwise_select_broadcast_f32_kernel_source();
+    }
+    if (entry_point == "gfx_opencl_generated_eltwise_select_f16_dynamic") {
+      return opencl_generated_eltwise_select_f16_dynamic_kernel_source();
+    }
+    if (entry_point == "gfx_opencl_generated_eltwise_logical_unary_bool") {
+      return opencl_generated_eltwise_logical_unary_bool_kernel_source();
+    }
+    if (entry_point == "gfx_opencl_generated_eltwise_logical_binary_bool") {
+      return opencl_generated_eltwise_logical_binary_bool_kernel_source();
+    }
+    if (entry_point ==
+        "gfx_opencl_generated_eltwise_logical_binary_broadcast_bool") {
+      return opencl_generated_eltwise_logical_binary_broadcast_bool_kernel_source();
+    }
+    return opencl_generated_eltwise_kernel_source();
+  }
+
   EltwiseOpenClArtifactCase m_case;
 };
 
@@ -95,6 +135,25 @@ TEST_P(EltwiseOpenClArtifactContractTest, UsesFamilyOwnedGeneratedKernelUnit) {
 INSTANTIATE_TEST_SUITE_P(Eltwise, EltwiseOpenClArtifactContractTest,
                          ::testing::ValuesIn(eltwise_opencl_artifact_cases()),
                          eltwise_opencl_case_name);
+
+TEST(EltwiseOpenClArtifactContractTest,
+     OpenClEltwiseCompilerUsesOpOwnedKernelUnit) {
+  const auto lhs = param(ov::element::f32, ov::Shape{2, 3});
+  const auto rhs = param(ov::element::f32, ov::Shape{2, 3});
+  const auto add = std::make_shared<ov::op::v1::Add>(lhs, rhs);
+
+  const auto target = compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
+  const auto registry = compiler::make_opencl_kernel_registry(target);
+  const auto unit = compiler::resolve_opencl_eltwise_kernel_unit(add, registry);
+  ASSERT_TRUE(unit.valid());
+  EXPECT_EQ(unit.id(), "opencl/generated/eltwise_binary_f32");
+  const compiler::BackendCapabilities capabilities(
+      target, compiler::make_opencl_operation_support_policy(registry));
+  const auto support = capabilities.query_operation({add});
+  ASSERT_TRUE(support.semantic_legal) << support.semantic_reason;
+  EXPECT_EQ(support.preferred_route_kind, unit.route_kind());
+  EXPECT_EQ(support.preferred_route, unit.id());
+}
 
 struct EltwiseRouteCase {
   std::string name;
@@ -230,16 +289,17 @@ private:
 
 EltwiseRouteCase opencl_eltwise_case() {
   const auto target = compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
-  return EltwiseRouteCase{"OpenClGeneratedF32",
-                          target,
-                          compiler::make_opencl_operation_support_policy(),
-                          compiler::make_opencl_kernel_registry(target),
-                          compiler::make_opencl_kernel_artifact_descriptor_resolver(),
-                          compiler::make_opencl_kernel_artifact_payload_resolver(),
-                          KernelArtifactPayloadKind::OpenClSource,
-                          "opencl/generated/eltwise_binary_f32",
-                          "gfx_opencl_generated_eltwise_binary_f32",
-                          5u};
+  return EltwiseRouteCase{
+      "OpenClGeneratedF32",
+      target,
+      compiler::make_opencl_operation_support_policy(),
+      compiler::make_opencl_kernel_registry(target),
+      compiler::make_opencl_kernel_artifact_descriptor_resolver(),
+      compiler::make_opencl_kernel_artifact_payload_resolver(),
+      KernelArtifactPayloadKind::OpenClSource,
+      "opencl/generated/eltwise_binary_f32",
+      "gfx_opencl_generated_eltwise_binary_f32",
+      5u};
 }
 
 EltwiseRouteCase metal_eltwise_case() {

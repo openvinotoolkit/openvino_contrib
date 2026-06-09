@@ -10,18 +10,15 @@
 #include <utility>
 #include <vector>
 
+#include "backends/metal/compiler/apple_vendor_descriptors.hpp"
 #include "backends/metal/compiler/metal_kernel_artifacts.hpp"
 #include "backends/metal/compiler/metal_operation_support.hpp"
-#include "backends/opencl/compiler/opencl_kernel_artifacts.hpp"
 #include "backends/opencl/compiler/opencl_operation_support.hpp"
 #include "compiler/executable_bundle.hpp"
-#include "compiler/runtime_executable_descriptor_builder.hpp"
 #include "compiler/kernel_registry.hpp"
 #include "compiler/manifest.hpp"
 #include "compiler/operation_legalizer.hpp"
-#include "kernel_ir/gfx_opencl_source_artifacts.hpp"
-#include "kernel_ir/opencl_kernels/matmul_f32_kernel.hpp"
-#include "backends/metal/compiler/apple_vendor_descriptors.hpp"
+#include "compiler/runtime_executable_descriptor_builder.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/op/matmul.hpp"
 #include "openvino/op/parameter.hpp"
@@ -67,10 +64,6 @@ class MatMulModelFactory final {
 public:
     std::shared_ptr<ov::Model> f32_2d() const {
         return make_model(ov::element::f32);
-    }
-
-    std::shared_ptr<ov::Model> f16_2d() const {
-        return make_model(ov::element::f16);
     }
 
 private:
@@ -178,19 +171,6 @@ private:
     }
 
     void verify_payload(const compiler::KernelArtifactPayload* payload) const {
-        if (m_route.expected_payload == KernelArtifactPayloadKind::OpenClSource) {
-            const auto* source_payload =
-                dynamic_cast<const GfxOpenClSourceArtifactPayload*>(payload);
-            ASSERT_NE(source_payload, nullptr);
-            ASSERT_TRUE(source_payload->artifact().valid);
-            EXPECT_EQ(source_payload->artifact().source,
-                      opencl_generated_matmul_f32_kernel_source().source);
-            EXPECT_NE(source_payload->artifact().source.find(
-                          "gfx_opencl_generated_matmul_f32"),
-                      std::string::npos);
-            return;
-        }
-
         if (m_route.expected_payload ==
             KernelArtifactPayloadKind::VendorDescriptor) {
             const auto* vendor_payload =
@@ -242,25 +222,6 @@ private:
     MatMulRouteCase m_route;
 };
 
-MatMulRouteCase opencl_generated_matmul_case() {
-    const auto target =
-        compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
-    return MatMulRouteCase{
-        "OpenClGeneratedF32",
-        target,
-        compiler::make_opencl_operation_support_policy(),
-        compiler::make_opencl_kernel_registry(target),
-        compiler::make_opencl_kernel_artifact_descriptor_resolver(),
-        compiler::make_opencl_kernel_artifact_payload_resolver(),
-        LoweringRouteKind::GeneratedKernel,
-        KernelArtifactOrigin::Generated,
-        KernelArtifactPayloadKind::OpenClSource,
-        "opencl/generated/matmul_f32",
-        "gfx_opencl_generated_matmul_f32",
-        13u,
-        1u};
-}
-
 MatMulRouteCase apple_mps_gemm_matmul_case() {
     const auto target = compiler::BackendTarget::from_backend(GpuBackend::Metal);
     return MatMulRouteCase{
@@ -297,11 +258,10 @@ TEST_P(MatMulRouteContractTest, CompilesThroughExpectedKernelUnit) {
 
 INSTANTIATE_TEST_SUITE_P(MatMulBackends,
                          MatMulRouteContractTest,
-                         ::testing::Values(opencl_generated_matmul_case(),
-                                           apple_mps_gemm_matmul_case()),
+                         ::testing::Values(apple_mps_gemm_matmul_case()),
                          matmul_route_case_name);
 
-TEST(MatMulUnsupportedContractTest, OpenClF16RejectsMissingKernelUnit) {
+TEST(MatMulUnsupportedContractTest, OpenClF32RejectsMissingKernelUnit) {
     const auto target =
         compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
     const compiler::BackendCapabilities capabilities(
@@ -313,7 +273,7 @@ TEST(MatMulUnsupportedContractTest, OpenClF16RejectsMissingKernelUnit) {
         compiler::make_opencl_kernel_registry(target));
 
     const MatMulModelFactory models;
-    const auto model = models.f16_2d();
+    const auto model = models.f32_2d();
     const auto ordered_ops = model->get_ordered_ops();
     const auto matmul_it =
         std::find_if(ordered_ops.begin(), ordered_ops.end(), [](const auto& op) {

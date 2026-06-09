@@ -8,9 +8,13 @@
 
 #include "openvino/op/add.hpp"
 #include "openvino/op/constant.hpp"
+#include "openvino/op/greater.hpp"
+#include "openvino/op/logical_and.hpp"
+#include "openvino/op/logical_not.hpp"
 #include "openvino/op/mod.hpp"
 #include "openvino/op/multiply.hpp"
 #include "openvino/op/parameter.hpp"
+#include "openvino/op/select.hpp"
 #include "openvino/op/subtract.hpp"
 
 namespace ov {
@@ -114,6 +118,69 @@ std::vector<EltwiseOpenClArtifactCase> eltwise_opencl_artifact_cases() {
        {0, 1},
        broadcast_scalar_args(),
        broadcast_234_by_31_scalars(),
+       GfxOpenClArtifactInputMode::Direct},
+      {"F32CompareGreater",
+       [] {
+         return std::make_shared<ov::op::v1::Greater>(
+             param(ov::element::f32, ov::Shape{2, 3}),
+             param(ov::element::f32, ov::Shape{2, 3}));
+       },
+       "opencl/generated/eltwise_compare_f32",
+       "gfx_opencl_generated_eltwise_compare_f32",
+       GfxOpenClArtifactOp::Greater,
+       5u,
+       2u,
+       {0, 1},
+       {GfxOpenClSourceScalarArg::ElementCount,
+        GfxOpenClSourceScalarArg::OpCode},
+       {},
+       GfxOpenClArtifactInputMode::Direct},
+      {"F32SelectSameShape",
+       [] {
+         auto cond = param(ov::element::boolean, ov::Shape{2, 3});
+         auto lhs = param(ov::element::f32, ov::Shape{2, 3});
+         auto rhs = param(ov::element::f32, ov::Shape{2, 3});
+         return std::make_shared<ov::op::v1::Select>(cond, lhs, rhs);
+       },
+       "opencl/generated/eltwise_select_f32",
+       "gfx_opencl_generated_eltwise_select_f32",
+       GfxOpenClArtifactOp::Identity,
+       5u,
+       3u,
+       {0, 1, 2},
+       {GfxOpenClSourceScalarArg::ElementCount},
+       {},
+       GfxOpenClArtifactInputMode::Direct},
+      {"BoolLogicalNot",
+       [] {
+         return std::make_shared<ov::op::v1::LogicalNot>(
+             param(ov::element::boolean, ov::Shape{2, 3}));
+       },
+       "opencl/generated/eltwise_logical_unary_bool",
+       "gfx_opencl_generated_eltwise_logical_unary_bool",
+       GfxOpenClArtifactOp::LogicalNot,
+       4u,
+       1u,
+       {0},
+       {GfxOpenClSourceScalarArg::ElementCount,
+        GfxOpenClSourceScalarArg::OpCode},
+       {},
+       GfxOpenClArtifactInputMode::Direct},
+      {"BoolLogicalAnd",
+       [] {
+         return std::make_shared<ov::op::v1::LogicalAnd>(
+             param(ov::element::boolean, ov::Shape{2, 3}),
+             param(ov::element::boolean, ov::Shape{2, 3}));
+       },
+       "opencl/generated/eltwise_logical_binary_bool",
+       "gfx_opencl_generated_eltwise_logical_binary_bool",
+       GfxOpenClArtifactOp::LogicalAnd,
+       5u,
+       2u,
+       {0, 1},
+       {GfxOpenClSourceScalarArg::ElementCount,
+        GfxOpenClSourceScalarArg::OpCode},
+       {},
        GfxOpenClArtifactInputMode::Direct},
   };
 }

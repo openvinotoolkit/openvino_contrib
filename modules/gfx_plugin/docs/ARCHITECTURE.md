@@ -559,9 +559,13 @@ the OpenCL backend module. The source-stage executor is intentionally generic.
 Op-specific behavior should reach it through artifact metadata, generated chunk
 artifacts, shared runtime-value planners, static u32/f32 scalar payloads,
 constant materialization, and boolean-buffer contracts.
-Family-specific backend compiler adapters, currently including
-`opencl_conv_kernel_unit.*`, `opencl_pool_kernel_unit.*`,
-`opencl_range_kernel_unit.*`, `opencl_softmax_kernel_unit.*`, and
+Backend-visible OpenCL routes are catalog-driven. `opencl_kernel_unit_catalog.*`
+owns the list of registered generated units, operation-support entries, and
+artifact families that may materialize payloads. Family-specific backend
+compiler adapters, currently including `opencl_activation_kernel_unit.*`,
+`opencl_eltwise_kernel_unit.*`, `opencl_conv_kernel_unit.*`,
+`opencl_pool_kernel_unit.*`, `opencl_range_kernel_unit.*`,
+`opencl_shapeof_kernel_unit.*`, `opencl_softmax_kernel_unit.*`, and
 `opencl_tile_kernel_unit.*`, resolve generated `KernelUnit` records and
 materialize operation payloads before runtime descriptor construction.
 
@@ -572,36 +576,35 @@ alone is not enough to guarantee backend parity. The OpenCL operation support
 policy intentionally does not fall back to generic MLIR support when no source
 artifact exists.
 
-Current OpenCL source artifacts cover data movement, selected converts, MatMul,
-Conv2D/GroupConv2D, Softmax, Pool2D, bounded static NCHW spatial Interpolate,
-Range, Tile, gather/scatter families, ShapeOf, Concat/Split, unary and binary
-elementwise families, compare/select, and boolean logical/reduction families
-when shapes and element types match their contracts.
+Current catalog-registered OpenCL source artifacts cover Conv2D/GroupConv2D,
+Softmax, Pool2D, Range, Tile, ShapeOf, unary activation, binary elementwise,
+logical-bool elementwise, and compare/select families when shapes and element
+types match their contracts.
 
-OpenCL source coverage is mostly generated-kernel based. Conv2D and
-GroupConv2D use generated f32 units for static 4D NCHW data/output with
-constant weights and explicit 2D stride/dilation/padding metadata. Softmax uses
-generated f32/f16 units, including dynamic-output static-rank variants whose
-scalar ABI carries runtime shape metadata. Range uses generated f32/f16/i64
-units, including a specialized i64 unit-step source. Pool2D uses generated
-f32/f16 units for static 4D NCHW MaxPool and AvgPool. Interpolate uses embedded
-f32/f16 generated kernel units with explicit scalar metadata for resize mode,
-coordinate transform, nearest rounding, and NCHW spatial dimensions. ShapeOf,
-Tile, logical-bool elementwise, compare/select, boolean reduction, generated
-Concat/Split helpers, and Transpose also use explicit `opencl/generated/*`
-source ids. The current OpenCL kernel registry has no active handwritten
-kernel-unit exception.
+OpenCL source coverage is generated-kernel based. Conv2D and GroupConv2D use
+generated f32 units for static 4D NCHW data/output with constant weights and
+explicit 2D stride/dilation/padding metadata. Softmax uses generated f32/f16
+units, including dynamic-output static-rank variants whose scalar ABI carries
+runtime shape metadata. Range uses generated f32/f16/i64 units, including a
+specialized i64 unit-step source. Pool2D uses generated f32/f16 units for
+static 4D NCHW MaxPool and AvgPool. ShapeOf uses generated i32/i64 units with
+input-rank metadata. Tile uses generated f32/f16 static and dynamic-static-rank
+units. Activation and elementwise families use generated arithmetic,
+compare/select, and logical-bool source ids. The current OpenCL kernel registry
+has no active handwritten kernel-unit exception.
 Keep those distinctions in the artifact contract rather than duplicating them
 in the OpenCL stage executor.
 Routes that require runtime shape arguments must mark the `KernelUnit`; the
 manifest, executable bundle, runtime descriptor, and infer pipeline carry that
 flag instead of deriving it from backend identity at request time.
 
-Reduction OpenCL paths are split by contract. Numeric f32 `ReduceSum`,
-`ReduceMean`, `ReduceMax`, `ReduceMin`, `ReduceProd`, `ReduceL1`, and
-`ReduceL2` use `opencl/generated/reduction_f32`. Boolean `ReduceLogicalAnd` and
-`ReduceLogicalOr` use `opencl/generated/reduction_bool`. Both forms carry
-static axis/shape metadata as source-static u32 scalars.
+OpenCL MatMul, Interpolate, Reduction, Transpose, Concat, and Split are current
+catalog limitations. The backend intentionally reports
+`missing_opencl_*_kernel_unit` for those families until a generated unit is
+registered in `opencl_kernel_unit_catalog.*`, a family-owned adapter
+materializes the payload, and contract tests cover the route. Residual helper
+code or source-artifact tests for those families must not be documented as
+executable OpenCL support.
 
 Generated activation artifacts use manifest metadata for opcode, static f32
 scalars, direct tensor inputs, and scalar-parameter order. `Swish` supports the

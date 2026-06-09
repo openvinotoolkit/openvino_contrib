@@ -201,6 +201,7 @@ target_sources(${UNIT_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_eltwise_opencl_contract_cases.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_eltwise_opencl_source_artifacts_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_reduction_kernel_contract_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_shapeof_kernel_contract_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_softmax_kernel_contract_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_conv_kernel_contract_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_pool_kernel_contract_test.cpp
@@ -216,6 +217,10 @@ target_sources(${UNIT_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_stage_policy_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_parallelism_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/basic_ops_internal_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_concat_split_source_artifacts_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_gather_scatter_source_artifacts_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_layout_source_artifacts_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_range_tile_source_artifacts_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_source_artifacts_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/layout_cleanup_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/mlir_matmul_parallel_test.cpp

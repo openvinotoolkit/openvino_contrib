@@ -7,19 +7,9 @@
 #include <algorithm>
 #include <memory>
 #include <string_view>
-#include <utility>
 
-#include "backends/opencl/compiler/opencl_conv_kernel_unit.hpp"
-#include "backends/opencl/compiler/opencl_pool_kernel_unit.hpp"
-#include "backends/opencl/compiler/opencl_range_kernel_unit.hpp"
-#include "backends/opencl/compiler/opencl_softmax_kernel_unit.hpp"
-#include "backends/opencl/compiler/opencl_tile_kernel_unit.hpp"
+#include "backends/opencl/compiler/opencl_kernel_unit_catalog.hpp"
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
-#include "kernel_ir/opencl_kernels/conv2d_kernel.hpp"
-#include "kernel_ir/opencl_kernels/pool2d_kernel.hpp"
-#include "kernel_ir/opencl_kernels/range_kernel.hpp"
-#include "kernel_ir/opencl_kernels/softmax_kernel.hpp"
-#include "kernel_ir/opencl_kernels/tile_kernel.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -85,21 +75,6 @@ make_opencl_launch_plan_descriptor(const GfxOpenClSourceArtifact &artifact) {
 }
 
 std::shared_ptr<const KernelArtifactPayload>
-materialize_descriptor_owned_opencl_payload(
-    const KernelArtifactDescriptor &descriptor,
-    GfxOpenClSourceArtifact artifact) {
-  if (!is_explicit_opencl_source_artifact_unit(
-          artifact.artifact_ref.source_id)) {
-    return {};
-  }
-  if (!opencl_source_artifact_matches_descriptor_contract(descriptor,
-                                                          artifact)) {
-    return {};
-  }
-  return std::make_shared<GfxOpenClSourceArtifactPayload>(std::move(artifact));
-}
-
-std::shared_ptr<const KernelArtifactPayload>
 resolve_opencl_payload(const KernelArtifactDescriptor &descriptor,
                        const PlannedOperation &op) {
   if (descriptor.kernel.backend_domain != "opencl" ||
@@ -108,50 +83,13 @@ resolve_opencl_payload(const KernelArtifactDescriptor &descriptor,
     return {};
   }
 
-  if (auto conv2d_payload =
-          build_opencl_conv2d_kernel_artifact_payload(descriptor, op)) {
-    return conv2d_payload;
+  for (const auto &family : opencl_artifact_family_entries()) {
+    if (!family.matches(op.source_node)) {
+      continue;
+    }
+    return family.make_payload(descriptor, op);
   }
-  if (is_opencl_conv2d_node(op.source_node)) {
-    return {};
-  }
-  if (auto range_payload =
-          build_opencl_range_kernel_artifact_payload(descriptor, op)) {
-    return range_payload;
-  }
-  if (is_opencl_range_node(op.source_node)) {
-    return {};
-  }
-  if (auto tile_payload =
-          build_opencl_tile_kernel_artifact_payload(descriptor, op)) {
-    return tile_payload;
-  }
-  if (is_opencl_tile_node(op.source_node)) {
-    return {};
-  }
-  if (auto softmax_payload =
-          build_opencl_softmax_kernel_artifact_payload(descriptor, op)) {
-    return softmax_payload;
-  }
-  if (is_opencl_softmax_node(op.source_node)) {
-    return {};
-  }
-  if (auto pool2d_payload =
-          build_opencl_pool2d_kernel_artifact_payload(descriptor, op)) {
-    return pool2d_payload;
-  }
-  if (is_opencl_pool2d_node(op.source_node)) {
-    return {};
-  }
-
-  auto source_artifact = resolve_gfx_opencl_source_artifact(op.source_node);
-  if (!source_artifact || !source_artifact->valid ||
-      !is_explicit_opencl_source_artifact_unit(
-          source_artifact->artifact_ref.source_id)) {
-    return {};
-  }
-  return materialize_descriptor_owned_opencl_payload(
-      descriptor, std::move(*source_artifact));
+  return {};
 }
 
 } // namespace
@@ -165,19 +103,6 @@ resolve_opencl_payload(const KernelArtifactDescriptor &descriptor,
     return KernelArtifactOrigin::HandwrittenException;
   }
   return KernelArtifactOrigin::Unknown;
-}
-
-bool is_explicit_opencl_source_artifact_unit(
-    std::string_view kernel_unit_id) noexcept {
-  return starts_with(kernel_unit_id, "opencl/generated/interpolate_") ||
-         starts_with(kernel_unit_id, "opencl/generated/matmul_") ||
-         starts_with(kernel_unit_id, "opencl/generated/shapeof_") ||
-         starts_with(kernel_unit_id, "opencl/generated/concat") ||
-         starts_with(kernel_unit_id, "opencl/generated/split") ||
-         starts_with(kernel_unit_id, "opencl/generated/activation_") ||
-         starts_with(kernel_unit_id, "opencl/generated/eltwise_") ||
-         starts_with(kernel_unit_id, "opencl/generated/reduction_") ||
-         starts_with(kernel_unit_id, "opencl/generated/transpose_");
 }
 
 KernelArtifactPayloadResolver make_opencl_kernel_artifact_payload_resolver() {
@@ -261,60 +186,17 @@ make_opencl_kernel_artifact_descriptor_resolver() {
       return true;
     }
 
-    if (auto artifact = make_opencl_conv2d_source_artifact(
-            op.source_node, descriptor.kernel.kernel_id)) {
-      return artifact->valid &&
+    for (const auto &family : opencl_artifact_family_entries()) {
+      if (!family.matches(op.source_node)) {
+        continue;
+      }
+      const auto artifact = family.make_source_artifact(
+          op.source_node, descriptor.kernel.kernel_id);
+      return artifact && artifact->valid &&
              finalize_opencl_kernel_artifact_descriptor_contract(descriptor,
                                                                  *artifact);
     }
-    if (is_opencl_conv2d_node(op.source_node)) {
-      return false;
-    }
-    if (auto artifact = make_opencl_range_source_artifact(
-            op.source_node, descriptor.kernel.kernel_id)) {
-      return artifact->valid &&
-             finalize_opencl_kernel_artifact_descriptor_contract(descriptor,
-                                                                 *artifact);
-    }
-    if (is_opencl_range_node(op.source_node)) {
-      return false;
-    }
-    if (auto artifact = make_opencl_tile_source_artifact(
-            op.source_node, descriptor.kernel.kernel_id)) {
-      return artifact->valid &&
-             finalize_opencl_kernel_artifact_descriptor_contract(descriptor,
-                                                                 *artifact);
-    }
-    if (is_opencl_tile_node(op.source_node)) {
-      return false;
-    }
-    if (auto artifact = make_opencl_softmax_source_artifact(
-            op.source_node, descriptor.kernel.kernel_id)) {
-      return artifact->valid &&
-             finalize_opencl_kernel_artifact_descriptor_contract(descriptor,
-                                                                 *artifact);
-    }
-    if (is_opencl_softmax_node(op.source_node)) {
-      return false;
-    }
-    if (auto artifact = make_opencl_pool2d_source_artifact(
-            op.source_node, descriptor.kernel.kernel_id)) {
-      return artifact->valid &&
-             finalize_opencl_kernel_artifact_descriptor_contract(descriptor,
-                                                                 *artifact);
-    }
-    if (is_opencl_pool2d_node(op.source_node)) {
-      return false;
-    }
-
-    auto source_artifact = resolve_gfx_opencl_source_artifact(op.source_node);
-    if (!source_artifact || !source_artifact->valid ||
-        !is_explicit_opencl_source_artifact_unit(
-            source_artifact->artifact_ref.source_id)) {
-      return false;
-    }
-    return finalize_opencl_kernel_artifact_descriptor_contract(
-        descriptor, *source_artifact);
+    return false;
   };
 }
 

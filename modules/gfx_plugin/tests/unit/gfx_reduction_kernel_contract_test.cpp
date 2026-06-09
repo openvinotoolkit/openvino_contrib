@@ -7,19 +7,21 @@
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "backends/metal/compiler/metal_kernel_artifacts.hpp"
 #include "backends/metal/compiler/metal_operation_support.hpp"
+#include "backends/metal/compiler/msl_codegen_apple_msl_reduction.hpp"
 #include "backends/opencl/compiler/opencl_kernel_artifacts.hpp"
 #include "backends/opencl/compiler/opencl_operation_support.hpp"
 #include "compiler/executable_bundle.hpp"
 #include "compiler/kernel_registry.hpp"
 #include "compiler/manifest.hpp"
 #include "compiler/operation_legalizer.hpp"
-#include "gfx_opencl_source_artifact_verifier.hpp"
 #include "kernel_ir/gfx_kernel_source.hpp"
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
 #include "kernel_ir/metal_kernels/reduction_kernels.hpp"
@@ -28,7 +30,7 @@
 #include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/mlir_passes.hpp"
 #include "mlir/mlir_support.hpp"
-#include "backends/metal/compiler/msl_codegen_apple_msl_reduction.hpp"
+#include "unit/gfx_opencl_catalog_artifact_resolver.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/parameter.hpp"
@@ -51,10 +53,10 @@ using compiler::ExecutableBundle;
 using compiler::KernelArtifactDescriptor;
 using compiler::KernelArtifactOrigin;
 using compiler::KernelArtifactPayloadKind;
+using test::resolve_opencl_catalog_source_artifact;
 using compiler::LoweringPlan;
 using compiler::LoweringRouteKind;
 using compiler::ManifestBundle;
-using test::OpenClSourceArtifactVerifier;
 
 std::shared_ptr<ov::op::v0::Parameter> param(const ov::element::Type &type,
                                              ov::Shape shape) {
@@ -73,13 +75,6 @@ model_from_node(const std::shared_ptr<ov::Node> &node,
   return std::make_shared<ov::Model>(
       ov::ResultVector{std::make_shared<ov::op::v0::Result>(node)},
       std::move(params));
-}
-
-std::vector<GfxOpenClSourceScalarArg> reduction_static_scalar_args() {
-  std::vector<GfxOpenClSourceScalarArg> args = {
-      GfxOpenClSourceScalarArg::ElementCount, GfxOpenClSourceScalarArg::OpCode};
-  args.insert(args.end(), 15, GfxOpenClSourceScalarArg::StaticU32);
-  return args;
 }
 
 std::vector<uint32_t> reduce_axis1_static_u32_scalars(bool keep_dims) {
@@ -261,16 +256,24 @@ public:
 
   void verify() const {
     const auto node = m_case.make_node();
-    OpenClSourceArtifactVerifier(node)
-        .expect_artifact(
-            GfxKernelStageFamily::Reduction, "opencl/generated/reduction_f32",
-            "gfx_opencl_generated_reduction_f32", 19u, 1u,
-            reduction_static_scalar_args(), {0}, m_case.static_u32_scalars)
-        .has_op(m_case.op)
-        .supports_opencl_compiler();
+    EXPECT_FALSE(resolve_opencl_catalog_source_artifact(node).has_value());
+    expect_opencl_reduction_compiler_rejects(node);
   }
 
 private:
+  static void
+  expect_opencl_reduction_compiler_rejects(
+      const std::shared_ptr<ov::Node> &node) {
+    const auto target =
+        compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
+    const auto registry = compiler::make_opencl_kernel_registry(target);
+    const compiler::BackendCapabilities capabilities(
+        target, compiler::make_opencl_operation_support_policy(registry));
+    const auto support = capabilities.query_operation({node});
+    EXPECT_FALSE(support.semantic_legal);
+    EXPECT_EQ(support.semantic_reason, "missing_opencl_reduction_kernel_unit");
+  }
+
   ReductionOpenClArtifactCase m_case;
 };
 
@@ -283,7 +286,7 @@ class ReductionNumericOpenClArtifactContractTest
     : public ::testing::TestWithParam<ReductionOpenClArtifactCase> {};
 
 TEST_P(ReductionNumericOpenClArtifactContractTest,
-       UsesFamilyOwnedGeneratedKernelArtifactContract) {
+       RejectsOpenClRouteUntilGeneratedKernelUnitExists) {
   ReductionNumericOpenClArtifactContract(GetParam()).verify();
 }
 
@@ -292,31 +295,36 @@ INSTANTIATE_TEST_SUITE_P(Reduction, ReductionNumericOpenClArtifactContractTest,
                          reduction_opencl_case_name);
 
 TEST(ReductionOpenClArtifactContract,
-     ReduceLogicalBoolArtifactsCarryStaticAxisMetadata) {
+     ReduceLogicalBoolHasNoOpenClSourceArtifactWithoutKernelUnit) {
   const auto data = param(ov::element::boolean, ov::Shape{2, 3, 4});
 
   const auto reduce_and = std::make_shared<ov::op::v1::ReduceLogicalAnd>(
       data, i64_const(ov::Shape{1}, {1}), false);
-  OpenClSourceArtifactVerifier(reduce_and)
-      .expect_artifact(GfxKernelStageFamily::Reduction,
-                       "opencl/generated/reduction_bool",
-                       "gfx_opencl_generated_reduction_bool", 19u, 1u,
-                       reduction_static_scalar_args(), {0},
-                       reduce_axis1_static_u32_scalars(false))
-      .has_op(GfxOpenClArtifactOp::ReduceLogicalAnd)
-      .supports_opencl_compiler();
+  EXPECT_FALSE(resolve_opencl_catalog_source_artifact(reduce_and).has_value());
+  {
+    const auto target =
+        compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
+    const auto registry = compiler::make_opencl_kernel_registry(target);
+    const compiler::BackendCapabilities capabilities(
+        target, compiler::make_opencl_operation_support_policy(registry));
+    const auto support = capabilities.query_operation({reduce_and});
+    EXPECT_FALSE(support.semantic_legal);
+    EXPECT_EQ(support.semantic_reason, "missing_opencl_reduction_kernel_unit");
+  }
 
   const auto reduce_or = std::make_shared<ov::op::v1::ReduceLogicalOr>(
       data, i64_const(ov::Shape{2}, {1, 2}), true);
-  const std::vector<uint32_t> or_static_u32_scalars = {3, 3, 2, 3, 4, 1, 2, 1,
-                                                       1, 1, 6, 0, 4, 4, 4};
-  OpenClSourceArtifactVerifier(reduce_or)
-      .expect_artifact(
-          GfxKernelStageFamily::Reduction, "opencl/generated/reduction_bool",
-          "gfx_opencl_generated_reduction_bool", 19u, 1u,
-          reduction_static_scalar_args(), {0}, or_static_u32_scalars)
-      .has_op(GfxOpenClArtifactOp::ReduceLogicalOr)
-      .supports_opencl_compiler();
+  EXPECT_FALSE(resolve_opencl_catalog_source_artifact(reduce_or).has_value());
+  {
+    const auto target =
+        compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
+    const auto registry = compiler::make_opencl_kernel_registry(target);
+    const compiler::BackendCapabilities capabilities(
+        target, compiler::make_opencl_operation_support_policy(registry));
+    const auto support = capabilities.query_operation({reduce_or});
+    EXPECT_FALSE(support.semantic_legal);
+    EXPECT_EQ(support.semantic_reason, "missing_opencl_reduction_kernel_unit");
+  }
 }
 
 struct ReductionMslArtifactCase {
@@ -517,14 +525,6 @@ private:
   }
 
   void verify_payload(const compiler::KernelArtifactPayload *payload) const {
-    if (m_route.expected_payload == KernelArtifactPayloadKind::OpenClSource) {
-      const auto *source_payload =
-          dynamic_cast<const GfxOpenClSourceArtifactPayload *>(payload);
-      ASSERT_NE(source_payload, nullptr);
-      EXPECT_EQ(source_payload->artifact().stage_manifest.stage_family,
-                GfxKernelStageFamily::Reduction);
-      return;
-    }
     const auto *source_payload =
         dynamic_cast<const GfxKernelSourcePayload *>(payload);
     ASSERT_NE(source_payload, nullptr);
@@ -548,40 +548,6 @@ std::shared_ptr<ov::Model> reduce_logical_and_model() {
   auto node = std::make_shared<ov::op::v1::ReduceLogicalAnd>(
       data, i64_const(ov::Shape{1}, {1}), false);
   return model_from_node(node, {data});
-}
-
-ReductionRouteCase opencl_reduction_f32_case() {
-  const auto target = compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
-  return {"OpenClGeneratedReduceSumF32",
-          target,
-          compiler::make_opencl_operation_support_policy(),
-          compiler::make_opencl_kernel_registry(target),
-          compiler::make_opencl_kernel_artifact_descriptor_resolver(),
-          compiler::make_opencl_kernel_artifact_payload_resolver(),
-          LoweringRouteKind::GeneratedKernel,
-          KernelArtifactOrigin::Generated,
-          KernelArtifactPayloadKind::OpenClSource,
-          "opencl/generated/reduction_f32",
-          "gfx_opencl_generated_reduction_f32",
-          19u,
-          reduce_sum_model};
-}
-
-ReductionRouteCase opencl_reduction_logical_case() {
-  const auto target = compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
-  return {"OpenClGeneratedReduceLogicalAndBool",
-          target,
-          compiler::make_opencl_operation_support_policy(),
-          compiler::make_opencl_kernel_registry(target),
-          compiler::make_opencl_kernel_artifact_descriptor_resolver(),
-          compiler::make_opencl_kernel_artifact_payload_resolver(),
-          LoweringRouteKind::GeneratedKernel,
-          KernelArtifactOrigin::Generated,
-          KernelArtifactPayloadKind::OpenClSource,
-          "opencl/generated/reduction_bool",
-          "gfx_opencl_generated_reduction_bool",
-          19u,
-          reduce_logical_and_model};
 }
 
 ReductionRouteCase metal_reduction_f32_case() {
@@ -632,9 +598,7 @@ TEST_P(ReductionRouteContractTest, CompilesThroughExpectedKernelUnit) {
 }
 
 INSTANTIATE_TEST_SUITE_P(ReductionBackends, ReductionRouteContractTest,
-                         ::testing::Values(opencl_reduction_f32_case(),
-                                           opencl_reduction_logical_case(),
-                                           metal_reduction_f32_case(),
+                         ::testing::Values(metal_reduction_f32_case(),
                                            metal_reduction_logical_case()),
                          reduction_route_case_name);
 

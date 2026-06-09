@@ -196,7 +196,9 @@ vendor route; do not reintroduce the removed generic MSL Pool2D fallback.
 
 For OpenCL source-artifact work:
 
-1. Inspect `src/kernel_ir/gfx_opencl_source_artifacts.*` first.
+1. Inspect `src/backends/opencl/compiler/opencl_kernel_unit_catalog.*` first
+   for the registered OpenCL routes, then inspect the family adapter and
+   source-artifact factory.
 2. Check `src/backends/opencl/compiler/` for route selection, kernel-unit
    registration, and source payload materialization through
    `opencl_kernel_artifacts.*`.
@@ -210,12 +212,14 @@ For OpenCL source-artifact work:
    `src/kernel_ir/opencl_kernels/`, the `gfx_embed_kernel_source()` entry in
    `src/CMakeLists.txt`, and the source/header entries in
    `cmake/GfxSources.cmake`.
-7. Update `tests/unit/gfx_opencl_source_artifacts_test.cpp` and
-   `tests/unit/gpu_backend_base_test.cpp` when compiler payload routing changes.
-   Use the focused activation, elementwise, MatMul, and backend-architecture
-   contract tests when generated kernel-unit registration changes. Keep
-   generated activation and elementwise case data in the family-specific
-   `tests/unit/gfx_*_contract_cases.*` files.
+7. Update the focused family test and
+   `tests/unit/gfx_backend_architecture_contract_test.cpp` when generated
+   kernel-unit registration changes. Use
+   `tests/unit/gfx_opencl_source_artifacts_test.cpp` for shared backend-target
+   and missing-route contracts, and use the split `gfx_opencl_*_source_artifacts`
+   tests for family-specific source-artifact assertions. Add
+   `tests/unit/gpu_backend_base_test.cpp` only when compiler executable-bundle
+   payload routing changes.
    For reduction source units, update
    `tests/unit/gfx_reduction_kernel_contract_test.cpp` and the shared
    `tests/unit/gfx_opencl_source_artifact_verifier.hpp` helper. For Conv2D,
@@ -226,14 +230,17 @@ For OpenCL source-artifact work:
 8. Add runtime coverage only when dynamic OpenCL loading, memory, command
    enqueue, or runtime-shape behavior changed.
 
-Current generated OpenCL routes include activation, elementwise, f32 MatMul,
-f32 Conv2D/GroupConv2D, f32/f16 Interpolate, f32 reduction, boolean reduction,
-f32/f16 Softmax, dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D,
-f32/f16/i64 Range, ShapeOf, Tile, Transpose, compare/select, logical-bool
-elementwise, and generated Concat/Split helpers. Conv2D/GroupConv2D, Pool2D,
-Range, Softmax, and Tile have family-specific OpenCL kernel-unit adapters under
-`src/backends/opencl/compiler/`. The current OpenCL kernel registry has no
-active handwritten kernel-unit exception.
+Current registered generated OpenCL routes include activation, elementwise,
+f32 Conv2D/GroupConv2D, f32/f16 Softmax, dynamic-static-rank f32/f16 Softmax,
+f32/f16 Pool2D, f32/f16/i64 Range, ShapeOf, Tile, compare/select, and
+logical-bool elementwise. Activation, Eltwise, Conv2D/GroupConv2D, Pool2D,
+Range, ShapeOf, Softmax, and Tile have family-specific OpenCL kernel-unit
+adapters under `src/backends/opencl/compiler/` and are listed in
+`opencl_kernel_unit_catalog.*`. The current OpenCL kernel registry has no
+active handwritten kernel-unit exception. MatMul, Interpolate, Reduction,
+Transpose, Concat, and Split are current OpenCL catalog limitations and should
+continue to report `missing_opencl_*_kernel_unit` until catalog entries,
+family adapters, payload resolvers, and tests are added.
 
 Standalone OpenCL Conv2D microbench tools remain experimental probes. Plugin
 support must flow through `opencl_conv_kernel_unit.*`, support probing,

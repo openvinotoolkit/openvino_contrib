@@ -183,11 +183,11 @@ For OpenCL source-artifact changes:
 - start with `tests/unit/gfx_opencl_source_artifacts_test.cpp`
 - include `tests/unit/gfx_activation_kernel_contract_test.cpp`,
   `tests/unit/gfx_eltwise_kernel_contract_test.cpp`, or
-  `tests/unit/gfx_matmul_kernel_contract_test.cpp` when the generated source
+  `tests/unit/gfx_shapeof_kernel_contract_test.cpp` when the generated source
   unit contract for those families changes
-- include `tests/unit/gfx_reduction_kernel_contract_test.cpp` when generated
-  f32 reduction, generated logical-bool reduction, reduction MLIR lowering, or
-  backend reduction kernel-unit routing changes
+- include `tests/unit/gfx_reduction_kernel_contract_test.cpp` when reduction
+  MLIR lowering, rejected OpenCL reduction behavior, or future backend
+  reduction kernel-unit routing changes
 - include `tests/unit/gfx_softmax_kernel_contract_test.cpp` when generated
   Metal Softmax/LogSoftmax payloads, OpenCL static or dynamic-static-rank
   Softmax artifacts, axis metadata, or Softmax kernel-unit routing changes
@@ -198,9 +198,15 @@ For OpenCL source-artifact changes:
   Pool2D artifacts, Metal MPS Pool2D vendor routing, or Pooling kernel-unit
   registration changes
 - include `tests/unit/gfx_opencl_source_artifacts_test.cpp` and
-  `tests/unit/gfx_backend_architecture_contract_test.cpp` when generated
-  ShapeOf, Tile, Transpose, compare/select, logical-bool elementwise, boolean
-  reduction, or generated Concat/Split kernel units move
+  `tests/unit/gfx_backend_architecture_contract_test.cpp` when OpenCL route
+  catalog ownership, generated ShapeOf, Tile, compare/select, or logical-bool
+  elementwise kernel units move
+- include split tests such as
+  `tests/unit/gfx_opencl_range_tile_source_artifacts_test.cpp`,
+  `tests/unit/gfx_opencl_concat_split_source_artifacts_test.cpp`,
+  `tests/unit/gfx_opencl_gather_scatter_source_artifacts_test.cpp`, and
+  `tests/unit/gfx_opencl_layout_source_artifacts_test.cpp` when those
+  source-artifact families or missing-route contracts change
 - use `tests/unit/gfx_opencl_source_artifact_verifier.hpp` for reusable
   OpenCL source-artifact assertions instead of duplicating role/scalar checks
 - keep reusable generated activation and elementwise case data in

@@ -17,8 +17,6 @@ namespace compiler {
 
 ::ov::gfx_plugin::KernelArtifactOrigin
 classify_opencl_kernel_artifact_origin(std::string_view kernel_unit_id) noexcept;
-bool is_explicit_opencl_source_artifact_unit(
-    std::string_view kernel_unit_id) noexcept;
 
 KernelArtifactPayloadResolver make_opencl_kernel_artifact_payload_resolver();
 KernelArtifactDescriptorResolver

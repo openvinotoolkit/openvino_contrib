@@ -183,22 +183,17 @@ source artifacts described by `src/kernel_ir/gfx_opencl_source_artifacts.*`.
 Those source artifacts are materialized by the OpenCL backend module, not by a
 generic compiler fallback.
 
-Current public coverage includes selected data movement, shape/list movement,
-Range/Tile, MatMul/Softmax, Conv2D/GroupConv2D, Pool2D, bounded static NCHW
-spatial Interpolate, gather/scatter families, Concat/Split, typed elementwise
-families, compare/select, and boolean logical/reduction families when the model
-matches the artifact contracts.
+Current public OpenCL compiler coverage is the route set registered in
+`src/backends/opencl/compiler/opencl_kernel_unit_catalog.*`: activation,
+elementwise, Conv2D/GroupConv2D, Softmax, Pool2D, Range, ShapeOf, Tile,
+logical-bool elementwise, and compare/select when the model matches the
+family-specific artifact contracts.
 
-Generated activation, elementwise, f32 MatMul, f32 Conv2D/GroupConv2D,
-f32/f16 Interpolate, f32 reduction, boolean reduction, f32/f16 Softmax,
+Generated activation, elementwise, f32 Conv2D/GroupConv2D, f32/f16 Softmax,
 dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D, f32/f16/i64 Range,
-ShapeOf, Tile, Transpose, logical-bool elementwise, compare/select, and
-Concat/Split helper sources are embedded under
-`src/kernel_ir/opencl_kernels/`. The current Transpose route is
-`opencl/generated/transpose_f32`; there is no active handwritten OpenCL
-kernel-unit exception in the current registry. Interpolate is limited to f32/f16
-static NCHW spatial resize cases with supported modes, axes, padding,
-coordinate transforms, and nearest-rounding metadata. Conv2D/GroupConv2D is
+ShapeOf, Tile, logical-bool elementwise, and compare/select sources are
+embedded under `src/kernel_ir/opencl_kernels/`. There is no active handwritten
+OpenCL kernel-unit exception in the current registry. Conv2D/GroupConv2D is
 limited to f32 static 4D NCHW data/output, constant weights, and 2D
 stride/dilation/padding metadata. Pool2D is limited to f32/f16 static 4D NCHW
 MaxPool/AvgPool contracts with 2D kernel, stride, dilation, and padding
@@ -206,11 +201,10 @@ metadata. OpenCL operation support requires a matching source artifact and
 registered kernel unit; unsupported variants fail during support probing or
 compilation.
 
-Reduction source artifacts require static shape metadata and constant axes.
-Numeric `ReduceSum`, `ReduceMean`, `ReduceMax`, `ReduceMin`, `ReduceProd`,
-`ReduceL1`, and `ReduceL2` currently use the f32 generated source unit. Boolean
-`ReduceLogicalAnd` and `ReduceLogicalOr` use the generated boolean reduction
-source artifact.
+OpenCL MatMul, Interpolate, Reduction, Transpose, Concat, and Split are current
+limitations. Some helper sources or test fixtures may exist in the tree, but
+the backend catalog does not currently register those routes and operation
+support reports `missing_opencl_*_kernel_unit`.
 
 For generated activation artifacts, `Swish` supports default beta, scalar
 constant beta, and runtime scalar beta tensor forms when the beta input is a

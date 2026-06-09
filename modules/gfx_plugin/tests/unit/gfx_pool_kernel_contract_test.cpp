@@ -168,7 +168,6 @@ public:
 
   void verify() const {
     const auto node = m_case.make_node();
-    EXPECT_FALSE(resolve_gfx_opencl_source_artifact(node).has_value());
 
     auto artifact = make_opencl_pool2d_source_artifact(node);
     ASSERT_TRUE(artifact.has_value());
@@ -414,7 +413,6 @@ std::shared_ptr<ov::Node> indexed_maxpool_node() {
 TEST(PoolOpenClArtifactStandaloneTest, RejectsIndexedMaxPoolWithoutArtifact) {
   const auto node = indexed_maxpool_node();
   EXPECT_FALSE(make_opencl_pool2d_source_artifact(node).has_value());
-  EXPECT_FALSE(resolve_gfx_opencl_source_artifact(node).has_value());
 }
 
 PoolRouteCase opencl_maxpool_case() {

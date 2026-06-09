@@ -151,25 +151,33 @@ set(GFX_METAL_BACKEND_COMPILER_SOURCES
 )
 
 set(GFX_OPENCL_BACKEND_COMPILER_HEADERS
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_activation_kernel_unit.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_backend_module.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_conv_kernel_unit.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_eltwise_kernel_unit.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_artifacts.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_unit_catalog.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_operation_support.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_pool_kernel_unit.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_range_kernel_unit.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_shapeof_kernel_unit.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_softmax_kernel_unit.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_tile_kernel_unit.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_stage_placement.hpp
 )
 
 set(GFX_OPENCL_BACKEND_COMPILER_SOURCES
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_activation_kernel_unit.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_backend_module.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_conv_kernel_unit.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_eltwise_kernel_unit.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_artifacts.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_registry.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_unit_catalog.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_operation_support.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_pool_kernel_unit.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_range_kernel_unit.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_shapeof_kernel_unit.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_softmax_kernel_unit.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_tile_kernel_unit.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_stage_placement.cpp

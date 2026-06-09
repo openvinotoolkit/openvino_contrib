@@ -232,7 +232,10 @@ The OpenCL backend is the current non-Apple route. It loads OpenCL dynamically
 at runtime and executes source artifacts described by
 `src/kernel_ir/gfx_opencl_source_artifacts.*`.
 
-OpenCL source payload materialization is owned by
+OpenCL route selection is catalog-driven. `opencl_kernel_unit_catalog.*` lists
+the generated kernel units that are registered for backend planning, the
+operation-support entries, and the artifact families that are allowed to
+materialize payloads. OpenCL source payload materialization is owned by
 `src/backends/opencl/compiler/opencl_kernel_artifacts.*` and registered through
 the backend module. The common executable-bundle builder records artifact
 descriptors and requires the selected backend to provide payloads for executable
@@ -240,8 +243,8 @@ OpenCL source routes.
 
 OpenCL artifacts are role-based. Source id, entry point, local size, tensor
 roles, scalar ABI, runtime-shape scalars, constant materialization, boolean
-buffer padding, static u32/f32 scalar payloads, and generated Concat/Split
-chunk helpers should stay in the artifact manifest rather than being
+buffer padding, static u32/f32 scalar payloads, and any generated chunk
+metadata should stay in the artifact manifest rather than being
 reimplemented in infer-request code.
 Routes that need runtime shape arguments must set
 `KernelUnit::requires_runtime_shape_args`; infer requests consume the resulting
@@ -251,23 +254,29 @@ Backend operation support and kernel-unit registration live under
 `src/backends/opencl/runtime/`.
 
 Embedded OpenCL source units live under `src/kernel_ir/opencl_kernels/`.
-Current generated units include activation, elementwise, f32 MatMul,
-f32 Conv2D/GroupConv2D, f32/f16 Interpolate, f32 reduction, boolean reduction,
-f32/f16 Softmax, dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D,
-f32/f16/i64 Range, ShapeOf, Tile, Transpose, logical-bool elementwise,
-compare/select, and generated Concat/Split helpers.
+Current registered generated OpenCL routes include activation, elementwise,
+f32 Conv2D/GroupConv2D, f32/f16 Softmax, dynamic-static-rank f32/f16 Softmax,
+f32/f16 Pool2D, f32/f16/i64 Range, ShapeOf, Tile, logical-bool elementwise,
+and compare/select.
 There is no active handwritten OpenCL kernel-unit exception in the current
 registry.
 Family-specific OpenCL compiler adapters such as
+`opencl_activation_kernel_unit.*`, `opencl_eltwise_kernel_unit.*`,
 `opencl_conv_kernel_unit.*`, `opencl_pool_kernel_unit.*`,
-`opencl_range_kernel_unit.*`, `opencl_softmax_kernel_unit.*`, and
-`opencl_tile_kernel_unit.*` resolve generated `KernelUnit` records and
-materialize source payloads. Keep new family routes in those backend compiler
-adapters instead of adding special cases to request-time execution.
+`opencl_range_kernel_unit.*`, `opencl_shapeof_kernel_unit.*`,
+`opencl_softmax_kernel_unit.*`, and `opencl_tile_kernel_unit.*` resolve
+generated `KernelUnit` records and materialize source payloads. Keep new family
+routes in those backend compiler adapters and register them in
+`opencl_kernel_unit_catalog.*` instead of adding special cases to request-time
+execution.
 The OpenCL compiler registry requires an explicit kernel unit for generated
 routes; there is no generic MLIR fallback for OpenCL operation support.
 Unsupported modes, axes, padding, shapes, or element types fail during support
 probing instead of falling through to a hidden runtime path.
+OpenCL MatMul, Interpolate, Reduction, Transpose, Concat, and Split are current
+limitations in the backend catalog: source helper code or tests may exist, but
+operation support reports `missing_opencl_*_kernel_unit` until a catalog entry,
+family adapter, payload resolver, and tests are added.
 
 Generated activation artifacts cover the shared unary activation family and
 carry op-specific scalar payloads in the manifest. `Swish` supports the default

@@ -158,9 +158,9 @@ For OpenCL source-artifact changes:
 - start with `tests/unit/gfx_opencl_source_artifacts_test.cpp`
 - include `tests/unit/gfx_activation_kernel_contract_test.cpp`,
   `tests/unit/gfx_eltwise_kernel_contract_test.cpp`,
-  `tests/unit/gfx_matmul_kernel_contract_test.cpp`, or
+  `tests/unit/gfx_shapeof_kernel_contract_test.cpp`, or
   `tests/unit/gfx_backend_architecture_contract_test.cpp` when generated
-  kernel units or registry contracts change
+  kernel units, the OpenCL route catalog, or registry contracts change
 - keep generated activation and elementwise source-artifact cases in
   `tests/unit/gfx_activation_contract_cases.hpp`,
   `tests/unit/gfx_activation_opencl_contract_cases.cpp`,
@@ -168,10 +168,11 @@ For OpenCL source-artifact changes:
   `tests/unit/gfx_eltwise_opencl_contract_cases.cpp`
 - include `tests/unit/gfx_eltwise_opencl_source_artifacts_test.cpp` when
   elementwise source artifact identity or metadata changes
-- include `tests/unit/gfx_reduction_kernel_contract_test.cpp` and reuse
-  `tests/unit/gfx_opencl_source_artifact_verifier.hpp` when reduction source
-  ids, scalar metadata, static axis contracts, or backend kernel-unit routes
-  change
+- include `tests/unit/gfx_reduction_kernel_contract_test.cpp` when reduction
+  source ids, scalar metadata, static axis contracts, or missing-route behavior
+  changes. OpenCL reduction is currently rejected with
+  `missing_opencl_reduction_kernel_unit` until a catalog entry and family
+  adapter exist.
 - include `tests/unit/gfx_softmax_kernel_contract_test.cpp` when generated
   static or dynamic-static-rank Softmax source ids, scalar metadata, or backend
   kernel-unit routes change
@@ -181,10 +182,12 @@ For OpenCL source-artifact changes:
 - include `tests/unit/gfx_pool_kernel_contract_test.cpp` when generated Pool2D
   source ids, static 4D NCHW window metadata, or backend kernel-unit routes
   change
-- include `tests/unit/gfx_backend_architecture_contract_test.cpp` and
-  `tests/unit/gfx_opencl_source_artifacts_test.cpp` when generated Range,
-  ShapeOf, Tile, Transpose, compare/select, logical-bool elementwise, boolean
-  reduction, or generated Concat/Split routes move
+- include `tests/unit/gfx_backend_architecture_contract_test.cpp` and the
+  focused split source-artifact tests when generated Range, ShapeOf, Tile,
+  compare/select, logical-bool elementwise, or catalog route ownership moves
+- include the relevant missing-route tests when MatMul, Interpolate, Reduction,
+  Transpose, Concat, or Split behavior changes without becoming registered
+  OpenCL routes
 - add `tests/unit/gpu_backend_base_test.cpp` coverage when the artifact should
   be present in the compiler executable bundle
 - add architecture-contract coverage when the common compiler should require
@@ -198,9 +201,11 @@ For OpenCL source-artifact changes:
 - validate with an OpenCL-capable target when the change depends on the real
   runtime rather than manifest-only logic
 
-OpenCL Transpose is a generated `opencl/generated/transpose_f32` route. Boolean
-reductions are generated `opencl/generated/reduction_bool` routes, not baseline
-exceptions.
+OpenCL MatMul, Interpolate, Reduction, Transpose, Concat, and Split are current
+catalog limitations. They should report `missing_opencl_*_kernel_unit` until
+the route is added to `opencl_kernel_unit_catalog.*`, implemented in a
+family-owned adapter, materialized through backend payload resolution, and
+covered by contract tests.
 
 ## Command Pattern
 

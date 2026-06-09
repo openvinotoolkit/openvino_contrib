@@ -22,6 +22,7 @@
 #include "compiler/manifest.hpp"
 #include "compiler/operation_legalizer.hpp"
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
+#include "kernel_ir/opencl_kernels/conv2d_kernel.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/constant.hpp"
@@ -303,9 +304,6 @@ TEST_P(OpenClConvRouteContractTest,
                    });
   ASSERT_NE(planned_conv, plan.operations.end());
   EXPECT_EQ(planned_conv->kernel_unit.id(), test_case.expected_kernel_id);
-  EXPECT_FALSE(resolve_gfx_opencl_source_artifact(planned_conv->source_node))
-      << "Conv must use its op-owned generated KernelUnit builder, not the "
-         "legacy OpenCL source-artifact resolver";
 
   const auto manifest = compiler::ManifestBuilder{}.build(plan);
   ASSERT_TRUE(manifest.verify().valid());
@@ -395,7 +393,7 @@ TEST(OpenClConvUnsupportedContractTest,
   const auto support = legalizer.query(node);
   EXPECT_FALSE(support.semantic_legal);
   EXPECT_EQ(support.semantic_reason, "missing_opencl_convolution_kernel_unit");
-  EXPECT_FALSE(resolve_gfx_opencl_source_artifact(node));
+  EXPECT_FALSE(make_opencl_conv2d_source_artifact(node));
   const auto plan = planner.plan(model_from_node(node), legalizer);
   EXPECT_FALSE(plan.executable());
 }

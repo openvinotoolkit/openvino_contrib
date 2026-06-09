@@ -15,6 +15,7 @@
 #include "compiler/operation_support.hpp"
 #include "gfx_opencl_source_artifact_verifier.hpp"
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
+#include "kernel_ir/opencl_kernels/eltwise_kernel.hpp"
 #include "openvino/core/model.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/divide.hpp"
@@ -87,6 +88,29 @@ std::vector<GfxOpenClSourceScalarArg> scalar_input_args() {
       GfxOpenClSourceScalarArg::OpCode,
       GfxOpenClSourceScalarArg::InputMode,
   };
+}
+
+void expect_opencl_eltwise_kernel_unit_owner(
+    const std::shared_ptr<const ov::Node> &node,
+    const std::string &expected_source_id) {
+  const auto artifact =
+      make_opencl_eltwise_source_artifact(node, expected_source_id);
+  ASSERT_TRUE(artifact.has_value());
+  ASSERT_TRUE(artifact->valid);
+  EXPECT_EQ(artifact->stage_manifest.stage_family,
+            GfxKernelStageFamily::Eltwise);
+  EXPECT_EQ(artifact->artifact_ref.source_id, expected_source_id);
+
+  const auto target = compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
+  const auto registry = compiler::make_opencl_kernel_registry(target);
+  const compiler::BackendCapabilities capabilities(
+      target, compiler::make_opencl_operation_support_policy(registry));
+  const auto support = capabilities.query_operation({node});
+  ASSERT_TRUE(support.semantic_legal) << support.semantic_reason;
+  EXPECT_EQ(support.semantic_reason, "registered_opencl_eltwise_kernel_unit");
+  EXPECT_EQ(support.preferred_route_kind,
+            compiler::LoweringRouteKind::GeneratedKernel);
+  EXPECT_EQ(support.preferred_route, expected_source_id);
 }
 
 std::vector<GfxOpenClSourceScalarArg> scalar_constant_args() {
@@ -174,16 +198,30 @@ TEST(EltwiseOpenClSourceArtifactsTest,
 
   const std::vector<Case> cases = {
       {"f16 SquaredDifference",
-       std::make_shared<ov::op::v0::SquaredDifference>(f16_lhs, f16_rhs), "f16",
-       GfxOpenClArtifactOp::SquaredDifference, {f16_lhs, f16_rhs}},
-      {"i32 Divide", std::make_shared<ov::op::v1::Divide>(i32_lhs, i32_rhs),
-       "i32", GfxOpenClArtifactOp::Divide, {i32_lhs, i32_rhs}},
-      {"i32 Mod", std::make_shared<ov::op::v1::Mod>(i32_lhs, i32_rhs), "i32",
-       GfxOpenClArtifactOp::Mod, {i32_lhs, i32_rhs}},
-      {"i32 FloorMod", std::make_shared<ov::op::v1::FloorMod>(i32_lhs, i32_rhs),
-       "i32", GfxOpenClArtifactOp::FloorMod, {i32_lhs, i32_rhs}},
-      {"i32 Power", std::make_shared<ov::op::v1::Power>(i32_lhs, i32_rhs),
-       "i32", GfxOpenClArtifactOp::Power, {i32_lhs, i32_rhs}},
+       std::make_shared<ov::op::v0::SquaredDifference>(f16_lhs, f16_rhs),
+       "f16",
+       GfxOpenClArtifactOp::SquaredDifference,
+       {f16_lhs, f16_rhs}},
+      {"i32 Divide",
+       std::make_shared<ov::op::v1::Divide>(i32_lhs, i32_rhs),
+       "i32",
+       GfxOpenClArtifactOp::Divide,
+       {i32_lhs, i32_rhs}},
+      {"i32 Mod",
+       std::make_shared<ov::op::v1::Mod>(i32_lhs, i32_rhs),
+       "i32",
+       GfxOpenClArtifactOp::Mod,
+       {i32_lhs, i32_rhs}},
+      {"i32 FloorMod",
+       std::make_shared<ov::op::v1::FloorMod>(i32_lhs, i32_rhs),
+       "i32",
+       GfxOpenClArtifactOp::FloorMod,
+       {i32_lhs, i32_rhs}},
+      {"i32 Power",
+       std::make_shared<ov::op::v1::Power>(i32_lhs, i32_rhs),
+       "i32",
+       GfxOpenClArtifactOp::Power,
+       {i32_lhs, i32_rhs}},
   };
 
   for (const auto &test_case : cases) {
@@ -405,6 +443,8 @@ TEST(EltwiseOpenClSourceArtifactsTest,
       .supports_opencl_compiler();
   expect_generated_opencl_kernel_unit(
       greater, "opencl/generated/eltwise_compare_f32", {lhs, rhs});
+  expect_opencl_eltwise_kernel_unit_owner(
+      greater, "opencl/generated/eltwise_compare_f32");
 
   OpenClSourceArtifactVerifier(select)
       .expect_artifact(GfxKernelStageFamily::Eltwise,
@@ -414,6 +454,8 @@ TEST(EltwiseOpenClSourceArtifactsTest,
       .supports_opencl_compiler();
   expect_generated_opencl_kernel_unit(
       select, "opencl/generated/eltwise_select_f32", {condition, lhs, rhs});
+  expect_opencl_eltwise_kernel_unit_owner(
+      select, "opencl/generated/eltwise_select_f32");
 }
 
 TEST(EltwiseOpenClSourceArtifactsTest,
@@ -481,6 +523,8 @@ TEST(EltwiseOpenClSourceArtifactsTest,
       .supports_opencl_compiler();
   expect_generated_opencl_kernel_unit(
       logical_not, "opencl/generated/eltwise_logical_unary_bool", {lhs});
+  expect_opencl_eltwise_kernel_unit_owner(
+      logical_not, "opencl/generated/eltwise_logical_unary_bool");
 
   struct BinaryCase {
     std::string name;
@@ -508,6 +552,8 @@ TEST(EltwiseOpenClSourceArtifactsTest,
     expect_generated_opencl_kernel_unit(
         test_case.node, "opencl/generated/eltwise_logical_binary_bool",
         {lhs, rhs});
+    expect_opencl_eltwise_kernel_unit_owner(
+        test_case.node, "opencl/generated/eltwise_logical_binary_bool");
   }
 }
 

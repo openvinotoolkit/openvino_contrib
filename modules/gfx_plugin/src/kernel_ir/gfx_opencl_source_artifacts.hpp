@@ -212,9 +212,6 @@ private:
 };
 
 std::optional<GfxOpenClSourceArtifact>
-resolve_gfx_opencl_source_artifact(const std::shared_ptr<const ov::Node> &node);
-
-std::optional<GfxOpenClSourceArtifact>
 make_gfx_opencl_concat_chunk_source_artifact(
     const GfxOpenClSourceArtifact &base_artifact, uint32_t input_begin,
     uint32_t input_count);

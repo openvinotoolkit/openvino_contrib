@@ -3151,12 +3151,10 @@ TEST_F(GfxBackendArchitectureContractTest,
       opencl_registry.rejects_unit(LoweringRouteKind::GeneratedKernel, ""));
   EXPECT_TRUE(opencl_registry.rejects_unit(LoweringRouteKind::GeneratedKernel,
                                            "opencl_generated_kernel"));
-  const auto matmul_unit = opencl_registry.resolve_unit(
-      LoweringRouteKind::GeneratedKernel, "opencl/generated/matmul_f32");
-  ASSERT_TRUE(matmul_unit.valid());
-  EXPECT_EQ(matmul_unit.kind(), KernelUnitKind::GeneratedKernel);
-  EXPECT_EQ(matmul_unit.backend_domain(), "opencl");
-  EXPECT_EQ(matmul_unit.op_family(), "MatMul");
+  EXPECT_TRUE(opencl_registry.rejects_unit(LoweringRouteKind::GeneratedKernel,
+                                           "opencl/generated/matmul_f32"));
+  EXPECT_TRUE(opencl_registry.rejects_unit(
+      LoweringRouteKind::GeneratedKernel, "opencl/generated/interpolate_f32"));
   const auto shapeof_unit = opencl_registry.resolve_unit(
       LoweringRouteKind::GeneratedKernel, "opencl/generated/shapeof_i64");
   ASSERT_TRUE(shapeof_unit.valid());
@@ -3237,34 +3235,14 @@ TEST_F(GfxBackendArchitectureContractTest,
   EXPECT_EQ(pool_unit.kind(), KernelUnitKind::GeneratedKernel);
   EXPECT_EQ(pool_unit.backend_domain(), "opencl");
   EXPECT_EQ(pool_unit.op_family(), "Pooling");
-  const auto logical_reduce_unit = opencl_registry.resolve_unit(
-      LoweringRouteKind::GeneratedKernel, "opencl/generated/reduction_bool");
-  ASSERT_TRUE(logical_reduce_unit.valid());
-  EXPECT_EQ(logical_reduce_unit.kind(), KernelUnitKind::GeneratedKernel);
-  EXPECT_EQ(logical_reduce_unit.backend_domain(), "opencl");
-  EXPECT_EQ(logical_reduce_unit.op_family(), "Reduction");
-  EXPECT_FALSE(logical_reduce_unit.exception_contract().valid());
-  const auto transpose_unit = opencl_registry.resolve_unit(
-      LoweringRouteKind::GeneratedKernel, "opencl/generated/transpose_f32");
-  ASSERT_TRUE(transpose_unit.valid());
-  EXPECT_EQ(transpose_unit.kind(), KernelUnitKind::GeneratedKernel);
-  EXPECT_EQ(transpose_unit.backend_domain(), "opencl");
-  EXPECT_EQ(transpose_unit.op_family(), "Transpose");
-  EXPECT_FALSE(transpose_unit.exception_contract().valid());
-  const auto split_unit = opencl_registry.resolve_unit(
-      LoweringRouteKind::GeneratedKernel, "opencl/generated/split3_f32");
-  ASSERT_TRUE(split_unit.valid());
-  EXPECT_EQ(split_unit.kind(), KernelUnitKind::GeneratedKernel);
-  EXPECT_EQ(split_unit.backend_domain(), "opencl");
-  EXPECT_EQ(split_unit.op_family(), "Split");
-  EXPECT_FALSE(split_unit.exception_contract().valid());
-  const auto concat_unit = opencl_registry.resolve_unit(
-      LoweringRouteKind::GeneratedKernel, "opencl/generated/concat2_f32");
-  ASSERT_TRUE(concat_unit.valid());
-  EXPECT_EQ(concat_unit.kind(), KernelUnitKind::GeneratedKernel);
-  EXPECT_EQ(concat_unit.backend_domain(), "opencl");
-  EXPECT_EQ(concat_unit.op_family(), "Concat");
-  EXPECT_FALSE(concat_unit.exception_contract().valid());
+  EXPECT_TRUE(opencl_registry.rejects_unit(LoweringRouteKind::GeneratedKernel,
+                                           "opencl/generated/reduction_bool"));
+  EXPECT_TRUE(opencl_registry.rejects_unit(LoweringRouteKind::GeneratedKernel,
+                                           "opencl/generated/transpose_f32"));
+  EXPECT_TRUE(opencl_registry.rejects_unit(LoweringRouteKind::GeneratedKernel,
+                                           "opencl/generated/split3_f32"));
+  EXPECT_TRUE(opencl_registry.rejects_unit(LoweringRouteKind::GeneratedKernel,
+                                           "opencl/generated/concat2_f32"));
 
   const auto metal_registry = test::KernelRegistryContract::for_metal();
   ASSERT_TRUE(metal_registry.audit_is_valid());

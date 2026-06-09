@@ -12,16 +12,18 @@
 
 #include "backends/metal/compiler/metal_kernel_artifacts.hpp"
 #include "backends/metal/compiler/metal_operation_support.hpp"
+#include "backends/metal/compiler/msl_codegen_apple_msl_activation.hpp"
+#include "backends/opencl/compiler/opencl_activation_kernel_unit.hpp"
 #include "backends/opencl/compiler/opencl_kernel_artifacts.hpp"
 #include "backends/opencl/compiler/opencl_operation_support.hpp"
 #include "compiler/executable_bundle.hpp"
 #include "compiler/kernel_registry.hpp"
+#include "compiler/lowering_planner.hpp"
 #include "compiler/manifest.hpp"
 #include "compiler/operation_legalizer.hpp"
 #include "kernel_ir/gfx_kernel_source.hpp"
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
 #include "kernel_ir/opencl_kernels/activation_kernel.hpp"
-#include "backends/metal/compiler/msl_codegen_apple_msl_activation.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/op/abs.hpp"
 #include "openvino/op/constant.hpp"
@@ -57,7 +59,8 @@ public:
 
   void verify() const {
     const auto node = m_case.make_node();
-    const auto artifact = resolve_gfx_opencl_source_artifact(node);
+    const auto artifact =
+        make_opencl_activation_source_artifact(node, m_case.expected_source_id);
     ASSERT_TRUE(artifact.has_value());
     ASSERT_TRUE(artifact->valid);
     EXPECT_EQ(artifact->stage_manifest.stage_family,
@@ -307,16 +310,17 @@ private:
 
 ActivationRouteCase opencl_activation_case() {
   const auto target = compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
-  return ActivationRouteCase{"OpenClGeneratedReluF32",
-                             target,
-                             compiler::make_opencl_operation_support_policy(),
-                             compiler::make_opencl_kernel_registry(target),
-                             compiler::make_opencl_kernel_artifact_descriptor_resolver(),
-                             compiler::make_opencl_kernel_artifact_payload_resolver(),
-                             KernelArtifactPayloadKind::OpenClSource,
-                             "opencl/generated/activation_f32",
-                             "gfx_opencl_generated_activation_f32",
-                             6u};
+  return ActivationRouteCase{
+      "OpenClGeneratedReluF32",
+      target,
+      compiler::make_opencl_operation_support_policy(),
+      compiler::make_opencl_kernel_registry(target),
+      compiler::make_opencl_kernel_artifact_descriptor_resolver(),
+      compiler::make_opencl_kernel_artifact_payload_resolver(),
+      KernelArtifactPayloadKind::OpenClSource,
+      "opencl/generated/activation_f32",
+      "gfx_opencl_generated_activation_f32",
+      6u};
 }
 
 ActivationRouteCase metal_activation_case() {
@@ -395,7 +399,8 @@ TEST(ActivationRouteContractTest,
   EXPECT_EQ(support.preferred_route,
             "opencl/generated/activation_runtime_beta_f32");
 
-  const auto artifact = resolve_gfx_opencl_source_artifact(swish);
+  const auto artifact = make_opencl_activation_source_artifact(
+      swish, "opencl/generated/activation_runtime_beta_f32");
   ASSERT_TRUE(artifact.has_value());
   ASSERT_TRUE(artifact->valid);
   EXPECT_EQ(artifact->stage_manifest.stage_family,
@@ -420,6 +425,50 @@ TEST(ActivationRouteContractTest,
                             "gfx_opencl_generated_activation_runtime_beta_f32"),
       std::string::npos);
   EXPECT_NE(artifact->source.find("runtime_beta[0]"), std::string::npos);
+}
+
+TEST(ActivationRouteContractTest, OpenClReluUsesActivationKernelUnitOwner) {
+  const auto input = param(ov::element::f32, ov::Shape{2, 3});
+  const auto relu = std::make_shared<ov::op::v0::Relu>(input);
+
+  const auto artifact = make_opencl_activation_source_artifact(
+      relu, "opencl/generated/activation_f32");
+  ASSERT_TRUE(artifact.has_value());
+  ASSERT_TRUE(artifact->valid);
+  EXPECT_EQ(artifact->stage_manifest.stage_family,
+            GfxKernelStageFamily::Activation);
+  EXPECT_FALSE(make_opencl_activation_source_artifact(
+                   relu, "opencl/generated/eltwise_binary_f32")
+                   .has_value());
+
+  const auto target = compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
+  const compiler::BackendCapabilities capabilities(
+      target, compiler::make_opencl_operation_support_policy());
+  const auto support = capabilities.query_operation({relu});
+  ASSERT_TRUE(support.semantic_legal) << support.semantic_reason;
+  EXPECT_EQ(support.semantic_reason,
+            "registered_opencl_activation_kernel_unit");
+  EXPECT_EQ(support.preferred_route_kind, LoweringRouteKind::GeneratedKernel);
+  EXPECT_EQ(support.preferred_route, "opencl/generated/activation_f32");
+}
+
+TEST(ActivationRouteContractTest,
+     OpenClActivationCompilerUsesOpOwnedKernelUnit) {
+  const auto input = param(ov::element::f32, ov::Shape{2, 3});
+  const auto relu = std::make_shared<ov::op::v0::Relu>(input);
+
+  const auto target = compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
+  const auto registry = compiler::make_opencl_kernel_registry(target);
+  const auto unit =
+      compiler::resolve_opencl_activation_kernel_unit(relu, registry);
+  ASSERT_TRUE(unit.valid());
+  EXPECT_EQ(unit.id(), "opencl/generated/activation_f32");
+  const compiler::BackendCapabilities capabilities(
+      target, compiler::make_opencl_operation_support_policy(registry));
+  const auto support = capabilities.query_operation({relu});
+  ASSERT_TRUE(support.semantic_legal) << support.semantic_reason;
+  EXPECT_EQ(support.preferred_route_kind, unit.route_kind());
+  EXPECT_EQ(support.preferred_route, unit.id());
 }
 
 TEST(ActivationRouteContractTest,

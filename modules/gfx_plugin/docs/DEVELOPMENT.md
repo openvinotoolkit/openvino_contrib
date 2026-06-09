@@ -259,7 +259,13 @@ For OpenCL source execution, start with:
 - `src/backends/opencl/compiler/`
 - `src/backends/opencl/compiler/opencl_stage_placement.*`
 - `src/backends/opencl/compiler/opencl_kernel_artifacts.*`
+- `src/backends/opencl/compiler/opencl_kernel_unit_catalog.*`
+- `src/backends/opencl/compiler/opencl_activation_kernel_unit.*`
+- `src/backends/opencl/compiler/opencl_eltwise_kernel_unit.*`
+- `src/backends/opencl/compiler/opencl_conv_kernel_unit.*`
+- `src/backends/opencl/compiler/opencl_pool_kernel_unit.*`
 - `src/backends/opencl/compiler/opencl_range_kernel_unit.*`
+- `src/backends/opencl/compiler/opencl_shapeof_kernel_unit.*`
 - `src/backends/opencl/compiler/opencl_softmax_kernel_unit.*`
 - `src/backends/opencl/compiler/opencl_tile_kernel_unit.*`
 - `src/backends/opencl/plugin/`
@@ -277,6 +283,10 @@ For OpenCL source execution, start with:
 - `tests/unit/gfx_eltwise_contract_cases.hpp`
 - `tests/unit/gfx_eltwise_opencl_contract_cases.cpp`
 - `tests/unit/gfx_reduction_kernel_contract_test.cpp`
+- `tests/unit/gfx_shapeof_kernel_contract_test.cpp`
+- split source-artifact tests such as
+  `tests/unit/gfx_opencl_range_tile_source_artifacts_test.cpp` and
+  `tests/unit/gfx_opencl_concat_split_source_artifacts_test.cpp`
 
 ## Adding Or Changing An Operation
 
@@ -353,14 +363,15 @@ Common operation families that need extra care:
   chunking, and boolean output padding
 - backend-owned OpenCL source payload materialization in
   `src/backends/opencl/compiler/opencl_kernel_artifacts.*`
-- OpenCL generated kernel units such as activation, elementwise, f32 MatMul,
-  f32 Conv2D/GroupConv2D, bounded f32/f16 Interpolate, f32 reduction, boolean
-  reduction, f32/f16 Softmax, dynamic-static-rank f32/f16 Softmax,
-  f32/f16 Pool2D, f32/f16/i64 Range, ShapeOf, Tile, Transpose, compare/select,
-  logical-bool elementwise, and generated Concat/Split
-- OpenCL reduction routes, where numeric f32 reductions and logical boolean
-  reductions use separate generated source ids but the same static axis
-  metadata contract
+- OpenCL generated kernel units registered in
+  `opencl_kernel_unit_catalog.*`: activation, elementwise, f32
+  Conv2D/GroupConv2D, f32/f16 Softmax, dynamic-static-rank f32/f16 Softmax,
+  f32/f16 Pool2D, f32/f16/i64 Range, ShapeOf, Tile, compare/select, and
+  logical-bool elementwise
+- current OpenCL catalog limitations: MatMul, Interpolate, Reduction,
+  Transpose, Concat, and Split must remain unsupported with
+  `missing_opencl_*_kernel_unit` until they get catalog entries,
+  family-owned adapters, payload materialization, and tests
 - generated activation `Swish` routes, where default/static beta and runtime
   scalar beta must keep the MLIR, Metal MSL, and OpenCL artifact contracts
   aligned
@@ -416,7 +427,8 @@ Do not duplicate shared ABI, route, or shape rules in backend request code.
 
 `src/kernel_ir/gfx_opencl_source_artifacts.*` is the source of truth for:
 
-- source id and entry point
+- source-artifact data structures and shared helpers
+- source id and entry point for artifact-producing families
 - tensor role order
 - scalar ABI
 - source-static u32/f32 scalar values
@@ -425,16 +437,28 @@ Do not duplicate shared ABI, route, or shape rules in backend request code.
 - dynamic-shape scalar metadata
 - direct constant materialization
 - boolean buffer padding
-- generated Concat/Split chunk artifacts
+
+Backend-visible OpenCL routes are selected through
+`src/backends/opencl/compiler/opencl_kernel_unit_catalog.*`. The catalog owns
+registered generated kernel-unit ids, operation-support entries, and the
+artifact families that can materialize payloads. Family adapters such as
+`opencl_activation_kernel_unit.*`, `opencl_eltwise_kernel_unit.*`,
+`opencl_shapeof_kernel_unit.*`, `opencl_conv_kernel_unit.*`,
+`opencl_pool_kernel_unit.*`, `opencl_range_kernel_unit.*`,
+`opencl_softmax_kernel_unit.*`, and `opencl_tile_kernel_unit.*` own
+family-specific support probing and payload materialization.
 
 `src/backends/opencl/runtime/opencl_source_stage.*` should stay a generic
 artifact executor. Add metadata to artifacts rather than adding op-specific
 branches to the executor.
 
-`opencl/generated/transpose_f32` is the current Transpose route. The current
-OpenCL kernel registry has no active handwritten kernel-unit exception. Do not
-introduce a baseline exception unless the generated-source contract cannot
-express the route and the exception is documented, tested, and reviewed.
+The current OpenCL kernel registry has no active handwritten kernel-unit
+exception. Do not introduce a baseline exception unless the generated-source
+contract cannot express the route and the exception is documented, tested, and
+reviewed. OpenCL MatMul, Interpolate, Reduction, Transpose, Concat, and Split
+are currently not registered compiler routes; operation support rejects them
+with `missing_opencl_*_kernel_unit` until the catalog, family adapter, payload
+resolver, and tests are added.
 
 Generated or embedded source payloads should flow through compiler artifact
 descriptors and runtime kernel loaders. Do not pass ad-hoc source strings
@@ -449,11 +473,14 @@ When adding an embedded OpenCL source unit:
   `src/kernel_ir/opencl_kernels/`
 - add the source to `src/CMakeLists.txt` through `gfx_embed_kernel_source()`
 - add the wrapper source/header to `cmake/GfxSources.cmake`
-- route it from `gfx_opencl_source_artifacts.*` with explicit source id,
-  entry point, route kind, scalar ABI, and shape/type limitations
+- add or update the family adapter under `src/backends/opencl/compiler/`
+- register the generated unit, operation-support entry, and artifact-family
+  entry in `opencl_kernel_unit_catalog.*`
+- route the artifact through the family-owned source-artifact factory with
+  explicit source id, entry point, route kind, scalar ABI, and shape/type
+  limitations
 - cover source identity, scalar metadata, support probing, and payload routing
-  in `tests/unit/gfx_opencl_source_artifacts_test.cpp`,
-  family-specific contract case files, and
+  in the focused family test, the split OpenCL source-artifact test file, and
   `tests/unit/gpu_backend_base_test.cpp` when the compiler bundle is affected
 - update `tests/unit/gfx_backend_architecture_contract_test.cpp` when kernel
   registry, backend-target identity, or manifest-routing contracts change
@@ -468,9 +495,10 @@ elementwise OpenCL changes, update `tests/unit/gfx_eltwise_contract_cases.hpp`,
 
 For reduction source-unit changes, update
 `tests/unit/gfx_reduction_kernel_contract_test.cpp` and the shared
-`tests/unit/gfx_opencl_source_artifact_verifier.hpp` helper. Keep numeric f32
-and logical boolean generated reduction source ids, entry points, static u32
-metadata, kernel registry entries, and Metal/OpenCL artifact payloads aligned.
+`tests/unit/gfx_opencl_source_artifact_verifier.hpp` helper. OpenCL reduction is
+currently a rejected catalog route; keep the tests explicit about
+`missing_opencl_reduction_kernel_unit` until a generated reduction unit is
+registered and payload materialization is implemented.
 
 For Softmax source-unit changes, update
 `tests/unit/gfx_softmax_kernel_contract_test.cpp` and the shared

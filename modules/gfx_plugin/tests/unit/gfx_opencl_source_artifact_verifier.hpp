@@ -15,6 +15,7 @@
 #include "backends/opencl/compiler/opencl_kernel_artifacts.hpp"
 #include "backends/opencl/compiler/opencl_operation_support.hpp"
 #include "compiler/kernel_registry.hpp"
+#include "unit/gfx_opencl_catalog_artifact_resolver.hpp"
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
 
 namespace ov {
@@ -74,7 +75,8 @@ public:
       }
     }
 
-    auto artifact = resolve_gfx_opencl_source_artifact(m_node);
+    auto artifact =
+        resolve_opencl_catalog_source_artifact(m_node, source_id);
     if (!artifact.has_value()) {
       ADD_FAILURE() << "missing OpenCL source artifact";
       return *this;
@@ -123,7 +125,7 @@ public:
   }
 
   OpenClSourceArtifactVerifier &has_op(GfxOpenClArtifactOp op) {
-    const auto artifact = resolve_gfx_opencl_source_artifact(m_node);
+    const auto artifact = resolve_opencl_catalog_source_artifact(m_node);
     if (!artifact.has_value()) {
       ADD_FAILURE() << "missing OpenCL source artifact";
       return *this;
@@ -134,7 +136,7 @@ public:
 
   OpenClSourceArtifactVerifier &
   has_input_mode(GfxOpenClArtifactInputMode mode) {
-    const auto artifact = resolve_gfx_opencl_source_artifact(m_node);
+    const auto artifact = resolve_opencl_catalog_source_artifact(m_node);
     if (!artifact.has_value()) {
       ADD_FAILURE() << "missing OpenCL source artifact";
       return *this;
@@ -144,7 +146,7 @@ public:
   }
 
   OpenClSourceArtifactVerifier &has_scalar_constant(float expected) {
-    const auto artifact = resolve_gfx_opencl_source_artifact(m_node);
+    const auto artifact = resolve_opencl_catalog_source_artifact(m_node);
     if (!artifact.has_value()) {
       ADD_FAILURE() << "missing OpenCL source artifact";
       return *this;
@@ -154,7 +156,7 @@ public:
   }
 
   OpenClSourceArtifactVerifier &supports_opencl_compiler() {
-    const auto artifact = resolve_gfx_opencl_source_artifact(m_node);
+    const auto artifact = resolve_opencl_catalog_source_artifact(m_node);
     if (!artifact || !artifact->valid) {
       ADD_FAILURE()
           << "OpenCL compiler support requires a valid source artifact";
