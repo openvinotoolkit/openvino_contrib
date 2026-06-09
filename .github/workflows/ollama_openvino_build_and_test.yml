@@ -1,13 +1,13 @@
 name: ollama_openvino_build_and_test
- 
+
 on:
   pull_request:
     paths:
       - 'modules/ollama_openvino/**'
       - '.github/workflows/ollama_openvino_build_and_test'
- 
+
 permissions: read-all
- 
+
 jobs:
   test_ubuntu22:
     runs-on: ubuntu-22.04
@@ -20,24 +20,24 @@ jobs:
           sparse-checkout: |
             modules/ollama_openvino
           sparse-checkout-cone-mode: true
- 
+
       - name: Setup python env
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
- 
+
       - name: Install go
         run: |
           wget https://go.dev/dl/go1.24.1.linux-amd64.tar.gz
           mkdir -p go
           tar xvzf go1.24.1.linux-amd64.tar.gz
-     
+
       - name: Download model
         run: |
           pip install -U huggingface_hub
-          huggingface-cli download --resume-download OpenVINO/TinyLlama-1.1B-Chat-v1.0-int4-ov  --local-dir  TinyLlama-1.1B-Chat-v1.0-int4-ov --local-dir-use-symlinks False
+          hf download OpenVINO/TinyLlama-1.1B-Chat-v1.0-int4-ov --local-dir TinyLlama-1.1B-Chat-v1.0-int4-ov
           tar -zcvf TinyLlama-1.1B-Chat-v1.0-int4-ov.tar.gz TinyLlama-1.1B-Chat-v1.0-int4-ov
- 
+
       - name: Install openvino_genai and init go env and build ollama_openvino
         run: |
           wget https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.3.0.0.dev20250630/openvino_genai_ubuntu22_2025.3.0.0.dev20250630_x86_64.tar.gz
@@ -56,7 +56,7 @@ jobs:
           go build -o ollama
           mkdir -p bin
           cp ollama ./bin
- 
+
       - name: Create ollama model and test generate
         run: |
           export PATH=$PATH:${{ github.workspace }}/openvino_contrib/modules/ollama_openvino/bin
@@ -70,4 +70,4 @@ jobs:
           tmux new-session -d -s runsession 'ollama run TinyLlama-1.1B-Chat-v1.0-int4-ov:v1 "Who are you? Please give a brief answer" > output.txt'
           sleep 60
           cat output.txt
- 
+
