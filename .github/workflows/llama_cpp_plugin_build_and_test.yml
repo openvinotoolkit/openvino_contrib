@@ -10,7 +10,7 @@ permissions: read-all
 
 jobs:
   build_ubuntu20:
-    runs-on: ubuntu-20.04-8-cores
+    runs-on: ubuntu-20.04
     steps:
       - name: Setup cmake
         uses: jwlawson/actions-setup-cmake@d06b37b47cfd043ec794ffa3e40e0b6b5858a7ec # v1.14.2
