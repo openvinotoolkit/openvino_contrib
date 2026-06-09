@@ -35,7 +35,17 @@ jobs:
       - name: Download model
         run: |
           pip install -U huggingface_hub
-          hf download OpenVINO/TinyLlama-1.1B-Chat-v1.0-int4-ov --local-dir TinyLlama-1.1B-Chat-v1.0-int4-ov
+          for attempt in 1 2 3 4 5; do
+            if hf download OpenVINO/TinyLlama-1.1B-Chat-v1.0-int4-ov --local-dir TinyLlama-1.1B-Chat-v1.0-int4-ov --max-workers 1; then
+              break
+            fi
+            if [ "$attempt" = 5 ]; then
+              exit 1
+            fi
+            sleep_seconds=$((attempt * 60))
+            echo "Model download failed; retrying in ${sleep_seconds}s"
+            sleep "${sleep_seconds}"
+          done
           tar -zcvf TinyLlama-1.1B-Chat-v1.0-int4-ov.tar.gz TinyLlama-1.1B-Chat-v1.0-int4-ov
 
       - name: Install openvino_genai and init go env and build ollama_openvino
