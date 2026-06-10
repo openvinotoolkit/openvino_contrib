@@ -1,0 +1,172 @@
+# OpenVINO FlashOCC Export and Inference Guide
+
+This guide explains how to export FlashOCC to OpenVINO IR and run OpenVINO
+inference/benchmarking from the `openvino_contrib/modules/openvino_flashocc`
+module.
+
+Optimized end-to-end inference for **FlashOCC** (3D occupancy prediction) uses
+**OpenVINO 2026.3** and custom BEV pool extensions.
+
+## Prerequisites
+
+| Tool | Version |
+|---|---|
+| Python | 3.12 |
+| CMake | ≥ 3.16 |
+| Ninja | any (recommended) |
+| OpenCL runtime | Intel NEO driver |
+| GCC/Clang | C++17 |
+
+```bash
+sudo apt install python3.12 python3.12-venv python3.12-dev cmake ninja-build build-essential
+
+python3 -m venv venv_ov2026_ws
+source venv_ov2026_ws/bin/activate
+pip install packaging
+pip install --upgrade wheel setuptools
+```
+
+## OpenVINO IR Models
+
+The following models are required (not included in the repo — generate from PyTorch checkpoint):
+
+```
+split_f16out/
+  image_encoder.xml / .bin        (~48 MB)  — ResNet50 image backbone, 6 cameras, F16
+  bev_trunk.xml / .bin            (~29 MB)  — BEV neck + head, F16 output
+  bev_trunk_argmax_only.xml / .bin (~58 MB) — Fused bev_trunk + ArgMax (i32 class output)
+```
+
+Generate these models with `convert_to_openvino.py`.
+
+## Quick Start
+
+### 1. Go to the module directory
+
+```bash
+cd <openvino_contrib>/modules/openvino_flashocc
+```
+
+### 2. Run setup
+
+`setup.sh` handles everything: clones + builds OpenVINO, creates the venv,
+installs all dependencies, builds the bev_pool extension.
+
+```bash
+bash setup.sh \
+    --model-dir  /path/to/split_f16out \
+    --data-pkl   /path/to/nuscenes_infos_val.pkl \
+    --data-root  /path/to/nuscenes \
+    --jobs 16
+```
+
+Options:
+| Flag | Description |
+|---|---|
+| `--model-dir PATH` | **(Required)** Path to the `split_f16out/` IR model directory |
+| `--data-pkl PATH` | NuScenes validation pkl file |
+| `--data-root PATH` | NuScenes dataset root |
+| `--jobs N` | Parallel build jobs (default: `nproc`) |
+| `--skip-ov-build` | Reuse existing `ov_build/` clone (skip clone + build) |
+| `--skip-bevpool-build` | Skip bev_pool extension build |
+| `--run-test` | Run 80-sample E2E benchmark immediately after setup |
+| `--num-samples N` | Samples for `--run-test` (default: 80) |
+
+### 3. Run E2E inference
+
+```bash
+bash run_flashocc_ov_ws.sh [--num-samples 80] [--data-pkl ...] [--data-root ...]
+```
+
+This is the main entry point for the full benchmark workflow. It calls
+`run_compare_flashocc_pt_ov.py` in OpenVINO mode and keeps the richer CLI
+available for PyTorch-vs-OpenVINO comparison, saved-label consistency checks,
+tensor dumps, and other debugging features.
+
+### 4. Simple OV-only latency runner
+
+If you only want a lightweight smoke test or stage-latency measurement for the
+OpenVINO pipeline, use `run_flashocc_ov_latency.py` directly instead of the
+full comparison script.
+
+Use this when you want:
+
+- a smaller CLI focused only on OpenVINO inference
+- quick validation that exported IR models run end to end on real samples
+- per-stage latency and throughput without the PyTorch/comparison surface
+
+```bash
+python run_flashocc_ov_latency.py \
+     --model-dir /path/to/split_f16out \
+     --data-pkl /path/to/nuscenes_infos_val.pkl \
+     --data-root /path/to/nuscenes \
+     --ov-device GPU \
+     --num-samples 20
+```
+
+Use `run_compare_flashocc_pt_ov.py` when you need any of the following:
+
+- PyTorch vs OpenVINO comparison
+- saved-label consistency analysis
+- GT comparison and CSV export
+- tensor dumping or deeper debugging workflows
+
+## Directory Layout (after setup)
+
+```
+openvino_flashocc/
+├── run_flashocc_ov_latency.py          # Simple OV-only latency/smoke-test runner
+├── run_compare_flashocc_pt_ov.py         # E2E inference script (all OV optimizations)
+├── run_flashocc_ov_ws.sh                 # Benchmark runner (reads setup.env)
+├── setup.sh                              # Full setup: clone OV, build, create venv
+├── setup.env                             # Auto-generated paths (written by setup.sh)
+├── requirements.txt                      # Python deps for this module
+├── requirements_ov.txt                   # Backward-compatible dependency list used by setup.sh
+├── openvino_extensions/
+│   └── bev_pool/                         # Custom BEVPool OV C++ extension
+│       ├── bev_pool_op.cpp / .hpp
+│       ├── ov_extension.cpp
+│       ├── CMakeLists.txt
+│       ├── bev_pool_gpu_panterlake.xml   # GPU kernel config for Panther Lake iGPU
+│       └── *.cl                          # OpenCL kernels
+├── ov_build/
+│   └── openvino/                         # Cloned + built deepaks2/openvino
+│       ├── build/                        # CMake build dir
+│       └── bin/intel64/Release/          # GPU plugin .so
+├── venv_ov2026_ws/                       # Python 3.12 venv (OV 2026.3 + deps)
+└── work_dirs/flashocc-r50-m0/openvino/
+    └── split_f16out/                     # IR models (gitignored — provide externally)
+```
+
+## Architecture Overview
+
+```
+Camera frames (6×)
+      │
+      ▼
+ image_encoder.xml        ResNet50 backbone  (F16, static B=6, ~17ms)
+      │  async start_async()
+      │                ──┬──  parallel: _compute_geom() ~1.2ms
+      │  wait()          │
+      ▼                  ▼
+ bev_pool (C++ ext)   BEVPool scatter onto BEV grid  (~2.7ms)
+      │
+      ▼
+ bev_trunk_argmax_only.xml   BEV neck + head + ArgMax fused  (~10ms)
+      │
+      ▼
+ occ_label [B,200,200,16] i32   3D occupancy class prediction
+```
+
+## Notes
+
+- The bev_pool extension (`.so`) must be compiled against the same OpenVINO build used for inference.
+- The `bev_pool_gpu_panterlake.xml` config is tuned for Intel Xe3 Pantherlake iGPU tensor shapes.
+- `setup.env` is written by `setup.sh` and sourced by `run_flashocc_ov_ws.sh` — do not delete it.
+- Model `.bin/.xml` files are gitignored. They must be obtained separately.
+
+## Contrib Integration Notes
+
+- This module is intended to run in-place under `openvino_contrib/modules/openvino_flashocc`.
+- Top-level module overview is listed in `openvino_contrib/README.md`.
+- Keep module docs and paths relative to this folder so they remain portable across environments.
