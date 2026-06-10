@@ -153,7 +153,7 @@ def _seed_everything(seed):
 
 def get_parser():
     parser = argparse.ArgumentParser(
-        description="[OpenVINO FP16] Pose Estimation with multiple precision strategies")
+        description="[OpenVINO] Pose Estimation with multiple precision strategies")
     parser.add_argument("--device", type=str, default="GPU", help="device (CPU/GPU)")
     parser.add_argument("--precision", type=str, default="fp16",
                         choices=["fp32", "fp16"],
@@ -389,7 +389,7 @@ def main():
     cfg = init()
     _seed_everything(cfg.seed)
     precision_mode = cfg.precision
-    print(f"[OpenVINO FP16] Device: {cfg.device}, Precision: {precision_mode}, Seed: {cfg.seed}")
+    print(f"[OpenVINO] Device: {cfg.device}, Precision: {precision_mode}, Seed: {cfg.seed}")
 
     # Paths
     ov_pem_model_path = "model_save/ov_pem_model_cpu.xml"

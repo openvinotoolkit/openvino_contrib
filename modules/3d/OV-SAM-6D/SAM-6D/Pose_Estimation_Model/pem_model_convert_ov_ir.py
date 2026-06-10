@@ -23,52 +23,9 @@ from utils.data_utils import load_im, get_bbox, get_point_cloud_from_depth, get_
 from utils.draw_utils import draw_detections
 import xml.etree.ElementTree as ET
 
-##############################
 import onnx
 import numpy as np
 from onnx import helper, numpy_helper
-
-def patch_sam6d_coarse_matching(onnx_in, onnx_out, scale=1000.0):
-    model = onnx.load(onnx_in)
-    graph = model.graph
-
-    scale_name = "coarse_match_scale"
-    # scalar scale is enough; ONNX broadcasting will handle shapes
-    scale_tensor = numpy_helper.from_array(np.array(scale, dtype=np.float32), name=scale_name)
-    graph.initializer.append(scale_tensor)
-
-    patched = False
-
-    for node in graph.node:
-        if node.name == "/coarse_point_matching/Mul_1":
-            scaled_inputs = []
-            for i, input_name in enumerate(node.input):
-                scaled_name = f"{input_name}_scaled"
-                scale_mul = helper.make_node(
-                    "Mul",
-                    inputs=[input_name, scale_name],
-                    outputs=[scaled_name],
-                    name=f"ScaleMul1_Input{i}"
-                )
-                # insert just before Mul_1
-                node_index = list(graph.node).index(node)
-                graph.node.insert(node_index, scale_mul)
-                scaled_inputs.append(scaled_name)
-
-            # update Mul_1 to use scaled inputs
-            node.input[0] = scaled_inputs[0]
-            node.input[1] = scaled_inputs[1]
-
-            patched = True
-            break
-
-    if not patched:
-        raise RuntimeError("Failed to find /coarse_point_matching/Mul_1 in ONNX graph")
-
-    onnx.save(model, onnx_out)
-    print(f"[ONNX] Patched coarse matching with scaling for both inputs and saved to {onnx_out}")
-
-###########################################################################################
 
 def patch_topk_by_io_and_name(xml_path: str):
     tree = ET.parse(xml_path)
@@ -656,13 +613,6 @@ def main():
 
     # onnx model convert
     onnx_model_convert_feature_extraction_submodel(model, onnx_fe_input_name, onnx_fe_output_name, onnx_fe_input, onnx_fe_model_path)
-    '''
-    patch_sam6d_coarse_matching(
-        onnx_pem_model_path,
-        onnx_pem_model_path,
-        scale=1000.0
-    )
-    '''
     onnx_model_convert_pose_estimation_submodel(model, onnx_pem_input_name, onnx_pem_output_name, onnx_pem_input, onnx_pem_model_path)
 
     # # openvino model convert
