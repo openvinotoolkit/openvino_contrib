@@ -211,15 +211,21 @@ private:
   GfxOpenClSourceArtifact m_artifact;
 };
 
-std::optional<GfxOpenClSourceArtifact>
-make_gfx_opencl_concat_chunk_source_artifact(
-    const GfxOpenClSourceArtifact &base_artifact, uint32_t input_begin,
-    uint32_t input_count);
+GfxKernelStageManifest make_opencl_source_manifest(
+    GfxKernelStageFamily family, std::string specialization_key,
+    std::string entry_point, uint32_t direct_inputs, uint32_t scalar_arg_count,
+    uint32_t direct_outputs = 1);
 
-std::optional<GfxOpenClSourceArtifact>
-make_gfx_opencl_split_chunk_source_artifact(
-    const GfxOpenClSourceArtifact &base_artifact, uint32_t output_begin,
-    uint32_t output_count);
+GfxOpenClSourceArtifact make_opencl_source_artifact(
+    GfxKernelStageManifest manifest, std::string source_id, std::string source,
+    std::vector<GfxOpenClSourceScalarArg> scalar_args,
+    std::vector<size_t> direct_input_indices, GfxOpenClArtifactOp op,
+    GfxOpenClArtifactInputMode input_mode = GfxOpenClArtifactInputMode::Direct,
+    float scalar_constant_f32 = 0.0f,
+    std::vector<uint32_t> static_u32_scalars = {},
+    GfxOpenClSourceElementCountSource element_count_source =
+        GfxOpenClSourceElementCountSource::Output0,
+    std::vector<float> static_f32_scalars = {});
 
 std::string gfx_opencl_source_artifact_build_options(
     const GfxOpenClSourceArtifact &artifact);

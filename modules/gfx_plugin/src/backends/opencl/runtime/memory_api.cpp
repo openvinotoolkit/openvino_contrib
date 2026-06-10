@@ -13,6 +13,13 @@
 namespace ov {
 namespace gfx_plugin {
 
+size_t opencl_allocation_bytes(size_t bytes, ov::element::Type type) {
+  if (type != ov::element::boolean && type != ov::element::f16) {
+    return bytes;
+  }
+  return ((bytes + 3u) / 4u) * 4u;
+}
+
 namespace {
 
 cl_command_queue resolve_queue(GpuCommandQueueHandle execution_context) {

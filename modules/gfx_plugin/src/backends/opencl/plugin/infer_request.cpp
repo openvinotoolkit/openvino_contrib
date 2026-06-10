@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "openvino/gfx_plugin/infer_request.hpp"
+#include "plugin/infer_request.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -207,13 +207,12 @@ void execute_opencl_infer_request(
   GfxProfiler *profiler = prepare_infer_profiler(*cm, state, "GFX OpenCL");
   const bool profiling = (profiler != nullptr);
   if (profiler) {
-    profiler->begin_infer(cm->pipeline_desc().size());
+    profiler->begin_infer(cm->runtime_execution_plan().stage_count());
     if (auto info = backend->const_manager->query_execution_device_info()) {
       record_gfx_target_profile(make_gfx_target_profile(*info), profiler);
     }
   }
 
-  const auto &descs = cm->pipeline_desc();
   void *stage_profiler = profiler ? profiler->native_handle() : nullptr;
 
   std::vector<GpuTensor> input_tensors;
@@ -246,7 +245,7 @@ void execute_opencl_infer_request(
   }
   InferRuntimeExecutionConfig execution_config{};
   execution_config.state = opencl_state;
-  execution_config.descs = &descs;
+  execution_config.execution_plan = cm->runtime_execution_plan_ptr();
   execution_config.buffer_manager = backend->const_manager.get();
   execution_config.stage_profiler = stage_profiler;
   execution_config.profiling_enabled = profiling;

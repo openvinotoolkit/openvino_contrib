@@ -39,7 +39,8 @@ Then inspect the relevant code path:
 - runtime executable descriptor builder:
   `src/compiler/runtime_executable_descriptor_builder.*`
 - memory/cache compiler contracts: `src/compiler/memory_plan.*` and
-  `src/compiler/cache_envelope.*`
+  `src/compiler/cache_envelope.*`, `src/compiler/cache_import.*`, and
+  `src/compiler/cache_repository.*`
 - tensor-layout contracts: `src/compiler/tensor_layout.*`
 - backend-neutral runtime: `src/runtime/`
 - backend runtime/provider interfaces:
@@ -50,13 +51,16 @@ Then inspect the relevant code path:
   `src/runtime/backend_stage_factory.hpp`,
   `src/runtime/pipeline_stage_desc.hpp`,
   `src/runtime/pipeline_stage_plan.hpp`, and
+  `src/runtime/runtime_execution_plan.*`,
   `src/runtime/pipeline_stage_materializer.*`
-- kernel manifests and source artifacts: `src/kernel_ir/`
+- kernel manifests and shared source-artifact records: `src/kernel_ir/`
 - MLIR builders and backend hooks: `src/mlir/`
 - graph rewrites: `src/transforms/`
 - Metal backend: `src/backends/metal/`
 - OpenCL backend: `src/backends/opencl/`
 - public API surface: `include/openvino/gfx_plugin/`
+  (`plugin.hpp`, `profiling.hpp`, and `properties.hpp` only; compiled-model and
+  infer-request headers are internal under `src/plugin/`)
 
 ## Development Rules
 
@@ -80,9 +84,10 @@ Then inspect the relevant code path:
   vendor primitives, runtime-shape handling, `ConstTensor` inputs, or generated
   `RuntimeParams` must be frozen into descriptor-owned payloads, or descriptor
   verification must fail closed.
-- Keep compiler memory regions, alias groups, lifetimes, transient arenas, and
-  cache-envelope fingerprints in `src/compiler/`; request code consumes runtime
-  descriptors and `RuntimeSession`.
+- Keep compiler memory regions, alias groups, lifetimes, transient arenas,
+  cache-envelope fingerprints, cache import contracts, and cache repository
+  request keys in `src/compiler/`; request code consumes runtime descriptors,
+  `RuntimeExecutionPlan`, and `RuntimeSession`.
 - Keep fused-output lifetime and alias-storage planning in
   `src/runtime/fused_output_lifetime_plan.*`; do not reintroduce runtime-stage
   type-name checks for view or lifetime classification.
@@ -114,9 +119,10 @@ Then inspect the relevant code path:
 - When changing plugin-visible behavior, check properties, `query_model()`,
   compiled-model properties, and docs.
 - Keep public compiled-model cache behavior explicit: `ov::cache_dir`,
-  `export_model()`, and `import_model()` are disabled unless
-  `compiled_model_cache_roundtrip_supported()` changes and the public contract
-  tests/docs are updated with the same semantics.
+  `export_model()`, and `import_model()` use the GFX `CacheEnvelope` contract
+  when `compiled_model_cache_roundtrip_supported()` is true. Update
+  `gfx_cache_public_contract_test.cpp` and docs whenever cache wire format,
+  repository keys, import behavior, or backend payload codecs change.
 - Do not modify `third_party/llvm-project/` unless the task explicitly requires
   vendored LLVM changes.
 - Keep `third_party/clvk` and `third_party/clspv` as submodule gitlinks for the
@@ -138,6 +144,7 @@ For Metal placement, MPSRT, or MSL source changes, keep these aligned:
 - `src/runtime/backend_stage_factory.hpp`
 - `src/runtime/pipeline_stage_desc.hpp`
 - `src/runtime/pipeline_stage_plan.hpp`
+- `src/runtime/runtime_execution_plan.*`
 - `src/runtime/pipeline_stage_materializer.*`
 - `src/runtime/runtime_session.*`
 - `src/backends/metal/compiler/`
@@ -197,8 +204,8 @@ vendor route; do not reintroduce the removed generic MSL Pool2D fallback.
 For OpenCL source-artifact work:
 
 1. Inspect `src/backends/opencl/compiler/opencl_kernel_unit_catalog.*` first
-   for the registered OpenCL routes, then inspect the family adapter and
-   source-artifact factory.
+   for the registered OpenCL routes, then inspect the family adapter and the
+   family source-artifact builder in `opencl_*_source_artifact.cpp`.
 2. Check `src/backends/opencl/compiler/` for route selection, kernel-unit
    registration, and source payload materialization through
    `opencl_kernel_artifacts.*`.
@@ -207,7 +214,8 @@ For OpenCL source-artifact work:
    OpenCL/CLVK bundle discovery and bundled tool-path setup.
 5. Add source id, entry point, role ABI, scalar ABI, source-static u32/f32
    scalars, dynamic-shape metadata, constant materialization, chunk helpers,
-   local size, and boolean-buffer rules to the artifact contract.
+   local size, boolean-buffer rules, and cache-payload fields to the
+   backend-owned artifact contract.
 6. For embedded `.cl` units, add the wrapper under
    `src/kernel_ir/opencl_kernels/`, the `gfx_embed_kernel_source()` entry in
    `src/CMakeLists.txt`, and the source/header entries in
@@ -262,7 +270,9 @@ generated source artifacts, runtime binding, and contract tests.
    stages must consume their `RuntimeStageExecutableDescriptor`; do not
    reconstruct kernel source, artifact payload, or vendor descriptors from the
    OpenVINO node in request-time code.
-   For OpenCL, payload resolution belongs in
+   For OpenCL, family artifact construction belongs in
+   `src/backends/opencl/compiler/opencl_*_source_artifact.cpp` and payload
+   resolution/codec logic belongs in
    `src/backends/opencl/compiler/opencl_kernel_artifacts.*`, not in the common
    executable-bundle builder.
 6. Add focused unit tests, then backend/functional tests if externally visible.

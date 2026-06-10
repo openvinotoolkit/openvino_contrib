@@ -56,7 +56,8 @@ public:
   void verify() const {
     const auto node = m_case.make_node();
     const auto artifact =
-        make_opencl_eltwise_source_artifact(node, m_case.expected_source_id);
+        compiler::make_opencl_eltwise_source_artifact(
+            node, m_case.expected_source_id);
     ASSERT_TRUE(artifact.has_value());
     ASSERT_TRUE(artifact->valid);
     EXPECT_EQ(artifact->stage_manifest.stage_family,

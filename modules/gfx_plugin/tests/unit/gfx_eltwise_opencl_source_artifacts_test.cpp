@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "backends/opencl/compiler/opencl_eltwise_kernel_unit.hpp"
 #include "backends/opencl/compiler/opencl_operation_support.hpp"
 #include "compiler/kernel_registry.hpp"
 #include "compiler/lowering_planner.hpp"
@@ -94,7 +95,7 @@ void expect_opencl_eltwise_kernel_unit_owner(
     const std::shared_ptr<const ov::Node> &node,
     const std::string &expected_source_id) {
   const auto artifact =
-      make_opencl_eltwise_source_artifact(node, expected_source_id);
+      compiler::make_opencl_eltwise_source_artifact(node, expected_source_id);
   ASSERT_TRUE(artifact.has_value());
   ASSERT_TRUE(artifact->valid);
   EXPECT_EQ(artifact->stage_manifest.stage_family,

@@ -38,19 +38,24 @@ Read these files first:
 - Explicit default backend requests are strict: CMake fails when the requested
   backend is unavailable instead of selecting another backend.
 - `query_model()` uses the same backend-aware support path as compilation.
-- OpenVINO compiled-model cache round-trip is currently not exposed:
-  `ov::cache_dir`, `export_model()`, and `import_model()` fail through
-  `src/plugin/compiled_model_cache_contract.hpp`.
-- The compiler has an internal serialized `CacheEnvelope` wire/store/load
-  contract for manifest, artifact descriptor, payload identity, and stable-key
-  validation. It is not a public OpenVINO cache format and does not import a
-  full backend executable bundle yet.
-- `GfxRemoteContext` and `GfxRemoteTensor` exist; practical capabilities depend
-  on the selected backend.
+- OpenVINO compiled-model cache round-trip is enabled through a GFX
+  `CacheEnvelope` contract: `ov::cache_dir` stores and reloads envelope records,
+  `export_model()` writes the envelope wire format, and `import_model()` rebuilds
+  the runtime descriptor from that envelope. This is a plugin-owned compiled
+  graph contract, not a native backend binary cache format.
+- Cache import/export currently reconstructs descriptor-owned runtime pipelines
+  and backend source/vendor payloads that are encoded in the envelope. It still
+  requires the selected backend target to be available and compatible on the
+  importing host.
+- `GfxRemoteContext` and `GfxRemoteTensor` exist. Metal supports Metal buffer
+  handles; OpenCL can allocate plugin-owned remote buffers or wrap external
+  `cl_mem` objects from the same OpenCL context.
 
 ## Source Layout
 
-- `include/openvino/gfx_plugin/`: public plugin headers and property names
+- `include/openvino/gfx_plugin/`: public plugin registration, property, and
+  profiling headers. `CompiledModel` and `InferRequest` headers are internal
+  implementation headers under `src/plugin/`.
 - `src/common/`: backend ids, configured-backend availability values,
   artifact-payload interfaces, activation/bias metadata, dispatch and
   parallelism value types, submit-policy records, constant-evaluation helpers,
@@ -65,34 +70,37 @@ Read these files first:
   build/verification, backend-module construction, and artifact payload routing
   used by query and compilation
 - `src/plugin/`: OpenVINO-facing `Plugin`, `CompiledModel`, infer-request
-  API glue, properties, disabled compiled-model cache/import/export entry
-  points, backend selection, backend-access helpers, and variable-state OpenVINO
-  API objects
+  API glue, properties, compiled-model cache/import/export entry points,
+  backend selection, backend-access helpers, and variable-state OpenVINO API
+  objects
 - `src/runtime/`: backend-neutral stage interfaces, submission planning,
   profiling report assembly, runtime executable descriptor records, runtime
   pipeline-stage plans, runtime sessions, backend runtime/provider interfaces,
   backend request state, backend stage factory interfaces, infer
   pipeline/executor/submission helpers, stateful runtime helpers,
   pipeline-stage materialization, fused-output lifetime planning,
-  liveness-aware output workspaces, remote context/tensor helpers,
+  liveness-aware output workspaces, runtime execution plans,
+  remote context/tensor helpers,
   descriptor-backed view-only stages, tensor binding contract helpers,
   descriptor-owned runtime-parameter and const-tensor payload materialization,
   runtime-value and kernel-launch planning, and target profiles
 - `src/kernel_ir/`: backend-neutral kernel manifests, custom-kernel family
   metadata, cache keys, dispatch descriptions, embedded Metal/OpenCL helper
-  sources, and OpenCL source artifacts
+  sources, and shared OpenCL source-artifact data structures/helpers
 - `src/mlir/`: support probing, OpenVINO-node lowering, pass helpers, backend
   stage hooks, MPSRT dialect/metadata helpers, and generic MLIR kernel
   construction used by backend compiler routes
 - `src/backends/metal/`: Metal plugin glue, Objective-C++ runtime, memory
   management, profiling, backend compiler module, Apple MSL/MPS/MPSRT source
-  planning, shared MPSRT ABI records, MPSRT vendor primitive contracts, MSL
-  compilation, runtime kernel loading, MPSRT preparation, descriptor-backed
-  vendor primitive stages, and MPS/MPSGraph vendor primitive execution
-- `src/backends/opencl/`: OpenCL plugin glue, dynamic API loader, buffer
-  manager, backend compiler policy, backend-owned source-artifact payload
-  materialization, program cache, memory ops, runtime kernel loading, and
-  generic source-artifact execution
+  planning, Metal cache payload encoding, shared MPSRT ABI records, MPSRT vendor
+  primitive contracts, MSL compilation, runtime kernel loading, MPSRT
+  preparation, descriptor-backed vendor primitive stages, and MPS/MPSGraph
+  vendor primitive execution
+- `src/backends/opencl/`: OpenCL plugin glue, remote context/tensor support,
+  dynamic API loader, buffer manager, backend compiler policy, backend-owned
+  family source-artifact construction and payload materialization, program
+  cache, memory ops, runtime kernel loading, and generic source-artifact
+  execution
 - `src/transforms/`: OpenVINO graph rewrites, fusion passes, and layout cleanup
 - `tests/`: unit, functional, backend, integration, compare,
   executable gtest-matrix, and microbench coverage
@@ -118,23 +126,23 @@ The high-level path is:
 3. `GfxCompilerService` runs backend-aware transforms, operation support
    checks, lowering-plan creation, memory-plan creation, manifest building,
    executable-bundle assembly, cache-envelope construction, and artifact payload
-   materialization.
+   materialization. When `ov::cache_dir` is set, `src/compiler/cache_repository.*`
+   looks up or stores a compatible envelope by model/backend/fusion fingerprints.
 4. `CompiledModel` asks
    `src/compiler/runtime_executable_descriptor_builder.*` to build and verify a
    `RuntimeExecutableDescriptor` from the compiler executable bundle. The
-   runtime `PipelineStageRuntimePlan` used for stage materialization is a
-   separate compiler output, not part of the cacheable descriptor. The internal
-   `CacheEnvelope` can be serialized and stored for stable-key validation, but
-   native compiled-model cache round-trip APIs remain disabled until a complete
-   public executable-bundle import/export path exists. The old OpenVINO-model
-   serialization path is disabled by `src/plugin/compiled_model_cache_contract.hpp`.
-5. `CompiledModel::build_op_pipeline()` consumes the compiler-owned runtime
-   stage plan and descriptor, then delegates concrete stage materialization to
-   `src/runtime/pipeline_stage_materializer.*`. The compiler stage builder uses
-   `src/compiler/pipeline_stage_plan.*` for model-output flags, input links,
-   and output aliases, `src/compiler/pipeline_stage_fusion.*` for fusion
-   selection, and emits runtime-facing plans in
-   `src/runtime/pipeline_stage_plan.hpp`.
+   descriptor-owned stage materialization plan is produced by the compiler
+   pipeline-stage builder. Cache import uses `src/compiler/cache_import.*` to
+   reconstruct a runtime model, executable bundle, runtime descriptor, and
+   materialization plan from the serialized envelope.
+5. `CompiledModel::build_runtime_execution_plan()` consumes the compiler-owned
+   runtime descriptor and delegates concrete stage materialization to
+   `src/runtime/runtime_execution_plan.*`, which owns the materialized
+   `PipelineStageDesc` vector and verifies descriptor/stage consistency. The
+   compiler stage builder uses `src/compiler/pipeline_stage_plan.*` for
+   model-output flags, input links, and output aliases,
+   `src/compiler/pipeline_stage_fusion.*` for fusion selection, and emits
+   runtime-facing plans in `src/runtime/pipeline_stage_plan.hpp`.
 6. Pipeline records are `PipelineStageDesc` values from
    `src/runtime/pipeline_stage_desc.hpp`. Fused output lifetimes are derived
    from runtime memory contracts in
@@ -229,8 +237,9 @@ MSL Pool2D fallback must not be reintroduced as an unvalidated path.
 ### OpenCL
 
 The OpenCL backend is the current non-Apple route. It loads OpenCL dynamically
-at runtime and executes source artifacts described by
-`src/kernel_ir/gfx_opencl_source_artifacts.*`.
+at runtime and executes source artifacts whose shared data structures live in
+`src/kernel_ir/gfx_opencl_source_artifacts.*`. Family-specific source-artifact
+construction is backend-owned under `src/backends/opencl/compiler/`.
 
 OpenCL route selection is catalog-driven. `opencl_kernel_unit_catalog.*` lists
 the generated kernel units that are registered for backend planning, the
@@ -243,9 +252,9 @@ OpenCL source routes.
 
 OpenCL artifacts are role-based. Source id, entry point, local size, tensor
 roles, scalar ABI, runtime-shape scalars, constant materialization, boolean
-buffer padding, static u32/f32 scalar payloads, and any generated chunk
-metadata should stay in the artifact manifest rather than being
-reimplemented in infer-request code.
+buffer padding, static u32/f32 scalar payloads, and any generated chunk metadata
+should stay in the backend family source-artifact factory and artifact manifest
+rather than being reimplemented in infer-request code.
 Routes that need runtime shape arguments must set
 `KernelUnit::requires_runtime_shape_args`; infer requests consume the resulting
 manifest/runtime-descriptor flag instead of special-casing the OpenCL backend.
@@ -266,7 +275,8 @@ Family-specific OpenCL compiler adapters such as
 `opencl_range_kernel_unit.*`, `opencl_shapeof_kernel_unit.*`,
 `opencl_softmax_kernel_unit.*`, and `opencl_tile_kernel_unit.*` resolve
 generated `KernelUnit` records and materialize source payloads. Keep new family
-routes in those backend compiler adapters and register them in
+routes in those backend compiler adapters, put family source-artifact builders
+in `opencl_*_source_artifact.cpp`, and register them in
 `opencl_kernel_unit_catalog.*` instead of adding special cases to request-time
 execution.
 The OpenCL compiler registry requires an explicit kernel unit for generated
@@ -301,10 +311,11 @@ MLIR is shared infrastructure, not a separate backend object. It is used for:
 
 Backend-specific source planning is no longer described as generic MLIR
 ownership. Apple MSL/MPS source planning and typed MPSRT builder-plan assembly
-live under `src/backends/metal/compiler/`; OpenCL source-artifact payload
-materialization lives under `src/backends/opencl/compiler/`. Runtime-value
-payload planning for dynamic shapes and source artifacts is shared runtime code
-under `src/runtime/gfx_stage_runtime_values.*`.
+live under `src/backends/metal/compiler/`; OpenCL family source-artifact
+construction and cache payload encoding/decoding live under
+`src/backends/opencl/compiler/`. Runtime-value payload planning for dynamic
+shapes and source artifacts is shared runtime code under
+`src/runtime/gfx_stage_runtime_values.*`.
 
 Activation lowering keeps OpenCL and Metal source plans on the same operation
 contract. `Swish` beta is represented either as a static scalar payload or as a
@@ -336,11 +347,11 @@ planning, runtime binding, and tests on the same contract.
 
 The current compiler service does not serialize a native backend executable
 cache. It constructs a manifest/executable bundle for the selected backend,
-builds a serialized `CacheEnvelope` contract for identity validation, and the
-runtime consumes the executable descriptor during stage creation.
-`export_model()` and `import_model()` are currently not implemented because the
-public OpenVINO cache path still lacks full executable-bundle import/export and
-backend-payload materialization.
+builds a serialized `CacheEnvelope` contract for identity validation and
+plugin-owned cache import/export, and the runtime consumes the executable
+descriptor during stage creation. `export_model()` and `import_model()` use that
+envelope format; imported models require compatible backend targets and
+descriptor-owned payloads on the importing host.
 Compiler-owned tensor layout classification lives in
 `src/compiler/tensor_layout.*`; shared stage policy consumes the resulting
 layout contract instead of reclassifying view-only or materialized layout ops.

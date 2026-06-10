@@ -13,6 +13,7 @@
 
 #include "backends/metal/compiler/metal_kernel_artifacts.hpp"
 #include "backends/metal/compiler/metal_operation_support.hpp"
+#include "backends/opencl/compiler/opencl_conv_kernel_unit.hpp"
 #include "backends/opencl/compiler/opencl_kernel_artifacts.hpp"
 #include "backends/opencl/compiler/opencl_operation_support.hpp"
 #include "common/gpu_device_profile.hpp"
@@ -22,7 +23,6 @@
 #include "compiler/manifest.hpp"
 #include "compiler/operation_legalizer.hpp"
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
-#include "kernel_ir/opencl_kernels/conv2d_kernel.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/constant.hpp"
@@ -393,7 +393,7 @@ TEST(OpenClConvUnsupportedContractTest,
   const auto support = legalizer.query(node);
   EXPECT_FALSE(support.semantic_legal);
   EXPECT_EQ(support.semantic_reason, "missing_opencl_convolution_kernel_unit");
-  EXPECT_FALSE(make_opencl_conv2d_source_artifact(node));
+  EXPECT_FALSE(compiler::make_opencl_conv2d_source_artifact(node));
   const auto plan = planner.plan(model_from_node(node), legalizer);
   EXPECT_FALSE(plan.executable());
 }

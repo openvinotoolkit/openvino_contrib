@@ -79,6 +79,9 @@ constexpr cl_uint CL_PROGRAM_NUM_DEVICES = 0x1162;
 constexpr cl_uint CL_PROGRAM_BINARY_SIZES = 0x1165;
 constexpr cl_uint CL_PROGRAM_BINARIES = 0x1166;
 
+constexpr cl_uint CL_MEM_SIZE = 0x1102;
+constexpr cl_uint CL_MEM_CONTEXT = 0x1106;
+
 struct OpenClFunctionTable {
     cl_int (*clGetPlatformIDs)(cl_uint, cl_platform_id*, cl_uint*) = nullptr;
     cl_int (*clGetPlatformInfo)(cl_platform_id, cl_uint, size_t, void*, size_t*) = nullptr;
@@ -93,6 +96,7 @@ struct OpenClFunctionTable {
     cl_int (*clReleaseCommandQueue)(cl_command_queue) = nullptr;
     cl_int (*clFinish)(cl_command_queue) = nullptr;
     cl_mem (*clCreateBuffer)(cl_context, cl_mem_flags, size_t, void*, cl_int*) = nullptr;
+    cl_int (*clGetMemObjectInfo)(cl_mem, cl_uint, size_t, void*, size_t*) = nullptr;
     cl_int (*clReleaseMemObject)(cl_mem) = nullptr;
     void* (*clEnqueueMapBuffer)(cl_command_queue, cl_mem, cl_bool, cl_map_flags, size_t, size_t,
                                 cl_uint, const cl_event*, cl_event*, cl_int*) = nullptr;

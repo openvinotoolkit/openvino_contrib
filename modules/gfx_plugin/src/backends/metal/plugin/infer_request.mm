@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "openvino/gfx_plugin/infer_request.hpp"
+#include "plugin/infer_request.hpp"
 
 #include <chrono>
 #include <iostream>
@@ -10,7 +10,7 @@
 #include <sstream>
 #include <utility>
 
-#include "openvino/gfx_plugin/compiled_model.hpp"
+#include "plugin/compiled_model.hpp"
 #include "openvino/core/any.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/runtime/make_tensor.hpp"
@@ -225,7 +225,7 @@ void execute_metal_infer_request(InferRequest& request,
         allocator.set_profiler(metal_profiler, detailed);
         const bool profiling = (profiler != nullptr);
         if (profiler) {
-            profiler->begin_infer(cm->pipeline_desc().size());
+            profiler->begin_infer(cm->runtime_execution_plan().stage_count());
             auto* metal_backend = dynamic_cast<const MetalBackendState*>(cm->backend_state());
             if (metal_backend && metal_backend->const_manager) {
                 if (auto info = metal_backend->const_manager->query_execution_device_info()) {
@@ -304,7 +304,6 @@ void execute_metal_infer_request(InferRequest& request,
 
         OPENVINO_ASSERT(cm->op_pipeline_built(),
                         "GFX: op pipeline is not built");
-        const auto& descs = cm->pipeline_desc();
 
         const bool profiling_enabled = (profiler != nullptr);
         void* stage_profiler = profiler ? profiler->native_handle() : nullptr;
@@ -327,7 +326,7 @@ void execute_metal_infer_request(InferRequest& request,
         submission_caps.mac_budget_scale_den = 2u;
         InferRuntimeExecutionConfig execution_config{};
         execution_config.state = metal_state;
-        execution_config.descs = &descs;
+        execution_config.execution_plan = cm->runtime_execution_plan_ptr();
         execution_config.buffer_manager = metal->const_manager.get();
         execution_config.stage_profiler = stage_profiler;
         execution_config.profiling_enabled = profiling_enabled;

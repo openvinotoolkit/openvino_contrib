@@ -59,6 +59,12 @@ Build-system notes:
 
 - `cmake/GfxSources.cmake` is the source list used by both the module root and
   `src/CMakeLists.txt`.
+- Public install headers are limited to
+  `include/openvino/gfx_plugin/plugin.hpp`,
+  `include/openvino/gfx_plugin/profiling.hpp`, and
+  `include/openvino/gfx_plugin/properties.hpp`. `CompiledModel` and
+  `InferRequest` headers are internal implementation headers under
+  `src/plugin/`.
 - `src/CMakeLists.txt` embeds selected `.cl` and `.metal` helper sources through
   `cmake/KernelSource.hpp.in`; generated headers stay in the build tree and
   must not be committed.
@@ -97,9 +103,15 @@ Build-system notes:
   groups, and transient arenas; request code must consume the runtime descriptor
   instead of reconstructing this information.
 - `src/compiler/cache_envelope.*` builds cache metadata and fingerprints,
-  serializes/deserializes the envelope wire format, and stores/loads envelopes
-  by stable key. It is not a public OpenVINO compiled-model cache or a persisted
-  native backend executable cache in the current code.
+  serializes/deserializes the envelope wire format, stores/loads envelopes by
+  stable key, and records source/vendor payload identity. `src/compiler/cache_import.*`
+  rebuilds descriptor-owned runtime contracts from an envelope, and
+  `src/compiler/cache_repository.*` maps `ov::cache_dir` requests to stable
+  cache entries. This is the GFX compiled-model cache contract, not a persisted
+  native backend executable cache.
+- `src/runtime/runtime_execution_plan.*` owns the materialized stage list and
+  the runtime descriptor used to create it. Infer execution consumes this plan
+  instead of a detached `PipelineStageDesc` vector.
 - `src/runtime/runtime_session.*` owns request-local descriptor binding tables
   and prepared executable objects.
 - `src/runtime/backend_stage_factory.hpp` is the backend-facing runtime stage
@@ -171,7 +183,8 @@ Read in this order:
 9. `src/compiler/pipeline_stage_fusion.*`
 10. `src/compiler/pipeline_stage_plan.*`
 11. `src/compiler/runtime_executable_descriptor_builder.*`
-12. `src/compiler/memory_plan.*` and `src/compiler/cache_envelope.*`
+12. `src/compiler/memory_plan.*`, `src/compiler/cache_envelope.*`,
+   `src/compiler/cache_import.*`, and `src/compiler/cache_repository.*`
 13. `src/compiler/tensor_layout.*`
 14. `src/compiler/stage_placement.*` and
    `src/compiler/stage_compiler_policy.*`
@@ -181,11 +194,12 @@ Read in this order:
 17. `src/runtime/backend_stage_factory.hpp`
 18. `src/runtime/pipeline_stage_desc.hpp`
 19. `src/runtime/pipeline_stage_plan.hpp`
-20. `src/runtime/pipeline_stage_materializer.*`
-21. `src/runtime/infer_pipeline.*`, `src/runtime/infer_executor.*`, and
+20. `src/runtime/runtime_execution_plan.*`
+21. `src/runtime/pipeline_stage_materializer.*`
+22. `src/runtime/infer_pipeline.*`, `src/runtime/infer_executor.*`, and
    `src/runtime/infer_submission.*`
-22. `src/plugin/compiled_model.cpp`
-23. the backend directory you are changing
+23. `src/plugin/compiled_model.cpp`
+24. the backend directory you are changing
 
 For runtime planning, also inspect:
 
@@ -202,12 +216,15 @@ For runtime planning, also inspect:
 - `src/compiler/runtime_executable_descriptor_builder.*`
 - `src/compiler/memory_plan.*`
 - `src/compiler/cache_envelope.*`
+- `src/compiler/cache_import.*`
+- `src/compiler/cache_repository.*`
 - `src/runtime/backend_runtime.*`
 - `src/runtime/backend_runtime_provider.*`
 - `src/runtime/backend_request_state.hpp`
 - `src/runtime/backend_stage_factory.hpp`
 - `src/runtime/pipeline_stage_desc.hpp`
 - `src/runtime/pipeline_stage_plan.hpp`
+- `src/runtime/runtime_execution_plan.*`
 - `src/runtime/pipeline_stage_materializer.*`
 - `src/runtime/runtime_session.*`
 - `src/runtime/infer_pipeline.*`
@@ -225,6 +242,7 @@ For runtime planning, also inspect:
 - `src/kernel_ir/gfx_custom_kernel_families.*`
 - `src/kernel_ir/gfx_kernel_source.*`
 - `src/kernel_ir/gfx_opencl_source_artifacts.*`
+- `src/backends/opencl/compiler/opencl_*_source_artifact.cpp`
 - `src/runtime/gfx_stage_runtime_values.*`
 - `src/mlir/gfx_backend_custom_kernel_adapter.*`
 
@@ -415,7 +433,8 @@ Use backend directories only for real backend boundaries:
   and command encoding belong under `src/backends/metal/`.
 - OpenCL operation support policy, OpenCL stage placement, and OpenCL kernel
   registry belong under `src/backends/opencl/compiler/`.
-- OpenCL source-artifact payload resolution belongs in
+- OpenCL family source-artifact construction and payload resolution belong in
+  `src/backends/opencl/compiler/opencl_*_source_artifact.cpp` and
   `src/backends/opencl/compiler/opencl_kernel_artifacts.*`.
 - OpenCL platform/device discovery, plugin-local runtime-bundle discovery,
   program compilation, buffer management, and kernel enqueue code belong under
@@ -425,9 +444,11 @@ Do not duplicate shared ABI, route, or shape rules in backend request code.
 
 ## OpenCL Source Artifacts
 
-`src/kernel_ir/gfx_opencl_source_artifacts.*` is the source of truth for:
+`src/kernel_ir/gfx_opencl_source_artifacts.*` is the source of truth for shared
+OpenCL source-artifact data structures, manifest helpers, payload wrapper
+validation, build-option formatting, and generic helper routines. Backend-owned
+family files under `src/backends/opencl/compiler/` are the source of truth for:
 
-- source-artifact data structures and shared helpers
 - source id and entry point for artifact-producing families
 - tensor role order
 - scalar ABI
@@ -437,6 +458,7 @@ Do not duplicate shared ABI, route, or shape rules in backend request code.
 - dynamic-shape scalar metadata
 - direct constant materialization
 - boolean buffer padding
+- cache payload encoding/decoding for OpenCL source artifacts
 
 Backend-visible OpenCL routes are selected through
 `src/backends/opencl/compiler/opencl_kernel_unit_catalog.*`. The catalog owns
@@ -476,9 +498,9 @@ When adding an embedded OpenCL source unit:
 - add or update the family adapter under `src/backends/opencl/compiler/`
 - register the generated unit, operation-support entry, and artifact-family
   entry in `opencl_kernel_unit_catalog.*`
-- route the artifact through the family-owned source-artifact factory with
-  explicit source id, entry point, route kind, scalar ABI, and shape/type
-  limitations
+- route the artifact through the family-owned source-artifact factory in
+  `src/backends/opencl/compiler/opencl_*_source_artifact.cpp` with explicit
+  source id, entry point, route kind, scalar ABI, and shape/type limitations
 - cover source identity, scalar metadata, support probing, and payload routing
   in the focused family test, the split OpenCL source-artifact test file, and
   `tests/unit/gpu_backend_base_test.cpp` when the compiler bundle is affected

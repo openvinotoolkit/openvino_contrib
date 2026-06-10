@@ -12,17 +12,6 @@
 namespace ov {
 namespace gfx_plugin {
 
-namespace {
-
-size_t opencl_allocation_bytes(size_t bytes, ov::element::Type type) {
-    if (type != ov::element::boolean && type != ov::element::f16) {
-        return bytes;
-    }
-    return ((bytes + 3u) / 4u) * 4u;
-}
-
-}  // namespace
-
 OpenClBufferManager::OpenClBufferManager(std::shared_ptr<OpenClRuntimeContext> context)
     : m_context(std::move(context)) {
     OPENVINO_ASSERT(m_context, "GFX OpenCL: buffer manager requires runtime context");

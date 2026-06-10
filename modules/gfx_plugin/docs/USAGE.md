@@ -80,12 +80,17 @@ The plugin also exposes standard OpenVINO properties such as:
 - `ov::hint::inference_precision`
 - `ov::enable_profiling`
 
-`ov::cache_dir` is not currently advertised by the plugin or compiled model.
-Requests that set `ov::cache_dir`, call `export_model()`, or call any
-`import_model()` overload fail through the compiled-model cache contract. The
-compiler owns an internal serialized `CacheEnvelope` for stable-key and
-artifact-identity validation, but that envelope is not a public OpenVINO cache
-format and does not import a backend executable bundle.
+`ov::cache_dir` is advertised by the plugin and compiled model. When it is set,
+the plugin stores a GFX `CacheEnvelope` in the requested directory and reloads a
+compatible envelope on later `compile_model()` calls. `export_model()` writes
+the same envelope wire format, and `import_model()` rebuilds a compiled model
+from it when the backend target and payload decoders are available.
+
+This cache is a plugin-owned compiled graph contract. It is not a native backend
+binary cache and should not be treated as a portable cache across incompatible
+GFX backend targets, driver identities, compiler revisions, or fusion settings.
+Rejected cache entries fail closed with diagnostics instead of falling back to a
+different backend.
 
 ## Query And Compile
 
@@ -103,10 +108,10 @@ There is no partial CPU fallback for unsupported stages.
 
 Internally the selected backend is compiled through a compiler service that
 builds a lowering plan, manifest, executable bundle, cache envelope, and runtime
-descriptor. The cache envelope can be serialized and stored by stable key for
-contract validation, but neither the envelope nor the runtime descriptor is a
-public cache format. `export_model()` and `import_model()` are currently not
-implemented.
+descriptor. The cache envelope can be serialized, stored by stable key, exported
+through `export_model()`, and imported through `import_model()`. Import
+reconstructs a descriptor-owned runtime model and materialization plan; it still
+requires a compatible backend target on the importing host.
 
 The compiler registry contains the production backend compiler modules available
 in the configured build, while runtime state creation is checked through the
@@ -176,12 +181,21 @@ Remote tensor support is backend-dependent. Use the public keys from
 The backend validates handle ownership, storage mode, size, and visibility
 before binding.
 
+Metal remote tensors use Metal buffer handles. OpenCL remote tensors either wrap
+an external `cl_mem` from the plugin's OpenCL context or allocate a
+plugin-owned OpenCL buffer. External OpenCL buffers are rejected when they belong
+to a different `cl_context`, are smaller than the tensor contract, or disagree
+with `GFX_BUFFER_BYTES` when that property is provided. OpenCL boolean and f16
+remote allocations are padded to the backend allocation alignment used by the
+runtime.
+
 ## OpenCL Source Backend
 
 The OpenCL backend dynamically loads the target OpenCL runtime and executes
-source artifacts described by `src/kernel_ir/gfx_opencl_source_artifacts.*`.
-Those source artifacts are materialized by the OpenCL backend module, not by a
-generic compiler fallback.
+source artifacts whose shared records live in
+`src/kernel_ir/gfx_opencl_source_artifacts.*`. Family-specific artifact builders
+and payload codecs live under `src/backends/opencl/compiler/`; the generic
+compiler does not synthesize OpenCL source payloads as a fallback.
 
 Current public OpenCL compiler coverage is the route set registered in
 `src/backends/opencl/compiler/opencl_kernel_unit_catalog.*`: activation,

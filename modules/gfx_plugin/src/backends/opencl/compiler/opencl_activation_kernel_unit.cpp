@@ -10,8 +10,6 @@
 #include "backends/opencl/compiler/opencl_kernel_artifacts.hpp"
 #include "compiler/executable_bundle.hpp"
 #include "compiler/lowering_planner.hpp"
-#include "kernel_ir/gfx_opencl_source_artifacts.hpp"
-#include "kernel_ir/opencl_kernels/activation_kernel.hpp"
 #include "openvino/op/swish.hpp"
 #include "openvino/op/util/unary_elementwise_arithmetic.hpp"
 

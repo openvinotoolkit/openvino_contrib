@@ -10,6 +10,7 @@
 #include "runtime/backend_request_state.hpp"
 #include "runtime/infer_pipeline.hpp"
 #include "runtime/infer_submission.hpp"
+#include "runtime/runtime_execution_plan.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -20,7 +21,7 @@ using InferStageOutputDescInitializer = StageOutputDescInitializer;
 
 struct InferRuntimeExecutionConfig {
     BackendInferState* state = nullptr;
-    const std::vector<PipelineStageDesc>* descs = nullptr;
+    std::shared_ptr<const RuntimeExecutionPlan> execution_plan;
     GpuBufferManager* buffer_manager = nullptr;
     void* stage_profiler = nullptr;
     bool profiling_enabled = false;

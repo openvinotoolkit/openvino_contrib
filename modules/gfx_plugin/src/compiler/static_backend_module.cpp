@@ -29,6 +29,8 @@ public:
             std::move(config.artifact_descriptor_resolver)),
         m_artifact_payload_resolver(
             std::move(config.artifact_payload_resolver)),
+        m_cache_payload_encoder(std::move(config.cache_payload_encoder)),
+        m_cache_payload_decoder(std::move(config.cache_payload_decoder)),
         m_vendor_attention_artifact_resolver(
             std::move(config.vendor_attention_artifact_resolver)) {}
 
@@ -75,6 +77,24 @@ public:
     return m_artifact_payload_resolver(descriptor, op);
   }
 
+  CacheBackendPayloadRecord
+  encode_cache_payload(const KernelArtifactDescriptor &descriptor,
+                       const KernelArtifactPayloadRecord &payload_record) const override {
+    if (!m_cache_payload_encoder) {
+      return {};
+    }
+    return m_cache_payload_encoder(descriptor, payload_record);
+  }
+
+  std::shared_ptr<const KernelArtifactPayload>
+  decode_cache_payload(const CacheBackendPayloadRecord &payload,
+                       const KernelArtifactDescriptor &descriptor) const override {
+    if (!m_cache_payload_decoder) {
+      return {};
+    }
+    return m_cache_payload_decoder(payload, descriptor);
+  }
+
   PipelineVendorAttentionArtifact materialize_vendor_attention_artifact(
       uint64_t stage_record_key,
       const PipelineVendorAttentionPlan &plan) const override {
@@ -94,6 +114,8 @@ private:
   transforms::PipelineOptions m_pipeline_options;
   KernelArtifactDescriptorResolver m_artifact_descriptor_resolver;
   KernelArtifactPayloadResolver m_artifact_payload_resolver;
+  CacheBackendPayloadEncoder m_cache_payload_encoder;
+  CacheBackendPayloadDecoder m_cache_payload_decoder;
   PipelineVendorAttentionArtifactResolver m_vendor_attention_artifact_resolver;
 };
 

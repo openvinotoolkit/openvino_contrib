@@ -12,9 +12,11 @@
 
 #include "common/gpu_backend.hpp"
 #include "compiler/backend_target.hpp"
+#include "compiler/cache_envelope.hpp"
+#include "openvino/core/except.hpp"
 #include "openvino/gfx_plugin/profiling.hpp"
 #include "runtime/gfx_precision.hpp"
-#include "runtime/pipeline_stage_desc.hpp"
+#include "runtime/runtime_execution_plan.hpp"
 
 #include "openvino/gfx_plugin/properties.hpp"
 
@@ -39,6 +41,7 @@ public:
       const compiler::ExecutableBundle &executable,
       std::shared_ptr<const RuntimeExecutableDescriptor> runtime_descriptor,
       const compiler::BackendTarget &target,
+      const compiler::CacheEnvelope &cache_envelope,
       const std::shared_ptr<const ov::Model> &original_model = nullptr,
       const ov::AnyMap &properties = {},
       const ov::SoPtr<ov::IRemoteContext> &context = {});
@@ -62,10 +65,22 @@ public:
   const BackendState *backend_state() const { return m_backend_state.get(); }
   bool enable_profiling() const { return m_enable_profiling; }
   ProfilingLevel profiling_level() const;
-  size_t op_pipeline_size() const { return m_pipeline.size(); }
-  bool op_pipeline_built() const { return m_pipeline_built; }
+  size_t op_pipeline_size() const {
+    return m_execution_plan ? m_execution_plan->stage_count() : 0;
+  }
+  bool op_pipeline_built() const { return m_execution_plan != nullptr; }
+  const RuntimeExecutionPlan &runtime_execution_plan() const {
+    OPENVINO_ASSERT(m_execution_plan,
+                    "GFX: runtime execution plan is not built");
+    return *m_execution_plan;
+  }
+  std::shared_ptr<const RuntimeExecutionPlan> runtime_execution_plan_ptr() const {
+    OPENVINO_ASSERT(m_execution_plan,
+                    "GFX: runtime execution plan is not built");
+    return m_execution_plan;
+  }
   const std::vector<PipelineStageDesc> &pipeline_desc() const {
-    return m_pipeline;
+    return runtime_execution_plan().stages();
   }
   std::shared_ptr<const RuntimeExecutableDescriptor> runtime_descriptor() const {
     return m_runtime_descriptor;
@@ -80,13 +95,14 @@ protected:
   create_sync_infer_request() const override;
 
 private:
-  void build_op_pipeline(GfxProfilingTrace *compile_trace = nullptr);
+  void build_runtime_execution_plan(GfxProfilingTrace *compile_trace = nullptr);
 
   std::unique_ptr<BackendState> m_backend_state;
   std::shared_ptr<const ov::Model> m_runtime_model;
   std::shared_ptr<const ov::Model> m_original_model;
   ov::AnyMap m_config;
   compiler::BackendTarget m_target;
+  compiler::CacheEnvelope m_cache_envelope;
   GpuBackend m_backend = GpuBackend::Unknown;
   std::string m_backend_name;
   ov::element::Type m_inference_precision{gfx_default_inference_precision()};
@@ -95,10 +111,9 @@ private:
   bool m_profiling_level_set = false;
   bool m_enable_fusion = true;
   bool m_diagnostic_f32_vendor_image = false;
-  bool m_pipeline_built = false;
   bool m_loaded_from_cache = false;
   std::shared_ptr<const RuntimeExecutableDescriptor> m_runtime_descriptor;
-  mutable std::vector<PipelineStageDesc> m_pipeline;
+  std::shared_ptr<const RuntimeExecutionPlan> m_execution_plan;
   mutable std::mutex m_report_mutex;
   mutable std::string m_last_report_json;
   mutable std::string m_compile_report_json;

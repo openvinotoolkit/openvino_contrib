@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "kernel_ir/opencl_kernels/softmax_kernel.hpp"
+#include "backends/opencl/compiler/opencl_softmax_kernel_unit.hpp"
 
 #include <cstdint>
 #include <limits>
@@ -13,12 +13,14 @@
 #include <vector>
 
 #include "kernel_ir/gfx_custom_kernel_families.hpp"
+#include "kernel_ir/opencl_kernels/softmax_kernel.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/core/type/element_type.hpp"
 #include "openvino/op/softmax.hpp"
 
 namespace ov {
 namespace gfx_plugin {
+namespace compiler {
 namespace {
 
 bool is_f16_softmax_type(const ov::element::Type &type) {
@@ -44,8 +46,7 @@ bool checked_u32(uint64_t value, uint32_t &out) {
   return true;
 }
 
-uint64_t shape_product_range(const ov::Shape &shape, size_t begin,
-                             size_t end) {
+uint64_t shape_product_range(const ov::Shape &shape, size_t begin, size_t end) {
   uint64_t product = 1;
   for (size_t i = begin; i < end; ++i) {
     product *= shape[i];
@@ -150,10 +151,8 @@ std::optional<std::vector<uint32_t>> softmax_dynamic_static_rank_scalars(
     return std::nullopt;
   }
 
-  return std::vector<uint32_t>{
-      static_cast<uint32_t>(rank),
-      static_cast<uint32_t>(*axis),
-  };
+  return std::vector<uint32_t>{static_cast<uint32_t>(rank),
+                               static_cast<uint32_t>(*axis)};
 }
 
 std::vector<GfxOpenClSourceScalarArg> softmax_dynamic_shape_scalar_args() {
@@ -168,8 +167,8 @@ std::vector<GfxOpenClSourceScalarArg> softmax_dynamic_shape_scalar_args() {
   return scalar_args;
 }
 
-const GfxKernelSource *
-softmax_kernel_source(const ov::element::Type &type, bool dynamic_shape) {
+const GfxKernelSource *softmax_kernel_source(const ov::element::Type &type,
+                                             bool dynamic_shape) {
   if (is_f32_softmax_type(type)) {
     return dynamic_shape ? &opencl_generated_softmax_f32_dynamic_kernel_source()
                          : &opencl_generated_softmax_f32_kernel_source();
@@ -181,9 +180,10 @@ softmax_kernel_source(const ov::element::Type &type, bool dynamic_shape) {
   return nullptr;
 }
 
-GfxKernelStageManifest make_opencl_softmax_manifest(
-    std::string specialization_key, std::string entry_point,
-    uint32_t scalar_arg_count) {
+GfxKernelStageManifest
+make_opencl_softmax_manifest(std::string specialization_key,
+                             std::string entry_point,
+                             uint32_t scalar_arg_count) {
   GfxKernelExternalBufferAbiSpec abi{};
   abi.valid = true;
   abi.roles.push_back(GfxKernelBufferRole::TensorInput);
@@ -204,10 +204,11 @@ GfxKernelStageManifest make_opencl_softmax_manifest(
       std::move(custom));
 }
 
-GfxOpenClSourceArtifact make_softmax_artifact(
-    const GfxKernelSource &source, std::string specialization_key,
-    std::vector<GfxOpenClSourceScalarArg> scalar_args,
-    std::vector<uint32_t> static_u32_scalars) {
+GfxOpenClSourceArtifact
+make_softmax_artifact(const GfxKernelSource &source,
+                      std::string specialization_key,
+                      std::vector<GfxOpenClSourceScalarArg> scalar_args,
+                      std::vector<uint32_t> static_u32_scalars) {
   GfxOpenClSourceArtifact artifact{};
   artifact.stage_manifest = make_opencl_softmax_manifest(
       std::move(specialization_key), source.entry_point,
@@ -243,9 +244,9 @@ bool requested_unit_matches(std::string_view requested,
 
 } // namespace
 
-std::optional<GfxOpenClSourceArtifact> make_opencl_softmax_source_artifact(
-    const std::shared_ptr<const ov::Node> &node,
-    std::string_view requested_kernel_unit_id) {
+std::optional<GfxOpenClSourceArtifact>
+make_opencl_softmax_source_artifact(const std::shared_ptr<const ov::Node> &node,
+                                    std::string_view requested_kernel_unit_id) {
   if (!softmax_axis(node)) {
     return std::nullopt;
   }
@@ -262,8 +263,8 @@ std::optional<GfxOpenClSourceArtifact> make_opencl_softmax_source_artifact(
   if (auto static_u32_scalars = softmax_static_u32_scalars(node)) {
     const auto *source =
         softmax_kernel_source(element_type, /*dynamic_shape=*/false);
-    if (!source || !requested_unit_matches(requested_kernel_unit_id,
-                                           source->kernel_id)) {
+    if (!source ||
+        !requested_unit_matches(requested_kernel_unit_id, source->kernel_id)) {
       return std::nullopt;
     }
     std::vector<GfxOpenClSourceScalarArg> scalar_args = {
@@ -278,8 +279,8 @@ std::optional<GfxOpenClSourceArtifact> make_opencl_softmax_source_artifact(
   if (auto dynamic_static_rank = softmax_dynamic_static_rank_scalars(node)) {
     const auto *source =
         softmax_kernel_source(element_type, /*dynamic_shape=*/true);
-    if (!source || !requested_unit_matches(requested_kernel_unit_id,
-                                           source->kernel_id)) {
+    if (!source ||
+        !requested_unit_matches(requested_kernel_unit_id, source->kernel_id)) {
       return std::nullopt;
     }
     return make_softmax_artifact(
@@ -291,5 +292,6 @@ std::optional<GfxOpenClSourceArtifact> make_opencl_softmax_source_artifact(
   return std::nullopt;
 }
 
+} // namespace compiler
 } // namespace gfx_plugin
 } // namespace ov

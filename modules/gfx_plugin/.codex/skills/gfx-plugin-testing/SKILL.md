@@ -14,11 +14,12 @@ validation in `modules/gfx_plugin/`.
 - The task changes MLIR lowering, backend routes, properties, scheduling,
   caches, infer submission, output planning, or profiling.
 - The task changes compiler-owned tensor-layout classification.
-- The task changes compiler-owned memory plans, cache envelopes, runtime
-  executable descriptors, or runtime-session binding behavior.
+- The task changes compiler-owned memory plans, cache envelopes, cache
+  import/repository behavior, runtime executable descriptors, runtime execution
+  plans, or runtime-session binding behavior.
 - The task changes pipeline-stage descriptor construction, fusion selection,
-  `BackendStageFactory`, `PipelineStageMaterializer`, or `PipelineStageDesc`
-  ownership.
+  `BackendStageFactory`, `RuntimeExecutionPlan`, `PipelineStageMaterializer`,
+  or `PipelineStageDesc` ownership.
 - The task changes backend stage-placement policy.
 - The task changes Metal placement, MPSRT metadata, MSL kernel-family routing,
   MPS/MPSGraph vendor descriptors, shared MPSRT vendor contracts, resource
@@ -28,7 +29,8 @@ validation in `modules/gfx_plugin/`.
   activation/elementwise/MatMul units, generated Range/ShapeOf/Tile/Transpose,
   generated compare/select or logical-bool elementwise units, family-specific
   OpenCL kernel-unit adapters, runtime-shape allocation, chunked Concat/Split,
-  boolean-buffer behavior, constant materialization, or OpenCL op coverage.
+  boolean-buffer behavior, constant materialization, OpenCL remote
+  context/tensor behavior, or OpenCL op coverage.
 - The user wants compare-runner, microbench, profiling-runbook, Android, Linux,
   or Raspberry Pi validation guidance.
 
@@ -48,8 +50,11 @@ validation in `modules/gfx_plugin/`.
 - `ov_gfx_runtime_micro_tests`: smaller runtime-subgraph checks
 - `tests/unit/gfx_backend_architecture_contract_test.cpp`: backend-target,
   kernel-registry, stage-placement, tensor-layout, memory-plan,
-  cache-envelope, pipeline-stage builder/materializer,
+  cache-envelope/import/repository, pipeline-stage builder/materializer,
   payload-materialization, runtime-session, and manifest-routing contracts
+- `tests/unit/gfx_runtime_execution_plan_contract_test.cpp`: descriptor-owned
+  materialized-stage ownership between compiled model, runtime descriptor, and
+  infer execution
 - `ov_gfx_compare_runner`: accuracy-only diff tool
 - `ov_gfx_microbench`: MB0-MB3 microbench and calibration workflow
 - `ov_gfx_conv_shape_bench`: representative Conv2D compile-plus-infer probe
@@ -91,8 +96,8 @@ Prefer:
 - `tests/unit/plugin_tests.cpp` when `query_model()` or compile behavior moved
 - `tests/unit/gfx_backend_architecture_contract_test.cpp` when
   `PipelineStageBuildRequest`, `PipelineStageMaterializer`,
-  `BackendStageFactory`, vendor attention artifact ownership, or
-  `PipelineStageDesc` location changes
+  `RuntimeExecutionPlan`, `BackendStageFactory`, vendor attention artifact
+  ownership, or `PipelineStageDesc` location changes
 - `tests/unit/infer_pipeline_reuse_test.cpp` when runtime-session, prepared
   executable binding, descriptor-owned view/alias classification,
   fused-output-lifetime planning, runtime-shape argument policy,
@@ -116,6 +121,7 @@ Inspect and extend:
 - `tests/unit/infer_pipeline_reuse_test.cpp`
 - `tests/unit/gpu_const_cache_test.cpp`
 - `tests/unit/gfx_cache_public_contract_test.cpp`
+- `tests/unit/gfx_runtime_execution_plan_contract_test.cpp`
 - `tests/unit/kernel_arg_reuse_test.cpp`
 - `tests/unit/gpu_backend_base_test.cpp`
 - focused runtime micro tests such as `tests/unit/gfx_add_runtime_test.cpp`,
@@ -198,6 +204,10 @@ For OpenCL source-artifact changes:
 - include `tests/unit/gfx_opencl_runtime_bundle_contract_test.cpp` or the
   matching unavailable adapter when runtime library candidate ordering or
   bundled CLVK tool-path setup changes
+- include `tests/unit/gfx_opencl_remote_tensor_contract_test.cpp` or
+  `tests/unit/gfx_opencl_remote_tensor_contract_unavailable_test.cpp` when
+  OpenCL remote context/tensor allocation, external `cl_mem` wrapping, context
+  validation, or byte-size handling changes
 - validate with an OpenCL-capable target when the change depends on the real
   runtime rather than manifest-only logic
 

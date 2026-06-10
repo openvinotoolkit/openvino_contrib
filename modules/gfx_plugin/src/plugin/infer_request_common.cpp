@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "openvino/gfx_plugin/infer_request.hpp"
+#include "plugin/infer_request.hpp"
 
 #include <chrono>
 
-#include "openvino/gfx_plugin/compiled_model.hpp"
+#include "plugin/compiled_model.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/runtime/iremote_tensor.hpp"
 #include "openvino/runtime/make_tensor.hpp"

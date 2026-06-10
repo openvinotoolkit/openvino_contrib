@@ -133,11 +133,18 @@ std::vector<InferStage>& prepare_reusable_pipeline_for_runtime(
     OPENVINO_ASSERT(config.runtime_descriptor,
                     config.error_prefix,
                     ": runtime executable descriptor is null");
+    OPENVINO_ASSERT(config.execution_plan,
+                    config.error_prefix,
+                    ": runtime execution plan is null");
+    OPENVINO_ASSERT(config.runtime_descriptor.get() ==
+                        config.execution_plan->descriptor_ptr().get(),
+                    config.error_prefix,
+                    ": runtime descriptor does not match execution plan");
     OPENVINO_ASSERT(!config.runtime_descriptor->public_outputs.empty(),
                     config.error_prefix,
                     ": runtime executable descriptor has no public output descriptors");
     if (reusable_pipeline.empty()) {
-        reusable_pipeline = build_bound_pipeline(*config.descs,
+        reusable_pipeline = build_bound_pipeline(config.execution_plan->stages(),
                                                  config.buffer_manager,
                                                  config.stage_profiler,
                                                  config.profiling_enabled,
@@ -192,7 +199,7 @@ std::vector<InferStage>& prepare_reusable_pipeline_for_runtime(
 std::vector<InferStage>& prepare_reusable_infer_runtime_pipeline(
     const InferRuntimeExecutionConfig& config) {
     OPENVINO_ASSERT(config.state, config.error_prefix, ": infer runtime state is null");
-    OPENVINO_ASSERT(config.descs, config.error_prefix, ": pipeline descriptors are null");
+    OPENVINO_ASSERT(config.execution_plan, config.error_prefix, ": runtime execution plan is null");
     OPENVINO_ASSERT(config.remote_outputs, config.error_prefix, ": remote outputs are null");
     OPENVINO_ASSERT(config.remote_inputs, config.error_prefix, ": remote inputs are null");
     OPENVINO_ASSERT(config.pool, config.error_prefix, ": GPU buffer pool is null");
@@ -204,7 +211,7 @@ std::vector<InferStage>& prepare_reusable_infer_runtime_pipeline(
 InferRuntimeExecutionResult prepare_and_execute_infer_runtime(
     InferRuntimeExecutionConfig config) {
     OPENVINO_ASSERT(config.state, config.error_prefix, ": infer runtime state is null");
-    OPENVINO_ASSERT(config.descs, config.error_prefix, ": pipeline descriptors are null");
+    OPENVINO_ASSERT(config.execution_plan, config.error_prefix, ": runtime execution plan is null");
     OPENVINO_ASSERT(config.remote_outputs, config.error_prefix, ": remote outputs are null");
     OPENVINO_ASSERT(config.remote_inputs, config.error_prefix, ": remote inputs are null");
     OPENVINO_ASSERT(config.pool, config.error_prefix, ": GPU buffer pool is null");

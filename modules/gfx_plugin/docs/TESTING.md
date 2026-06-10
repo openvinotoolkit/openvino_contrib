@@ -95,12 +95,13 @@ Add or update tests when changing:
 - compiler backend registry, operation policies, lowering plans, manifests,
   executable bundles, runtime executable descriptors, or artifact payloads
 - compiler pipeline-stage builder/fusion plans, pipeline-stage I/O plans,
-  memory plans, cache envelopes, runtime-stage materialization,
-  runtime-session binding tables, fused-output lifetime plans, or prepared
-  executable binding behavior
-- compiled-model cache public-property boundaries, `export_model()` /
-  `import_model()` failure behavior, cache-envelope wire round-trips, or
-  stable-key store/load behavior
+  memory plans, cache envelopes, cache import/repository behavior, runtime
+  execution plans, runtime-stage materialization, runtime-session binding
+  tables, fused-output lifetime plans, or prepared executable binding behavior
+- compiled-model cache public-property boundaries, `ov::cache_dir`,
+  `export_model()` / `import_model()` round-trips, cache-envelope wire
+  round-trips, cache import contracts, backend payload codecs, or stable-key
+  repository store/load behavior
 - compiler-owned tensor-layout classification
 - MLIR builders, passes, source plans, or runtime-value planning
 - backend stage-placement policy, stage fusion, precision, or submit policy
@@ -108,6 +109,8 @@ Add or update tests when changing:
   materialization, boolean buffer handling, or dynamic shape scalars
 - backend-owned OpenCL source payload materialization in
   `src/backends/opencl/compiler/opencl_kernel_artifacts.*`
+- OpenCL remote context/tensor allocation, external `cl_mem` wrapping, context
+  validation, byte-size validation, or backend-unavailable adapters
 - Metal MPS/MPSGraph placement, MPSRT records, storage bridges, MSL binding
   plans, or request-time resource binding
 - stateful `ReadValue` / `Assign`
@@ -138,8 +141,9 @@ For compiler-service, manifest, or executable-descriptor changes:
 - `tests/unit/gpu_backend_base_test.cpp`
 - `tests/unit/gfx_backend_architecture_contract_test.cpp` when backend target
   identity, kernel-unit registration, manifest contracts, memory plans, cache
-  envelopes, pipeline-stage builder/fusion ownership, runtime-stage
-  materializer ownership, or runtime-session descriptor contracts move
+  envelopes, cache import/repository contracts, pipeline-stage builder/fusion
+  ownership, runtime execution-plan ownership, runtime-stage materializer
+  ownership, or runtime-session descriptor contracts move
 - `tests/unit/plugin_tests.cpp` when `query_model()` or compile behavior moves
 - backend artifact tests when payload materialization reaches Metal or OpenCL
   runtime loaders
@@ -155,6 +159,9 @@ For compiler-service, manifest, or executable-descriptor changes:
   runtime-shape argument policy, descriptor memory-region use, descriptor-owned
   `RuntimeParams` payload materialization, descriptor-owned `ConstTensor`
   materialization, or fail-closed runtime descriptor verification changes
+- `tests/unit/gfx_runtime_execution_plan_contract_test.cpp` when materialized
+  stage ownership moves between `CompiledModel`, `RuntimeExecutableDescriptor`,
+  `RuntimeExecutionPlan`, and the infer executor
 - OpenCL runtime-bundle contract tests when dynamic loader candidate ordering
   or CLVK tool-path setup changes
 
@@ -165,6 +172,7 @@ For scheduling, cache, or infer-path changes:
 - `tests/unit/infer_submission_test.cpp`
 - `tests/unit/infer_pipeline_reuse_test.cpp`
 - `tests/unit/gpu_const_cache_test.cpp`
+- `tests/unit/gfx_runtime_execution_plan_contract_test.cpp`
 - `tests/unit/kernel_arg_reuse_test.cpp`
 - `tests/unit/gpu_backend_base_test.cpp`
 - `ov_gfx_runtime_micro_tests` focused files such as
@@ -228,6 +236,10 @@ For OpenCL source-artifact changes:
 - include `tests/unit/gfx_opencl_runtime_bundle_contract_test.cpp` or the
   unavailable adapter when runtime library candidate ordering or bundled CLVK
   tool-path setup changes
+- include `tests/unit/gfx_opencl_remote_tensor_contract_test.cpp` or
+  `tests/unit/gfx_opencl_remote_tensor_contract_unavailable_test.cpp` when
+  OpenCL remote context/tensor creation, external `cl_mem` validation,
+  byte-size handling, or OpenCL backend availability wiring changes
 - use `tests/tools/ov_gfx_opencl_conv_microbench.py` and
   `tests/tools/ov_gfx_opencl_conv_microbench_android.cpp` only as kernel-family
   experiments before promotion into the plugin contract

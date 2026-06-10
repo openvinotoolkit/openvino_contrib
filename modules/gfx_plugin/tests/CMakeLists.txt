@@ -21,6 +21,10 @@ set(GFX_OPENCL_RUNTIME_BUNDLE_CONTRACT_NATIVE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_runtime_bundle_contract_test.cpp)
 set(GFX_OPENCL_RUNTIME_BUNDLE_CONTRACT_UNAVAILABLE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_runtime_bundle_contract_unavailable_test.cpp)
+set(GFX_OPENCL_REMOTE_TENSOR_CONTRACT_NATIVE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_remote_tensor_contract_test.cpp)
+set(GFX_OPENCL_REMOTE_TENSOR_CONTRACT_UNAVAILABLE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_remote_tensor_contract_unavailable_test.cpp)
 set(GFX_METAL_NATIVE_CONTRACT_NATIVE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/memory_test.mm
     ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_memory_copy_test.mm
@@ -109,7 +113,7 @@ set(GFX_UNIT_TEST_LINK_LIBS
     MLIRDialectUtils)
 
 if(GFX_BACKEND_OPENCL_AVAILABLE)
-    list(APPEND GFX_UNIT_TEST_LINK_LIBS gfx_runtime_opencl)
+    list(APPEND GFX_UNIT_TEST_LINK_LIBS gfx_plugin_opencl gfx_runtime_opencl)
 endif()
 
 # Align with CPU functional tests: single target built via ov_add_test_target,
@@ -194,6 +198,7 @@ target_sources(${UNIT_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_cache_public_contract_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_runtime_model_runner.cpp
     ${GFX_UNIT_RUNTIME_EXECUTION_POLICY_SOURCE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_runtime_execution_plan_contract_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_activation_kernel_contract_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_activation_msl_contract_cases.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_activation_opencl_contract_cases.cpp
@@ -229,11 +234,13 @@ target_sources(${UNIT_TARGET_NAME} PRIVATE
 if(GFX_BACKEND_OPENCL_AVAILABLE)
     target_sources(${UNIT_TARGET_NAME} PRIVATE
         ${GFX_OPENCL_DEVICE_PROFILE_CONTRACT_NATIVE_SOURCES}
-        ${GFX_OPENCL_RUNTIME_BUNDLE_CONTRACT_NATIVE_SOURCES})
+        ${GFX_OPENCL_RUNTIME_BUNDLE_CONTRACT_NATIVE_SOURCES}
+        ${GFX_OPENCL_REMOTE_TENSOR_CONTRACT_NATIVE_SOURCES})
 else()
     target_sources(${UNIT_TARGET_NAME} PRIVATE
         ${GFX_OPENCL_DEVICE_PROFILE_CONTRACT_UNAVAILABLE_SOURCES}
-        ${GFX_OPENCL_RUNTIME_BUNDLE_CONTRACT_UNAVAILABLE_SOURCES})
+        ${GFX_OPENCL_RUNTIME_BUNDLE_CONTRACT_UNAVAILABLE_SOURCES}
+        ${GFX_OPENCL_REMOTE_TENSOR_CONTRACT_UNAVAILABLE_SOURCES})
 endif()
 if(APPLE)
     target_sources(${UNIT_TARGET_NAME} PRIVATE

@@ -4,6 +4,8 @@
 
 #include "unit/gfx_opencl_source_artifacts_contract.hpp"
 
+#include "backends/opencl/compiler/opencl_range_kernel_unit.hpp"
+
 TEST(GfxOpenClRangeTileSourceArtifactsTest,
      RangeF32ArtifactsUseDirectScalarInputsAndElementCountOnly) {
   const auto range = std::make_shared<ov::op::v4::Range>(
@@ -21,9 +23,9 @@ TEST(GfxOpenClRangeTileSourceArtifactsTest,
   expect_opencl_range_compiler_contract(range, "opencl/generated/range_f32",
                                         "gfx_opencl_generated_range_f32",
                                         /*expected_abi_arg_count=*/5);
-  EXPECT_FALSE(
-      make_opencl_range_source_artifact(range, "opencl/generated/range_i64")
-          .has_value());
+  EXPECT_FALSE(compiler::make_opencl_range_source_artifact(
+                   range, "opencl/generated/range_i64")
+                   .has_value());
   expect_opencl_compiler_support_matches_kernel_registry(range);
 }
 
@@ -70,7 +72,6 @@ TEST(GfxOpenClRangeTileSourceArtifactsTest,
   EXPECT_FALSE(static_cast<bool>(resolver(descriptor, planned_matmul)));
   EXPECT_TRUE(descriptor.entry_point.empty());
 }
-
 
 TEST(GfxOpenClRangeTileSourceArtifactsTest,
      RangeF16ArtifactsUsePackedF16KernelWithDirectScalarInputs) {
@@ -251,7 +252,6 @@ TEST(GfxOpenClRangeTileSourceArtifactsTest,
       tile, {"long", "__global long*", "gfx_opencl_generated_range_i64"});
   expect_opencl_compiler_support_matches_kernel_registry(tile);
 }
-
 
 TEST(GfxOpenClRangeTileSourceArtifactsTest,
      DynamicF16SliceHasNoOpenClSourceArtifactWithoutKernelUnit) {

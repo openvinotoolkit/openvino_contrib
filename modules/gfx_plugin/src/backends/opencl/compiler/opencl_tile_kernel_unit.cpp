@@ -7,7 +7,6 @@
 #include "backends/opencl/compiler/opencl_kernel_artifacts.hpp"
 #include "compiler/executable_bundle.hpp"
 #include "compiler/lowering_planner.hpp"
-#include "kernel_ir/opencl_kernels/tile_kernel.hpp"
 #include "openvino/op/tile.hpp"
 
 #include <utility>
@@ -75,8 +74,8 @@ build_opencl_tile_kernel_artifact_payload(
     return {};
   }
 
-  auto artifact = make_opencl_tile_source_artifact(
-      op.source_node, descriptor.kernel.kernel_id);
+  auto artifact = make_opencl_tile_source_artifact(op.source_node,
+                                                   descriptor.kernel.kernel_id);
   if (!artifact || !artifact->valid) {
     return {};
   }

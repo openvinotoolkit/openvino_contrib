@@ -57,7 +57,9 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
      descriptor behavior
    - public compiled-model cache boundaries, including `ov::cache_dir`,
      `export_model()`, `import_model()`, cache-envelope wire/store/load
-     contracts, and whether the envelope is public or internal-only
+     contracts, cache import/repository behavior, backend payload codecs, and
+     whether the envelope is a plugin-owned public runtime contract or
+     internal-only
    - descriptor-owned tensor binding contracts, generated source
      `RuntimeParams` ownership, descriptor-owned `ConstTensor`
      materialization, or fail-closed source-node boundary policy
@@ -80,6 +82,8 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
      kernel-unit adapters, `Swish` default/static/runtime beta artifacts,
      missing-route behavior for MatMul/Interpolate/Reduction/Transpose/
      Concat/Split, chunking, or boolean-buffer behavior
+   - OpenCL remote context/tensor behavior, external `cl_mem` validation, and
+     backend-unavailable adapters
    - CLVK/CLSPV Raspberry OpenCL bundle wiring, OpenCL dynamic-loader search
      order, or third-party submodule publication
    - OpenCL runtime-bundle candidate ordering or bundled tool-path setup

@@ -72,6 +72,8 @@ make_opencl_backend_module(BackendTarget target) {
       make_opencl_kernel_artifact_descriptor_resolver();
   config.artifact_payload_resolver =
       make_opencl_kernel_artifact_payload_resolver();
+  config.cache_payload_encoder = make_opencl_cache_payload_encoder();
+  config.cache_payload_decoder = make_opencl_cache_payload_decoder();
   return make_static_backend_module(std::move(config));
 }
 

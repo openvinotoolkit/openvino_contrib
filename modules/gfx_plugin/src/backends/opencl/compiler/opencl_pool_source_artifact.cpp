@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "kernel_ir/opencl_kernels/pool2d_kernel.hpp"
+#include "backends/opencl/compiler/opencl_pool_kernel_unit.hpp"
 
 #include <cstdint>
 #include <limits>
@@ -13,8 +13,7 @@
 #include <vector>
 
 #include "kernel_ir/gfx_custom_kernel_families.hpp"
-#include "kernel_ir/opencl_kernels/pool2d_f16_kernel.hpp"
-#include "kernel_ir/opencl_kernels/pool2d_f32_kernel.hpp"
+#include "kernel_ir/opencl_kernels/pool2d_kernel.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/core/type/element_type.hpp"
 #include "openvino/op/avg_pool.hpp"
@@ -22,6 +21,7 @@
 
 namespace ov {
 namespace gfx_plugin {
+namespace compiler {
 namespace {
 
 bool is_f32_pool_type(const ov::element::Type &type) {
@@ -236,5 +236,6 @@ make_opencl_pool2d_source_artifact(const std::shared_ptr<const ov::Node> &node,
       op, std::move(*static_u32_scalars));
 }
 
+} // namespace compiler
 } // namespace gfx_plugin
 } // namespace ov

@@ -18,8 +18,8 @@ notes or deleted backend code as current behavior.
 
 - `src/plugin/`: OpenVINO runtime integration, properties, backend resolution,
   compiled-model state, infer-request OpenVINO API glue, output resolution,
-  disabled compiled-model cache/import/export entry points, backend-access
-  helpers, and variable-state API objects
+  compiled-model cache/import/export entry points, backend-access helpers, and
+  variable-state API objects
 - `src/common/`: backend ids, configured-backend availability values,
   artifact-payload interfaces, activation/bias metadata, dispatch and
   parallelism value types, submit-policy records, constant-evaluation helpers,
@@ -44,15 +44,16 @@ notes or deleted backend code as current behavior.
   materialization, runtime-value and kernel-launch planning, and reusable caches
 - `src/kernel_ir/`: kernel manifests, custom-kernel family registry, dispatch
   metadata, argument helpers, cache keys, embedded helper kernel sources, and
-  OpenCL source artifacts
+  shared OpenCL source-artifact data structures/helpers
 - `src/mlir/`: support probing, MLIR builders, pass helpers, backend hooks,
   MPSRT dialect/metadata helpers, and generic MLIR kernel construction
 - `src/backends/metal/`: Metal plugin glue, backend compiler module, Apple
   MSL/MPS/MPSRT source planning, shared MPSRT ABI records and vendor primitive
   contracts, Objective-C++ runtime, MSL compiler, memory allocator, MPSRT
   request encoding, MPS/MPSGraph vendor primitive execution, and profiling
-- `src/backends/opencl/`: OpenCL plugin glue, dynamic API loader, buffer manager,
-  program cache, memory ops, and generic source-stage executor
+- `src/backends/opencl/`: OpenCL plugin glue, remote context/tensor support,
+  dynamic API loader, buffer manager, program cache, memory ops, backend-owned
+  source-artifact construction/payload codecs, and generic source-stage executor
 - `src/transforms/`: graph rewrites, fusions, and layout cleanup
 - `tests/`: unit, functional, integration, backend, compare, and microbench
   coverage
@@ -68,7 +69,8 @@ notes or deleted backend code as current behavior.
 - backend-aware transform pipeline selection
 - `query_model()`
 - `compile_model()`
-- import/export API entry points that currently reject round-trip cache use
+- import/export API entry points for the plugin-owned compiled `CacheEnvelope`
+  format
 - remote-context creation
 
 The backend parser accepts only `metal` and `opencl`. `auto` is resolved at
@@ -90,7 +92,8 @@ parallel support tables.
   `src/compiler/runtime_executable_descriptor_builder.*` from the compiler
   executable bundle
 - runtime descriptor ownership exposed to infer-request construction
-- `build_op_pipeline()` delegation to the compiler stage builder
+- `build_runtime_execution_plan()` delegation to runtime execution-plan
+  materialization
 - compiled-model properties
 - profiling configuration and report ownership
 
@@ -99,17 +102,23 @@ backend-specific `GpuStage` instances. One stage may represent one OpenVINO node
 a fused sequence, a stateful helper, a view-style alias, or a materialized
 constant output.
 
-`build_op_pipeline()` consumes the compiler-owned `PipelineStageRuntimePlan`
-alongside the runtime executable descriptor and delegates concrete stage
-materialization to `src/runtime/pipeline_stage_materializer.*`. The runtime
-plan is emitted by `src/compiler/pipeline_stage_builder.*` as a separate
-compiler output, not as part of the cacheable runtime executable descriptor.
-The builder owns stage ordering, node-to-stage mapping, parameter index map,
-absorbed input transforms, model-output alias handling, and the handoff from
-compiler-owned planning contracts in
+`build_runtime_execution_plan()` consumes the compiler-owned materialization
+plan inside the runtime executable descriptor and delegates concrete stage
+materialization to `src/runtime/runtime_execution_plan.*` and
+`src/runtime/pipeline_stage_materializer.*`. The runtime materialization plan is
+emitted by `src/compiler/pipeline_stage_builder.*` and is reconstructed by
+`src/compiler/cache_import.*` during cache import. The builder owns stage
+ordering, node-to-stage mapping, parameter index map, absorbed input
+transforms, model-output alias handling, and the handoff from compiler-owned
+planning contracts in
 `src/compiler/pipeline_stage_plan.*` and
 `src/compiler/pipeline_stage_fusion.*`. `CompiledModel` should not accumulate
 backend-specific stage construction logic.
+
+`RuntimeExecutionPlan` owns the materialized `PipelineStageDesc` vector and the
+`RuntimeExecutableDescriptor` used to build it. Infer execution receives that
+plan instead of an independent descriptor vector so the reusable infer pipeline
+cannot drift from the descriptor imported or compiled by the compiler service.
 
 `src/runtime/pipeline_stage_materializer.*` passes the matching
 `RuntimeStageExecutableDescriptor` to backend stage creation through
@@ -302,9 +311,17 @@ runtime execution. The main objects are:
   executable stage records, artifact descriptors, ABI fingerprints, and optional
   artifact payloads.
 - `CacheEnvelopeBuilder`: builds a cache envelope with model, manifest,
-  backend-capability, compile-option, kernel-unit, artifact-descriptor, and
-  backend-payload identity fingerprints. The envelope has a deterministic
-  wire/store/load contract used for validation, not for public model import.
+  backend-capability, compile-option, kernel-unit, artifact-descriptor,
+  backend-payload identity fingerprints, and optional source/vendor payload
+  records. The envelope has a deterministic wire/store/load contract used by
+  plugin-owned compiled-model cache import/export.
+- `CacheImportContract`: rebuilds a runtime model contract, executable bundle,
+  runtime executable descriptor, and descriptor-owned materialization plan from
+  a serialized `CacheEnvelope` when the backend target is available and
+  compatible.
+- `ArtifactCacheRepository`: maps an `ov::cache_dir` request to a stable
+  envelope key using model/backend/fusion fingerprints, then loads or stores
+  the corresponding cache envelope files.
 - `PipelineStageBuilder`: converts the transformed model plus runtime
   executable descriptor into `PipelineStageDesc` records using the selected
   backend policy, fusion planner, stage materializer, and pipeline-stage I/O
@@ -314,11 +331,12 @@ runtime execution. The main objects are:
   runtime stage type probes.
 
 The compiler service currently builds an executable description and a serialized
-cache-envelope record. It does not emit or load a native backend binary cache,
-and the serialized envelope is not a public OpenVINO cache format.
-`export_model()`, `import_model()`, and `ov::cache_dir` remain disabled through
-`src/plugin/compiled_model_cache_contract.hpp` until a complete
-executable-bundle import/export path and backend-payload materialization exist.
+cache-envelope record. It does not emit or load a native backend binary cache.
+`export_model()`, `import_model()`, and `ov::cache_dir` use the GFX
+`CacheEnvelope` contract to round-trip descriptor-owned compiled graphs and
+encoded backend payloads. Imported envelopes are rejected when the backend target
+is unavailable, the request fingerprint drifts, descriptor verification fails,
+or a backend payload decoder cannot materialize a required payload.
 
 Backend kernel registries are explicit. Generated and vendor routes must name a
 registered `KernelUnit`; generic catch-all ids are rejected by contract tests.
@@ -417,8 +435,14 @@ Kernel contracts are split across the current compiler and kernel IR layers:
 - `src/compiler/memory_plan.*`: compiler-owned memory regions, lifetimes, alias
   groups, transient arenas, and memory-plan fingerprints
 - `src/compiler/cache_envelope.*`: cache keys, wire-format serialization,
-  store/load helpers, payload identity records, and stable-key validation;
-  currently not exposed through `export_model()` or `import_model()`
+  store/load helpers, payload identity/source records, stable-key validation,
+  and shared source-payload reconstruction
+- `src/compiler/cache_import.*`: import contract reconstruction from serialized
+  cache envelopes into runtime models, executable bundles, runtime descriptors,
+  and materialization plans
+- `src/compiler/cache_repository.*`: `ov::cache_dir` lookup/store repository
+  keyed by model, backend target, backend capabilities, compiler revision,
+  driver identity, and fusion state
 - `src/compiler/executable_bundle.*`: artifact descriptors, ABI fingerprints,
   payload kind, manifest references, memory plan, and runtime-facing stage
   records
@@ -434,6 +458,8 @@ Kernel contracts are split across the current compiler and kernel IR layers:
   interface implemented by backend state
 - `src/runtime/pipeline_stage_desc.hpp`: runtime pipeline descriptor record
   shared by compiled model, infer planning, and stateful helpers
+- `src/runtime/runtime_execution_plan.*`: owner of the materialized stage list
+  and the runtime descriptor used to create it
 - `src/runtime/pipeline_stage_materializer.*`: descriptor lookup, backend stage
   creation, vendor primitive artifact materialization, and fused sequence
   materialization
@@ -552,13 +578,19 @@ The OpenCL backend is split into:
 - runtime source loading in `src/backends/opencl/runtime/opencl_runtime_kernel_loader.*`
 - embedded OpenCL helper sources in `src/kernel_ir/opencl_kernels/`
 
-Source kernels are described by `src/kernel_ir/gfx_opencl_source_artifacts.*`.
-Payload materialization is owned by
-`src/backends/opencl/compiler/opencl_kernel_artifacts.*` and registered through
-the OpenCL backend module. The source-stage executor is intentionally generic.
-Op-specific behavior should reach it through artifact metadata, generated chunk
-artifacts, shared runtime-value planners, static u32/f32 scalar payloads,
-constant materialization, and boolean-buffer contracts.
+Source-kernel data structures and shared helpers live in
+`src/kernel_ir/gfx_opencl_source_artifacts.*`. Family-specific source-artifact
+construction is backend-owned in files such as
+`src/backends/opencl/compiler/opencl_activation_source_artifact.cpp`,
+`opencl_conv_source_artifact.cpp`, `opencl_eltwise_source_artifact.cpp`,
+`opencl_pool_source_artifact.cpp`, `opencl_range_source_artifact.cpp`,
+`opencl_softmax_source_artifact.cpp`, and `opencl_tile_source_artifact.cpp`.
+Payload materialization, cache payload encoding/decoding, and payload routing
+are owned by `src/backends/opencl/compiler/opencl_kernel_artifacts.*` and
+registered through the OpenCL backend module. The source-stage executor is
+intentionally generic. Op-specific behavior should reach it through artifact
+metadata, generated chunk artifacts, shared runtime-value planners, static
+u32/f32 scalar payloads, constant materialization, and boolean-buffer contracts.
 Backend-visible OpenCL routes are catalog-driven. `opencl_kernel_unit_catalog.*`
 owns the list of registered generated units, operation-support entries, and
 artifact families that may materialize payloads. Family-specific backend
@@ -620,6 +652,13 @@ not already provided it. The bundle staging script also copies optional TBB
 runtime library families from known runtime output directories, `TBBROOT`, or
 `TBB_DIR` when those libraries are available.
 
+OpenCL remote tensors are implemented in `src/backends/opencl/plugin/`. A remote
+context owns the selected `OpenClRuntimeContext`; remote tensors either wrap an
+external `cl_mem` from that same context or allocate a plugin-owned
+`CL_MEM_READ_WRITE` buffer. The implementation validates context ownership,
+actual `CL_MEM_SIZE`, declared byte size when provided, and allocation padding
+for boolean/f16 tensors. It does not accept foreign-context `cl_mem` handles.
+
 ## Stateful And Reusable Inference
 
 Stateful behavior is not treated as ordinary stateless data movement:
@@ -665,14 +704,18 @@ The CMake layout separates shared contracts from backend payload ownership:
 - `src/compiler/pipeline_stage_builder.*`: stage descriptor construction from
   compiler-owned stage plans
 - `src/compiler/pipeline_stage_fusion.*`: compiler-owned fusion selection
+- `src/runtime/runtime_execution_plan.*`: runtime owner for materialized stages
+  and their descriptor contract
 - `src/runtime/backend_stage_factory.hpp`,
   `src/runtime/pipeline_stage_desc.hpp`, and
   `src/runtime/pipeline_stage_materializer.*`: runtime-facing stage creation
   and materialization contracts
 - `gfx_mlir_stage_support`: MLIR lowering, pass, dialect, and backend-hook
   support
-- `gfx_opencl_kernel_artifacts`: OpenCL source artifacts and embedded OpenCL
-  helper source wrappers used by the OpenCL backend resolver
+- `gfx_opencl_kernel_artifacts`: shared OpenCL source-artifact records and
+  embedded OpenCL helper source wrappers used by the OpenCL backend resolver;
+  family artifact builders and payload codecs live under
+  `src/backends/opencl/compiler/`
 - `gfx_runtime_opencl`: OpenCL runtime loader, plugin-local runtime-bundle
   discovery, buffers, program cache, and source-stage execution
 - `gfx_metal_mpsrt_contract`: shared Metal MPSRT model/ABI contracts used by
@@ -690,10 +733,13 @@ Do not move OpenCL source payload materialization back into
 - Keep `query_model()`, compilation, runtime binding, and tests aligned.
 - Add operation support and route selection through compiler policies, not
   separate plugin-side tables.
+- Keep shared OpenCL source-artifact data types and generic helpers in
+  `gfx_opencl_source_artifacts.*`.
 - Keep OpenCL source ids, scalar ABI, constant materialization, chunk helpers,
-  and boolean padding in `gfx_opencl_source_artifacts.*`.
-- Keep OpenCL payload materialization in
-  `src/backends/opencl/compiler/opencl_kernel_artifacts.*`.
+  boolean padding rules, family-specific builders, and cache payload codecs in
+  `src/backends/opencl/compiler/`.
+- Keep OpenCL payload materialization and backend cache payload
+  encode/decode hooks in `src/backends/opencl/compiler/opencl_kernel_artifacts.*`.
 - Keep backend stage placement in `src/compiler/stage_placement.*` and
   `src/backends/*/compiler/*_stage_placement.*`; do not move backend-specific
   placement rules back into request code.
@@ -705,7 +751,8 @@ Do not move OpenCL source payload materialization back into
   `src/compiler/pipeline_stage_fusion.*`; do not rebuild this logic inside
   `CompiledModel` or backend-specific request code.
 - Keep descriptor-backed stage creation in
-  `src/runtime/pipeline_stage_materializer.*` and backend implementations of
+  `src/runtime/runtime_execution_plan.*`,
+  `src/runtime/pipeline_stage_materializer.*`, and backend implementations of
   `BackendStageFactory`.
 - Keep memory-region ids, alias groups, transient arenas, and descriptor
   verification in `src/compiler/memory_plan.*`,

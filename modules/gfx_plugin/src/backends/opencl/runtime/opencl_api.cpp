@@ -189,6 +189,7 @@ OpenClApi::OpenClApi() {
     load_required_symbol(m_library, "clReleaseCommandQueue", m_fn.clReleaseCommandQueue);
     load_required_symbol(m_library, "clFinish", m_fn.clFinish);
     load_required_symbol(m_library, "clCreateBuffer", m_fn.clCreateBuffer);
+    load_required_symbol(m_library, "clGetMemObjectInfo", m_fn.clGetMemObjectInfo);
     load_required_symbol(m_library, "clReleaseMemObject", m_fn.clReleaseMemObject);
     load_required_symbol(m_library, "clEnqueueMapBuffer", m_fn.clEnqueueMapBuffer);
     load_required_symbol(m_library, "clEnqueueUnmapMemObject", m_fn.clEnqueueUnmapMemObject);

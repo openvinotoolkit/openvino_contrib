@@ -23,7 +23,6 @@
 #include "compiler/operation_legalizer.hpp"
 #include "gfx_runtime_model_runner.hpp"
 #include "gfx_runtime_scenario.hpp"
-#include "kernel_ir/opencl_kernels/pool2d_kernel.hpp"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
@@ -169,7 +168,7 @@ public:
   void verify() const {
     const auto node = m_case.make_node();
 
-    auto artifact = make_opencl_pool2d_source_artifact(node);
+    auto artifact = compiler::make_opencl_pool2d_source_artifact(node);
     ASSERT_TRUE(artifact.has_value());
     EXPECT_TRUE(artifact->valid);
     EXPECT_EQ(artifact->stage_manifest.stage_family,
@@ -412,7 +411,7 @@ std::shared_ptr<ov::Node> indexed_maxpool_node() {
 
 TEST(PoolOpenClArtifactStandaloneTest, RejectsIndexedMaxPoolWithoutArtifact) {
   const auto node = indexed_maxpool_node();
-  EXPECT_FALSE(make_opencl_pool2d_source_artifact(node).has_value());
+  EXPECT_FALSE(compiler::make_opencl_pool2d_source_artifact(node).has_value());
 }
 
 PoolRouteCase opencl_maxpool_case() {

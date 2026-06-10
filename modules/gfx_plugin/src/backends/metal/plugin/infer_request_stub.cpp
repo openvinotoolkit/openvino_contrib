@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "openvino/gfx_plugin/infer_request.hpp"
+#include "plugin/infer_request.hpp"
 
 #include "openvino/core/except.hpp"
 #include "backends/metal/plugin/compiled_model_state.hpp"

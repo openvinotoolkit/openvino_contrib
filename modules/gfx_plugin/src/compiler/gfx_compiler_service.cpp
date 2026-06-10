@@ -148,6 +148,12 @@ GfxCompileResult GfxCompilerService::compile(const GfxCompileRequest& request) c
     cache_options.backend_compiler_revision =
         backend_module->target().compiler_id();
     cache_options.driver_identity = backend_module->target().driver_id();
+    cache_options.backend_payload_encoder =
+        [backend_module](const KernelArtifactDescriptor &descriptor,
+                         const KernelArtifactPayloadRecord &payload_record) {
+          return backend_module->encode_cache_payload(descriptor,
+                                                      payload_record);
+        };
     result.cache_envelope =
         CacheEnvelopeBuilder{}.build(result.executable, cache_options);
     result.unsupported = result.lowering_plan.unsupported;

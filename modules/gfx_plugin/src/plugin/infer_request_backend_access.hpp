@@ -3,7 +3,7 @@
 //
 #pragma once
 
-#include "openvino/gfx_plugin/infer_request.hpp"
+#include "plugin/infer_request.hpp"
 
 #include "plugin/infer_request_state.hpp"
 

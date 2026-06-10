@@ -7,7 +7,7 @@
 #include <string_view>
 #include <utility>
 
-#include "openvino/gfx_plugin/compiled_model.hpp"
+#include "plugin/compiled_model.hpp"
 #include "openvino/core/except.hpp"
 #include "plugin/gfx_profiling_utils.hpp"
 #include "plugin/infer_request_state.hpp"

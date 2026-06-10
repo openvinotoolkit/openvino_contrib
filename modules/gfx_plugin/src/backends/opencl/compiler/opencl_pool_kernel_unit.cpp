@@ -7,7 +7,6 @@
 #include "backends/opencl/compiler/opencl_kernel_artifacts.hpp"
 #include "compiler/executable_bundle.hpp"
 #include "compiler/lowering_planner.hpp"
-#include "kernel_ir/opencl_kernels/pool2d_kernel.hpp"
 #include "openvino/op/avg_pool.hpp"
 #include "openvino/op/max_pool.hpp"
 

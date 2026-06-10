@@ -11,6 +11,8 @@ set(GFX_COMPILER_COMMON_SOURCES
     ${_gfx_src_dir}/compiler/static_backend_module.cpp
     ${_gfx_src_dir}/compiler/backend_target.cpp
     ${_gfx_src_dir}/compiler/cache_envelope.cpp
+    ${_gfx_src_dir}/compiler/cache_import.cpp
+    ${_gfx_src_dir}/compiler/cache_repository.cpp
     ${_gfx_src_dir}/compiler/executable_bundle.cpp
     ${_gfx_src_dir}/compiler/gfx_compiler_service.cpp
     ${_gfx_src_dir}/compiler/kernel_registry.cpp
@@ -46,6 +48,8 @@ set(GFX_COMPILER_COMMON_HEADERS
     ${_gfx_src_dir}/compiler/backend_registry.hpp
     ${_gfx_src_dir}/compiler/backend_target.hpp
     ${_gfx_src_dir}/compiler/cache_envelope.hpp
+    ${_gfx_src_dir}/compiler/cache_import.hpp
+    ${_gfx_src_dir}/compiler/cache_repository.hpp
     ${_gfx_src_dir}/compiler/executable_bundle.hpp
     ${_gfx_src_dir}/compiler/gfx_compiler_service.hpp
     ${_gfx_src_dir}/compiler/kernel_registry.hpp
@@ -104,14 +108,14 @@ set(GFX_PLUGIN_HEADERS
     ${_gfx_src_dir}/plugin/infer_request_backend_access.hpp
     ${_gfx_src_dir}/plugin/infer_request_state.hpp
     ${_gfx_src_dir}/plugin/infer_request_variable_state.hpp
+    ${_gfx_src_dir}/plugin/compiled_model.hpp
     ${_gfx_src_dir}/plugin/compiled_model_cache_contract.hpp
+    ${_gfx_src_dir}/plugin/infer_request.hpp
     ${_gfx_src_dir}/plugin/remote_context_support.hpp
     ${_gfx_src_dir}/transforms/gfx_layout_cleanup.hpp
     ${_gfx_src_dir}/transforms/gfx_llm_ops.hpp
     ${_gfx_src_dir}/transforms/pipeline.hpp
     ${_gfx_src_dir}/../include/openvino/gfx_plugin/plugin.hpp
-    ${_gfx_src_dir}/../include/openvino/gfx_plugin/compiled_model.hpp
-    ${_gfx_src_dir}/../include/openvino/gfx_plugin/infer_request.hpp
     ${_gfx_src_dir}/../include/openvino/gfx_plugin/properties.hpp
     ${_gfx_src_dir}/../include/openvino/gfx_plugin/profiling.hpp
 )
@@ -144,6 +148,7 @@ set(GFX_METAL_BACKEND_COMPILER_SOURCES
     ${_gfx_src_dir}/backends/metal/compiler/apple_mlir_stage_hooks.cpp
     ${_gfx_src_dir}/backends/metal/compiler/apple_stage_pipeline.cpp
     ${_gfx_src_dir}/backends/metal/compiler/apple_vendor_descriptors.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/metal_cache_payload_codec.cpp
     ${_gfx_src_dir}/backends/metal/compiler/metal_kernel_artifacts.cpp
     ${_gfx_src_dir}/backends/metal/compiler/metal_kernel_registry.cpp
     ${_gfx_src_dir}/backends/metal/compiler/metal_operation_support.cpp
@@ -168,18 +173,25 @@ set(GFX_OPENCL_BACKEND_COMPILER_HEADERS
 
 set(GFX_OPENCL_BACKEND_COMPILER_SOURCES
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_activation_kernel_unit.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_activation_source_artifact.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_backend_module.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_conv_kernel_unit.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_conv_source_artifact.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_eltwise_kernel_unit.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_eltwise_source_artifact.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_artifacts.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_registry.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_unit_catalog.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_operation_support.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_pool_kernel_unit.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_pool_source_artifact.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_range_kernel_unit.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_range_source_artifact.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_shapeof_kernel_unit.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_softmax_kernel_unit.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_softmax_source_artifact.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_tile_kernel_unit.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_tile_source_artifact.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_stage_placement.cpp
 )
 
@@ -190,6 +202,7 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/backend_stage_factory.hpp
     ${_gfx_src_dir}/runtime/descriptor_const_tensor_materializer.hpp
     ${_gfx_src_dir}/runtime/executable_descriptor.hpp
+    ${_gfx_src_dir}/runtime/runtime_execution_plan.hpp
     ${_gfx_src_dir}/runtime/runtime_session.hpp
     ${_gfx_src_dir}/runtime/fused_output_lifetime_plan.hpp
     ${_gfx_src_dir}/runtime/gfx_activation.hpp
@@ -246,6 +259,7 @@ set(GFX_RUNTIME_COMMON_HEADERS
 set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/runtime/descriptor_const_tensor_materializer.cpp
     ${_gfx_src_dir}/runtime/executable_descriptor.cpp
+    ${_gfx_src_dir}/runtime/runtime_execution_plan.cpp
     ${_gfx_src_dir}/runtime/runtime_session.cpp
     ${_gfx_src_dir}/runtime/fused_output_lifetime_plan.cpp
     ${_gfx_src_dir}/runtime/fused_sequence_stage.cpp
@@ -337,10 +351,8 @@ set(GFX_OPENCL_KERNEL_ARTIFACT_SOURCES
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f32_dynamic_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_dynamic_kernel.cpp
-    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_f32_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_f16_kernel.cpp
-    ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f32_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f16_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/matmul_f32_kernel.cpp
@@ -603,17 +615,21 @@ set(GFX_PLUGIN_OPENCL_SOURCES
     ${_gfx_src_dir}/backends/opencl/plugin/infer_request.cpp
     ${_gfx_src_dir}/backends/opencl/plugin/infer_io_opencl.cpp
     ${_gfx_src_dir}/backends/opencl/plugin/compiled_model_backend.cpp
+    ${_gfx_src_dir}/backends/opencl/plugin/remote_context.cpp
+    ${_gfx_src_dir}/backends/opencl/plugin/remote_tensor.cpp
 )
 
 set(GFX_PLUGIN_OPENCL_STUB_SOURCES
     ${_gfx_src_dir}/backends/opencl/plugin/infer_request_stub.cpp
     ${_gfx_src_dir}/backends/opencl/plugin/compiled_model_backend_stub.cpp
+    ${_gfx_src_dir}/backends/opencl/plugin/remote_context_stub.cpp
 )
 
 set(GFX_PLUGIN_OPENCL_HEADERS
     ${_gfx_src_dir}/backends/opencl/plugin/compiled_model_backend.hpp
     ${_gfx_src_dir}/backends/opencl/plugin/compiled_model_state.hpp
     ${_gfx_src_dir}/backends/opencl/plugin/infer_io_opencl.hpp
+    ${_gfx_src_dir}/backends/opencl/plugin/remote_tensor.hpp
 )
 
 set(GFX_HAS_METAL_SOURCES OFF)

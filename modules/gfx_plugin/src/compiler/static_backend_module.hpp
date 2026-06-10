@@ -25,6 +25,8 @@ struct StaticBackendModuleConfig {
   ArtifactFormatCapabilities artifact_format_capabilities = {};
   KernelArtifactDescriptorResolver artifact_descriptor_resolver = {};
   KernelArtifactPayloadResolver artifact_payload_resolver = {};
+  CacheBackendPayloadEncoder cache_payload_encoder = {};
+  CacheBackendPayloadDecoder cache_payload_decoder = {};
   PipelineVendorAttentionArtifactResolver vendor_attention_artifact_resolver =
       {};
 };

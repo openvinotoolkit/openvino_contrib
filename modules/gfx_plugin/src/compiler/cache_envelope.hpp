@@ -4,6 +4,8 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -36,8 +38,22 @@ struct CacheBackendPayloadRecord {
   std::string source_id;
   std::string entry_point;
   std::string payload_identity;
+  std::string source_language;
+  std::string source;
+  std::string payload_format;
+  std::string payload_data;
   bool optional = true;
 };
+
+using CacheBackendPayloadEncoder =
+    std::function<CacheBackendPayloadRecord(
+        const KernelArtifactDescriptor &descriptor,
+        const KernelArtifactPayloadRecord &payload_record)>;
+
+using CacheBackendPayloadDecoder =
+    std::function<std::shared_ptr<const KernelArtifactPayload>(
+        const CacheBackendPayloadRecord &payload,
+        const KernelArtifactDescriptor &descriptor)>;
 
 struct CacheEnvelopeVerificationResult {
   std::vector<std::string> diagnostics;
@@ -78,6 +94,7 @@ struct CacheEnvelopeBuildOptions {
   std::string driver_identity;
   std::string compile_options_hash;
   bool include_optional_backend_payloads = true;
+  CacheBackendPayloadEncoder backend_payload_encoder = {};
 };
 
 class CacheEnvelopeBuilder final {
@@ -111,7 +128,9 @@ std::vector<std::string> make_kernel_unit_cache_versions(const ExecutableBundle 
 std::string serialize_cache_envelope(const CacheEnvelope &envelope);
 CacheEnvelopeWireResult deserialize_cache_envelope(std::string_view wire);
 ExecutableBundle
-make_cache_envelope_executable_contract(const CacheEnvelope &envelope);
+make_cache_envelope_executable_contract(
+    const CacheEnvelope &envelope,
+    CacheBackendPayloadDecoder backend_payload_decoder = {});
 
 } // namespace compiler
 } // namespace gfx_plugin

@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "compiler/cache_envelope.hpp"
 #include "compiler/executable_bundle.hpp"
 #include "compiler/kernel_registry.hpp"
 #include "compiler/lowering_planner.hpp"
@@ -40,6 +41,12 @@ public:
   virtual std::shared_ptr<const KernelArtifactPayload>
   materialize_artifact_payload(const KernelArtifactDescriptor &descriptor,
                                const PlannedOperation &op) const = 0;
+  virtual CacheBackendPayloadRecord
+  encode_cache_payload(const KernelArtifactDescriptor &descriptor,
+                       const KernelArtifactPayloadRecord &payload_record) const = 0;
+  virtual std::shared_ptr<const KernelArtifactPayload>
+  decode_cache_payload(const CacheBackendPayloadRecord &payload,
+                       const KernelArtifactDescriptor &descriptor) const = 0;
   virtual PipelineVendorAttentionArtifact materialize_vendor_attention_artifact(
       uint64_t stage_record_key,
       const PipelineVendorAttentionPlan &plan) const = 0;

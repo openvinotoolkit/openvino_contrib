@@ -545,6 +545,11 @@ if(DEFINED GFX_RASPBERRY_OPENCL_BUNDLE_DIR)
             OPTIONAL)
 endif()
 
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../include/openvino/gfx_plugin
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/openvino
+set(GFX_PLUGIN_PUBLIC_INSTALL_HEADERS
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include/openvino/gfx_plugin/plugin.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include/openvino/gfx_plugin/profiling.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include/openvino/gfx_plugin/properties.hpp)
+
+install(FILES ${GFX_PLUGIN_PUBLIC_INSTALL_HEADERS}
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/openvino/gfx_plugin
         COMPONENT gfx)

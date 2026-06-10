@@ -72,6 +72,8 @@ make_metal_backend_module(BackendTarget target) {
       make_metal_kernel_artifact_descriptor_resolver();
   config.artifact_payload_resolver =
       make_metal_kernel_artifact_payload_resolver();
+  config.cache_payload_encoder = make_metal_cache_payload_encoder();
+  config.cache_payload_decoder = make_metal_cache_payload_decoder();
   config.vendor_attention_artifact_resolver =
       make_metal_vendor_attention_artifact_resolver();
   return make_static_backend_module(std::move(config));

@@ -60,7 +60,8 @@ public:
   void verify() const {
     const auto node = m_case.make_node();
     const auto artifact =
-        make_opencl_activation_source_artifact(node, m_case.expected_source_id);
+        compiler::make_opencl_activation_source_artifact(
+            node, m_case.expected_source_id);
     ASSERT_TRUE(artifact.has_value());
     ASSERT_TRUE(artifact->valid);
     EXPECT_EQ(artifact->stage_manifest.stage_family,
@@ -399,7 +400,7 @@ TEST(ActivationRouteContractTest,
   EXPECT_EQ(support.preferred_route,
             "opencl/generated/activation_runtime_beta_f32");
 
-  const auto artifact = make_opencl_activation_source_artifact(
+  const auto artifact = compiler::make_opencl_activation_source_artifact(
       swish, "opencl/generated/activation_runtime_beta_f32");
   ASSERT_TRUE(artifact.has_value());
   ASSERT_TRUE(artifact->valid);
@@ -431,13 +432,13 @@ TEST(ActivationRouteContractTest, OpenClReluUsesActivationKernelUnitOwner) {
   const auto input = param(ov::element::f32, ov::Shape{2, 3});
   const auto relu = std::make_shared<ov::op::v0::Relu>(input);
 
-  const auto artifact = make_opencl_activation_source_artifact(
+  const auto artifact = compiler::make_opencl_activation_source_artifact(
       relu, "opencl/generated/activation_f32");
   ASSERT_TRUE(artifact.has_value());
   ASSERT_TRUE(artifact->valid);
   EXPECT_EQ(artifact->stage_manifest.stage_family,
             GfxKernelStageFamily::Activation);
-  EXPECT_FALSE(make_opencl_activation_source_artifact(
+  EXPECT_FALSE(compiler::make_opencl_activation_source_artifact(
                    relu, "opencl/generated/eltwise_binary_f32")
                    .has_value());
 

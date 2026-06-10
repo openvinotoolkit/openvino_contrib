@@ -11,6 +11,7 @@
 namespace ov {
 namespace gfx_plugin {
 
+size_t opencl_allocation_bytes(size_t bytes, ov::element::Type type);
 void* opencl_map_buffer(const GpuBuffer& buf);
 void opencl_unmap_buffer(const GpuBuffer& buf);
 void opencl_flush_buffer(const GpuBuffer& buf, size_t bytes, size_t offset = 0);

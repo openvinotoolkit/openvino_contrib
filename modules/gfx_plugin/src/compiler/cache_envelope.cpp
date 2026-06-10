@@ -18,6 +18,7 @@
 
 #include "openvino/core/attribute_adapter.hpp"
 #include "openvino/op/constant.hpp"
+#include "kernel_ir/gfx_kernel_source.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -307,30 +308,54 @@ find_artifact_descriptor(const ExecutableBundle &executable,
   return nullptr;
 }
 
-CacheBackendPayloadRecord
-make_cache_payload_record(const ExecutableBundle &executable,
-                          const KernelArtifactPayloadRecord &payload_record) {
-  CacheBackendPayloadRecord record;
+void complete_cache_payload_record(CacheBackendPayloadRecord &record,
+                                   const KernelArtifactDescriptor &descriptor,
+                                   const KernelArtifactPayloadRecord &payload_record) {
   record.artifact_key = payload_record.artifact_key;
-  const auto *descriptor =
-      find_artifact_descriptor(executable, payload_record.artifact_key);
-  if (descriptor) {
-    record.backend_domain = descriptor->kernel.backend_domain;
-    record.payload_kind = std::string(
-        kernel_artifact_payload_kind_to_string(descriptor->payload_kind));
-  }
+  record.backend_domain = descriptor.kernel.backend_domain;
+  record.payload_kind = std::string(
+      kernel_artifact_payload_kind_to_string(descriptor.payload_kind));
   if (payload_record.payload) {
-    record.source_id = std::string(payload_record.payload->source_id());
-    record.entry_point = std::string(payload_record.payload->entry_point());
+    if (record.source_id.empty()) {
+      record.source_id = std::string(payload_record.payload->source_id());
+    }
+    if (record.entry_point.empty()) {
+      record.entry_point = std::string(payload_record.payload->entry_point());
+    }
+    if (const auto *source_payload =
+            dynamic_cast<const GfxKernelSourcePayload *>(
+                payload_record.payload.get())) {
+      if (record.source_language.empty()) {
+        record.source_language = std::string(gfx_kernel_source_language_name(
+            source_payload->source().source_language));
+      }
+      if (record.source.empty() && source_payload->source().source) {
+        record.source = source_payload->source().source;
+      }
+    }
     std::ostringstream identity;
     append_field(identity, kernel_artifact_payload_kind_to_string(
                                payload_record.payload->payload_kind()));
     append_field(identity, payload_record.payload->backend_domain());
     append_field(identity, payload_record.payload->source_id());
     append_field(identity, payload_record.payload->entry_point());
+    append_field(identity, record.source_language);
+    append_field(identity, record.source);
+    append_field(identity, record.payload_format);
+    append_field(identity, record.payload_data);
     append_field(identity, payload_record.artifact_key);
     record.payload_identity = hash_material(identity.str());
   }
+}
+
+CacheBackendPayloadRecord make_cache_payload_record(
+    const KernelArtifactDescriptor &descriptor,
+    const KernelArtifactPayloadRecord &payload_record,
+    const CacheBackendPayloadEncoder &backend_payload_encoder) {
+  CacheBackendPayloadRecord record =
+      backend_payload_encoder ? backend_payload_encoder(descriptor, payload_record)
+                              : CacheBackendPayloadRecord{};
+  complete_cache_payload_record(record, descriptor, payload_record);
   return record;
 }
 
@@ -434,6 +459,39 @@ KernelArtifactPayloadKind kernel_artifact_payload_kind_from_string(
     return KernelArtifactPayloadKind::OpenClSource;
   }
   return KernelArtifactPayloadKind::None;
+}
+
+GfxKernelSourceLanguage source_language_from_cache_payload(
+    const CacheBackendPayloadRecord &payload) noexcept {
+  if (payload.source_language == gfx_kernel_source_language_name(
+                                     GfxKernelSourceLanguage::OpenCL) ||
+      payload.payload_kind ==
+          kernel_artifact_payload_kind_to_string(
+              KernelArtifactPayloadKind::OpenClSource)) {
+    return GfxKernelSourceLanguage::OpenCL;
+  }
+  if (payload.source_language == gfx_kernel_source_language_name(
+                                     GfxKernelSourceLanguage::MetalShadingLanguage) ||
+      payload.payload_kind ==
+          kernel_artifact_payload_kind_to_string(
+              KernelArtifactPayloadKind::MslSource)) {
+    return GfxKernelSourceLanguage::MetalShadingLanguage;
+  }
+  return GfxKernelSourceLanguage::OpenCL;
+}
+
+std::shared_ptr<const KernelArtifactPayload>
+make_source_payload_from_cache_record(const CacheBackendPayloadRecord &payload,
+                                      const KernelArtifactDescriptor *descriptor) {
+  (void)descriptor;
+  const auto kind = kernel_artifact_payload_kind_from_string(payload.payload_kind);
+  if ((kind != KernelArtifactPayloadKind::MslSource &&
+       kind != KernelArtifactPayloadKind::OpenClSource) || payload.source.empty()) {
+    return nullptr;
+  }
+  return std::make_shared<GfxKernelSourcePayload>(
+      payload.source_id, payload.backend_domain, payload.entry_point,
+      source_language_from_cache_payload(payload), payload.source);
 }
 
 class WireReader final {
@@ -1035,6 +1093,10 @@ void append_backend_payload(std::ostringstream &os,
   append_field(os, payload.source_id);
   append_field(os, payload.entry_point);
   append_field(os, payload.payload_identity);
+  append_field(os, payload.source_language);
+  append_field(os, payload.source);
+  append_field(os, payload.payload_format);
+  append_field(os, payload.payload_data);
   append_bool(os, payload.optional);
 }
 
@@ -1046,6 +1108,10 @@ CacheBackendPayloadRecord read_backend_payload(WireReader &reader) {
   payload.source_id = reader.string_field("payload source id");
   payload.entry_point = reader.string_field("payload entry point");
   payload.payload_identity = reader.string_field("payload identity");
+  payload.source_language = reader.string_field("payload source language");
+  payload.source = reader.string_field("payload source");
+  payload.payload_format = reader.string_field("payload format");
+  payload.payload_data = reader.string_field("payload data");
   payload.optional = reader.bool_field("payload optional");
   return payload;
 }
@@ -1326,6 +1392,14 @@ CacheEnvelope::verify(const ExecutableBundle &executable) const {
       result.diagnostics.push_back("cache backend payload identity drift at " +
                                    std::to_string(i));
     }
+    const auto payload_kind =
+        kernel_artifact_payload_kind_from_string(payload.payload_kind);
+    if ((payload_kind == KernelArtifactPayloadKind::MslSource ||
+         payload_kind == KernelArtifactPayloadKind::OpenClSource) &&
+        (payload.source_language.empty() || payload.source.empty())) {
+      result.diagnostics.push_back("cache backend source payload missing at " +
+                                   std::to_string(i));
+    }
   }
   return result;
 }
@@ -1360,8 +1434,13 @@ CacheEnvelopeBuilder::build(const ExecutableBundle &executable,
   if (options.include_optional_backend_payloads) {
     envelope.backend_payloads.reserve(executable.artifact_payloads.size());
     for (const auto &payload_record : executable.artifact_payloads) {
-      envelope.backend_payloads.push_back(
-          make_cache_payload_record(executable, payload_record));
+      const auto *descriptor =
+          find_artifact_descriptor(executable, payload_record.artifact_key);
+      if (!descriptor) {
+        continue;
+      }
+      envelope.backend_payloads.push_back(make_cache_payload_record(
+          *descriptor, payload_record, options.backend_payload_encoder));
     }
   }
   return envelope;
@@ -1444,7 +1523,7 @@ CacheEnvelopeWireResult ArtifactCacheStore::load(const CacheKey &key) const {
 std::string serialize_cache_envelope(const CacheEnvelope &envelope) {
   std::ostringstream os;
   append_field(os, "GFX_CACHE_ENVELOPE");
-  append_field(os, "1");
+  append_field(os, "3");
   append_field(os, std::to_string(envelope.schema_version));
   append_cache_key(os, envelope.key);
   append_manifest(os, envelope.manifest);
@@ -1467,7 +1546,7 @@ CacheEnvelopeWireResult deserialize_cache_envelope(std::string_view wire) {
   if (magic != "GFX_CACHE_ENVELOPE") {
     result.diagnostics.emplace_back("cache envelope wire magic mismatch");
   }
-  if (wire_version != "1") {
+  if (wire_version != "3") {
     result.diagnostics.emplace_back("cache envelope wire version mismatch");
   }
   result.envelope.schema_version =
@@ -1493,7 +1572,9 @@ CacheEnvelopeWireResult deserialize_cache_envelope(std::string_view wire) {
 }
 
 ExecutableBundle
-make_cache_envelope_executable_contract(const CacheEnvelope &envelope) {
+make_cache_envelope_executable_contract(
+    const CacheEnvelope &envelope,
+    CacheBackendPayloadDecoder backend_payload_decoder) {
   ExecutableBundle executable;
   executable.schema_version = 1;
   executable.target_fingerprint = envelope.key.target_fingerprint.empty()
@@ -1521,6 +1602,37 @@ make_cache_envelope_executable_contract(const CacheEnvelope &envelope) {
             : static_cast<size_t>(
                   std::distance(executable.artifact_descriptors.begin(), it));
     executable.stages.push_back(std::move(record));
+  }
+  executable.artifact_payloads.reserve(envelope.backend_payloads.size());
+  for (const auto &payload : envelope.backend_payloads) {
+    auto it = std::find_if(
+        executable.artifact_descriptors.begin(),
+        executable.artifact_descriptors.end(),
+        [&](const KernelArtifactDescriptor &descriptor) {
+          return descriptor.artifact_key == payload.artifact_key;
+        });
+    const KernelArtifactDescriptor *descriptor =
+        it == executable.artifact_descriptors.end() ? nullptr : &*it;
+    std::shared_ptr<const KernelArtifactPayload> materialized_payload;
+    if (backend_payload_decoder && descriptor) {
+      materialized_payload = backend_payload_decoder(payload, *descriptor);
+    }
+    if (!materialized_payload) {
+      materialized_payload =
+          make_source_payload_from_cache_record(payload, descriptor);
+    }
+    if (!materialized_payload) {
+      continue;
+    }
+    KernelArtifactPayloadRecord record;
+    record.artifact_key = payload.artifact_key;
+    record.artifact_descriptor_index =
+        it == executable.artifact_descriptors.end()
+            ? executable.artifact_descriptors.size()
+            : static_cast<size_t>(
+                  std::distance(executable.artifact_descriptors.begin(), it));
+    record.payload = std::move(materialized_payload);
+    executable.artifact_payloads.push_back(std::move(record));
   }
   return executable;
 }

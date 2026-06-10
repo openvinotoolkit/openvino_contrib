@@ -6,6 +6,7 @@
 #include <string_view>
 
 #include "common/artifact_payload.hpp"
+#include "compiler/cache_envelope.hpp"
 #include "compiler/executable_bundle.hpp"
 
 namespace ov {
@@ -21,6 +22,8 @@ classify_opencl_kernel_artifact_origin(std::string_view kernel_unit_id) noexcept
 KernelArtifactPayloadResolver make_opencl_kernel_artifact_payload_resolver();
 KernelArtifactDescriptorResolver
 make_opencl_kernel_artifact_descriptor_resolver();
+CacheBackendPayloadEncoder make_opencl_cache_payload_encoder();
+CacheBackendPayloadDecoder make_opencl_cache_payload_decoder();
 
 bool finalize_opencl_kernel_artifact_descriptor_contract(
     KernelArtifactDescriptor &descriptor,

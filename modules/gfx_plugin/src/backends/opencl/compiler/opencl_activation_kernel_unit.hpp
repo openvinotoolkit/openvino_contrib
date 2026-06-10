@@ -5,10 +5,13 @@
 #pragma once
 
 #include <memory>
+#include <optional>
+#include <string_view>
 
 #include "compiler/kernel_registry.hpp"
 #include "compiler/kernel_unit.hpp"
 #include "compiler/operation_support.hpp"
+#include "kernel_ir/gfx_opencl_source_artifacts.hpp"
 #include "openvino/core/node.hpp"
 
 namespace ov {
@@ -22,6 +25,11 @@ struct KernelArtifactDescriptor;
 struct PlannedOperation;
 
 bool is_opencl_activation_node(const std::shared_ptr<const ov::Node> &node);
+
+std::optional<::ov::gfx_plugin::GfxOpenClSourceArtifact>
+make_opencl_activation_source_artifact(
+    const std::shared_ptr<const ov::Node> &node,
+    std::string_view expected_source_id = {});
 
 KernelUnit resolve_opencl_activation_kernel_unit(
     const std::shared_ptr<const ov::Node> &node,

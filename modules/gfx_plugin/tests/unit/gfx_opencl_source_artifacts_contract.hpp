@@ -21,9 +21,7 @@
 #include "compiler/manifest.hpp"
 #include "compiler/operation_support.hpp"
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
-#include "kernel_ir/opencl_kernels/range_kernel.hpp"
 #include "mlir/mlir_support.hpp"
-#include "unit/gfx_opencl_catalog_artifact_resolver.hpp"
 #include "openvino/op/abs.hpp"
 #include "openvino/op/add.hpp"
 #include "openvino/op/broadcast.hpp"
@@ -51,6 +49,7 @@
 #include "openvino/op/transpose.hpp"
 #include "openvino/op/unsqueeze.hpp"
 #include "openvino/op/variadic_split.hpp"
+#include "unit/gfx_opencl_catalog_artifact_resolver.hpp"
 
 using namespace ov::gfx_plugin;
 using ov::gfx_plugin::compiler::BackendCapabilities;

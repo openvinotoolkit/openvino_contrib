@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "openvino/gfx_plugin/compiled_model.hpp"
+#include "plugin/compiled_model.hpp"
 
-#include "openvino/gfx_plugin/infer_request.hpp"
+#include "plugin/infer_request.hpp"
 #include "openvino/gfx_plugin/plugin.hpp"
 #include "openvino/gfx_plugin/profiling.hpp"
 #include "openvino/gfx_plugin/properties.hpp"
@@ -24,7 +24,7 @@
 #include "runtime/gfx_profiling_report.hpp"
 #include "runtime/gfx_remote_context.hpp"
 #include "runtime/pipeline_stage_plan.hpp"
-#include "runtime/pipeline_stage_materializer.hpp"
+#include "runtime/runtime_execution_plan.hpp"
 
 #include "openvino/core/except.hpp"
 #include "openvino/runtime/exec_model_info.hpp"
@@ -35,6 +35,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <string>
+#include <utility>
 namespace ov {
 namespace gfx_plugin {
 
@@ -44,11 +45,12 @@ CompiledModel::CompiledModel(
     const compiler::ExecutableBundle &executable,
     std::shared_ptr<const RuntimeExecutableDescriptor> runtime_descriptor,
     const compiler::BackendTarget &target,
+    const compiler::CacheEnvelope &cache_envelope,
     const std::shared_ptr<const ov::Model> &original_model,
     const ov::AnyMap &properties, const ov::SoPtr<ov::IRemoteContext> &context)
     : ov::ICompiledModel(model, plugin, context), m_runtime_model(model),
       m_original_model(original_model ? original_model : model),
-      m_target(target) {
+      m_target(target), m_cache_envelope(cache_envelope) {
   OPENVINO_ASSERT(m_target.backend() != GpuBackend::Unknown,
                   "GFX: CompiledModel requires concrete BackendTarget");
   OPENVINO_ASSERT(
@@ -178,9 +180,10 @@ CompiledModel::CompiledModel(
                 .count()));
   }
   gfx_log_info("CompiledModel") << "Backend state created";
-  // Build GpuStage pipeline eagerly; fail early if unsupported ops encountered.
-  gfx_log_info("CompiledModel") << "Building stage pipeline";
-  build_op_pipeline(compile_trace_ptr);
+  // Build runtime execution plan eagerly; fail early if an immutable compiler
+  // descriptor cannot be materialized by the selected backend runtime.
+  gfx_log_info("CompiledModel") << "Building runtime execution plan";
+  build_runtime_execution_plan(compile_trace_ptr);
   if (compile_trace_ptr) {
     uint64_t total_cpu_us = 0;
     for (const auto &segment : compile_trace_ptr->report().segments) {
@@ -210,8 +213,12 @@ CompiledModel::create_sync_infer_request() const {
   return std::make_shared<InferRequest>(shared_from_this());
 }
 
-void CompiledModel::export_model(std::ostream &) const {
-  throw_compiled_model_cache_roundtrip_unavailable("export_model");
+void CompiledModel::export_model(std::ostream &model) const {
+  const auto wire = compiler::serialize_cache_envelope(m_cache_envelope);
+  model.write(wire.data(), static_cast<std::streamsize>(wire.size()));
+  if (!model) {
+    OPENVINO_THROW("GFX: failed to export compiled CacheEnvelope");
+  }
 }
 
 void CompiledModel::set_property(const ov::AnyMap &properties) {
@@ -334,7 +341,7 @@ std::string CompiledModel::compile_profiling_report_json() const {
   return m_compile_report_json;
 }
 
-void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
+void CompiledModel::build_runtime_execution_plan(GfxProfilingTrace *compile_trace) {
   if (!m_runtime_model) {
     gfx_log_warn("OpFactory") << "Cannot build pipeline: runtime model is null";
     return;
@@ -359,14 +366,13 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
   stage_runtime_options.custom_kernel_dispatch_profile =
       m_runtime_descriptor->runtime_options.custom_kernel_dispatch_profile;
 
-  PipelineStageRuntimeMaterializationRequest materialization_request;
-  materialization_request.stage_factory = backend_state;
-  materialization_request.runtime_descriptor = m_runtime_descriptor.get();
-  materialization_request.runtime_options = stage_runtime_options;
-  materialization_request.compile_trace = compile_trace;
+  RuntimeExecutionPlanBuildRequest plan_request;
+  plan_request.stage_factory = backend_state;
+  plan_request.runtime_descriptor = m_runtime_descriptor;
+  plan_request.runtime_options = stage_runtime_options;
+  plan_request.compile_trace = compile_trace;
 
-  m_pipeline = materialize_pipeline_stage_descriptors(materialization_request);
-  m_pipeline_built = true;
+  m_execution_plan = RuntimeExecutionPlan::build(std::move(plan_request));
 }
 
 } // namespace gfx_plugin

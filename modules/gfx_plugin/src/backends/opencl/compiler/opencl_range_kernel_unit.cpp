@@ -7,7 +7,6 @@
 #include "backends/opencl/compiler/opencl_kernel_artifacts.hpp"
 #include "compiler/executable_bundle.hpp"
 #include "compiler/lowering_planner.hpp"
-#include "kernel_ir/opencl_kernels/range_kernel.hpp"
 #include "openvino/op/range.hpp"
 
 #include <utility>

@@ -4,9 +4,12 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "gfx_runtime_execution_plan_test_utils.hpp"
 #include "plugin/infer_io_utils.hpp"
 #include "runtime/fused_output_lifetime_plan.hpp"
 #include "runtime/infer_executor.hpp"
@@ -586,13 +589,15 @@ TEST(InferPipelineReuseTest, ReusesClonedPipelineAndOutputHandlesAcrossPreparati
     };
 
     const auto target = compiler::BackendTarget::from_backend(GpuBackend::Metal);
+    auto execution_plan =
+        test::make_runtime_execution_plan(runtime_descriptor, std::move(descs));
     InferRuntimeExecutionConfig config;
     config.state = &runtime_state;
-    config.descs = &descs;
+    config.execution_plan = execution_plan;
     config.remote_outputs = &remote_outputs;
     config.remote_inputs = &remote_inputs;
     config.expected_target = &target;
-    config.runtime_descriptor = runtime_descriptor;
+    config.runtime_descriptor = execution_plan->descriptor_ptr();
     config.pool = &pool;
     config.post_prepare = [](std::vector<InferStage>&) {};
     config.init_output_desc = describe_output;
@@ -657,13 +662,15 @@ TEST(InferPipelineReuseTest, RuntimeMemoryPlanExtendsWorkspaceOutputLifetime) {
     };
 
     const auto target = compiler::BackendTarget::from_backend(GpuBackend::Metal);
+    auto execution_plan =
+        test::make_runtime_execution_plan(runtime_descriptor, std::move(descs));
     InferRuntimeExecutionConfig config;
     config.state = &runtime_state;
-    config.descs = &descs;
+    config.execution_plan = execution_plan;
     config.remote_outputs = &remote_outputs;
     config.remote_inputs = &remote_inputs;
     config.expected_target = &target;
-    config.runtime_descriptor = runtime_descriptor;
+    config.runtime_descriptor = execution_plan->descriptor_ptr();
     config.pool = &pool;
     config.post_prepare = [](std::vector<InferStage>&) {};
     config.init_output_desc = describe_output;
@@ -734,13 +741,15 @@ TEST(InferPipelineReuseTest,
     };
 
     const auto target = compiler::BackendTarget::from_backend(GpuBackend::Metal);
+    auto execution_plan =
+        test::make_runtime_execution_plan(runtime_descriptor, std::move(descs));
     InferRuntimeExecutionConfig config;
     config.state = &runtime_state;
-    config.descs = &descs;
+    config.execution_plan = execution_plan;
     config.remote_outputs = &remote_outputs;
     config.remote_inputs = &remote_inputs;
     config.expected_target = &target;
-    config.runtime_descriptor = runtime_descriptor;
+    config.runtime_descriptor = execution_plan->descriptor_ptr();
     config.pool = &pool;
     config.post_prepare = [](std::vector<InferStage>&) {};
     config.init_output_desc = describe_output;
@@ -800,13 +809,15 @@ TEST(InferPipelineReuseTest,
     };
 
     const auto target = compiler::BackendTarget::from_backend(GpuBackend::Metal);
+    auto execution_plan =
+        test::make_runtime_execution_plan(runtime_descriptor, std::move(descs));
     InferRuntimeExecutionConfig config;
     config.state = &runtime_state;
-    config.descs = &descs;
+    config.execution_plan = execution_plan;
     config.remote_outputs = &remote_outputs;
     config.remote_inputs = &remote_inputs;
     config.expected_target = &target;
-    config.runtime_descriptor = runtime_descriptor;
+    config.runtime_descriptor = execution_plan->descriptor_ptr();
     config.pool = &pool;
     config.post_prepare = [](std::vector<InferStage>&) {};
     config.init_output_desc = describe_output;
@@ -968,14 +979,16 @@ TEST(InferPipelineReuseTest,
 
     FakeExecutionSubmissionSession submission;
     const auto target = compiler::BackendTarget::from_backend(GpuBackend::Metal);
+    auto execution_plan =
+        test::make_runtime_execution_plan(runtime_descriptor, std::move(descs));
     InferRuntimeExecutionConfig config;
     config.state = &runtime_state;
-    config.descs = &descs;
+    config.execution_plan = execution_plan;
     config.buffer_manager = nullptr;
     config.remote_outputs = &remote_outputs;
     config.remote_inputs = &remote_inputs;
     config.expected_target = &target;
-    config.runtime_descriptor = runtime_descriptor;
+    config.runtime_descriptor = execution_plan->descriptor_ptr();
     config.pool = &pool;
     config.runtime_input_tensors = &input_tensors;
     config.init_output_desc = describe_output;

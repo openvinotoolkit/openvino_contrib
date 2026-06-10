@@ -12,21 +12,24 @@
 #include <string>
 #include <vector>
 
+#include "common/backend_config.hpp"
+#include "common/gfx_backend_utils.hpp"
+#include "compiler/cache_import.hpp"
+#include "compiler/cache_repository.hpp"
 #include "compiler/gfx_compiler_service.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/validation_util.hpp"
-#include "openvino/gfx_plugin/compiled_model.hpp"
+#include "plugin/compiled_model.hpp"
 #include "openvino/runtime/internal_properties.hpp"
 #include "openvino/runtime/properties.hpp"
+#include "openvino/runtime/shared_buffer.hpp"
 #include "openvino/util/common_util.hpp"
-#include "common/backend_config.hpp"
+#include "plugin/compiled_model_cache_contract.hpp"
 #include "plugin/gfx_device_info.hpp"
 #include "plugin/gfx_profiling_utils.hpp"
 #include "plugin/gfx_property_lists.hpp"
 #include "plugin/gfx_property_utils.hpp"
-#include "plugin/compiled_model_cache_contract.hpp"
 #include "plugin/remote_context_support.hpp"
-#include "common/gfx_backend_utils.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "runtime/gfx_precision.hpp"
 #include "runtime/gfx_remote_context.hpp"
@@ -42,6 +45,23 @@ std::string make_compiled_runtime_properties(const ov::AnyMap &config) {
   oss << "backend=" << info.backend_name << ";device=" << info.device_name
       << ";id=" << info.device_id;
   return oss.str();
+}
+
+std::string read_cache_wire(std::istream &stream) {
+  std::ostringstream wire;
+  wire << stream.rdbuf();
+  return wire.str();
+}
+
+std::string diagnostics_to_string(const std::vector<std::string> &diagnostics) {
+  std::ostringstream os;
+  for (size_t i = 0; i < diagnostics.size(); ++i) {
+    if (i != 0) {
+      os << "; ";
+    }
+    os << diagnostics[i];
+  }
+  return os.str();
 }
 
 } // namespace
@@ -133,51 +153,143 @@ Plugin::compile_model_impl(const std::shared_ptr<const ov::Model> &model,
   }
   gfx_log_info("Plugin") << "Selected GFX backend target: "
                          << compile_target.debug_string();
+  bool enable_fusion = true;
+  if (auto it = compile_properties.find(kGfxEnableFusionProperty);
+      it != compile_properties.end()) {
+    enable_fusion = parse_bool_property(it->second, kGfxEnableFusionProperty);
+  }
+
+  const auto &backend_registry = compiler::BackendRegistry::default_registry();
+  const auto backend_module = backend_registry.resolve(compile_target);
+  OPENVINO_ASSERT(backend_module,
+                  "GFX: selected backend target is not registered: ",
+                  compile_target.debug_string());
+
+  std::string cache_dir;
+  if (auto it = compile_properties.find(ov::cache_dir.name());
+      it != compile_properties.end()) {
+    cache_dir = it->second.as<std::string>();
+  }
+  compiler::ArtifactCacheRepository cache_repository(cache_dir);
+  compiler::CacheLookupRequest cache_request;
+  cache_request.model = model.get();
+  cache_request.target = &compile_target;
+  cache_request.capabilities = &backend_module->capabilities();
+  cache_request.enable_fusion = enable_fusion;
+  if (cache_repository.enabled()) {
+    const auto cached = cache_repository.load(cache_request);
+    if (cached.hit()) {
+      gfx_log_info("Plugin") << "Loaded GFX compiled CacheEnvelope from cache";
+      const auto import_contract = compiler::make_cache_import_contract(
+          cached.envelope, backend_registry);
+      if (!import_contract.valid()) {
+        OPENVINO_THROW("GFX: cached CacheEnvelope cannot be imported: ",
+                       diagnostics_to_string(import_contract.diagnostics));
+      }
+      ov::AnyMap cached_properties = compile_properties;
+      cached_properties[ov::loaded_from_cache.name()] = true;
+      cached_properties[kGfxBackendProperty] =
+          import_contract.target.backend_id();
+      return std::make_shared<CompiledModel>(
+          import_contract.runtime_model, shared_from_this(),
+          import_contract.executable, import_contract.runtime_descriptor,
+          import_contract.target, cached.envelope, model, cached_properties,
+          context);
+    }
+    if (cached.rejected()) {
+      OPENVINO_THROW("GFX: rejected compiled cache entry: ",
+                     diagnostics_to_string(cached.diagnostics));
+    }
+    gfx_log_info("Plugin") << "GFX compiled cache miss: "
+                           << diagnostics_to_string(cached.diagnostics);
+  }
+
   const compiler::GfxCompilerService compiler_service;
   compiler::GfxCompileRequest compile_request;
   compile_request.model = model;
   compile_request.target = compile_target;
   compile_request.backend_name = compile_target.backend_id();
-  if (auto it = compile_properties.find(kGfxEnableFusionProperty);
-      it != compile_properties.end()) {
-    compile_request.enable_fusion =
-        parse_bool_property(it->second, kGfxEnableFusionProperty);
-  }
+  compile_request.enable_fusion = enable_fusion;
   const auto compile_result = compiler_service.compile(compile_request);
   if (!compile_result.supported()) {
     OPENVINO_THROW(compile_result.unsupported_message());
   }
+  ov::AnyMap compiled_properties = compile_properties;
+  compiled_properties[ov::loaded_from_cache.name()] = false;
+  compiled_properties[kGfxBackendProperty] = compile_result.target.backend_id();
+  if (cache_repository.enabled()) {
+    const auto store_result =
+        cache_repository.store(cache_request, compile_result.cache_envelope);
+    if (!store_result.success) {
+      gfx_log_warn("Plugin") << "Failed to store GFX compiled CacheEnvelope: "
+                             << diagnostics_to_string(store_result.diagnostics);
+    } else {
+      gfx_log_info("Plugin")
+          << "Stored GFX compiled CacheEnvelope at " << store_result.location;
+    }
+  }
 
-  return std::make_shared<CompiledModel>(compile_result.transformed_model,
-                                         shared_from_this(),
-                                         compile_result.executable,
-                                         compile_result.runtime_descriptor,
-                                         compile_result.target, model,
-                                         compile_properties, context);
+  return std::make_shared<CompiledModel>(
+      compile_result.transformed_model, shared_from_this(),
+      compile_result.executable, compile_result.runtime_descriptor,
+      compile_result.target, compile_result.cache_envelope, model,
+      compiled_properties, context);
 }
 
 std::shared_ptr<ov::ICompiledModel>
-Plugin::import_model(std::istream &, const ov::AnyMap &) const {
-  throw_compiled_model_cache_roundtrip_unavailable("import_model(stream)");
+Plugin::import_model(std::istream &model, const ov::AnyMap &properties) const {
+  return import_model(model, {}, properties);
 }
 
 std::shared_ptr<ov::ICompiledModel>
-Plugin::import_model(std::istream &, const ov::SoPtr<ov::IRemoteContext> &,
-                     const ov::AnyMap &) const {
-  throw_compiled_model_cache_roundtrip_unavailable(
-      "import_model(stream, remote_context)");
+Plugin::import_model(std::istream &model,
+                     const ov::SoPtr<ov::IRemoteContext> &context,
+                     const ov::AnyMap &properties) const {
+  const auto wire = read_cache_wire(model);
+  if (wire.empty()) {
+    OPENVINO_THROW("GFX: import_model received an empty CacheEnvelope");
+  }
+  auto parsed = compiler::deserialize_cache_envelope(wire);
+  if (!parsed.valid()) {
+    OPENVINO_THROW("GFX: invalid compiled CacheEnvelope: ",
+                   diagnostics_to_string(parsed.diagnostics));
+  }
+  auto import_contract = compiler::make_cache_import_contract(
+      parsed.envelope, compiler::BackendRegistry::default_registry());
+  if (!import_contract.valid()) {
+    OPENVINO_THROW("GFX: unsupported compiled CacheEnvelope import: ",
+                   diagnostics_to_string(import_contract.diagnostics));
+  }
+
+  ov::AnyMap import_properties = m_config;
+  for (const auto &kv : properties) {
+    import_properties[kv.first] = kv.second;
+  }
+  import_properties[ov::loaded_from_cache.name()] = true;
+  import_properties[kGfxBackendProperty] = import_contract.target.backend_id();
+
+  return std::make_shared<CompiledModel>(
+      import_contract.runtime_model, shared_from_this(),
+      import_contract.executable, import_contract.runtime_descriptor,
+      import_contract.target, parsed.envelope, import_contract.runtime_model,
+      import_properties, context);
 }
 
 std::shared_ptr<ov::ICompiledModel>
-Plugin::import_model(const ov::Tensor &, const ov::AnyMap &) const {
-  throw_compiled_model_cache_roundtrip_unavailable("import_model(tensor)");
+Plugin::import_model(const ov::Tensor &model,
+                     const ov::AnyMap &properties) const {
+  ov::SharedStreamBuffer buffer{model.data(), model.get_byte_size()};
+  std::istream stream{&buffer};
+  return import_model(stream, properties);
 }
 
 std::shared_ptr<ov::ICompiledModel>
-Plugin::import_model(const ov::Tensor &, const ov::SoPtr<ov::IRemoteContext> &,
-                     const ov::AnyMap &) const {
-  throw_compiled_model_cache_roundtrip_unavailable(
-      "import_model(tensor, remote_context)");
+Plugin::import_model(const ov::Tensor &model,
+                     const ov::SoPtr<ov::IRemoteContext> &context,
+                     const ov::AnyMap &properties) const {
+  ov::SharedStreamBuffer buffer{model.data(), model.get_byte_size()};
+  std::istream stream{&buffer};
+  return import_model(stream, context, properties);
 }
 
 ov::SupportedOpsMap
