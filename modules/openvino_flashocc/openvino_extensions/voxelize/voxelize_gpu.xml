@@ -1,0 +1,38 @@
+<!--
+  OpenVINO Custom GPU Kernel Configuration for Voxelization Operations
+
+  Single work-group approach (GWS=LWS=1024) to guarantee correct
+  barrier-based zeroing of workspace/result buffers between inferences.
+
+  Two CustomLayer types:
+    1. VoxelizeScatter: zero workspace + hash-table insert + int32 atomics
+    2. VoxelizeMean:    zero counter + int32 → float32 mean conversion
+-->
+
+<!-- ═══ VoxelizeScatter: GPU hash-table voxelization (single WG) ═══ -->
+<CustomLayer name="VoxelizeScatter" type="SimpleGPU" version="1">
+    <Kernel entry="voxelize_scatter">
+        <Source filename="voxelize_scatter.cl"/>
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
+        <Tensor arg-index="1" type="input"  port-index="1" format="BFYX"/>
+        <Tensor arg-index="2" type="output" port-index="0" format="BFYX"/>
+    </Buffers>
+    <CompilerOptions options="-cl-mad-enable"/>
+    <WorkSizes global="1024,1,1" local="1024,1,1"/>
+</CustomLayer>
+
+<!-- ═══ VoxelizeMean: int32 → float32 mean features (single WG) ═══ -->
+<CustomLayer name="VoxelizeMean" type="SimpleGPU" version="1">
+    <Kernel entry="voxelize_mean">
+        <Source filename="voxelize_mean.cl"/>
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
+        <Tensor arg-index="1" type="output" port-index="0" format="BFYX"/>
+    </Buffers>
+    <CompilerOptions options="-cl-mad-enable"/>
+    <WorkSizes global="1024,1,1" local="1024,1,1"/>
+</CustomLayer>
+</CustomLayer>

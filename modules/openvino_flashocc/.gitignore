@@ -1,0 +1,16 @@
+__pycache__/
+build
+*.so
+*.log
+*.bak
+*.opt
+*venv*
+ov_build/
+venv_ov2026_ws/
+venv_ov2026/
+venv/
+setup.env
+run_results/
+checkpoints/
+debug_output/
+openvino_extensions/bev_pool/build*/
