@@ -365,9 +365,11 @@ def create_dummy_templates(cfg, device, batch_size=1):
     img_size = cfg.test_dataset.img_size
     n_sample_template_point = cfg.test_dataset.n_sample_template_point
     
-    tem_rgb_concat = torch.randn(batch_size, n_template_view * 3, img_size, img_size, device=device)
+    # rgb_input: (42, 3, 224, 224) - views as batch
+    # choose_input: (42, n_sample_point) - per-view choose indices (not channel-concatenated)
+    tem_rgb_concat = torch.randn(n_template_view, 3, img_size, img_size, device=device)
     tem_pts_concat = torch.randn(batch_size, n_template_view * n_sample_template_point, 3, device=device)
-    tem_choose_concat = torch.randint(0, img_size*img_size, (batch_size, n_template_view * n_sample_template_point), device=device)
+    tem_choose_concat = torch.randint(0, img_size*img_size, (n_template_view, n_sample_template_point), device=device)
     
     return tem_rgb_concat, tem_pts_concat, tem_choose_concat
 
@@ -423,9 +425,9 @@ def prepare_data(cfg, model, device):
         "dense_fo": input_data['dense_fo'],
     }
 
-    ov_fe_input_name = {"rgb_input":[batch_size,3,224,224], 
-                        "pts_input":[batch_size,2048,3], 
-                        "choose_input":[batch_size,2048]}
+    ov_fe_input_name = {"rgb_input":[42,3,224,224],
+                        "pts_input":[batch_size,210000,3],
+                        "choose_input":[42,5000]}
     ov_fe_output_name = {"pts_output":[batch_size,2048,3], 
                         "feat_output":[batch_size,2048,256]}
     ov_fe_input = {
@@ -447,42 +449,20 @@ class FeatureExtractionWrapper(nn.Module):
     
     def forward(self, rgb_input, pts_input, choose_input):
         """
-        export get_obj_feats method
-        input: concatenated tensors
-        rgb_input: (B, n_template_view*3, H, W)
-        pts_input: (B, n_template_view*n_sample_template_point, 3)
-        choose_input: (B, n_template_view*n_sample_template_point)
+        export get_obj_feats method - fully batched, no crop/slice
+        rgb_input:    (42, 3, H, W)              - all template views as one batch
+        pts_input:    (1, 42*n_sample_point, 3)  - template 3-D points
+        choose_input: (42, n_sample_point)        - per-template pixel choose indices
         """
-        # debug info
-        
-        # split concatenated tensors
-        n_template_view = 42  # from config
-        n_sample_template_point = pts_input.size(1) // n_template_view
-        
-        
-        # split rgb tensor
-        tem_rgb_list = []
-        for i in range(n_template_view):
-            start_idx = i * 3
-            end_idx = (i + 1) * 3
-            tem_rgb_list.append(rgb_input[:, start_idx:end_idx, :, :])
-        
-        # split pts tensor
-        tem_pts_list = []
-        for i in range(n_template_view):
-            start_idx = i * n_sample_template_point
-            end_idx = (i + 1) * n_sample_template_point
-            tem_pts_list.append(pts_input[:, start_idx:end_idx, :])
-        
-        # split choose tensor
-        tem_choose_list = []
-        for i in range(n_template_view):
-            start_idx = i * n_sample_template_point
-            end_idx = (i + 1) * n_sample_template_point
-            tem_choose_list.append(choose_input[:, start_idx:end_idx])
-        
-        # call original method
-        return self.feature_extraction.get_obj_feats(tem_rgb_list, tem_pts_list, tem_choose_list)
+        # Reshape to (B=1, T=42, ...) expected by _get_obj_feats_batched.
+        # Internally it does view(B*T, ...) -> single ViT forward pass over all 42 views at once.
+        rgb_batched    = rgb_input.unsqueeze(0)     # (1, 42, 3, H, W)
+        choose_batched = choose_input.unsqueeze(0)  # (1, 42, n_sample_point)
+        # pts_input is already (1, 42*n_sample_point, 3); view(B, -1, 3) inside is a no-op
+        return self.feature_extraction._get_obj_feats_batched(
+            rgb_batched, pts_input, choose_batched,
+            self.feature_extraction.npoint
+        )
 
 def onnx_model_convert_feature_extraction_submodel(model, onnx_fe_input_name, onnx_fe_output_name, onnx_fe_input, onnx_model_path):
     feature_wrapper = FeatureExtractionWrapper(model.feature_extraction)
@@ -496,7 +476,7 @@ def onnx_model_convert_feature_extraction_submodel(model, onnx_fe_input_name, on
                 operator_export_type=torch.onnx.OperatorExportTypes.ONNX_ATEN_FALLBACK,
                 input_names=onnx_fe_input_name,
                 # output_names=onnx_fe_output_name,
-                dynamic_axes={k: {0: "batch"} for k in onnx_fe_input_name},
+                dynamic_axes={k: {0: "batch"} for k in onnx_fe_input_name if k != "rgb_input"},
                 do_constant_folding=False,
                 verbose=False,  # True , for detailed output
                 export_params=True,

@@ -135,6 +135,21 @@ class _SplitPemCompiled:
         return self.matching_compiled(matching_inputs)
 
 
+def _squeeze_bfyx(arr):
+    """Remove a trailing dim-1 added by the GPU BFYX format for 3-D custom-op outputs.
+
+    The GatherOperation GPU kernel allocates its output in BFYX (4-D) format.
+    For a logically 3-D tensor (B, C, N) the physical buffer is (B, C, N, 1).
+    After in-graph Transpose the shape becomes (B, N, C, 1).  This helper
+    strips that spurious trailing 1 so downstream code always sees 3-D arrays.
+    CPU inference is unaffected because it never adds the extra dimension.
+    """
+    arr = np.asarray(arr)
+    if arr.ndim == 4 and arr.shape[-1] == 1:
+        arr = arr.squeeze(-1)
+    return arr
+
+
 def _ordered_outputs(results, compiled_model):
     return [results[output_port] for output_port in compiled_model.outputs]
 
@@ -289,9 +304,9 @@ def get_templates_np(path, cfg):
     for v in range(n_template_view):
         i = int(total_nView / n_template_view * v)
         tem, tem_choose, tem_pts = _get_template_np(path, cfg, i)
-        all_tem.append(np.expand_dims(tem, axis=0))
-        all_tem_choose.append(np.expand_dims(tem_choose, axis=0))
-        all_tem_pts.append(np.expand_dims(tem_pts, axis=0))
+        all_tem.append(tem)                          # (3, H, W)
+        all_tem_choose.append(tem_choose)            # (n_sample_point,)
+        all_tem_pts.append(np.expand_dims(tem_pts, axis=0))  # (1, n_sample_point, 3)
     return all_tem, all_tem_pts, all_tem_choose
 
 
@@ -457,9 +472,12 @@ def main():
     tem_path = os.path.join(cfg.output_dir, 'templates')
     all_tem, all_tem_pts, all_tem_choose = get_templates_np(tem_path, cfg.test_dataset)
 
-    tem_rgb_concat = np.concatenate(all_tem, axis=1)
-    tem_pts_concat = np.concatenate(all_tem_pts, axis=1)
-    tem_choose_concat = np.concatenate(all_tem_choose, axis=1)
+    # rgb_input:    (42, 3, H, W)  — views as a true batch, no channel concat
+    # choose_input: (42, n_sample)  — per-view pixel choose indices
+    # pts_input:    (1, 42*n_sample, 3)
+    tem_rgb_concat    = np.stack(all_tem, axis=0).astype(np.float32)      # (42, 3, H, W)
+    tem_pts_concat    = np.concatenate(all_tem_pts, axis=1)               # (1, 210000, 3)
+    tem_choose_concat = np.stack(all_tem_choose, axis=0).astype(np.int64) # (42, 5000)
 
     feature_inputs = {
         "rgb_input": tem_rgb_concat,
@@ -467,8 +485,13 @@ def main():
         "choose_input": tem_choose_concat
     }
 
-    # Warm up
-    _ = ov_fe_compiled(feature_inputs)
+    # Warm up — use an isolated InferRequest so its GPU BFYX-padded output
+    # tensors ([B,N,C,1]) are not cached in the compiled model's default
+    # request.  Reusing a request whose output tensor has shape [1,2048,3,1]
+    # against a port that expects [1,2048,3] raises a shape-mismatch error.
+    _warmup_req = ov_fe_compiled.create_infer_request()
+    _warmup_req.infer(feature_inputs)
+    del _warmup_req
 
     time_start = time.time()
     feature_results = ov_fe_compiled(feature_inputs)
@@ -476,8 +499,9 @@ def main():
     fe_time = time.time() - time_start
     print(f"[OpenVINO] FE inference time: {fe_time * 1000:.2f} ms ({precision_mode})")
 
-    all_tem_pts = results_list[0]
-    all_tem_feat = results_list[1]
+    # GPU BFYX format pads 3-D gather outputs to 4-D [B,N,C,1]; squeeze it off.
+    all_tem_pts  = _squeeze_bfyx(results_list[0])   # (1, 2048, 3)
+    all_tem_feat = _squeeze_bfyx(results_list[1])   # (1, 2048, 256)
 
     # -----------------------------------------------------------------------
     # Pose Estimation
