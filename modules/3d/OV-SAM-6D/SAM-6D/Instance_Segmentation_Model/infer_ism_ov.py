@@ -1259,12 +1259,14 @@ class OVFastSAM:
 
     def _preprocess(self, image_rgb):
         """Preprocess: auto-letterbox -> HWC->CHW -> /255 -> float32.
+
+        Uses ``auto=True`` LetterBox (matching CUDA SegmentationPredictor)
+        to produce minimal stride-aligned padding.
         """
         img = self._letterbox_fn(image=image_rgb)
-        # Ultralytics predictor reverses channels before CHW conversion.
-        img = img[..., ::-1].transpose((2, 0, 1)).astype(np.float32) / 255.0
+        # HWC->CHW, contiguous, float32, normalize
+        img = img.transpose((2, 0, 1)).astype(np.float32) / 255.0
         img = np.ascontiguousarray(img)[np.newaxis]  # [1, 3, H, W]
-
         return img
 
     def generate_masks(self, image):
