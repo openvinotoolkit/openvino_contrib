@@ -1,3 +1,6 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 numpy==2.2.6
 openvino==2025.4.1
 opencv-python-headless==4.13.0.90
