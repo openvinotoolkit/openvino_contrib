@@ -1,0 +1,4 @@
+model_save_golden/ov_pem_model_cpu.bin filter=lfs diff=lfs merge=lfs -text
+model_save_golden/ov_pem_model_cpu.xml filter=lfs diff=lfs merge=lfs -text
+model_save_golden/ov_fe_model_cpu.bin filter=lfs diff=lfs merge=lfs -text
+model_save_golden/ov_fe_model_cpu.xml filter=lfs diff=lfs merge=lfs -text
