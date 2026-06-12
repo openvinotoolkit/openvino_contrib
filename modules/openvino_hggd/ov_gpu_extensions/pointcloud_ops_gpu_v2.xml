@@ -1,0 +1,53 @@
+<!-- OpenVINO GPU Custom Layer Configuration for Point Cloud Operations -->
+
+<CustomLayer name="KNNPointsSingle" type="SimpleGPU" version="1">
+    <Kernel entry="knn_points_tiled_kernel">
+        <Source filename="kernels/knn_points_tiled.cl"/>
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
+        <Tensor arg-index="1" type="input"  port-index="1" format="BFYX"/>
+        <Tensor arg-index="2" type="output" port-index="0" format="BFYX"/>
+    </Buffers>
+    <CompilerOptions options="-cl-mad-enable"/>
+    <WorkSizes global="F,B,1" local="256,1,1"/>
+</CustomLayer>
+
+<CustomLayer name="BallQuerySingle" type="SimpleGPU" version="1">
+    <Kernel entry="ball_query_single_v2_kernel">
+        <Source filename="kernels/ball_query_single_v2.cl"/>
+        <Define name="RADIUS" type="float" param="radius" default="0.2"/>
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
+        <Tensor arg-index="1" type="input"  port-index="1" format="BFYX"/>
+        <Tensor arg-index="2" type="output" port-index="0" format="BFYX"/>
+    </Buffers>
+    <CompilerOptions options="-cl-mad-enable"/>
+    <WorkSizes global="F,B,1" local=""/>
+</CustomLayer>
+
+<CustomLayer name="FPSSingle" type="SimpleGPU" version="1">
+    <Kernel entry="fps_single_optimized_kernel">
+        <Source filename="kernels/fps_single_optimized.cl"/>
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
+        <Tensor arg-index="1" type="output" port-index="0" format="BFYX"/>
+    </Buffers>
+    <CompilerOptions options="-cl-mad-enable"/>
+    <WorkSizes global="256,B,1" local="256,1,1"/>
+</CustomLayer>
+
+<CustomLayer name="FPSWithLengths" type="SimpleGPU" version="1">
+    <Kernel entry="fps_with_lengths_optimized_kernel">
+        <Source filename="kernels/fps_with_lengths_optimized.cl"/>
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
+        <Tensor arg-index="1" type="input"  port-index="1" format="BFYX"/>
+        <Tensor arg-index="2" type="output" port-index="0" format="BFYX"/>
+    </Buffers>
+    <CompilerOptions options="-cl-mad-enable"/>
+    <WorkSizes global="256,B,1" local="256,1,1"/>
+</CustomLayer>
