@@ -39,10 +39,10 @@ void ShapeOfOp::Execute(const InferenceRequestContext& context,
 
     ov::Shape input_shape;
     if (is_dynamic_) {
-        auto& shapeCtx = const_cast<InferenceRequestContext&>(context).getShapeContext();
+        auto& dynBufCtx = const_cast<InferenceRequestContext&>(context).getDynamicBufferContext();
         auto input_buf_id = input_ids_[0].GetBuffer().GetId();
-        if (shapeCtx.hasShape(input_buf_id)) {
-            input_shape = shapeCtx.getShape(input_buf_id);
+        if (dynBufCtx.hasShape(input_buf_id)) {
+            input_shape = dynBufCtx.getShape(input_buf_id);
         } else {
             // Fallback: static input shape if available
             input_shape = static_input_shape_;

@@ -4,6 +4,10 @@
 
 #include "cuda_dynamic_operation.hpp"
 
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <string>
 #include <openvino/op/constant.hpp>
 #include <openvino/op/parameter.hpp>
 #include <openvino/op/reshape.hpp>
@@ -22,6 +26,48 @@
 namespace ov {
 namespace nvidia_gpu {
 
+namespace {
+// Small integer 0-D/1-D tensors are likely shape/index values (Broadcast
+// target_shape, Reshape pattern, ...) that drive output-shape inference.
+bool isShapeValueInput(const ov::Shape& shape, const ov::element::Type& elem_type) {
+    const size_t num_elements = ov::shape_size(shape);
+    return shape.size() <= 1 && num_elements > 0 && num_elements <= 64 &&
+           (elem_type == ov::element::i32 || elem_type == ov::element::i64);
+}
+
+// Reshape/Squeeze/Unsqueeze are zero-copy metadata ops, modeled by the registry
+// as a NopOp (empty Execute), so DynamicOperation copies the data itself.
+bool isReshapeLike(const std::shared_ptr<ov::Node>& node) {
+    return ov::is_type<ov::op::v1::Reshape>(node) ||
+           ov::is_type<ov::op::v0::Squeeze>(node) ||
+           ov::is_type<ov::op::v0::Unsqueeze>(node);
+}
+
+// Download a small integer shape/index input (see isShapeValueInput) into host
+// int64 values. Used both to make the cache key value-sensitive (prepare 2b)
+// and to constant-fold the values during shape inference (createCachedOperation).
+// No explicit synchronization is needed: the copy is stream-ordered after the
+// producing op (same per-request stream), and a device-to-pageable-host copy
+// returns to the host only once it has completed.
+std::vector<int64_t> downloadShapeValues(const CUDA::Stream& stream,
+                                         CUDA::DevicePointer<const void*> src,
+                                         const ov::Shape& shape,
+                                         const ov::element::Type& elem_type) {
+    const size_t num_elements = ov::shape_size(shape);
+    std::vector<uint8_t> bytes(elem_type.size() * num_elements);
+    stream.download(bytes.data(), src, bytes.size());
+    std::vector<int64_t> values(num_elements);
+    if (elem_type == ov::element::i64) {
+        const auto* p = reinterpret_cast<const int64_t*>(bytes.data());
+        std::copy(p, p + num_elements, values.begin());
+    } else {
+        const auto* p = reinterpret_cast<const int32_t*>(bytes.data());
+        std::copy(p, p + num_elements, values.begin());
+    }
+    return values;
+}
+}  // namespace
+
 DynamicOperation::DynamicOperation(const CreationContext& context,
                                    const std::shared_ptr<ov::Node>& node,
                                    IndexCollection&& inputIds,
@@ -35,52 +81,64 @@ void DynamicOperation::Execute(const InferenceRequestContext& context,
                                Inputs inputTensors,
                                Outputs /*outputTensors*/,
                                const Workbuffers& /*workbuffers*/) const {
-    auto& shapeCtx = const_cast<InferenceRequestContext&>(context).getShapeContext();
     auto& dynBufCtx = const_cast<InferenceRequestContext&>(context).getDynamicBufferContext();
     const auto& stream = context.getThreadContext().stream();
 
     if (auto paramNode = std::dynamic_pointer_cast<ov::op::v0::Parameter>(original_node_)) {
-        executeParameter(*paramNode, context, stream, shapeCtx, dynBufCtx);
+        executeParameter(*paramNode, context, stream, dynBufCtx);
         return;
     }
 
     if (auto resultNode = std::dynamic_pointer_cast<ov::op::v0::Result>(original_node_)) {
-        executeResult(*resultNode, context, stream, shapeCtx, dynBufCtx);
+        executeResult(*resultNode, context, stream, dynBufCtx);
         return;
     }
 
     if (auto readValueNode = std::dynamic_pointer_cast<ov::op::util::ReadValueBase>(original_node_)) {
-        executeReadValue(*readValueNode, context, stream, inputTensors, shapeCtx, dynBufCtx);
+        executeReadValue(*readValueNode, context, stream, inputTensors, dynBufCtx);
         return;
     }
 
     if (auto assignNode = std::dynamic_pointer_cast<ov::op::util::AssignBase>(original_node_)) {
-        executeAssign(*assignNode, context, stream, inputTensors, shapeCtx, dynBufCtx);
+        executeAssign(*assignNode, context, stream, inputTensors, dynBufCtx);
         return;
     }
 
-    // 1. Collect actual input shapes: from ShapeContext for dynamic inputs,
-    //    from the original node for static inputs (e.g. Constant).
+    // Cached path: prepare once (input shapes/values, pointers, cached static op,
+    // output buffers), then execute (reshape-copy or kernel) and finalize
+    // (register outputs, release dead buffers).
+    auto ctx = prepareCachedOperationContext(context, stream, inputTensors, dynBufCtx);
+    executeCachedOperation(context, stream, ctx);
+    finalizeOutputs(dynBufCtx, ctx);
+}
+
+DynamicOperation::CachedOperationContext DynamicOperation::prepareCachedOperationContext(
+    const InferenceRequestContext& context,
+    const CUDA::Stream& stream,
+    Inputs inputTensors,
+    DynamicBufferContext& dynBufCtx) const {
+    // 1. Collect actual input shapes: from DynamicBufferContext for dynamic
+    //    inputs, from the original node for static inputs (e.g. Constant).
     ShapeKey key;
     key.input_shapes.reserve(input_ids_.size());
     for (size_t i = 0; i < input_ids_.size(); ++i) {
         BufferID bufId = input_ids_[i].GetBuffer().GetId();
-        if (shapeCtx.hasShape(bufId)) {
-            key.input_shapes.push_back(shapeCtx.getShape(bufId));
+        if (dynBufCtx.hasShape(bufId)) {
+            key.input_shapes.push_back(dynBufCtx.getShape(bufId));
         } else if (original_node_->get_input_partial_shape(i).is_static()) {
             key.input_shapes.push_back(original_node_->get_input_shape(i));
         } else {
-            OPENVINO_THROW("DynamicOperation '", GetName(), "': input ", i,
-                           " has dynamic shape ", original_node_->get_input_partial_shape(i),
-                           " but no shape registered in ShapeContext (bufId=", bufId, ")");
+            OPENVINO_THROW("DynamicOperation '", GetName(), "': input ", i, " has dynamic shape ",
+                           original_node_->get_input_partial_shape(i),
+                           " but no shape registered in DynamicBufferContext (bufId=", bufId, ")");
         }
     }
 
-    // 2. Resolve input pointers (check DynamicBufferContext for overrides).
+    // 2. Resolve input pointers (DynamicBufferContext override, else static tensor).
     std::vector<CUDA::DevicePointer<const void*>> input_ptrs;
     input_ptrs.reserve(input_ids_.size());
     for (size_t i = 0; i < input_ids_.size(); ++i) {
-        auto dynBuf = dynBufCtx.getDynamicOutput(input_ids_[i].GetBuffer().GetId());
+        auto dynBuf = dynBufCtx.getDynamicBuffer(input_ids_[i].GetBuffer().GetId());
         if (dynBuf) {
             input_ptrs.emplace_back(dynBuf->get());
         } else {
@@ -88,107 +146,90 @@ void DynamicOperation::Execute(const InferenceRequestContext& context,
         }
     }
 
-    // 2b. Include small integer tensor values in cache key.
-    //     Operations like Broadcast, Reshape need input VALUES (not just shapes)
-    //     to determine output shapes. Without this, cache hits return stale
-    //     operations when shapes stay the same but values change between inferences.
-    if (needs_value_cache_) {
-        bool synced = false;
+    // 2b. If this op's output shape is dynamic even with concrete input shapes
+    //     (it depends on input VALUES — e.g. Broadcast target shape, Reshape
+    //     pattern), fold the small integer input values into the cache key so
+    //     shape changes driven by values are not masked by a stale cache hit.
+    if (has_dynamic_output_) {
         key.input_values.resize(input_ids_.size());
         for (size_t i = 0; i < input_ids_.size(); ++i) {
-            auto source_node = original_node_->get_input_node_shared_ptr(i);
-            if (std::dynamic_pointer_cast<ov::op::v0::Constant>(source_node)) continue;
+            if (std::dynamic_pointer_cast<ov::op::v0::Constant>(original_node_->get_input_node_shared_ptr(i))) {
+                continue;
+            }
             const auto& shape = key.input_shapes[i];
             auto elem_type = original_node_->get_input_element_type(i);
-            size_t num_elements = ov::shape_size(shape);
-            bool is_shape_value = (shape.size() <= 1 && num_elements > 0 && num_elements <= 64 &&
-                (elem_type == ov::element::i32 || elem_type == ov::element::i64));
-            if (is_shape_value) {
-                if (!synced) { stream.synchronize(); synced = true; }
-                size_t byte_size = elem_type.size() * num_elements;
-                std::vector<uint8_t> host_data(byte_size);
-                stream.download(host_data.data(),
-                                CUDA::DevicePointer<const void*>{input_ptrs[i].get()},
-                                byte_size);
-                auto& vals = key.input_values[i];
-                vals.resize(num_elements);
-                if (elem_type == ov::element::i64) {
-                    auto* p = reinterpret_cast<const int64_t*>(host_data.data());
-                    std::copy(p, p + num_elements, vals.begin());
-                } else {
-                    auto* p = reinterpret_cast<const int32_t*>(host_data.data());
-                    for (size_t e = 0; e < num_elements; ++e) vals[e] = p[e];
-                }
+            if (!isShapeValueInput(shape, elem_type)) {
+                continue;
             }
+            key.input_values[i] = downloadShapeValues(stream, input_ptrs[i], shape, elem_type);
         }
     }
 
-    // 3. Lookup or create cached static operation
-    std::shared_ptr<CachedOperation> cached;
-    {
-        std::lock_guard<std::mutex> lock{cache_mutex_};
-        auto* found = shape_cache_.find(key);
-        if (found) {
-            cached = *found;
-        } else {
-            cached = createCachedOperation(key, input_ptrs, stream);
-            shape_cache_.insert(key, cached);
-        }
-    }
+    // 3. Lookup or create cached static operation in the model-global cache.
+    auto& cache = const_cast<InferenceRequestContext&>(context).getDynamicOperationCache();
+    auto cached = cache.getOrCreate(original_node_.get(), key, [this, &key, &input_ptrs, &stream] {
+        return createCachedOperation(key, input_ptrs, stream);
+    });
 
-    // 4. Allocate dynamic memory for outputs via stream-ordered allocation
+    // 4. Allocate dynamic memory for outputs via stream-ordered allocation.
     std::vector<CUDA::Allocation> output_allocs;
     output_allocs.reserve(cached->output_sizes.size());
-    for (size_t i = 0; i < cached->output_sizes.size(); ++i) {
-        size_t sz = std::max(cached->output_sizes[i], size_t{1});
-        output_allocs.push_back(stream.malloc(sz));
+    for (size_t sz : cached->output_sizes) {
+        output_allocs.push_back(stream.malloc(std::max(sz, size_t{1})));
     }
 
-    // 5. Execute the cached operation (skip if no-op, e.g. zero-element outputs)
-    bool isReshapeLike = ov::is_type<ov::op::v1::Reshape>(original_node_) ||
-                         ov::is_type<ov::op::v0::Squeeze>(original_node_) ||
-                         ov::is_type<ov::op::v0::Unsqueeze>(original_node_);
+    return CachedOperationContext{std::move(cached), std::move(input_ptrs), std::move(output_allocs)};
+}
 
-    if (isReshapeLike) {
-        // Reshape-like operations are zero-copy: same data, different shape.
-        // The registry creates a NopOp for them (empty Execute), so we must
-        // copy data from input to output ourselves.
-        OPENVINO_ASSERT(!input_ptrs.empty() && !output_allocs.empty());
-        stream.transfer(CUDA::DevicePointer<void*>{output_allocs[0].get()},
-                        CUDA::DevicePointer<const void*>{input_ptrs[0].get()},
-                        cached->output_sizes[0]);
-    } else if (cached->operation) {
-        std::vector<CUDA::DevicePointer<void*>> output_ptrs;
-        output_ptrs.reserve(output_allocs.size());
-        for (auto& alloc : output_allocs) {
-            output_ptrs.emplace_back(alloc.get());
-        }
-
-        // Allocate dynamic memory for mutable workbuffers
-        Workbuffers dyn_workbuffers;
-        std::vector<CUDA::Allocation> wb_allocs;
-        for (size_t sz : cached->workbuffer_request.mutable_sizes) {
-            auto alloc = stream.malloc(std::max(sz, size_t{1}));
-            dyn_workbuffers.mutable_buffers.emplace_back(alloc.get());
-            wb_allocs.push_back(std::move(alloc));
-        }
-        // Immutable workbuffers come from the cached operation (persistent)
-        dyn_workbuffers.immutable_buffers.reserve(cached->immutable_wb_ptrs.size());
-        for (const auto& ptr : cached->immutable_wb_ptrs) {
-            dyn_workbuffers.immutable_buffers.emplace_back(ptr.get());
-        }
-
-        cached->operation->Execute(context, input_ptrs, output_ptrs, dyn_workbuffers);
+void DynamicOperation::executeCachedOperation(const InferenceRequestContext& context,
+                                              const CUDA::Stream& stream,
+                                              const CachedOperationContext& ctx) const {
+    if (isReshapeLike(original_node_)) {
+        // Reshape/Squeeze/Unsqueeze are zero-copy metadata ops (NopOp): copy the
+        // data input -> output so downstream consumers read it at the newly
+        // allocated output buffer.
+        OPENVINO_ASSERT(!ctx.input_ptrs.empty() && !ctx.output_allocs.empty(),
+                        "Reshape-like op '", GetName(), "' has no inputs or outputs");
+        stream.transfer(CUDA::DevicePointer<void*>{ctx.output_allocs[0].get()},
+                        CUDA::DevicePointer<const void*>{ctx.input_ptrs[0].get()},
+                        ctx.cached->output_sizes[0]);
+        return;
     }
 
-    // 6. Register output shapes and dynamic buffers
+    // A null operation models a zero-element output: nothing to execute.
+    if (!ctx.cached->operation) {
+        return;
+    }
+
+    std::vector<CUDA::DevicePointer<void*>> output_ptrs;
+    output_ptrs.reserve(ctx.output_allocs.size());
+    for (auto& alloc : ctx.output_allocs) {
+        output_ptrs.emplace_back(alloc.get());
+    }
+
+    Workbuffers dyn_workbuffers;
+    std::vector<CUDA::Allocation> wb_allocs;
+    for (size_t sz : ctx.cached->workbuffer_request.mutable_sizes) {
+        auto alloc = stream.malloc(std::max(sz, size_t{1}));
+        dyn_workbuffers.mutable_buffers.emplace_back(alloc.get());
+        wb_allocs.push_back(std::move(alloc));
+    }
+    dyn_workbuffers.immutable_buffers.reserve(ctx.cached->immutable_wb_ptrs.size());
+    for (const auto& ptr : ctx.cached->immutable_wb_ptrs) {
+        dyn_workbuffers.immutable_buffers.emplace_back(ptr.get());
+    }
+
+    ctx.cached->operation->Execute(context, ctx.input_ptrs, output_ptrs, dyn_workbuffers);
+}
+
+void DynamicOperation::finalizeOutputs(DynamicBufferContext& dynBufCtx, CachedOperationContext& ctx) const {
+    // Register output shapes and dynamic buffers.
     for (size_t i = 0; i < dynamic_output_ids_.size(); ++i) {
         BufferID outId = dynamic_output_ids_[i].GetBuffer().GetId();
-        shapeCtx.setShape(outId, cached->output_shapes[i]);
-        dynBufCtx.registerDynamicOutput(outId, std::move(output_allocs[i]));
+        dynBufCtx.registerDynamicBuffer(outId, std::move(ctx.output_allocs[i]), ctx.cached->output_shapes[i]);
     }
 
-    // 7. Release dynamic buffers whose last consumer is this operation
+    // Release dynamic buffers whose last consumer is this operation.
     for (BufferID id : release_ids_) {
         dynBufCtx.releaseDynamicBuffer(id);
     }
@@ -197,7 +238,6 @@ void DynamicOperation::Execute(const InferenceRequestContext& context,
 void DynamicOperation::executeParameter(const ov::op::v0::Parameter& paramNode,
                                          const InferenceRequestContext& context,
                                          const CUDA::Stream& stream,
-                                         ShapeContext& shapeCtx,
                                          DynamicBufferContext& dynBufCtx) const {
     auto tensor = context.getTensorMappingContext().get_input_tensor(
         ParameterOp::GetInputTensorName(paramNode));
@@ -206,21 +246,19 @@ void DynamicOperation::executeParameter(const ov::op::v0::Parameter& paramNode,
     auto alloc = stream.malloc(std::max(byte_size, size_t{1}));
     stream.upload(CUDA::DevicePointer<void*>{alloc.get()}, tensor->data(), byte_size);
     BufferID outBufId = dynamic_output_ids_[0].GetBuffer().GetId();
-    shapeCtx.setShape(outBufId, shape);
-    dynBufCtx.registerDynamicOutput(outBufId, std::move(alloc));
+    dynBufCtx.registerDynamicBuffer(outBufId, std::move(alloc), shape);
 }
 
 void DynamicOperation::executeResult(const ov::op::v0::Result& resultNode,
                                       const InferenceRequestContext& context,
                                       const CUDA::Stream& stream,
-                                      ShapeContext& shapeCtx,
                                       DynamicBufferContext& dynBufCtx) const {
     BufferID inputBufId = input_ids_[0].GetBuffer().GetId();
-    auto dynBuf = dynBufCtx.getDynamicOutput(inputBufId);
+    auto dynBuf = dynBufCtx.getDynamicBuffer(inputBufId);
     if (!dynBuf) {
         return;
     }
-    auto shape = shapeCtx.getShape(inputBufId);
+    auto shape = dynBufCtx.getShape(inputBufId);
     auto elemType = resultNode.get_output_element_type(0);
     auto names = ResultOp::GetOutputTensorName(resultNode);
     std::shared_ptr<ov::Tensor> tensor;
@@ -241,7 +279,6 @@ void DynamicOperation::executeReadValue(const ov::op::util::ReadValueBase& readV
                                          const InferenceRequestContext& context,
                                          const CUDA::Stream& stream,
                                          Inputs inputTensors,
-                                         ShapeContext& shapeCtx,
                                          DynamicBufferContext& dynBufCtx) const {
     OPENVINO_ASSERT(context.hasVariableContext(), "ReadValue requires VariableContext");
     auto& varCtx = context.getVariableContext();
@@ -250,24 +287,23 @@ void DynamicOperation::executeReadValue(const ov::op::util::ReadValueBase& readV
     BufferID outBufId = dynamic_output_ids_[0].GetBuffer().GetId();
 
     if (!state->is_reset_state()) {
-        // Subsequent inferences: copy from state buffer
+        // Subsequent inferences: copy from the saved variable-state buffer.
         auto shape = state->shape();
         size_t byte_size = state->device_buffer_byte_size();
         auto alloc = stream.malloc(std::max(byte_size, size_t{1}));
         if (byte_size > 0) {
             state->read_device_state(stream, CUDA::DevicePointer<void*>{alloc.get()}, byte_size);
         }
-        shapeCtx.setShape(outBufId, shape);
-        dynBufCtx.registerDynamicOutput(outBufId, std::move(alloc));
+        dynBufCtx.registerDynamicBuffer(outBufId, std::move(alloc), shape);
         return;
     }
 
-    // First inference or after reset: output init_value or zeros
+    // First inference or after reset: output the init_value or zeros.
     bool has_init = !input_ids_.empty() && !inputTensors.empty();
     ov::Shape shape;
     if (has_init) {
         BufferID initBufId = input_ids_[0].GetBuffer().GetId();
-        shape = shapeCtx.hasShape(initBufId) ? shapeCtx.getShape(initBufId)
+        shape = dynBufCtx.hasShape(initBufId) ? dynBufCtx.getShape(initBufId)
                                               : readValueNode.get_input_shape(0);
     } else {
         shape = state->shape();
@@ -279,7 +315,7 @@ void DynamicOperation::executeReadValue(const ov::op::util::ReadValueBase& readV
 
     if (has_init) {
         BufferID initBufId = input_ids_[0].GetBuffer().GetId();
-        auto dynBuf = dynBufCtx.getDynamicOutput(initBufId);
+        auto dynBuf = dynBufCtx.getDynamicBuffer(initBufId);
         const void* src = dynBuf ? dynBuf->get() : inputTensors[0].get();
         stream.transfer(CUDA::DevicePointer<void*>{alloc.get()},
                         CUDA::DevicePointer<const void*>{src}, byte_size);
@@ -287,25 +323,21 @@ void DynamicOperation::executeReadValue(const ov::op::util::ReadValueBase& readV
         stream.memset(alloc, 0, byte_size);
     }
 
-    shapeCtx.setShape(outBufId, shape);
-    dynBufCtx.registerDynamicOutput(outBufId, std::move(alloc));
+    dynBufCtx.registerDynamicBuffer(outBufId, std::move(alloc), shape);
 }
 
 void DynamicOperation::executeAssign(const ov::op::util::AssignBase& assignNode,
                                       const InferenceRequestContext& context,
                                       const CUDA::Stream& stream,
                                       Inputs inputTensors,
-                                      ShapeContext& shapeCtx,
                                       DynamicBufferContext& dynBufCtx) const {
     OPENVINO_ASSERT(context.hasVariableContext(), "Assign requires VariableContext");
     auto& varCtx = context.getVariableContext();
     auto variable_id = dynamic_cast<const ov::op::util::VariableExtension&>(assignNode).get_variable_id();
     auto state = varCtx.get_variable_state(variable_id);
 
-    // Resolve input pointer (from DynamicBufferContext or regular memory)
     BufferID inputBufId = input_ids_[0].GetBuffer().GetId();
-    auto dynBuf = dynBufCtx.getDynamicOutput(inputBufId);
-
+    auto dynBuf = dynBufCtx.getDynamicBuffer(inputBufId);
     const void* raw_ptr = nullptr;
     if (dynBuf) {
         raw_ptr = dynBuf->get();
@@ -314,107 +346,82 @@ void DynamicOperation::executeAssign(const ov::op::util::AssignBase& assignNode,
     }
     OPENVINO_ASSERT(raw_ptr != nullptr, "Assign '", GetName(), "': could not resolve input pointer");
 
-    // Get input shape
     ov::Shape shape;
-    if (shapeCtx.hasShape(inputBufId)) {
-        shape = shapeCtx.getShape(inputBufId);
+    if (dynBufCtx.hasShape(inputBufId)) {
+        shape = dynBufCtx.getShape(inputBufId);
     } else if (assignNode.get_input_partial_shape(0).is_static()) {
         shape = assignNode.get_input_shape(0);
     } else {
-        OPENVINO_THROW("Assign '", GetName(), "': input has dynamic shape but no shape in ShapeContext");
+        OPENVINO_THROW("Assign '", GetName(), "': input has dynamic shape but no shape registered");
     }
 
-    // Update variable state (D2D copy)
     state->update_device_state(stream, CUDA::DevicePointer<const void*>{raw_ptr}, shape);
 
-    // Release input dynamic buffer if this is the last consumer
     for (BufferID id : release_ids_) {
         dynBufCtx.releaseDynamicBuffer(id);
     }
 }
 
-std::shared_ptr<CachedOperation> DynamicOperation::createCachedOperation(
+std::shared_ptr<CachedOperation>
+DynamicOperation::createCachedOperation(
         const ShapeKey& key,
         const std::vector<CUDA::DevicePointer<const void*>>& input_ptrs,
         const CUDA::Stream& stream) const {
-    // 1. Build input vector for cloning. Three categories of inputs:
-    //    a) Constant inputs (e.g. axis for Gather) → preserve original Constant
-    //    b) Data inputs → replace with Parameter having concrete shape
-    //    c) Shape-value inputs (e.g. target_shape for Broadcast/Reshape) →
-    //       initially Parameters; promoted to Constants on retry if needed
+    // 1. Build the clone inputs: Constants preserved, others -> concrete-shape Parameters.
     ov::OutputVector new_inputs;
     new_inputs.reserve(original_node_->get_input_size());
     for (size_t i = 0; i < original_node_->get_input_size(); ++i) {
-        auto source_node = original_node_->get_input_node_shared_ptr(i);
-        if (std::dynamic_pointer_cast<ov::op::v0::Constant>(source_node)) {
+        if (std::dynamic_pointer_cast<ov::op::v0::Constant>(original_node_->get_input_node_shared_ptr(i))) {
             new_inputs.push_back(original_node_->input_value(i));
         } else {
-            auto param = std::make_shared<ov::op::v0::Parameter>(
-                original_node_->get_input_element_type(i),
-                key.input_shapes[i]);
-            new_inputs.push_back(param->output(0));
+            new_inputs.push_back(
+                std::make_shared<ov::op::v0::Parameter>(original_node_->get_input_element_type(i),
+                                                        key.input_shapes[i])
+                    ->output(0));
         }
     }
 
-    // 2. Clone node with concrete shapes and infer output types/shapes
     auto cloned = original_node_->clone_with_new_inputs(new_inputs);
     cloned->validate_and_infer_types();
 
-    // 3. Check if all output shapes resolved to static.
-    //    Operations like Broadcast, Reshape, Squeeze need input VALUES (not just
-    //    shapes) to determine output shapes. If outputs remain dynamic, retry by
-    //    downloading small integer tensor values from GPU and creating Constants.
-    bool has_dynamic_output = false;
+    // 2. If the output stays dynamic the op needs input VALUES (Broadcast target
+    //    shape, Reshape pattern, ...). Retry: download small integer inputs and
+    //    fold them in as Constants.
     for (size_t i = 0; i < cloned->get_output_size(); ++i) {
         if (cloned->get_output_partial_shape(i).is_dynamic()) {
-            has_dynamic_output = true;
+            has_dynamic_output_ = true;
             break;
         }
     }
 
-    if (has_dynamic_output) {
-        // Mark this operation as needing value-based cache keys for future calls.
-        needs_value_cache_ = true;
-
-        // Synchronize stream to ensure all prior GPU ops have completed their writes
-        stream.synchronize();
-
+    if (has_dynamic_output_) {
         new_inputs.clear();
         for (size_t i = 0; i < original_node_->get_input_size(); ++i) {
-            auto source_node = original_node_->get_input_node_shared_ptr(i);
-            if (std::dynamic_pointer_cast<ov::op::v0::Constant>(source_node)) {
+            if (std::dynamic_pointer_cast<ov::op::v0::Constant>(original_node_->get_input_node_shared_ptr(i))) {
                 new_inputs.push_back(original_node_->input_value(i));
+                continue;
+            }
+            const auto& shape = key.input_shapes[i];
+            auto elem_type = original_node_->get_input_element_type(i);
+            if (isShapeValueInput(shape, elem_type) && i < input_ptrs.size()) {
+                // Reuse the values already downloaded for the cache key; only the
+                // first encounter (before this op was flagged value-dependent)
+                // arrives here with an empty entry and must download them now.
+                std::vector<int64_t> values =
+                    (i < key.input_values.size() && !key.input_values[i].empty())
+                        ? key.input_values[i]
+                        : downloadShapeValues(stream, input_ptrs[i], shape, elem_type);
+                new_inputs.push_back(
+                    std::make_shared<ov::op::v0::Constant>(elem_type, shape, values)->output(0));
             } else {
-                const auto& shape = key.input_shapes[i];
-                auto elem_type = original_node_->get_input_element_type(i);
-                size_t num_elements = ov::shape_size(shape);
-                size_t byte_size = elem_type.size() * std::max(num_elements, size_t{1});
-
-                // Small integer tensors are likely shape/index values needed
-                // for shape inference (Broadcast target_shape, Reshape pattern, etc.)
-                bool is_shape_value = (shape.size() <= 1 && num_elements <= 64 &&
-                    (elem_type == ov::element::i32 || elem_type == ov::element::i64));
-
-                if (is_shape_value && num_elements > 0) {
-                    std::vector<uint8_t> host_data(byte_size);
-                    stream.download(host_data.data(),
-                                    CUDA::DevicePointer<const void*>{input_ptrs[i].get()},
-                                    byte_size);
-                    // Debug: print downloaded values
-                    auto const_node = std::make_shared<ov::op::v0::Constant>(
-                        elem_type, shape, host_data.data());
-                    new_inputs.push_back(const_node->output(0));
-                } else {
-                    auto param = std::make_shared<ov::op::v0::Parameter>(elem_type, shape);
-                    new_inputs.push_back(param->output(0));
-                }
+                new_inputs.push_back(std::make_shared<ov::op::v0::Parameter>(elem_type, shape)->output(0));
             }
         }
         cloned = original_node_->clone_with_new_inputs(new_inputs);
         cloned->validate_and_infer_types();
     }
 
-    // 4. Collect output shapes and sizes
+    // 3. Collect output shapes and sizes.
     std::vector<ov::Shape> output_shapes;
     std::vector<size_t> output_sizes;
     output_shapes.reserve(cloned->get_output_size());
@@ -426,27 +433,18 @@ std::shared_ptr<CachedOperation> DynamicOperation::createCachedOperation(
                                std::max(size_t{1}, ov::shape_size(shape)));
     }
 
-    // 5. Check if any OUTPUT has zero elements. If so, the inner operation
-    //    should be a no-op because CUDA kernels generally can't handle zero-extent
-    //    tensors. We still compute correct output shapes via
-    //    validate_and_infer_types() and register them in ShapeContext so that
-    //    downstream shape computations (ShapeOf, Reshape, etc.) work correctly.
-    //    NOTE: We do NOT check inputs — operations like Concat can have a
-    //    zero-element input but still produce a valid non-zero output.
-    bool has_zero_element_output = false;
+    // 4. Zero-element outputs: CUDA kernels generally cannot handle zero-extent
+    //    tensors, so the inner op is a no-op. We still keep the (correct) output
+    //    shapes for downstream shape computations.
     for (const auto& shape : output_shapes) {
-        if (ov::shape_size(shape) == 0) { has_zero_element_output = true; break; }
-    }
-    if (has_zero_element_output) {
-        return std::make_shared<CachedOperation>(CachedOperation{nullptr,
-                                                                  std::move(output_shapes),
-                                                                  std::move(output_sizes),
-                                                                  WorkbufferRequest{},
-                                                                  {},
-                                                                  {}});
+        if (ov::shape_size(shape) == 0) {
+            return std::make_shared<CachedOperation>(
+                CachedOperation{nullptr, std::move(output_shapes), std::move(output_sizes),
+                                WorkbufferRequest{}, {}, {}});
+        }
     }
 
-    // 6. Create dummy TensorIDs for the inner operation
+    // 5. Create dummy TensorIDs for the inner operation.
     IndexCollection dummy_in, dummy_out;
     for (size_t i = 0; i < cloned->get_input_size(); ++i) {
         dummy_in.push_back(TensorID{static_cast<BufferID>(i)});
@@ -455,18 +453,13 @@ std::shared_ptr<CachedOperation> DynamicOperation::createCachedOperation(
         dummy_out.push_back(TensorID{static_cast<BufferID>(cloned->get_input_size() + i)});
     }
 
-    // 7. Create the static operation via registry
+    // 6. Create the static operation via the registry.
     auto operation = OperationRegistry::getInstance().createOperation(
         creation_context_, cloned, std::move(dummy_in), std::move(dummy_out));
 
-    // 8. Handle workbuffers
+    // 7. Allocate + initialize persistent immutable workbuffers (shared across
+    //    inference requests, hence DefaultStream).
     WorkbufferRequest wb_request = operation->GetWorkBufferRequest();
-
-    // Allocate persistent memory for immutable workbuffers and initialize.
-    // Uses DefaultStream because these buffers are shared across inference
-    // requests on different streams. DefaultStream (stream 0) has implicit
-    // synchronization with all other streams, ensuring initialization
-    // completes before any inference stream reads the data.
     std::vector<CUDA::DefaultAllocation> immutable_wb_allocs;
     std::vector<CUDA::DevicePointer<void*>> immutable_wb_ptrs;
     if (!wb_request.immutable_sizes.empty()) {
