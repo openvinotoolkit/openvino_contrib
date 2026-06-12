@@ -7,7 +7,7 @@ then compiles it with OpenVINO for CPU (or GPU) inference.
 
 Usage:
     source venv_ov2026_ws/bin/activate
-    cd <openvino_contrib>/modules/openvino_flashocc
+    cd <FlashOCC_root>
     python convert_to_openvino.py
 
 Prerequisites:
@@ -73,6 +73,9 @@ parser.add_argument("--backbone-runs", type=int, default=50,
                     help="Number of timed runs for image backbone+neck benchmark")
 parser.add_argument("--export-mode", type=str, default="single", choices=["single", "split", "both"],
                     help="Export mode: single=full pipeline only, split=component models only, both=export both")
+parser.add_argument("--split-out-dir", type=str, default="split_f16out",
+                    help="Output directory for split IR models (F16 compressed, ready for setup.sh). "
+                         "Default: split_f16out")
 args = parser.parse_args()
 
 variant_cfg = MODEL_VARIANTS[args.model_variant]
@@ -81,7 +84,7 @@ CHECKPOINT_FILE = variant_cfg["checkpoint"]
 OUTPUT_DIR = variant_cfg["output_dir"]
 ONNX_FILE = os.path.join(OUTPUT_DIR, 'flashocc.onnx')
 IR_XML_FILE = os.path.join(OUTPUT_DIR, 'flashocc.xml')
-SPLIT_DIR = os.path.join(OUTPUT_DIR, 'split')
+SPLIT_DIR = args.split_out_dir
 
 print(f"  Model variant : {args.model_variant}")
 print(f"  Config        : {CONFIG_FILE}")
@@ -331,13 +334,17 @@ if args.benchmark_bev_head_only:
 
 
 def export_split_models(model, imgs, sensor2egos, ego2globals, intrins, post_rots, post_trans, bda):
+    import onnx
     import openvino as ov
+    from onnx import helper, TensorProto
 
     os.makedirs(SPLIT_DIR, exist_ok=True)
     image_encoder_onnx = os.path.join(SPLIT_DIR, "image_encoder.onnx")
     image_encoder_xml = os.path.join(SPLIT_DIR, "image_encoder.xml")
     bev_trunk_onnx = os.path.join(SPLIT_DIR, "bev_trunk.onnx")
     bev_trunk_xml = os.path.join(SPLIT_DIR, "bev_trunk.xml")
+    bev_trunk_argmax_onnx = os.path.join(SPLIT_DIR, "bev_trunk_argmax_only.onnx")
+    bev_trunk_argmax_xml = os.path.join(SPLIT_DIR, "bev_trunk_argmax_only.xml")
 
     with torch.no_grad():
         img_inputs = [imgs, sensor2egos, ego2globals, intrins, post_rots, post_trans, bda]
@@ -390,12 +397,27 @@ def export_split_models(model, imgs, sensor2egos, ego2globals, intrins, post_rot
         (bev_trunk_onnx, bev_trunk_xml),
     ]:
         model_ir = core.read_model(onnx_path)
-        ov.save_model(model_ir, xml_path)
-        print(f"  ✓ IR saved: {xml_path}")
+        ov.save_model(model_ir, xml_path, compress_to_fp16=True)
+        print(f"  ✓ IR saved (F16): {xml_path}")
+
+    # Build bev_trunk_argmax_only: append ArgMax on the class axis (axis=4 for [B,200,200,16,18])
+    m = onnx.load(bev_trunk_onnx)
+    g = m.graph
+    pred_name = g.output[0].name   # "occ_pred"  shape [B, 200, 200, 16, 18]
+    argmax_out = "occ_class"
+    g.node.append(helper.make_node("ArgMax", [pred_name], [argmax_out], axis=4, keepdims=0))
+    del g.output[:]
+    g.output.append(helper.make_tensor_value_info(argmax_out, TensorProto.INT64, None))
+    onnx.save(m, bev_trunk_argmax_onnx)
+    ma = core.read_model(bev_trunk_argmax_onnx)
+    ov.save_model(ma, bev_trunk_argmax_xml, compress_to_fp16=True)
+    print(f"  ✓ IR saved (F16, fused ArgMax): {bev_trunk_argmax_xml}")
 
     print(f"  Split output shape checks:")
     print(f"    image_encoder -> tran_feat {tuple(tran_feat.shape)}, depth {tuple(depth.shape)}")
     print(f"    bev_trunk     -> {tuple(occ_logits.shape)}")
+    print(f"  Split models written to: {SPLIT_DIR}")
+    print(f"  Pass --model-dir {SPLIT_DIR} to setup.sh")
 
 
 # ── 3. Export to ONNX ──────────────────────────────────────────────────────────

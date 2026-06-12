@@ -11,19 +11,18 @@ Optimized end-to-end inference for **FlashOCC** (3D occupancy prediction) uses
 
 | Tool | Version |
 |---|---|
-| Python | 3.12 |
+| Python | 3.12 (runtime venv) + 3.10 (OV wheel build) |
 | CMake | ≥ 3.16 |
 | Ninja | any (recommended) |
 | OpenCL runtime | Intel NEO driver |
 | GCC/Clang | C++17 |
 
-```bash
-sudo apt install python3.12 python3.12-venv python3.12-dev cmake ninja-build build-essential
+> **Note:** Python 3.10 is required alongside Python 3.12. The OpenVINO wheel is built against Python 3.10 (which has `distutils`); Python 3.12 removed `distutils` and cannot build the wheel.
 
-python3 -m venv venv_ov2026_ws
-source venv_ov2026_ws/bin/activate
-pip install packaging
-pip install --upgrade wheel setuptools
+```bash
+sudo apt install python3.12 python3.12-venv python3.12-dev \
+                 python3.10 python3.10-venv \
+                 cmake ninja-build build-essential
 ```
 
 ## OpenVINO IR Models
@@ -52,20 +51,35 @@ cd <openvino_contrib>/modules/openvino_flashocc
 `setup.sh` handles everything: clones + builds OpenVINO, creates the venv,
 installs all dependencies, builds the bev_pool extension.
 
+**First-time setup** (auto-downloads checkpoint and generates IR models):
+
+```bash
+bash setup.sh \
+    --prepare-models \
+    --model-variant m0 \
+    --data-pkl   /path/to/nuscenes_infos_val.pkl \
+    --data-root  /path/to/nuscenes \
+    --jobs $(nproc)
+```
+
+**With existing IR models** (skips conversion, fastest path):
+
 ```bash
 bash setup.sh \
     --model-dir  /path/to/split_f16out \
     --data-pkl   /path/to/nuscenes_infos_val.pkl \
     --data-root  /path/to/nuscenes \
-    --jobs 16
+    --jobs $(nproc)
 ```
 
 Options:
 | Flag | Description |
 |---|---|
-| `--model-dir PATH` | **(Required)** Path to the `split_f16out/` IR model directory |
+| `--model-dir PATH` | Path to pre-built `split_f16out/` IR directory. If omitted, defaults to `./split_f16out` |
+| `--model-variant m0\|m1` | Which checkpoint to download (`m0`=ResNet50, `m1`=ResNet50-M1). Default: `m0` |
+| `--prepare-models` | Force model download + IR generation even if IR files already exist |
 | `--data-pkl PATH` | NuScenes validation pkl file |
-| `--data-root PATH` | NuScenes dataset root |
+| `--data-root PATH` | NuScenes dataset root (directory containing `samples/`, `sweeps/`) |
 | `--jobs N` | Parallel build jobs (default: `nproc`) |
 | `--skip-ov-build` | Reuse existing `ov_build/` clone (skip clone + build) |
 | `--skip-bevpool-build` | Skip bev_pool extension build |
@@ -133,7 +147,7 @@ openvino_flashocc/
 │   └── openvino/                         # Cloned + built deepaks2/openvino
 │       ├── build/                        # CMake build dir
 │       └── bin/intel64/Release/          # GPU plugin .so
-├── venv_ov2026_ws/                       # Python 3.12 venv (OV 2026.3 + deps)
+├── venv_ov2026_ws/                       # Python 3.10 venv (OV 2026.3 + deps; ABI matches built wheel)
 └── work_dirs/flashocc-r50-m0/openvino/
     └── split_f16out/                     # IR models (gitignored — provide externally)
 ```
