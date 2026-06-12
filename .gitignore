@@ -1,1 +1,4 @@
 .vscode/
+.gradle/
+build/
+*.class
