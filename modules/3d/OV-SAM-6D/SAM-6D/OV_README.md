@@ -86,19 +86,15 @@ blenderproc run render_custom_templates.py \
     --cad_path ../Data/Example/obj_000005.ply
 ```
 
-Blender will be downloaded to:
-
-```text
-/home/user/blender/blender-3.3.1-linux-x64
-```
-
 ---
 
-## Optional: Use Manual Blender Installation
+## Optional: If Blender Download Failed
 
-If automatic Blender download is blocked:
+Install Blender manually and use:
 
 ```bash
+wget https://download.blender.org/release/Blender3.3/blender-3.3.1-linux-x64.tar.xz
+tar -xvf blender-3.3.1-linux-x64.tar.xz
 blenderproc run \
     --custom-blender-path /path/to/blender-3.3.1-linux-x64 \
     render_custom_templates.py \
@@ -287,64 +283,6 @@ Results may include:
 
 ---
 
-# 11. BOP Dataset Evaluation (2-sample quick test)
-
-Prerequisites:
-  - Download BOP LM-O dataset to SAM-6D/Data/BOP/lmo/
-    (test images, models, and ground truth)
-  - Complete steps 1-9 above (models exported, extension built)
-
-## Run ISM on 2 BOP images (Instance Segmentation):
-
-# FP32 baseline:
-
-```bash
-cd openvino_contrib/modules/3d/OV-SAM-6D/SAM-6D/Instance_Segmentation_Model
-MAX_IMAGES=2 OV_DEVICE=GPU OV_SAM_DEVICE=GPU OV_PRECISION=fp32 python run_inference_ov_10.py dataset_name=lmo
-```
-
-# FP16 recommended mode:
-
-```bash
-cd openvino_contrib/modules/3d/OV-SAM-6D/SAM-6D/Instance_Segmentation_Model
-MAX_IMAGES=2 OV_DEVICE=GPU OV_SAM_DEVICE=GPU OV_PRECISION=fp16 python run_inference_ov_10.py dataset_name=lmo
-```
-
-## Expected quick-test ISM output:
-
-```bash
-FP32 mAP@[.5:.95] ≈ 0.4656
-FP16 mAP@[.5:.95] ≈ 0.4750
-```
-## Detections saved to:
-
-```bash   
-./log/sam_ov/result_lmo_2imgs_fp32.json
-.//log/sam_ov/result_lmo_2imgs_fp16.json
-```
-
-## Run PEM on 2 BOP images (Pose Estimation):
-
-# FP32 baseline:
-
-```bash
-cd openvino_contrib/modules/3d/OV-SAM-6D/SAM-6D/Pose_Estimation_Model
-python test_bop_subset_eval_ov.py --device GPU --dataset lmo --max_samples 2 \
-        --precision fp32 \
-        --detection_path "../Instance_Segmentation_Model/log/sam_ov/result_lmo_2imgs_fp32.json"
-```
-
-# FP16 recommended mode:
-
-```bash
-python test_bop_subset_eval_ov.py --device GPU --dataset lmo --max_samples 2 \
-   --precision fp16 \
-   --detection_path "../Instance_Segmentation_Model/log/sam_ov/result_lmo_2imgs_fp16.json"
-```
-## Expected quick-test output:
-    FP32 AR_overall ≈ 0.6032
-    FP16 AR_overall ≈ 0.6190
-
 
 # Troubleshooting
 
@@ -354,16 +292,6 @@ Re-source the environment:
 
 ```bash
 source openvino_toolkit_ubuntu24_2026.3.0.dev20260519_x86_64/setupvars.sh
-```
-
----
-
-## Blender Download Failed
-
-Install Blender manually and use:
-
-```bash
---custom-blender-path
 ```
 
 ---
