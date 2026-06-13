@@ -10,9 +10,9 @@
 #include <string_view>
 #include <vector>
 
+#include "common/artifact_payload.hpp"
 #include "kernel_ir/gfx_kernel_manifest.hpp"
 #include "openvino/core/node.hpp"
-#include "common/artifact_payload.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -103,6 +103,7 @@ enum class GfxOpenClArtifactOp : uint32_t {
   Softmax = 98,
   MaxPool = 99,
   AvgPool = 100,
+  Interpolate = 101,
 };
 
 enum class GfxOpenClArtifactInputMode : uint32_t {
@@ -192,8 +193,7 @@ struct GfxOpenClSourceArtifact {
   float scalar_constant_f32 = 0.0f;
 };
 
-class GfxOpenClSourceArtifactPayload final
-    : public KernelArtifactPayload {
+class GfxOpenClSourceArtifactPayload final : public KernelArtifactPayload {
 public:
   explicit GfxOpenClSourceArtifactPayload(GfxOpenClSourceArtifact artifact);
 

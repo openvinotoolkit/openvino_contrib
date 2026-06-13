@@ -275,7 +275,7 @@ std::vector<int32_t> MetalStage::refresh_runtime_param_buffers(
 
   if (auto materialization = materialize_descriptor_owned_runtime_param_payload(
           *m_buffer_manager, m_descriptor, runtime_inputs, outputs,
-          runtime_param_count, compiler_scalar_args, m_name);
+          compiler_scalar_args, m_name);
       materialization.available) {
     m_kernel_extra_inputs = std::move(materialization.extra_inputs);
     scalar_args = std::move(materialization.scalar_args);

@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "common/interpolate_contract.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/convolution.hpp"
 #include "openvino/op/group_conv.hpp"
@@ -144,13 +145,8 @@ bool is_static_nchw_spatial_resize(
 
 bool interpolate_attrs_are_mps_bilinear_half_pixel(
     const ov::op::util::InterpolateBase::InterpolateAttrs &attrs) {
-  using Base = ov::op::util::InterpolateBase;
-  return attrs.mode != Base::InterpolateMode::NEAREST &&
-         (attrs.mode == Base::InterpolateMode::LINEAR ||
-          attrs.mode == Base::InterpolateMode::LINEAR_ONNX ||
-          attrs.mode == Base::InterpolateMode::BILINEAR_PILLOW) &&
-         attrs.coordinate_transformation_mode ==
-             Base::CoordinateTransformMode::HALF_PIXEL &&
+  const auto semantic = make_interpolate_semantic_contract(attrs);
+  return semantic && interpolate_semantics_are_bilinear_half_pixel(*semantic) &&
          !attrs.antialias && all_zero_values(attrs.pads_begin) &&
          all_zero_values(attrs.pads_end);
 }
@@ -160,8 +156,8 @@ bool is_mps_resize2d_candidate(const std::shared_ptr<const ov::Node> &node) {
     return false;
   }
   if (auto interp = ov::as_type_ptr<const ov::op::v0::Interpolate>(node)) {
-    return interp->get_attrs().mode == "linear" &&
-           !interp->get_attrs().align_corners &&
+    const auto semantic = make_interpolate_semantic_contract(*interp);
+    return semantic && interpolate_semantics_are_bilinear_half_pixel(*semantic) &&
            !interp->get_attrs().antialias &&
            all_zero_values(interp->get_attrs().pads_begin) &&
            all_zero_values(interp->get_attrs().pads_end) &&

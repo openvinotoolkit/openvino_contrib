@@ -30,6 +30,73 @@ enum class KernelArtifactPayloadKind {
   OpenClSource,
 };
 
+enum class RuntimeParamDescriptorPayloadKind {
+  None,
+  BinaryBroadcast,
+  Broadcast,
+  Select,
+  Tile,
+  Interpolate,
+  Softmax,
+  Transpose,
+  Reduce,
+};
+
+inline std::string_view runtime_param_descriptor_payload_kind_to_string(
+    RuntimeParamDescriptorPayloadKind kind) noexcept {
+  switch (kind) {
+  case RuntimeParamDescriptorPayloadKind::None:
+    return "none";
+  case RuntimeParamDescriptorPayloadKind::BinaryBroadcast:
+    return "binary_broadcast";
+  case RuntimeParamDescriptorPayloadKind::Broadcast:
+    return "broadcast";
+  case RuntimeParamDescriptorPayloadKind::Select:
+    return "select";
+  case RuntimeParamDescriptorPayloadKind::Tile:
+    return "tile";
+  case RuntimeParamDescriptorPayloadKind::Interpolate:
+    return "interpolate";
+  case RuntimeParamDescriptorPayloadKind::Softmax:
+    return "softmax";
+  case RuntimeParamDescriptorPayloadKind::Transpose:
+    return "transpose";
+  case RuntimeParamDescriptorPayloadKind::Reduce:
+    return "reduce";
+  }
+  return "none";
+}
+
+inline RuntimeParamDescriptorPayloadKind
+runtime_param_descriptor_payload_kind_from_string(
+    std::string_view kind) noexcept {
+  if (kind == "binary_broadcast") {
+    return RuntimeParamDescriptorPayloadKind::BinaryBroadcast;
+  }
+  if (kind == "broadcast") {
+    return RuntimeParamDescriptorPayloadKind::Broadcast;
+  }
+  if (kind == "select") {
+    return RuntimeParamDescriptorPayloadKind::Select;
+  }
+  if (kind == "tile") {
+    return RuntimeParamDescriptorPayloadKind::Tile;
+  }
+  if (kind == "interpolate") {
+    return RuntimeParamDescriptorPayloadKind::Interpolate;
+  }
+  if (kind == "softmax") {
+    return RuntimeParamDescriptorPayloadKind::Softmax;
+  }
+  if (kind == "transpose") {
+    return RuntimeParamDescriptorPayloadKind::Transpose;
+  }
+  if (kind == "reduce") {
+    return RuntimeParamDescriptorPayloadKind::Reduce;
+  }
+  return RuntimeParamDescriptorPayloadKind::None;
+}
+
 inline std::string_view
 kernel_buffer_role_descriptor_name(GfxKernelBufferRole role) noexcept {
   switch (role) {

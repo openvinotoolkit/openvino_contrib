@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "common/interpolate_contract.hpp"
 #include "openvino/core/node.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/avg_pool.hpp"
@@ -22,7 +23,6 @@
 #include "openvino/op/scaled_dot_product_attention.hpp"
 #include "openvino/op/softmax.hpp"
 #include "openvino/op/topk.hpp"
-#include "openvino/util/common_util.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -239,13 +239,8 @@ bool make_mps_gemm_desc_from_matmul(const std::shared_ptr<const ov::Node> &node,
 bool configure_from_interpolate_base_attrs(
     const ov::op::util::InterpolateBase::InterpolateAttrs &attrs,
     GfxMpsrtResize2DAbiDesc &desc) {
-  using Base = ov::op::util::InterpolateBase;
-  if (attrs.mode == Base::InterpolateMode::NEAREST ||
-      (attrs.mode != Base::InterpolateMode::LINEAR &&
-       attrs.mode != Base::InterpolateMode::LINEAR_ONNX &&
-       attrs.mode != Base::InterpolateMode::BILINEAR_PILLOW) ||
-      attrs.coordinate_transformation_mode !=
-          Base::CoordinateTransformMode::HALF_PIXEL ||
+  const auto semantic = make_interpolate_semantic_contract(attrs);
+  if (!semantic || !interpolate_semantics_are_bilinear_half_pixel(*semantic) ||
       attrs.antialias || !all_zero(attrs.pads_begin) ||
       !all_zero(attrs.pads_end)) {
     return false;
@@ -502,8 +497,8 @@ bool gfx_apple_make_mps_resize2d_desc(
 
   if (auto interp =
           std::dynamic_pointer_cast<const ov::op::v0::Interpolate>(node)) {
-    const auto mode = ov::util::to_lower(interp->get_attrs().mode);
-    if (mode != "linear" || interp->get_attrs().align_corners ||
+    const auto semantic = make_interpolate_semantic_contract(*interp);
+    if (!semantic || !interpolate_semantics_are_bilinear_half_pixel(*semantic) ||
         interp->get_attrs().antialias ||
         !all_zero(interp->get_attrs().pads_begin) ||
         !all_zero(interp->get_attrs().pads_end) ||

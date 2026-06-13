@@ -49,11 +49,6 @@ plan_transpose_runtime_values(const RuntimeInputResolver &inputs,
                               const RuntimeStageExecutableDescriptor &descriptor,
                               std::string_view stage_name);
 
-RuntimeInterpolatePlan plan_interpolate_runtime_values(
-    const RuntimeInputResolver &inputs, const std::vector<GpuTensor *> &outputs,
-    const RuntimeStageExecutableDescriptor &descriptor,
-    std::string_view stage_name);
-
 RuntimeSoftmaxPlan
 plan_softmax_runtime_values(const RuntimeInputResolver &inputs,
                             const RuntimeStageExecutableDescriptor &descriptor,

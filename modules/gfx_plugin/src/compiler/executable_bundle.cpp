@@ -12,6 +12,7 @@
 #include <utility>
 
 #include "common/constant_tensor_evaluator.hpp"
+#include "openvino/core/except.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -198,6 +199,8 @@ make_kernel_abi_fingerprint(const KernelArtifactDescriptor &descriptor) {
   std::ostringstream material;
   append_field(material, make_kernel_abi_fingerprint(descriptor.kernel));
   append_u32(material, descriptor.runtime_param_buffer_count);
+  append_field(material, runtime_param_descriptor_payload_kind_to_string(
+                             descriptor.runtime_param_payload_kind));
   append_i64_vector(material, descriptor.runtime_param_i64_metadata);
   append_bool(material, descriptor.runtime_param_reduce_keep_dims);
   append_bool(material, descriptor.runtime_param_reduce_keep_dims_valid);
@@ -284,6 +287,8 @@ KernelArtifactDescriptor make_artifact_descriptor(const StageRecord &stage) {
       static_cast<uint32_t>(descriptor.kernel.tensor_roles.size() +
                             descriptor.kernel.scalar_roles.size());
   descriptor.abi_output_arg_count = static_cast<uint32_t>(stage.outputs.size());
+  descriptor.runtime_param_payload_kind =
+      stage.runtime_params.descriptor_payload_kind;
   if (descriptor.kernel.origin == KernelArtifactOrigin::HandwrittenException) {
     descriptor.kernel.exception_ticket = stage.handwritten_exception.ticket;
     descriptor.kernel.exception_reason = stage.handwritten_exception.reason;
@@ -385,6 +390,25 @@ std::string_view kernel_artifact_payload_kind_to_string(
 
 void finalize_kernel_artifact_descriptor_identity(
     KernelArtifactDescriptor &descriptor) {
+  const auto compiler_payload_kind =
+      runtime_param_descriptor_payload_kind_for_stage(
+          descriptor.kernel.op_family, descriptor.runtime_param_buffer_count);
+  if (descriptor.runtime_param_payload_kind ==
+          RuntimeParamDescriptorPayloadKind::None &&
+      compiler_payload_kind != RuntimeParamDescriptorPayloadKind::None) {
+    descriptor.runtime_param_payload_kind = compiler_payload_kind;
+  }
+  OPENVINO_ASSERT(
+      descriptor.runtime_param_payload_kind ==
+          RuntimeParamDescriptorPayloadKind::None ||
+          descriptor.runtime_param_payload_kind == compiler_payload_kind,
+      "GFX compiler: RuntimeParams descriptor payload kind drift for ",
+      descriptor.kernel.op_family, ": descriptor=",
+      runtime_param_descriptor_payload_kind_to_string(
+          descriptor.runtime_param_payload_kind),
+      " compiler_schema=",
+      runtime_param_descriptor_payload_kind_to_string(compiler_payload_kind),
+      " runtime_param_count=", descriptor.runtime_param_buffer_count);
   descriptor.abi_fingerprint = make_kernel_abi_fingerprint(descriptor);
   descriptor.manifest_ref = make_manifest_ref(descriptor.stage_record_key,
                                               descriptor.kernel.kernel_id,

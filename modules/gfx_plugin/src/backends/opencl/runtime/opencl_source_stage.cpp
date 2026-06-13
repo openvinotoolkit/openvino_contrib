@@ -627,11 +627,15 @@ private:
     RuntimeInputResolver runtime_inputs;
     runtime_inputs.inputs = &m_inputs;
     runtime_inputs.descriptor = &m_descriptor;
+    OPENVINO_ASSERT(
+        m_descriptor.runtime_param_buffer_count == runtime_param_count,
+        "GFX OpenCL: source launch-plan RuntimeParams count drifts from "
+        "compiler descriptor for ",
+        m_name);
     const std::vector<int32_t> no_compiler_scalar_args;
     auto materialization = materialize_descriptor_owned_runtime_param_payload(
         *m_buffer_manager, m_descriptor, runtime_inputs, outputs,
-        runtime_param_count, no_compiler_scalar_args, m_name,
-        direct_input_indices);
+        no_compiler_scalar_args, m_name, direct_input_indices);
     if (!materialization.available) {
       OPENVINO_ASSERT(
           false, "GFX OpenCL: RuntimeParams ABI is not descriptor-owned for ",

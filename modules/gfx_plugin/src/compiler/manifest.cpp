@@ -8,7 +8,10 @@
 #include <sstream>
 #include <utility>
 
+#include "common/interpolate_contract.hpp"
 #include "compiler/pipeline_stage_plan.hpp"
+#include "kernel_ir/gfx_runtime_shape_rule.hpp"
+#include "openvino/core/except.hpp"
 #include "openvino/op/broadcast.hpp"
 #include "openvino/op/concat.hpp"
 #include "openvino/op/convolution.hpp"
@@ -33,15 +36,6 @@ constexpr const char *kStatefulPrebindShapeRuleStaticOutput =
     "static_output_shape";
 constexpr const char *kStatefulPrebindShapeRuleSumInputsAlongAxis =
     "sum_inputs_along_axis";
-constexpr const char *kRuntimeShapeRuleStaticOrDescriptor =
-    "static_or_descriptor";
-constexpr const char *kRuntimeShapeRuleConcat = "concat";
-constexpr const char *kRuntimeShapeRuleBroadcast = "broadcast";
-constexpr const char *kRuntimeShapeRuleSelect = "select";
-constexpr const char *kRuntimeShapeRuleShapeOf = "shape_of";
-constexpr const char *kRuntimeShapeRuleSlice = "slice";
-constexpr const char *kRuntimeShapeRuleRange = "range";
-constexpr const char *kRuntimeShapeRuleTile = "tile";
 constexpr int64_t kRuntimeSliceMetadataVersion = 1;
 constexpr int64_t kRuntimeSliceKindV8 = 1;
 constexpr int64_t kRuntimeSliceKindStridedSliceV1 = 2;
@@ -99,12 +93,17 @@ bool stateful_prebind_shape_rule_valid(std::string_view rule) {
          rule == kStatefulPrebindShapeRuleSumInputsAlongAxis;
 }
 
-bool runtime_shape_rule_valid(std::string_view rule) {
-  return rule == kRuntimeShapeRuleStaticOrDescriptor ||
-         rule == kRuntimeShapeRuleConcat || rule == kRuntimeShapeRuleBroadcast ||
-         rule == kRuntimeShapeRuleSelect || rule == kRuntimeShapeRuleShapeOf ||
-         rule == kRuntimeShapeRuleSlice || rule == kRuntimeShapeRuleRange ||
-         rule == kRuntimeShapeRuleTile;
+std::string runtime_shape_rule_string(RuntimeShapeRuleKind kind) {
+  return std::string(runtime_shape_rule_name(kind));
+}
+
+std::string_view runtime_shape_rule_view(const std::string &rule) noexcept {
+  return std::string_view(rule.data(), rule.size());
+}
+
+bool runtime_shape_contract_rule_is(const RuntimeShapeContract &contract,
+                                    RuntimeShapeRuleKind kind) {
+  return runtime_shape_rule_view(contract.rule) == runtime_shape_rule_name(kind);
 }
 
 bool read_counted_metadata_field(const std::vector<int64_t> &metadata,
@@ -142,27 +141,27 @@ bool slice_runtime_shape_metadata_valid(const std::vector<int64_t> &metadata) {
 
 std::string runtime_shape_rule_for_op(const PlannedOperation &op) {
   if (op.type_name == "Concat") {
-    return kRuntimeShapeRuleConcat;
+    return runtime_shape_rule_string(RuntimeShapeRuleKind::Concat);
   }
   if (op.type_name == "Broadcast") {
-    return kRuntimeShapeRuleBroadcast;
+    return runtime_shape_rule_string(RuntimeShapeRuleKind::Broadcast);
   }
   if (op.type_name == "Select") {
-    return kRuntimeShapeRuleSelect;
+    return runtime_shape_rule_string(RuntimeShapeRuleKind::Select);
   }
   if (op.type_name == "ShapeOf") {
-    return kRuntimeShapeRuleShapeOf;
+    return runtime_shape_rule_string(RuntimeShapeRuleKind::ShapeOf);
   }
   if (op.type_name == "Slice" || op.type_name == "StridedSlice") {
-    return kRuntimeShapeRuleSlice;
+    return runtime_shape_rule_string(RuntimeShapeRuleKind::Slice);
   }
   if (op.type_name == "Range") {
-    return kRuntimeShapeRuleRange;
+    return runtime_shape_rule_string(RuntimeShapeRuleKind::Range);
   }
   if (op.type_name == "Tile") {
-    return kRuntimeShapeRuleTile;
+    return runtime_shape_rule_string(RuntimeShapeRuleKind::Tile);
   }
-  return kRuntimeShapeRuleStaticOrDescriptor;
+  return runtime_shape_rule_string(RuntimeShapeRuleKind::StaticOrDescriptor);
 }
 
 void append_counted_i64_vector(std::vector<int64_t> &metadata,
@@ -174,7 +173,7 @@ void append_counted_i64_vector(std::vector<int64_t> &metadata,
 RuntimeShapeContract make_slice_runtime_shape_contract(
     const ov::op::v8::Slice &slice) {
   RuntimeShapeContract contract;
-  contract.rule = kRuntimeShapeRuleSlice;
+  contract.rule = runtime_shape_rule_string(RuntimeShapeRuleKind::Slice);
   contract.i64_metadata = {kRuntimeSliceMetadataVersion, kRuntimeSliceKindV8,
                            static_cast<int64_t>(slice.get_input_size())};
   return contract;
@@ -183,7 +182,7 @@ RuntimeShapeContract make_slice_runtime_shape_contract(
 RuntimeShapeContract make_strided_slice_runtime_shape_contract(
     const ov::op::v1::StridedSlice &slice) {
   RuntimeShapeContract contract;
-  contract.rule = kRuntimeShapeRuleSlice;
+  contract.rule = runtime_shape_rule_string(RuntimeShapeRuleKind::Slice);
   contract.i64_metadata = {kRuntimeSliceMetadataVersion,
                            kRuntimeSliceKindStridedSliceV1,
                            static_cast<int64_t>(slice.get_input_size())};
@@ -195,36 +194,14 @@ RuntimeShapeContract make_strided_slice_runtime_shape_contract(
   return contract;
 }
 
-int64_t interpolate_nearest_mode_code(
-    ov::op::util::InterpolateBase::NearestMode mode) {
-  using Base = ov::op::util::InterpolateBase;
-  switch (mode) {
-  case Base::NearestMode::FLOOR:
-  case Base::NearestMode::ROUND_PREFER_FLOOR:
-    return 1;
-  case Base::NearestMode::CEIL:
-  case Base::NearestMode::ROUND_PREFER_CEIL:
-    return 2;
-  case Base::NearestMode::SIMPLE:
-  default:
-    return 0;
-  }
-}
-
 RuntimeShapeContract make_interpolate_runtime_shape_contract(
-    const ov::op::util::InterpolateBase::InterpolateAttrs &attrs) {
-  using Base = ov::op::util::InterpolateBase;
-  const bool align_corners =
-      attrs.coordinate_transformation_mode ==
-      Base::CoordinateTransformMode::ALIGN_CORNERS;
-  const bool use_half_pixel =
-      attrs.coordinate_transformation_mode ==
-      Base::CoordinateTransformMode::HALF_PIXEL;
-
+    const InterpolateSemanticContract &semantic) {
   RuntimeShapeContract contract;
-  contract.rule = kRuntimeShapeRuleStaticOrDescriptor;
-  contract.i64_metadata = {align_corners ? 1 : 0, use_half_pixel ? 1 : 0,
-                           interpolate_nearest_mode_code(attrs.nearest_mode)};
+  contract.rule =
+      runtime_shape_rule_string(RuntimeShapeRuleKind::StaticOrDescriptor);
+  contract.i64_metadata = {semantic.align_corners ? 1 : 0,
+                           semantic.use_half_pixel ? 1 : 0,
+                           static_cast<int64_t>(semantic.nearest_mode)};
   return contract;
 }
 
@@ -276,24 +253,11 @@ RuntimeShapeContract runtime_shape_contract_for_op(const PlannedOperation &op) {
     return make_strided_slice_runtime_shape_contract(*slice);
   }
 
-  if (auto interpolate =
-          ov::as_type_ptr<const ov::op::v0::Interpolate>(op.source_node)) {
-    RuntimeShapeContract interpolate_contract;
-    interpolate_contract.rule = kRuntimeShapeRuleStaticOrDescriptor;
-    interpolate_contract.i64_metadata = {interpolate->get_attrs().align_corners ? 1 : 0,
-                                         interpolate->get_attrs().align_corners ? 0 : 1,
-                                         0};
-    return interpolate_contract;
-  }
-
-  if (auto interpolate =
-          ov::as_type_ptr<const ov::op::v4::Interpolate>(op.source_node)) {
-    return make_interpolate_runtime_shape_contract(interpolate->get_attrs());
-  }
-
-  if (auto interpolate =
-          ov::as_type_ptr<const ov::op::v11::Interpolate>(op.source_node)) {
-    return make_interpolate_runtime_shape_contract(interpolate->get_attrs());
+  if (is_interpolate_node(op.source_node)) {
+    const auto semantic = make_interpolate_semantic_contract(op.source_node);
+    OPENVINO_ASSERT(semantic,
+                    "GFX manifest: Interpolate semantic contract is missing");
+    return make_interpolate_runtime_shape_contract(*semantic);
   }
 
   return contract;
@@ -420,6 +384,9 @@ RuntimeParamContract make_runtime_param_contract(const StageRecord &stage) {
       ++contract.scalar_param_count;
     }
   }
+  contract.descriptor_payload_kind =
+      runtime_param_descriptor_payload_kind_for_stage(
+          stage.normalized_op_family, contract.params.size());
   return contract;
 }
 
@@ -664,23 +631,25 @@ void verify_runtime_param_contract(const RuntimeParamContract &contract,
 void verify_runtime_shape_contract(const RuntimeShapeContract &contract,
                                    size_t stage_id,
                                    ManifestVerificationResult &result) {
-  if (contract.rule.empty() || !runtime_shape_rule_valid(contract.rule)) {
+  if (contract.rule.empty() ||
+      !runtime_shape_rule_known(runtime_shape_rule_view(contract.rule))) {
     result.diagnostics.push_back("stage " + std::to_string(stage_id) +
                                  " has invalid runtime shape contract");
   }
-  if (contract.rule == kRuntimeShapeRuleConcat &&
+  if (runtime_shape_contract_rule_is(contract, RuntimeShapeRuleKind::Concat) &&
       contract.i64_metadata.size() != 1) {
     result.diagnostics.push_back("stage " + std::to_string(stage_id) +
                                  " has incomplete concat runtime shape "
                                  "metadata");
   }
-  if (contract.rule == kRuntimeShapeRuleBroadcast &&
+  if (runtime_shape_contract_rule_is(contract,
+                                     RuntimeShapeRuleKind::Broadcast) &&
       contract.i64_metadata.size() < 2) {
     result.diagnostics.push_back("stage " + std::to_string(stage_id) +
                                  " has incomplete broadcast runtime shape "
                                  "metadata");
   }
-  if (contract.rule == kRuntimeShapeRuleSlice) {
+  if (runtime_shape_contract_rule_is(contract, RuntimeShapeRuleKind::Slice)) {
     if (!slice_runtime_shape_metadata_valid(contract.i64_metadata)) {
       result.diagnostics.push_back("stage " + std::to_string(stage_id) +
                                    " has incomplete slice runtime shape "

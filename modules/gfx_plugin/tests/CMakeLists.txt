@@ -195,6 +195,15 @@ endif()
 target_sources(${UNIT_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_backend_contracts.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_backend_architecture_contract_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_apple_vendor_contract_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_backend_artifact_payload_contract_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_const_tensor_descriptor_contract_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_memory_cache_contract_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_pipeline_stage_materialization_contract_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_runtime_descriptor_contract_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_runtime_param_descriptor_contract_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_backend_module_contract_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_kernel_registry_contract_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_cache_public_contract_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_runtime_model_runner.cpp
     ${GFX_UNIT_RUNTIME_EXECUTION_POLICY_SOURCE}
@@ -210,6 +219,7 @@ target_sources(${UNIT_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_softmax_kernel_contract_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_conv_kernel_contract_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_pool_kernel_contract_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_interpolate_kernel_contract_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_matmul_kernel_contract_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_backend_base_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_const_cache_test.cpp

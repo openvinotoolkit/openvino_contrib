@@ -240,15 +240,17 @@ For OpenCL source-artifact work:
 
 Current registered generated OpenCL routes include activation, elementwise,
 f32 Conv2D/GroupConv2D, f32/f16 Softmax, dynamic-static-rank f32/f16 Softmax,
-f32/f16 Pool2D, f32/f16/i64 Range, ShapeOf, Tile, compare/select, and
-logical-bool elementwise. Activation, Eltwise, Conv2D/GroupConv2D, Pool2D,
-Range, ShapeOf, Softmax, and Tile have family-specific OpenCL kernel-unit
-adapters under `src/backends/opencl/compiler/` and are listed in
+f32/f16 Pool2D, f32/f16/i64 Range, f32/f16 Interpolate, ShapeOf, Tile,
+compare/select, logical-bool elementwise, f32 numeric reduction, and boolean
+logical reduction. Activation, Eltwise, Conv2D/GroupConv2D, Interpolate,
+Pool2D, Range, Reduction, ShapeOf, Softmax, and Tile have family-specific
+OpenCL kernel-unit adapters under `src/backends/opencl/compiler/` and are
+listed in
 `opencl_kernel_unit_catalog.*`. The current OpenCL kernel registry has no
-active handwritten kernel-unit exception. MatMul, Interpolate, Reduction,
-Transpose, Concat, and Split are current OpenCL catalog limitations and should
-continue to report `missing_opencl_*_kernel_unit` until catalog entries,
-family adapters, payload resolvers, and tests are added.
+active handwritten kernel-unit exception. MatMul, Transpose, Concat, and Split
+are current OpenCL catalog limitations and should continue to report
+`missing_opencl_*_kernel_unit` until catalog entries, family adapters, payload
+resolvers, and tests are added.
 
 Standalone OpenCL Conv2D microbench tools remain experimental probes. Plugin
 support must flow through `opencl_conv_kernel_unit.*`, support probing,

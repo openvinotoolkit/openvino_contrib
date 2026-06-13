@@ -87,28 +87,32 @@ Build-system notes:
 - `src/runtime/backend_runtime_provider.*` owns runtime provider registration
   for backend-state creation, backend infer execution, and profiling trace-sink
   registration.
-- `src/compiler/pipeline_stage_builder.*` owns stage descriptor construction,
-  node-to-stage mapping, and backend-policy handoff from `CompiledModel` while
-  consuming compiler-owned plan/fusion contracts.
+- `src/compiler/pipeline_stage_graph_snapshot.*`,
+  `src/compiler/pipeline_stage_builder.*`, and
+  `src/compiler/pipeline_stage_materialization_draft.*` own graph snapshotting,
+  stage descriptor construction, node-to-stage mapping, runtime-facing
+  materialization plans, and backend-policy handoff while consuming
+  compiler-owned plan/fusion contracts.
 - `src/compiler/pipeline_stage_fusion.*` owns compiler-side fusion selection,
   fusion contracts, residual-add detection, and vendor attention planning.
 - `src/compiler/pipeline_stage_plan.*` owns compiler-side compiled-pipeline
   input links, model-output flags, output-source metadata, and fused output
   aliases.
-- `src/compiler/runtime_executable_descriptor_builder.*` owns conversion and
-  verification from compiler executable bundles into runtime executable
-  descriptors. Runtime-facing stage plans are separate compiler outputs and must
-  not be embedded into cacheable descriptors.
+- `src/compiler/runtime_executable_descriptor_builder.*` and
+  `src/compiler/runtime_executable_descriptor_finalizer.cpp` own conversion,
+  finalization, and verification from compiler executable bundles and graph
+  snapshots into runtime executable descriptors.
 - `src/compiler/memory_plan.*` owns compiler memory regions, lifetimes, alias
   groups, and transient arenas; request code must consume the runtime descriptor
   instead of reconstructing this information.
-- `src/compiler/cache_envelope.*` builds cache metadata and fingerprints,
-  serializes/deserializes the envelope wire format, stores/loads envelopes by
-  stable key, and records source/vendor payload identity. `src/compiler/cache_import.*`
-  rebuilds descriptor-owned runtime contracts from an envelope, and
-  `src/compiler/cache_repository.*` maps `ov::cache_dir` requests to stable
-  cache entries. This is the GFX compiled-model cache contract, not a persisted
-  native backend executable cache.
+- `src/compiler/cache_envelope.*`, `src/compiler/cache_envelope_wire.cpp`, and
+  `src/compiler/cache_materialization_contract.*` build cache metadata,
+  fingerprints, envelope/materialization wire contracts, source/vendor payload
+  identity, and descriptor-owned materialization contracts.
+  `src/compiler/cache_import.*` rebuilds descriptor-owned runtime contracts
+  from an envelope, and `src/compiler/cache_repository.*` maps `ov::cache_dir`
+  requests to stable cache entries. This is the GFX compiled-model cache
+  contract, not a persisted native backend executable cache.
 - `src/runtime/runtime_execution_plan.*` owns the materialized stage list and
   the runtime descriptor used to create it. Infer execution consumes this plan
   instead of a detached `PipelineStageDesc` vector.
@@ -179,11 +183,15 @@ Read in this order:
 5. `src/compiler/backend_registry.*`
 6. `src/compiler/backend_module_provider.*`
 7. `src/compiler/manifest.*` and `src/compiler/executable_bundle.*`
-8. `src/compiler/pipeline_stage_builder.*`
+8. `src/compiler/pipeline_stage_graph_snapshot.*`,
+   `src/compiler/pipeline_stage_builder.*`, and
+   `src/compiler/pipeline_stage_materialization_draft.*`
 9. `src/compiler/pipeline_stage_fusion.*`
 10. `src/compiler/pipeline_stage_plan.*`
-11. `src/compiler/runtime_executable_descriptor_builder.*`
+11. `src/compiler/runtime_executable_descriptor_builder.*` and
+   `src/compiler/runtime_executable_descriptor_finalizer.cpp`
 12. `src/compiler/memory_plan.*`, `src/compiler/cache_envelope.*`,
+   `src/compiler/cache_materialization_contract.*`,
    `src/compiler/cache_import.*`, and `src/compiler/cache_repository.*`
 13. `src/compiler/tensor_layout.*`
 14. `src/compiler/stage_placement.*` and
@@ -211,11 +219,15 @@ For runtime planning, also inspect:
 - `src/compiler/stage_compiler_policy.*`
 - `src/compiler/stage_policy.*`
 - `src/compiler/pipeline_stage_builder.*`
+- `src/compiler/pipeline_stage_graph_snapshot.*`
+- `src/compiler/pipeline_stage_materialization_draft.*`
 - `src/compiler/pipeline_stage_fusion.*`
 - `src/compiler/pipeline_stage_plan.*`
 - `src/compiler/runtime_executable_descriptor_builder.*`
+- `src/compiler/runtime_executable_descriptor_finalizer.cpp`
 - `src/compiler/memory_plan.*`
 - `src/compiler/cache_envelope.*`
+- `src/compiler/cache_materialization_contract.*`
 - `src/compiler/cache_import.*`
 - `src/compiler/cache_repository.*`
 - `src/runtime/backend_runtime.*`
@@ -326,12 +338,19 @@ For OpenCL source execution, start with:
      and vendor attention fusion selection
    - compiler pipeline-stage I/O plan for input links, model-output flags, and
      output aliases
+   - compiler graph snapshot and materialization draft for runtime-facing stage
+     plans and public output descriptors
    - runtime pipeline-stage materializer for descriptor-backed stage creation
      and vendor attention artifact materialization
    - compiler memory plan for region ids, alias groups, lifetimes, and arenas
+   - cache materialization contract for descriptor-owned cache import/export
    - compiler tensor-layout plan for view-only/materialized layout contracts
    - runtime tensor-binding contract helpers for descriptor-owned element types,
      static shapes, and generated source `RuntimeParams` payload ownership
+   - runtime-shape rule helpers for descriptor-owned shape-buffer
+     materialization
+   - runtime output memory contract for transient arenas and descriptor-owned
+     output regions
    - fused-output lifetime plan for aliasing outputs inside a fused stage
    - backend stage-placement policy for domain/storage selection
    - selected backend compiler policy passed through `GpuStageRuntimeOptions`
@@ -371,8 +390,8 @@ Common operation families that need extra care:
 - runtime-shape argument requirements carried by `KernelUnit`,
   `StageRecord`, artifact descriptors, and runtime descriptors
 - descriptor-owned generated source `RuntimeParams` payloads for Broadcast,
-  binary elementwise broadcast, `Select`, `Tile`, Softmax/LogSoftmax,
-  Transpose, and Reduce families; keep the ownership rules in
+  binary elementwise broadcast, `Select`, `Tile`, Interpolate,
+  Softmax/LogSoftmax, Transpose, and Reduce families; keep the ownership rules in
   `src/runtime/tensor_binding_contract.*`
 - Metal MPS/MPSGraph vendor descriptors, vendor attention artifacts, and MPSRT
   storage bridges
@@ -384,10 +403,11 @@ Common operation families that need extra care:
 - OpenCL generated kernel units registered in
   `opencl_kernel_unit_catalog.*`: activation, elementwise, f32
   Conv2D/GroupConv2D, f32/f16 Softmax, dynamic-static-rank f32/f16 Softmax,
-  f32/f16 Pool2D, f32/f16/i64 Range, ShapeOf, Tile, compare/select, and
+  f32/f16 Pool2D, f32/f16/i64 Range, f32/f16 Interpolate, f32 numeric
+  reduction, boolean logical reduction, ShapeOf, Tile, compare/select, and
   logical-bool elementwise
-- current OpenCL catalog limitations: MatMul, Interpolate, Reduction,
-  Transpose, Concat, and Split must remain unsupported with
+- current OpenCL catalog limitations: MatMul, Transpose, Concat, and Split
+  must remain unsupported with
   `missing_opencl_*_kernel_unit` until they get catalog entries,
   family-owned adapters, payload materialization, and tests
 - generated activation `Swish` routes, where default/static beta and runtime
@@ -466,7 +486,8 @@ registered generated kernel-unit ids, operation-support entries, and the
 artifact families that can materialize payloads. Family adapters such as
 `opencl_activation_kernel_unit.*`, `opencl_eltwise_kernel_unit.*`,
 `opencl_shapeof_kernel_unit.*`, `opencl_conv_kernel_unit.*`,
-`opencl_pool_kernel_unit.*`, `opencl_range_kernel_unit.*`,
+`opencl_interpolate_kernel_unit.*`, `opencl_pool_kernel_unit.*`,
+`opencl_range_kernel_unit.*`, `opencl_reduction_kernel_unit.*`,
 `opencl_softmax_kernel_unit.*`, and `opencl_tile_kernel_unit.*` own
 family-specific support probing and payload materialization.
 
@@ -477,9 +498,9 @@ branches to the executor.
 The current OpenCL kernel registry has no active handwritten kernel-unit
 exception. Do not introduce a baseline exception unless the generated-source
 contract cannot express the route and the exception is documented, tested, and
-reviewed. OpenCL MatMul, Interpolate, Reduction, Transpose, Concat, and Split
-are currently not registered compiler routes; operation support rejects them
-with `missing_opencl_*_kernel_unit` until the catalog, family adapter, payload
+reviewed. OpenCL MatMul, Transpose, Concat, and Split are currently not
+registered compiler routes; operation support rejects them with
+`missing_opencl_*_kernel_unit` until the catalog, family adapter, payload
 resolver, and tests are added.
 
 Generated or embedded source payloads should flow through compiler artifact
@@ -518,9 +539,10 @@ elementwise OpenCL changes, update `tests/unit/gfx_eltwise_contract_cases.hpp`,
 For reduction source-unit changes, update
 `tests/unit/gfx_reduction_kernel_contract_test.cpp` and the shared
 `tests/unit/gfx_opencl_source_artifact_verifier.hpp` helper. OpenCL reduction is
-currently a rejected catalog route; keep the tests explicit about
-`missing_opencl_reduction_kernel_unit` until a generated reduction unit is
-registered and payload materialization is implemented.
+currently a generated source-artifact route for f32 numeric reductions and
+boolean logical reductions with static input/output shapes and constant axes.
+Keep source ids, scalar metadata, support probing, payload routing, and boolean
+output byte layout covered in the reduction contract tests.
 
 For Softmax source-unit changes, update
 `tests/unit/gfx_softmax_kernel_contract_test.cpp` and the shared

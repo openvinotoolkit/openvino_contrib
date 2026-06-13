@@ -11,7 +11,9 @@ set(GFX_COMPILER_COMMON_SOURCES
     ${_gfx_src_dir}/compiler/static_backend_module.cpp
     ${_gfx_src_dir}/compiler/backend_target.cpp
     ${_gfx_src_dir}/compiler/cache_envelope.cpp
+    ${_gfx_src_dir}/compiler/cache_envelope_wire.cpp
     ${_gfx_src_dir}/compiler/cache_import.cpp
+    ${_gfx_src_dir}/compiler/cache_materialization_contract.cpp
     ${_gfx_src_dir}/compiler/cache_repository.cpp
     ${_gfx_src_dir}/compiler/executable_bundle.cpp
     ${_gfx_src_dir}/compiler/gfx_compiler_service.cpp
@@ -24,8 +26,11 @@ set(GFX_COMPILER_COMMON_SOURCES
     ${_gfx_src_dir}/compiler/operation_support.cpp
     ${_gfx_src_dir}/compiler/pipeline_stage_builder.cpp
     ${_gfx_src_dir}/compiler/pipeline_stage_fusion.cpp
+    ${_gfx_src_dir}/compiler/pipeline_stage_graph_snapshot.cpp
+    ${_gfx_src_dir}/compiler/pipeline_stage_materialization_draft.cpp
     ${_gfx_src_dir}/compiler/pipeline_stage_plan.cpp
     ${_gfx_src_dir}/compiler/runtime_executable_descriptor_builder.cpp
+    ${_gfx_src_dir}/compiler/runtime_executable_descriptor_finalizer.cpp
     ${_gfx_src_dir}/compiler/stage_compiler_policy.cpp
     ${_gfx_src_dir}/compiler/stage_placement.cpp
     ${_gfx_src_dir}/compiler/stage_policy.cpp
@@ -45,10 +50,13 @@ set(GFX_COMPILER_COMMON_HEADERS
     ${_gfx_src_dir}/common/gpu_parallelism_plan.hpp
     ${_gfx_src_dir}/common/gpu_parallelism_profile.hpp
     ${_gfx_src_dir}/common/gpu_stage_submit_policy.hpp
+    ${_gfx_src_dir}/common/interpolate_contract.hpp
+    ${_gfx_src_dir}/common/runtime_param_descriptor.hpp
     ${_gfx_src_dir}/compiler/backend_registry.hpp
     ${_gfx_src_dir}/compiler/backend_target.hpp
     ${_gfx_src_dir}/compiler/cache_envelope.hpp
     ${_gfx_src_dir}/compiler/cache_import.hpp
+    ${_gfx_src_dir}/compiler/cache_materialization_contract.hpp
     ${_gfx_src_dir}/compiler/cache_repository.hpp
     ${_gfx_src_dir}/compiler/executable_bundle.hpp
     ${_gfx_src_dir}/compiler/gfx_compiler_service.hpp
@@ -71,6 +79,9 @@ set(GFX_COMPILER_COMMON_HEADERS
 )
 
 set(GFX_COMPILER_COMMON_PRIVATE_HEADERS
+    ${_gfx_src_dir}/compiler/cache_materialization_wire.hpp
+    ${_gfx_src_dir}/compiler/pipeline_stage_graph_snapshot.hpp
+    ${_gfx_src_dir}/compiler/pipeline_stage_materialization_draft.hpp
     ${_gfx_src_dir}/compiler/pipeline_stage_runtime_descriptor_builder_detail.hpp
 )
 
@@ -160,11 +171,13 @@ set(GFX_OPENCL_BACKEND_COMPILER_HEADERS
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_backend_module.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_conv_kernel_unit.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_eltwise_kernel_unit.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_interpolate_kernel_unit.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_artifacts.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_unit_catalog.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_operation_support.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_pool_kernel_unit.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_range_kernel_unit.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_reduction_kernel_unit.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_shapeof_kernel_unit.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_softmax_kernel_unit.hpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_tile_kernel_unit.hpp
@@ -179,6 +192,8 @@ set(GFX_OPENCL_BACKEND_COMPILER_SOURCES
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_conv_source_artifact.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_eltwise_kernel_unit.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_eltwise_source_artifact.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_interpolate_kernel_unit.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_interpolate_source_artifact.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_artifacts.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_registry.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_unit_catalog.cpp
@@ -187,6 +202,8 @@ set(GFX_OPENCL_BACKEND_COMPILER_SOURCES
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_pool_source_artifact.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_range_kernel_unit.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_range_source_artifact.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_reduction_kernel_unit.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_reduction_source_artifact.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_shapeof_kernel_unit.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_softmax_kernel_unit.cpp
     ${_gfx_src_dir}/backends/opencl/compiler/opencl_softmax_source_artifact.cpp
@@ -217,7 +234,12 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_inputs.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_signature.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_runtime_shape_rule.hpp
     ${_gfx_src_dir}/runtime/gfx_kernel_runtime_params.hpp
+    ${_gfx_src_dir}/runtime/gfx_kernel_runtime_params_core.hpp
+    ${_gfx_src_dir}/runtime/gfx_kernel_runtime_params_movement.hpp
+    ${_gfx_src_dir}/runtime/gfx_kernel_runtime_params_numeric.hpp
+    ${_gfx_src_dir}/runtime/gfx_kernel_runtime_params_scatter.hpp
     ${_gfx_src_dir}/runtime/kernel_launch_plan.hpp
     ${_gfx_src_dir}/runtime/gfx_profiler.hpp
     ${_gfx_src_dir}/runtime/gfx_profiling_report.hpp
@@ -236,6 +258,8 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/infer_pipeline_state.hpp
     ${_gfx_src_dir}/runtime/infer_submission.hpp
     ${_gfx_src_dir}/runtime/gfx_stage_runtime_values.hpp
+    ${_gfx_src_dir}/runtime/runtime_output_memory_contract.hpp
+    ${_gfx_src_dir}/runtime/runtime_shape_materializer.hpp
     ${_gfx_src_dir}/runtime/output_lifetime.hpp
     ${_gfx_src_dir}/runtime/pipeline_stage_desc.hpp
     ${_gfx_src_dir}/runtime/pipeline_stage_materializer.hpp
@@ -269,6 +293,7 @@ set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_source.cpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_inputs.cpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.cpp
+    ${_gfx_src_dir}/kernel_ir/gfx_runtime_shape_rule.cpp
     ${_gfx_src_dir}/runtime/execution_dispatcher.cpp
     ${_gfx_src_dir}/runtime/immutable_gpu_buffer_cache.cpp
     ${_gfx_src_dir}/runtime/memory_manager.cpp
@@ -285,6 +310,8 @@ set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/runtime/infer_executor.cpp
     ${_gfx_src_dir}/runtime/infer_pipeline.cpp
     ${_gfx_src_dir}/runtime/infer_submission.cpp
+    ${_gfx_src_dir}/runtime/runtime_output_memory_contract.cpp
+    ${_gfx_src_dir}/runtime/runtime_shape_materializer.cpp
     ${_gfx_src_dir}/runtime/pipeline_stage_materializer.cpp
     ${_gfx_src_dir}/runtime/stateful_execution.cpp
     ${_gfx_src_dir}/runtime/stateful_stage.cpp

@@ -50,21 +50,6 @@ TEST(GfxOpenClLayoutSourceArtifactsTest,
 }
 
 TEST(GfxOpenClLayoutSourceArtifactsTest,
-     InterpolateHasNoOpenClSourceArtifactWithoutKernelUnit) {
-  const auto data = param(ov::element::f32, ov::Shape{1, 4, 16, 16});
-  const auto output_shape = i64_const(ov::Shape{2}, {32, 32});
-  ov::op::v0::Interpolate::Attributes attrs;
-  attrs.axes = ov::AxisSet{2, 3};
-  attrs.mode = "linear";
-  attrs.align_corners = false;
-  const auto interpolate =
-      std::make_shared<ov::op::v0::Interpolate>(data, output_shape, attrs);
-
-  expect_opencl_missing_kernel_unit(interpolate,
-                                    "missing_opencl_interpolate_kernel_unit");
-}
-
-TEST(GfxOpenClLayoutSourceArtifactsTest,
      TransposeHasNoOpenClSourceArtifactWithoutKernelUnit) {
   const auto data = param(ov::element::f32, ov::Shape{2, 3, 4});
   const auto transpose = std::make_shared<ov::op::v1::Transpose>(

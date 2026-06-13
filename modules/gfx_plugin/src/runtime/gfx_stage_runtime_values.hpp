@@ -230,12 +230,16 @@ RuntimeSlicePlan plan_slice_runtime_values(
     const RuntimeInputResolver &inputs, const std::vector<GpuTensor *> &outputs,
     bool requires_runtime_shape_args, std::string_view stage_name);
 
+RuntimeInterpolatePlan plan_interpolate_runtime_values(
+    const RuntimeInputResolver &inputs, const std::vector<GpuTensor *> &outputs,
+    const RuntimeStageExecutableDescriptor &descriptor,
+    std::string_view stage_name);
+
 DescriptorOwnedRuntimeParamMaterialization
 materialize_descriptor_owned_runtime_param_payload(
     GpuBufferManager &buffer_manager,
     const RuntimeStageExecutableDescriptor &descriptor,
     const RuntimeInputResolver &inputs, const std::vector<GpuTensor *> &outputs,
-    size_t runtime_param_count,
     const std::vector<int32_t> &compiler_scalar_args,
     std::string_view stage_name,
     const std::vector<size_t> *direct_input_indices = nullptr);

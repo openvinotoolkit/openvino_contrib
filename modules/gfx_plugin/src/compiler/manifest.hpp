@@ -8,6 +8,8 @@
 #include <string_view>
 #include <vector>
 
+#include "common/artifact_payload.hpp"
+#include "common/runtime_param_descriptor.hpp"
 #include "compiler/lowering_planner.hpp"
 #include "compiler/memory_plan.hpp"
 
@@ -55,6 +57,8 @@ struct RuntimeParamDescriptor {
 struct RuntimeParamContract {
   size_t scalar_param_count = 0;
   size_t shape_param_count = 0;
+  RuntimeParamDescriptorPayloadKind descriptor_payload_kind =
+      RuntimeParamDescriptorPayloadKind::None;
   std::vector<RuntimeParamDescriptor> params;
   std::vector<std::string> runtime_param_names;
 };

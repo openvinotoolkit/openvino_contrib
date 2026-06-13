@@ -52,6 +52,15 @@ validation in `modules/gfx_plugin/`.
   kernel-registry, stage-placement, tensor-layout, memory-plan,
   cache-envelope/import/repository, pipeline-stage builder/materializer,
   payload-materialization, runtime-session, and manifest-routing contracts
+- split descriptor/materialization suites:
+  `tests/unit/gfx_runtime_descriptor_contract_test.cpp`,
+  `tests/unit/gfx_pipeline_stage_materialization_contract_test.cpp`,
+  `tests/unit/gfx_runtime_param_descriptor_contract_test.cpp`,
+  `tests/unit/gfx_backend_artifact_payload_contract_test.cpp`,
+  `tests/unit/gfx_const_tensor_descriptor_contract_test.cpp`,
+  `tests/unit/gfx_memory_cache_contract_test.cpp`,
+  `tests/unit/gfx_backend_module_contract_test.cpp`, and
+  `tests/unit/gfx_kernel_registry_contract_test.cpp`
 - `tests/unit/gfx_runtime_execution_plan_contract_test.cpp`: descriptor-owned
   materialized-stage ownership between compiled model, runtime descriptor, and
   infer execution
@@ -98,6 +107,15 @@ Prefer:
   `PipelineStageBuildRequest`, `PipelineStageMaterializer`,
   `RuntimeExecutionPlan`, `BackendStageFactory`, vendor attention artifact
   ownership, or `PipelineStageDesc` location changes
+- `tests/unit/gfx_runtime_descriptor_contract_test.cpp`,
+  `tests/unit/gfx_pipeline_stage_materialization_contract_test.cpp`,
+  `tests/unit/gfx_runtime_param_descriptor_contract_test.cpp`,
+  `tests/unit/gfx_backend_artifact_payload_contract_test.cpp`,
+  `tests/unit/gfx_const_tensor_descriptor_contract_test.cpp`,
+  `tests/unit/gfx_memory_cache_contract_test.cpp`,
+  `tests/unit/gfx_backend_module_contract_test.cpp`, or
+  `tests/unit/gfx_kernel_registry_contract_test.cpp` when the matching split
+  descriptor, cache, payload, backend-module, or registry contract changes
 - `tests/unit/infer_pipeline_reuse_test.cpp` when runtime-session, prepared
   executable binding, descriptor-owned view/alias classification,
   fused-output-lifetime planning, runtime-shape argument policy,
@@ -175,10 +193,10 @@ For OpenCL source-artifact changes:
 - include `tests/unit/gfx_eltwise_opencl_source_artifacts_test.cpp` when
   elementwise source artifact identity or metadata changes
 - include `tests/unit/gfx_reduction_kernel_contract_test.cpp` when reduction
-  source ids, scalar metadata, static axis contracts, or missing-route behavior
-  changes. OpenCL reduction is currently rejected with
-  `missing_opencl_reduction_kernel_unit` until a catalog entry and family
-  adapter exist.
+  source ids, scalar metadata, static axis contracts, route registration, or
+  payload materialization changes. OpenCL reduction currently has generated
+  f32 numeric and boolean logical source-artifact routes; unsupported variants
+  should fail through the family support contract.
 - include `tests/unit/gfx_softmax_kernel_contract_test.cpp` when generated
   static or dynamic-static-rank Softmax source ids, scalar metadata, or backend
   kernel-unit routes change
@@ -188,12 +206,14 @@ For OpenCL source-artifact changes:
 - include `tests/unit/gfx_pool_kernel_contract_test.cpp` when generated Pool2D
   source ids, static 4D NCHW window metadata, or backend kernel-unit routes
   change
+- include `tests/unit/gfx_interpolate_kernel_contract_test.cpp` when generated
+  Interpolate source ids, descriptor-owned semantic scalars, static 4D NCHW
+  resize contracts, or backend kernel-unit routes change
 - include `tests/unit/gfx_backend_architecture_contract_test.cpp` and the
   focused split source-artifact tests when generated Range, ShapeOf, Tile,
   compare/select, logical-bool elementwise, or catalog route ownership moves
-- include the relevant missing-route tests when MatMul, Interpolate, Reduction,
-  Transpose, Concat, or Split behavior changes without becoming registered
-  OpenCL routes
+- include the relevant missing-route tests when MatMul, Transpose, Concat, or
+  Split behavior changes without becoming registered OpenCL routes
 - add `tests/unit/gpu_backend_base_test.cpp` coverage when the artifact should
   be present in the compiler executable bundle
 - add architecture-contract coverage when the common compiler should require
@@ -211,11 +231,10 @@ For OpenCL source-artifact changes:
 - validate with an OpenCL-capable target when the change depends on the real
   runtime rather than manifest-only logic
 
-OpenCL MatMul, Interpolate, Reduction, Transpose, Concat, and Split are current
-catalog limitations. They should report `missing_opencl_*_kernel_unit` until
-the route is added to `opencl_kernel_unit_catalog.*`, implemented in a
-family-owned adapter, materialized through backend payload resolution, and
-covered by contract tests.
+OpenCL MatMul, Transpose, Concat, and Split are current catalog limitations.
+They should report `missing_opencl_*_kernel_unit` until the route is added to
+`opencl_kernel_unit_catalog.*`, implemented in a family-owned adapter,
+materialized through backend payload resolution, and covered by contract tests.
 
 ## Command Pattern
 

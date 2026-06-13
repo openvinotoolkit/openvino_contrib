@@ -14,13 +14,13 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
 
+#include "common/interpolate_contract.hpp"
 #include "mlir/gfx_mlir_type_utils.hpp"
 
 #include "openvino/core/except.hpp"
 #include "openvino/core/model.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/interpolate.hpp"
-#include "openvino/util/common_util.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -68,82 +68,12 @@ mlir::ModuleOp build_mlir_interpolate_from_model(const std::shared_ptr<const ov:
     OPENVINO_ASSERT(in_shape_static.size() == 4 && out_shape_static.size() == 4,
                     "Interpolate MLIR: supports NCHW rank4 only");
 
-    bool nearest = true;
-    bool align_corners = false;
-    bool use_half_pixel = true;
-    if (auto v0 = ov::as_type_ptr<const ov::op::v0::Interpolate>(interp)) {
-        const auto& attrs = v0->get_attrs();
-        const auto mode = ov::util::to_lower(attrs.mode);
-        if (mode == "nearest") {
-            nearest = true;
-        } else if (mode == "linear") {
-            nearest = false;
-        } else {
-            OPENVINO_THROW("Interpolate MLIR: mode not supported");
-        }
-        align_corners = attrs.align_corners;
-        use_half_pixel = !align_corners;
-    } else if (auto v4 = ov::as_type_ptr<const ov::op::v4::Interpolate>(interp)) {
-        using Base = ov::op::util::InterpolateBase;
-        switch (v4->get_attrs().mode) {
-            case Base::InterpolateMode::NEAREST:
-                nearest = true;
-                break;
-            case Base::InterpolateMode::LINEAR:
-            case Base::InterpolateMode::LINEAR_ONNX:
-            case Base::InterpolateMode::BILINEAR_PILLOW:
-                nearest = false;
-                break;
-            default:
-                OPENVINO_THROW("Interpolate MLIR: mode not supported");
-        }
-        switch (v4->get_attrs().coordinate_transformation_mode) {
-            case Base::CoordinateTransformMode::HALF_PIXEL:
-                align_corners = false;
-                use_half_pixel = true;
-                break;
-            case Base::CoordinateTransformMode::ALIGN_CORNERS:
-                align_corners = true;
-                use_half_pixel = true;
-                break;
-            case Base::CoordinateTransformMode::ASYMMETRIC:
-                align_corners = false;
-                use_half_pixel = false;
-                break;
-            default:
-                OPENVINO_THROW("Interpolate MLIR: coord transform not supported");
-        }
-    } else if (auto v11 = ov::as_type_ptr<const ov::op::v11::Interpolate>(interp)) {
-        using Base = ov::op::util::InterpolateBase;
-        switch (v11->get_attrs().mode) {
-            case Base::InterpolateMode::NEAREST:
-                nearest = true;
-                break;
-            case Base::InterpolateMode::LINEAR:
-            case Base::InterpolateMode::LINEAR_ONNX:
-            case Base::InterpolateMode::BILINEAR_PILLOW:
-                nearest = false;
-                break;
-            default:
-                OPENVINO_THROW("Interpolate MLIR: mode not supported");
-        }
-        switch (v11->get_attrs().coordinate_transformation_mode) {
-            case Base::CoordinateTransformMode::HALF_PIXEL:
-                align_corners = false;
-                use_half_pixel = true;
-                break;
-            case Base::CoordinateTransformMode::ALIGN_CORNERS:
-                align_corners = true;
-                use_half_pixel = true;
-                break;
-            case Base::CoordinateTransformMode::ASYMMETRIC:
-                align_corners = false;
-                use_half_pixel = false;
-                break;
-            default:
-                OPENVINO_THROW("Interpolate MLIR: coord transform not supported");
-        }
-    }
+    const auto semantic = make_interpolate_semantic_contract(interp);
+    OPENVINO_ASSERT(semantic, "Interpolate MLIR: attrs not supported");
+    const bool nearest = semantic->nearest;
+    const bool align_corners = semantic->align_corners;
+    const bool use_half_pixel = semantic->use_half_pixel;
+    const uint32_t nearest_mode = semantic->nearest_mode;
 
     const uint64_t N = in_shape_static[0];
     const uint64_t C = in_shape_static[1];
@@ -224,18 +154,32 @@ mlir::ModuleOp build_mlir_interpolate_from_model(const std::shared_ptr<const ov:
         }
 
         auto c1_i32 = lb.create<mlir::arith::ConstantIntOp>(loc, 1, 32).getResult();
-        auto h0_i32 = lb.create<mlir::arith::FPToSIOp>(loc, lb.getI32Type(), fh).getResult();
-        auto w0_i32 = lb.create<mlir::arith::FPToSIOp>(loc, lb.getI32Type(), fw).getResult();
+        auto floor_to_i32 = [&](mlir::Value value) {
+            auto truncated = lb.create<mlir::arith::FPToSIOp>(loc, lb.getI32Type(), value).getResult();
+            auto truncated_f = lb.create<mlir::arith::SIToFPOp>(loc, f32, truncated).getResult();
+            auto below = lb.create<mlir::arith::CmpFOp>(loc, mlir::arith::CmpFPredicate::OLT, value, truncated_f).getResult();
+            auto decremented = lb.create<mlir::arith::SubIOp>(loc, truncated, c1_i32).getResult();
+            return lb.create<mlir::arith::SelectOp>(loc, below, decremented, truncated).getResult();
+        };
+
+        auto h0_i32 = floor_to_i32(fh);
+        auto w0_i32 = floor_to_i32(fw);
+        if (nearest && nearest_mode == 0) {
+            auto half = lb.create<mlir::arith::ConstantOp>(loc, make_coord_float_attr(0.5f)).getResult();
+            h0_i32 = floor_to_i32(lb.create<mlir::arith::AddFOp>(loc, fh, half).getResult());
+            w0_i32 = floor_to_i32(lb.create<mlir::arith::AddFOp>(loc, fw, half).getResult());
+        } else if (nearest && nearest_mode == 2) {
+            auto h_floor_f = lb.create<mlir::arith::SIToFPOp>(loc, f32, h0_i32).getResult();
+            auto w_floor_f = lb.create<mlir::arith::SIToFPOp>(loc, f32, w0_i32).getResult();
+            auto h_gt = lb.create<mlir::arith::CmpFOp>(loc, mlir::arith::CmpFPredicate::OGT, fh, h_floor_f).getResult();
+            auto w_gt = lb.create<mlir::arith::CmpFOp>(loc, mlir::arith::CmpFPredicate::OGT, fw, w_floor_f).getResult();
+            auto h_inc = lb.create<mlir::arith::AddIOp>(loc, h0_i32, c1_i32).getResult();
+            auto w_inc = lb.create<mlir::arith::AddIOp>(loc, w0_i32, c1_i32).getResult();
+            h0_i32 = lb.create<mlir::arith::SelectOp>(loc, h_gt, h_inc, h0_i32).getResult();
+            w0_i32 = lb.create<mlir::arith::SelectOp>(loc, w_gt, w_inc, w0_i32).getResult();
+        }
         auto h0f = lb.create<mlir::arith::SIToFPOp>(loc, f32, h0_i32).getResult();
         auto w0f = lb.create<mlir::arith::SIToFPOp>(loc, f32, w0_i32).getResult();
-        auto h_lt = lb.create<mlir::arith::CmpFOp>(loc, mlir::arith::CmpFPredicate::OLT, fh, h0f).getResult();
-        auto w_lt = lb.create<mlir::arith::CmpFOp>(loc, mlir::arith::CmpFPredicate::OLT, fw, w0f).getResult();
-        auto h_adj = lb.create<mlir::arith::SubIOp>(loc, h0_i32, c1_i32).getResult();
-        auto w_adj = lb.create<mlir::arith::SubIOp>(loc, w0_i32, c1_i32).getResult();
-        h0_i32 = lb.create<mlir::arith::SelectOp>(loc, h_lt, h_adj, h0_i32).getResult();
-        w0_i32 = lb.create<mlir::arith::SelectOp>(loc, w_lt, w_adj, w0_i32).getResult();
-        h0f = lb.create<mlir::arith::SIToFPOp>(loc, f32, h0_i32).getResult();
-        w0f = lb.create<mlir::arith::SIToFPOp>(loc, f32, w0_i32).getResult();
         auto h0 = lb.create<mlir::arith::IndexCastOp>(loc, lb.getIndexType(), h0_i32).getResult();
         auto w0 = lb.create<mlir::arith::IndexCastOp>(loc, lb.getIndexType(), w0_i32).getResult();
 

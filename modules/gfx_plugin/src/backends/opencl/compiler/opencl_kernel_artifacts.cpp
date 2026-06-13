@@ -14,6 +14,7 @@
 #include <string_view>
 
 #include "backends/opencl/compiler/opencl_kernel_unit_catalog.hpp"
+#include "common/runtime_param_descriptor.hpp"
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
 
 namespace ov {
@@ -536,6 +537,9 @@ bool finalize_opencl_kernel_artifact_descriptor_contract(
   }
   descriptor.runtime_param_buffer_count =
       count_runtime_param_roles(artifact.stage_manifest);
+  descriptor.runtime_param_payload_kind =
+      runtime_param_descriptor_payload_kind_for_stage(
+          descriptor.kernel.op_family, descriptor.runtime_param_buffer_count);
   descriptor.runtime_param_i64_metadata.clear();
   descriptor.runtime_param_reduce_keep_dims = false;
   descriptor.runtime_param_reduce_keep_dims_valid = false;
@@ -563,6 +567,8 @@ bool opencl_source_artifact_matches_descriptor_contract(
          descriptor.abi_output_arg_count == expected.abi_output_arg_count &&
          descriptor.runtime_param_buffer_count ==
              expected.runtime_param_buffer_count &&
+         descriptor.runtime_param_payload_kind ==
+             expected.runtime_param_payload_kind &&
          descriptor.runtime_param_i64_metadata ==
              expected.runtime_param_i64_metadata &&
          descriptor.runtime_param_reduce_keep_dims ==

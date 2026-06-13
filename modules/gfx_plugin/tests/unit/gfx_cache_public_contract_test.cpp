@@ -30,6 +30,7 @@
 #include "plugin/compiled_model_cache_contract.hpp"
 #include "plugin/gfx_property_lists.hpp"
 #include "runtime/executable_descriptor.hpp"
+#include "unit/gfx_cache_materialization_contract_utils.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -169,6 +170,15 @@ compiler::ManifestBundle make_cache_contract_manifest() {
   return manifest;
 }
 
+compiler::CacheEnvelope build_cache_contract_envelope(
+    const compiler::ExecutableBundle &executable,
+    const compiler::CacheEnvelopeBuildOptions &options) {
+  const auto runtime_descriptor =
+      make_finalized_cache_test_runtime_descriptor(executable);
+  return compiler::CacheEnvelopeBuilder{}.build(executable,
+                                                runtime_descriptor, options);
+}
+
 compiler::CacheEnvelope make_cache_contract_envelope(
     compiler::ExecutableBundle *executable_out = nullptr) {
   auto manifest = make_cache_contract_manifest();
@@ -182,7 +192,7 @@ compiler::CacheEnvelope make_cache_contract_envelope(
   options.compiler_revision = "gfx-cache-contract-test";
   options.backend_compiler_revision = "backend-compiler-cache-contract";
   options.driver_identity = "driver-cache-contract";
-  auto envelope = compiler::CacheEnvelopeBuilder{}.build(executable, options);
+  auto envelope = build_cache_contract_envelope(executable, options);
   EXPECT_TRUE(envelope.verify(executable).valid())
       << diagnostics_to_string(envelope.verify(executable).diagnostics);
   if (executable_out) {
@@ -260,7 +270,7 @@ compiler::CacheEnvelope make_cache_source_contract_envelope_for_target(
   options.compiler_revision = "gfx-cache-source-contract-test";
   options.backend_compiler_revision = "backend-compiler-cache-source-contract";
   options.driver_identity = "driver-cache-source-contract";
-  auto envelope = compiler::CacheEnvelopeBuilder{}.build(executable, options);
+  auto envelope = build_cache_contract_envelope(executable, options);
   EXPECT_TRUE(envelope.verify(executable).valid())
       << diagnostics_to_string(envelope.verify(executable).diagnostics);
   if (executable_out) {
@@ -319,7 +329,7 @@ compiler::CacheEnvelope make_cache_source_contract_envelope_for_request(
       compiler::make_backend_capabilities_fingerprint(capabilities);
   options.backend_compiler_revision = target.compiler_id();
   options.driver_identity = target.driver_id();
-  auto envelope = compiler::CacheEnvelopeBuilder{}.build(executable, options);
+  auto envelope = build_cache_contract_envelope(executable, options);
   EXPECT_TRUE(envelope.verify(executable).valid())
       << diagnostics_to_string(envelope.verify(executable).diagnostics);
   if (executable_out) {
@@ -425,12 +435,22 @@ TEST(GfxCachePublicContractTest,
             envelope.key.target_fingerprint);
   EXPECT_EQ(parsed.envelope.artifact_descriptors.size(),
             envelope.artifact_descriptors.size());
+  EXPECT_TRUE(parsed.envelope.materialization.finalized);
+  EXPECT_EQ(parsed.envelope.materialization.stages.size(),
+            envelope.materialization.stages.size());
+  EXPECT_EQ(parsed.envelope.materialization.public_outputs.size(),
+            envelope.materialization.public_outputs.size());
   EXPECT_EQ(compiler::serialize_cache_envelope(parsed.envelope), wire);
 
   const auto reconstructed =
       compiler::make_cache_envelope_executable_contract(parsed.envelope);
   EXPECT_TRUE(reconstructed.verify().valid())
       << diagnostics_to_string(reconstructed.verify().diagnostics);
+  const auto reconstructed_descriptor =
+      compiler::make_cache_envelope_runtime_descriptor_contract(
+          parsed.envelope, reconstructed);
+  EXPECT_TRUE(compiler::runtime_executable_descriptor_materialization_valid(
+      reconstructed_descriptor));
   EXPECT_TRUE(parsed.envelope.verify(reconstructed).valid())
       << diagnostics_to_string(
              parsed.envelope.verify(reconstructed).diagnostics);
@@ -522,7 +542,7 @@ TEST(GfxCachePublicContractTest,
   options.driver_identity = target.driver_id();
   options.backend_payload_encoder =
       compiler::make_opencl_cache_payload_encoder();
-  const auto envelope = compiler::CacheEnvelopeBuilder{}.build(executable, options);
+  const auto envelope = build_cache_contract_envelope(executable, options);
   ASSERT_TRUE(envelope.verify(executable).valid())
       << diagnostics_to_string(envelope.verify(executable).diagnostics);
   ASSERT_EQ(envelope.backend_payloads.size(), 1u);
@@ -594,7 +614,7 @@ TEST(GfxCachePublicContractTest,
   options.backend_compiler_revision = target.compiler_id();
   options.driver_identity = target.driver_id();
   options.backend_payload_encoder = compiler::make_metal_cache_payload_encoder();
-  const auto envelope = compiler::CacheEnvelopeBuilder{}.build(executable, options);
+  const auto envelope = build_cache_contract_envelope(executable, options);
   ASSERT_TRUE(envelope.verify(executable).valid())
       << diagnostics_to_string(envelope.verify(executable).diagnostics);
   ASSERT_EQ(envelope.backend_payloads.size(), 1u);
@@ -655,6 +675,15 @@ TEST(GfxCachePublicContractTest,
   ASSERT_TRUE(import_contract.runtime_model);
   EXPECT_EQ(import_contract.runtime_model->inputs().size(), 1u);
   EXPECT_EQ(import_contract.runtime_model->outputs().size(), 1u);
+
+  auto missing_materialization = envelope;
+  missing_materialization.materialization = {};
+  const auto rejected_import =
+      compiler::make_cache_import_contract(missing_materialization, registry);
+  EXPECT_FALSE(rejected_import.valid());
+  EXPECT_NE(diagnostics_to_string(rejected_import.diagnostics).find(
+                "materialization"),
+            std::string::npos);
 }
 
 TEST(GfxCachePublicContractTest,

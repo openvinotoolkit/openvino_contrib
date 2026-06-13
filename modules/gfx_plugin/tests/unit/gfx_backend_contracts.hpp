@@ -79,6 +79,8 @@ private:
 class ModelContractFactory final {
 public:
     std::shared_ptr<ov::Model> passthrough(const ov::PartialShape& shape) const;
+    std::shared_ptr<ov::Model> relu() const;
+    std::shared_ptr<ov::Model> static_range() const;
 };
 
 }  // namespace test

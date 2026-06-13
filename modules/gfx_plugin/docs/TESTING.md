@@ -150,6 +150,16 @@ For compiler-service, manifest, or executable-descriptor changes:
 - architecture-contract coverage when `BackendStageFactory`,
   `PipelineStageBuildRequest`, `PipelineStageMaterializer`, or
   `PipelineStageDesc` ownership changes
+- split contract coverage when ownership moves into descriptor/materialization
+  helpers:
+  `tests/unit/gfx_runtime_descriptor_contract_test.cpp`,
+  `tests/unit/gfx_pipeline_stage_materialization_contract_test.cpp`,
+  `tests/unit/gfx_runtime_param_descriptor_contract_test.cpp`,
+  `tests/unit/gfx_backend_artifact_payload_contract_test.cpp`,
+  `tests/unit/gfx_const_tensor_descriptor_contract_test.cpp`,
+  `tests/unit/gfx_memory_cache_contract_test.cpp`,
+  `tests/unit/gfx_backend_module_contract_test.cpp`, and
+  `tests/unit/gfx_kernel_registry_contract_test.cpp`
 - stage-placement contract coverage when backend domain/storage selection moves
 - Metal vendor-descriptor coverage when MPS/MPSGraph payloads reach
   `MpsrtVendorPrimitiveStage`
@@ -172,6 +182,10 @@ For scheduling, cache, or infer-path changes:
 - `tests/unit/infer_submission_test.cpp`
 - `tests/unit/infer_pipeline_reuse_test.cpp`
 - `tests/unit/gpu_const_cache_test.cpp`
+- `tests/unit/gfx_memory_cache_contract_test.cpp`
+- `tests/unit/gfx_runtime_descriptor_contract_test.cpp`
+- `tests/unit/gfx_pipeline_stage_materialization_contract_test.cpp`
+- `tests/unit/gfx_runtime_param_descriptor_contract_test.cpp`
 - `tests/unit/gfx_runtime_execution_plan_contract_test.cpp`
 - `tests/unit/kernel_arg_reuse_test.cpp`
 - `tests/unit/gpu_backend_base_test.cpp`
@@ -194,7 +208,7 @@ For OpenCL source-artifact changes:
   `tests/unit/gfx_shapeof_kernel_contract_test.cpp` when the generated source
   unit contract for those families changes
 - include `tests/unit/gfx_reduction_kernel_contract_test.cpp` when reduction
-  MLIR lowering, rejected OpenCL reduction behavior, or future backend
+  MLIR lowering, OpenCL reduction source-artifact behavior, or backend
   reduction kernel-unit routing changes
 - include `tests/unit/gfx_softmax_kernel_contract_test.cpp` when generated
   Metal Softmax/LogSoftmax payloads, OpenCL static or dynamic-static-rank
@@ -205,6 +219,9 @@ For OpenCL source-artifact changes:
 - include `tests/unit/gfx_pool_kernel_contract_test.cpp` when OpenCL generated
   Pool2D artifacts, Metal MPS Pool2D vendor routing, or Pooling kernel-unit
   registration changes
+- include `tests/unit/gfx_interpolate_kernel_contract_test.cpp` when OpenCL
+  Interpolate source ids, semantic scalar metadata, static NCHW shape
+  contracts, or kernel-unit routing changes
 - include `tests/unit/gfx_opencl_source_artifacts_test.cpp` and
   `tests/unit/gfx_backend_architecture_contract_test.cpp` when OpenCL route
   catalog ownership, generated ShapeOf, Tile, compare/select, or logical-bool

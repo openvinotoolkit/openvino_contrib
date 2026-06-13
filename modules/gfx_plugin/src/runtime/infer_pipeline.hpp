@@ -17,6 +17,7 @@
 #include "runtime/gfx_remote_context.hpp"
 #include "runtime/gpu_buffer_pool.hpp"
 #include "runtime/infer_pipeline_state.hpp"
+#include "runtime/runtime_output_memory_contract.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -140,14 +141,6 @@ runtime_output_memory_region_or_null(const InferStage& stage, size_t output_inde
         });
     return it == regions.end() ? nullptr : &*it;
 }
-
-bool runtime_output_uses_transient_arena(const InferStage& stage, size_t output_index);
-
-bool apply_runtime_output_memory_contract(const InferStage& stage,
-                                          size_t output_index,
-                                          GpuBufferDesc& desc,
-                                          GpuTensor& output,
-                                          const char* error_prefix = "GFX");
 
 using StageOutputDescInitializer = std::function<bool(InferStage&,
                                                       size_t,

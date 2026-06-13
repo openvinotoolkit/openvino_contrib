@@ -61,6 +61,8 @@ struct KernelArtifactDescriptor {
   uint32_t abi_arg_count = 0;
   uint32_t abi_output_arg_count = 0;
   uint32_t runtime_param_buffer_count = 0;
+  RuntimeParamDescriptorPayloadKind runtime_param_payload_kind =
+      RuntimeParamDescriptorPayloadKind::None;
   std::vector<int64_t> runtime_param_i64_metadata;
   bool runtime_param_reduce_keep_dims = false;
   bool runtime_param_reduce_keep_dims_valid = false;

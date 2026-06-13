@@ -10,8 +10,10 @@
 #include <vector>
 
 #include "openvino/core/except.hpp"
+#include "compiler/pipeline_stage_graph_snapshot.hpp"
 #include "compiler/runtime_executable_descriptor_builder.hpp"
 #include "runtime/executable_descriptor.hpp"
+#include "runtime/gfx_logger.hpp"
 #include "transforms/pipeline.hpp"
 
 namespace ov {
@@ -132,6 +134,13 @@ GfxCompileResult GfxCompilerService::compile(const GfxCompileRequest& request) c
     result.lowering_plan = backend_module->lowering_planner().plan(result.transformed_model,
                                                                    backend_module->legalizer());
     result.manifest = ManifestBuilder{}.build(result.lowering_plan);
+    const auto compiler_stage_graph_snapshot =
+        detail::make_pipeline_stage_graph_snapshot(
+            result.transformed_model,
+            detail::make_pipeline_stage_fusion_config(
+                backend_module->capabilities().fusion(),
+                request.enable_fusion,
+                gfx_log_debug_enabled()));
     result.executable = ExecutableBundleBuilder(
         [backend_module](KernelArtifactDescriptor& descriptor,
                          const PlannedOperation& op) {
@@ -154,22 +163,17 @@ GfxCompileResult GfxCompilerService::compile(const GfxCompileRequest& request) c
           return backend_module->encode_cache_payload(descriptor,
                                                       payload_record);
         };
-    result.cache_envelope =
-        CacheEnvelopeBuilder{}.build(result.executable, cache_options);
     result.unsupported = result.lowering_plan.unsupported;
     if (result.lowering_plan.executable() && result.manifest.valid() &&
         result.executable.valid()) {
         RuntimeExecutableDescriptorBuildRequest descriptor_request;
         descriptor_request.executable = &result.executable;
-        descriptor_request.transformed_model = result.transformed_model;
+        descriptor_request.stage_graph_snapshot = &compiler_stage_graph_snapshot;
         descriptor_request.backend_registry = m_registry;
         descriptor_request.target = result.target;
         descriptor_request.backend_name = request.backend_name.empty()
                                               ? result.target.backend_id()
                                               : request.backend_name;
-        descriptor_request.fusion_capabilities =
-            backend_module->capabilities().fusion();
-        descriptor_request.enable_fusion = request.enable_fusion;
         descriptor_request.compile_trace = request.compile_trace;
         auto runtime_descriptor =
             RuntimeExecutableDescriptorBuilder{}.build_finalized(
@@ -177,6 +181,10 @@ GfxCompileResult GfxCompilerService::compile(const GfxCompileRequest& request) c
         result.runtime_descriptor =
             std::make_shared<const RuntimeExecutableDescriptor>(
                 std::move(runtime_descriptor));
+        result.cache_envelope =
+            CacheEnvelopeBuilder{}.build(result.executable,
+                                         *result.runtime_descriptor,
+                                         cache_options);
     }
     return result;
 }

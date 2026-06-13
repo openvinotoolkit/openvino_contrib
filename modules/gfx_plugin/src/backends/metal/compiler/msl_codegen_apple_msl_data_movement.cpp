@@ -8,6 +8,7 @@
 #include <string>
 #include <utility>
 
+#include "common/interpolate_contract.hpp"
 #include "mlir/codegen_common.hpp"
 #include "mlir/gfx_backend_custom_kernel_adapter.hpp"
 #include "backends/metal/compiler/msl_codegen_apple_msl_common.hpp"
@@ -24,7 +25,6 @@
 #include "openvino/op/scatter_update.hpp"
 #include "openvino/op/slice.hpp"
 #include "openvino/op/strided_slice.hpp"
-#include "openvino/util/common_util.hpp"
 #include "runtime/gfx_shape_utils.hpp"
 
 namespace ov {
@@ -55,83 +55,17 @@ std::optional<KernelSource> make_apple_metal_data_movement_kernel_source(
                     "kernel binding");
   };
 
-  if (auto interp =
-          std::dynamic_pointer_cast<const ov::op::v0::Interpolate>(node)) {
-    InterpolateCodegenDesc desc{};
-    const auto in = interp->get_input_shape(0);
-    const auto out = interp->get_output_shape(0);
-    desc.element_type = interp->get_output_element_type(0);
-    desc.N = in[0];
-    desc.C = in[1];
-    desc.H_in = in[2];
-    desc.W_in = in[3];
-    desc.H_out = out[2];
-    desc.W_out = out[3];
-    desc.scale_h = desc.H_out ? static_cast<float>(desc.H_in) /
-                                    static_cast<float>(desc.H_out)
-                              : 1.f;
-    desc.scale_w = desc.W_out ? static_cast<float>(desc.W_in) /
-                                    static_cast<float>(desc.W_out)
-                              : 1.f;
-    desc.align_corners = interp->get_attrs().align_corners;
-    desc.nearest = ov::util::to_lower(interp->get_attrs().mode) == "nearest";
-    desc.use_half_pixel = !desc.align_corners;
-    desc.nearest_mode = 0;
-    set_desc(desc, "interpolate_kernel");
-    require_interpolate_binding();
-    return source;
-  }
-
-  if (auto interp =
-          std::dynamic_pointer_cast<const ov::op::v4::Interpolate>(node)) {
-    using Base = ov::op::util::InterpolateBase;
-    InterpolateCodegenDesc desc{};
-    const auto in = interp->get_input_shape(0);
-    const auto out = interp->get_output_shape(0);
-    desc.element_type = interp->get_output_element_type(0);
-    desc.N = in[0];
-    desc.C = in[1];
-    desc.H_in = in[2];
-    desc.W_in = in[3];
-    desc.H_out = out[2];
-    desc.W_out = out[3];
-    desc.scale_h = desc.H_out ? static_cast<float>(desc.H_in) /
-                                    static_cast<float>(desc.H_out)
-                              : 1.f;
-    desc.scale_w = desc.W_out ? static_cast<float>(desc.W_in) /
-                                    static_cast<float>(desc.W_out)
-                              : 1.f;
-    desc.align_corners = interp->get_attrs().coordinate_transformation_mode ==
-                         Base::CoordinateTransformMode::ALIGN_CORNERS;
-    desc.nearest = interp->get_attrs().mode == Base::InterpolateMode::NEAREST;
-    desc.use_half_pixel = interp->get_attrs().coordinate_transformation_mode ==
-                          Base::CoordinateTransformMode::HALF_PIXEL;
-    switch (interp->get_attrs().nearest_mode) {
-    case Base::NearestMode::FLOOR:
-    case Base::NearestMode::ROUND_PREFER_FLOOR:
-      desc.nearest_mode = 1;
-      break;
-    case Base::NearestMode::CEIL:
-    case Base::NearestMode::ROUND_PREFER_CEIL:
-      desc.nearest_mode = 2;
-      break;
-    case Base::NearestMode::SIMPLE:
-    default:
-      desc.nearest_mode = 0;
-      break;
+  if (is_interpolate_node(node)) {
+    const auto semantic = make_interpolate_semantic_contract(node);
+    if (!semantic) {
+      return std::nullopt;
     }
-    set_desc(desc, "interpolate_kernel");
-    require_interpolate_binding();
-    return source;
-  }
-
-  if (auto interp =
-          std::dynamic_pointer_cast<const ov::op::v11::Interpolate>(node)) {
-    using Base = ov::op::util::InterpolateBase;
     InterpolateCodegenDesc desc{};
-    const auto in = interp->get_input_shape(0);
-    const auto out = interp->get_output_shape(0);
-    desc.element_type = interp->get_output_element_type(0);
+    const auto in = node->get_input_shape(0);
+    const auto out = node->get_output_shape(0);
+    OPENVINO_ASSERT(in.size() == 4 && out.size() == 4,
+                    "GFX Metal Interpolate: NCHW rank4 shape is required");
+    desc.element_type = node->get_output_element_type(0);
     desc.N = in[0];
     desc.C = in[1];
     desc.H_in = in[2];
@@ -144,25 +78,10 @@ std::optional<KernelSource> make_apple_metal_data_movement_kernel_source(
     desc.scale_w = desc.W_out ? static_cast<float>(desc.W_in) /
                                     static_cast<float>(desc.W_out)
                               : 1.f;
-    desc.align_corners = interp->get_attrs().coordinate_transformation_mode ==
-                         Base::CoordinateTransformMode::ALIGN_CORNERS;
-    desc.nearest = interp->get_attrs().mode == Base::InterpolateMode::NEAREST;
-    desc.use_half_pixel = interp->get_attrs().coordinate_transformation_mode ==
-                          Base::CoordinateTransformMode::HALF_PIXEL;
-    switch (interp->get_attrs().nearest_mode) {
-    case Base::NearestMode::FLOOR:
-    case Base::NearestMode::ROUND_PREFER_FLOOR:
-      desc.nearest_mode = 1;
-      break;
-    case Base::NearestMode::CEIL:
-    case Base::NearestMode::ROUND_PREFER_CEIL:
-      desc.nearest_mode = 2;
-      break;
-    case Base::NearestMode::SIMPLE:
-    default:
-      desc.nearest_mode = 0;
-      break;
-    }
+    desc.align_corners = semantic->align_corners;
+    desc.nearest = semantic->nearest;
+    desc.use_half_pixel = semantic->use_half_pixel;
+    desc.nearest_mode = semantic->nearest_mode;
     set_desc(desc, "interpolate_kernel");
     require_interpolate_binding();
     return source;

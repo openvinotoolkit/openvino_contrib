@@ -7,6 +7,7 @@
 #include <cctype>
 #include <limits>
 
+#include "common/runtime_param_descriptor.hpp"
 #include "runtime/executable_descriptor.hpp"
 
 namespace ov {
@@ -127,86 +128,14 @@ bool runtime_param_metadata_positive_triplet(
            descriptor.runtime_param_i64_metadata[2] > 0;
 }
 
+bool runtime_shape_metadata_interpolate_schema_valid(
+    const RuntimeStageExecutableDescriptor &descriptor) {
+    return descriptor.runtime_shape_i64_metadata.size() >= 3 &&
+           descriptor.runtime_shape_i64_metadata[2] >= 0 &&
+           descriptor.runtime_shape_i64_metadata[2] <= 2;
+}
+
 }  // namespace
-
-bool is_binary_runtime_param_stage(std::string_view op_family) noexcept {
-    return op_family == "Add" || op_family == "Subtract" ||
-           op_family == "Multiply" || op_family == "Divide" ||
-           op_family == "Power" || op_family == "Mod" ||
-           op_family == "FloorMod" || op_family == "Minimum" ||
-           op_family == "Maximum" || op_family == "Equal" ||
-           op_family == "NotEqual" || op_family == "Less" ||
-           op_family == "Greater" || op_family == "LessEqual" ||
-           op_family == "GreaterEqual" || op_family == "LogicalAnd" ||
-           op_family == "LogicalOr" || op_family == "LogicalXor" ||
-           op_family == "SquaredDifference" || op_family == "PRelu";
-}
-
-bool is_reduce_runtime_param_stage(std::string_view op_family) noexcept {
-    return op_family == "ReduceSum" || op_family == "ReduceMean" ||
-           op_family == "ReduceMax" || op_family == "ReduceMin" ||
-           op_family == "ReduceProd" || op_family == "ReduceL1" ||
-           op_family == "ReduceL2" || op_family == "ReduceLogicalAnd" ||
-           op_family == "ReduceLogicalOr";
-}
-
-bool descriptor_owns_runtime_shape_rule(std::string_view op_family,
-                                        std::string_view runtime_shape_rule) noexcept {
-    if (runtime_shape_rule == "static_or_descriptor") {
-        return true;
-    }
-    if (runtime_shape_rule == "concat") {
-        return op_family == "Concat";
-    }
-    if (runtime_shape_rule == "broadcast") {
-        return op_family == "Broadcast";
-    }
-    if (runtime_shape_rule == "select") {
-        return op_family == "Select";
-    }
-    if (runtime_shape_rule == "shape_of") {
-        return op_family == "ShapeOf";
-    }
-    if (runtime_shape_rule == "slice") {
-        return op_family == "Slice" || op_family == "StridedSlice";
-    }
-    if (runtime_shape_rule == "range") {
-        return op_family == "Range";
-    }
-    if (runtime_shape_rule == "tile") {
-        return op_family == "Tile";
-    }
-    return false;
-}
-
-RuntimeParamDescriptorPayloadKind
-descriptor_owned_runtime_param_payload_kind(std::string_view op_family,
-                                            size_t runtime_param_count) noexcept {
-    if (runtime_param_count == 3 && is_binary_runtime_param_stage(op_family)) {
-        return RuntimeParamDescriptorPayloadKind::BinaryBroadcast;
-    }
-    if (runtime_param_count == 4 && op_family == "Broadcast") {
-        return RuntimeParamDescriptorPayloadKind::Broadcast;
-    }
-    if (runtime_param_count == 4 && op_family == "Select") {
-        return RuntimeParamDescriptorPayloadKind::Select;
-    }
-    if (runtime_param_count == 4 && op_family == "Tile") {
-        return RuntimeParamDescriptorPayloadKind::Tile;
-    }
-    if (runtime_param_count == 1 &&
-        (op_family == "Softmax" || op_family == "LogSoftmax")) {
-        return RuntimeParamDescriptorPayloadKind::Softmax;
-    }
-    if (runtime_param_count == 5 && op_family == "Transpose") {
-        return RuntimeParamDescriptorPayloadKind::Transpose;
-    }
-    if (runtime_param_count == 5 &&
-        is_reduce_runtime_param_stage(op_family)) {
-        return RuntimeParamDescriptorPayloadKind::Reduce;
-    }
-    return RuntimeParamDescriptorPayloadKind::None;
-}
 
 ov::element::Type element_type_from_contract(std::string_view name) {
     if (name == "f32" || name == "float32") {
@@ -329,26 +258,43 @@ bool descriptor_has_static_shape_contracts(
 }
 
 bool descriptor_owns_runtime_param_payload(
-    const RuntimeStageExecutableDescriptor &descriptor,
-    size_t runtime_param_count) {
-    switch (descriptor_owned_runtime_param_payload_kind(descriptor.op_family,
-                                                       runtime_param_count)) {
+    const RuntimeStageExecutableDescriptor &descriptor) {
+    const size_t runtime_param_count = descriptor.runtime_param_buffer_count;
+    switch (descriptor.runtime_param_payload_kind) {
     case RuntimeParamDescriptorPayloadKind::None:
-        return runtime_param_count == 0;
+        return runtime_param_descriptor_buffer_count_matches(
+                   descriptor.runtime_param_payload_kind, runtime_param_count);
     case RuntimeParamDescriptorPayloadKind::BinaryBroadcast:
-        return descriptor_has_binding_contracts(descriptor, 2);
+        return runtime_param_descriptor_buffer_count_matches(
+                   descriptor.runtime_param_payload_kind, runtime_param_count) &&
+               descriptor_has_binding_contracts(descriptor, 2);
     case RuntimeParamDescriptorPayloadKind::Broadcast:
-        return descriptor_has_binding_contracts(descriptor, 1);
+        return runtime_param_descriptor_buffer_count_matches(
+                   descriptor.runtime_param_payload_kind, runtime_param_count) &&
+               descriptor_has_binding_contracts(descriptor, 1);
     case RuntimeParamDescriptorPayloadKind::Select:
-        return descriptor_has_binding_contracts(descriptor, 3);
+        return runtime_param_descriptor_buffer_count_matches(
+                   descriptor.runtime_param_payload_kind, runtime_param_count) &&
+               descriptor_has_binding_contracts(descriptor, 3);
     case RuntimeParamDescriptorPayloadKind::Tile:
-        return descriptor_has_binding_contracts(descriptor, 1);
+        return runtime_param_descriptor_buffer_count_matches(
+                   descriptor.runtime_param_payload_kind, runtime_param_count) &&
+               descriptor_has_binding_contracts(descriptor, 1);
+    case RuntimeParamDescriptorPayloadKind::Interpolate:
+        return runtime_param_descriptor_buffer_count_matches(
+                   descriptor.runtime_param_payload_kind, runtime_param_count) &&
+               descriptor_has_binding_contracts(descriptor, 1) &&
+               runtime_shape_metadata_interpolate_schema_valid(descriptor);
     case RuntimeParamDescriptorPayloadKind::Softmax:
-        return descriptor_has_binding_contracts(descriptor, 1) &&
+        return runtime_param_descriptor_buffer_count_matches(
+                   descriptor.runtime_param_payload_kind, runtime_param_count) &&
+               descriptor_has_binding_contracts(descriptor, 1) &&
                runtime_param_metadata_positive_triplet(descriptor);
     case RuntimeParamDescriptorPayloadKind::Transpose: {
         ov::Shape input_shape;
-        if (!descriptor_has_binding_contracts(descriptor, 1) ||
+        if (!runtime_param_descriptor_buffer_count_matches(
+                descriptor.runtime_param_payload_kind, runtime_param_count) ||
+            !descriptor_has_binding_contracts(descriptor, 1) ||
             !runtime_param_metadata_permutation_schema_valid(descriptor)) {
             return false;
         }
@@ -357,7 +303,9 @@ bool descriptor_owns_runtime_param_payload(
     }
     case RuntimeParamDescriptorPayloadKind::Reduce: {
         ov::Shape input_shape;
-        if (!descriptor_has_binding_contracts(descriptor, 1) ||
+        if (!runtime_param_descriptor_buffer_count_matches(
+                descriptor.runtime_param_payload_kind, runtime_param_count) ||
+            !descriptor_has_binding_contracts(descriptor, 1) ||
             !descriptor.runtime_param_reduce_keep_dims_valid ||
             !runtime_param_metadata_axes_schema_valid(descriptor)) {
             return false;

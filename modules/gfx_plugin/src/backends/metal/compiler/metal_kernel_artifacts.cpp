@@ -19,6 +19,7 @@
 #include "backends/metal/compiler/msl_codegen_apple_msl_softmax.hpp"
 #include "backends/metal/compiler/msl_codegen_apple_msl_split.hpp"
 #include "backends/metal/compiler/msl_codegen_attention.hpp"
+#include "common/runtime_param_descriptor.hpp"
 #include "compiler/pipeline_stage_fusion.hpp"
 #include "kernel_ir/gfx_kernel_source.hpp"
 #include "kernel_ir/metal_kernels/reduction_kernels.hpp"
@@ -156,6 +157,7 @@ bool descriptor_contract_matches(const KernelArtifactDescriptor &lhs,
          lhs.abi_arg_count == rhs.abi_arg_count &&
          lhs.abi_output_arg_count == rhs.abi_output_arg_count &&
          lhs.runtime_param_buffer_count == rhs.runtime_param_buffer_count &&
+         lhs.runtime_param_payload_kind == rhs.runtime_param_payload_kind &&
          lhs.runtime_param_i64_metadata == rhs.runtime_param_i64_metadata &&
          lhs.runtime_param_reduce_keep_dims ==
              rhs.runtime_param_reduce_keep_dims &&
@@ -177,6 +179,9 @@ bool finalize_generated_msl_descriptor_contract(
   }
   descriptor.runtime_param_buffer_count =
       count_runtime_param_roles(binding_plan.stage_manifest);
+  descriptor.runtime_param_payload_kind =
+      runtime_param_descriptor_payload_kind_for_stage(
+          descriptor.kernel.op_family, descriptor.runtime_param_buffer_count);
   descriptor.runtime_param_i64_metadata =
       binding_plan.runtime_binding.runtime_param_i64_metadata;
   descriptor.runtime_param_reduce_keep_dims =

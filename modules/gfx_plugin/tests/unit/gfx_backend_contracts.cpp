@@ -9,11 +9,17 @@
 #include "compiler/cache_envelope.hpp"
 #include "compiler/executable_bundle.hpp"
 #include "compiler/manifest.hpp"
+#include "compiler/pipeline_stage_graph_snapshot.hpp"
 #include "compiler/runtime_executable_descriptor_builder.hpp"
+#include "runtime/gfx_logger.hpp"
 #include "runtime/executable_descriptor.hpp"
 #include "openvino/core/except.hpp"
+#include "openvino/op/constant.hpp"
 #include "openvino/op/parameter.hpp"
+#include "openvino/op/range.hpp"
+#include "openvino/op/relu.hpp"
 #include "openvino/op/result.hpp"
+#include "transformations/rt_info/disable_constant_folding.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -91,6 +97,13 @@ compiler::GfxCompileResult BackendModuleContract::compile_without_graph_pipeline
                                                backend_module.legalizer());
     compile_result.manifest =
         compiler::ManifestBuilder{}.build(compile_result.lowering_plan);
+    const auto compiler_stage_graph_snapshot =
+        compiler::detail::make_pipeline_stage_graph_snapshot(
+            model,
+            compiler::detail::make_pipeline_stage_fusion_config(
+                backend_module.capabilities().fusion(),
+                /*enable_fusion=*/true,
+                gfx_log_debug_enabled()));
     compile_result.executable = compiler::ExecutableBundleBuilder(
         [&backend_module](compiler::KernelArtifactDescriptor& descriptor,
                           const compiler::PlannedOperation& op) {
@@ -109,28 +122,26 @@ compiler::GfxCompileResult BackendModuleContract::compile_without_graph_pipeline
     cache_options.backend_compiler_revision =
         backend_module.target().compiler_id();
     cache_options.driver_identity = backend_module.target().driver_id();
-    compile_result.cache_envelope =
-        compiler::CacheEnvelopeBuilder{}.build(compile_result.executable,
-                                               cache_options);
     compile_result.unsupported = compile_result.lowering_plan.unsupported;
     if (compile_result.lowering_plan.executable() &&
         compile_result.manifest.valid() && compile_result.executable.valid()) {
         const compiler::BackendRegistry registry({m_module});
         compiler::RuntimeExecutableDescriptorBuildRequest descriptor_request;
         descriptor_request.executable = &compile_result.executable;
-        descriptor_request.transformed_model =
-            compile_result.transformed_model;
+        descriptor_request.stage_graph_snapshot = &compiler_stage_graph_snapshot;
         descriptor_request.backend_registry = &registry;
         descriptor_request.target = compile_result.target;
         descriptor_request.backend_name = compile_result.target.backend_id();
-        descriptor_request.fusion_capabilities =
-            backend_module.capabilities().fusion();
         auto runtime_descriptor =
             compiler::RuntimeExecutableDescriptorBuilder{}.build_finalized(
                 descriptor_request);
         compile_result.runtime_descriptor =
             std::make_shared<const RuntimeExecutableDescriptor>(
                 std::move(runtime_descriptor));
+        compile_result.cache_envelope =
+            compiler::CacheEnvelopeBuilder{}.build(
+                compile_result.executable, *compile_result.runtime_descriptor,
+                cache_options);
     }
     return compile_result;
 }
@@ -260,6 +271,32 @@ std::shared_ptr<ov::Model> ModelContractFactory::passthrough(
     auto result = std::make_shared<ov::op::v0::Result>(parameter);
     return std::make_shared<ov::Model>(ov::ResultVector{result},
                                        ov::ParameterVector{parameter});
+}
+
+std::shared_ptr<ov::Model> ModelContractFactory::relu() const {
+    auto parameter =
+        std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                ov::Shape{2, 3});
+    auto relu = std::make_shared<ov::op::v0::Relu>(parameter);
+    auto result = std::make_shared<ov::op::v0::Result>(relu);
+    return std::make_shared<ov::Model>(ov::ResultVector{result},
+                                       ov::ParameterVector{parameter});
+}
+
+std::shared_ptr<ov::Model> ModelContractFactory::static_range() const {
+    auto start =
+        ov::op::v0::Constant::create(ov::element::f32, ov::Shape{}, {1.0f});
+    auto stop =
+        ov::op::v0::Constant::create(ov::element::f32, ov::Shape{}, {4.0f});
+    auto step =
+        ov::op::v0::Constant::create(ov::element::f32, ov::Shape{}, {1.0f});
+    auto range =
+        std::make_shared<ov::op::v4::Range>(start, stop, step,
+                                            ov::element::f32);
+    ov::disable_constant_folding(range);
+    auto result = std::make_shared<ov::op::v0::Result>(range);
+    return std::make_shared<ov::Model>(ov::ResultVector{result},
+                                       ov::ParameterVector{});
 }
 
 }  // namespace test

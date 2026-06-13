@@ -199,26 +199,29 @@ compiler does not synthesize OpenCL source payloads as a fallback.
 
 Current public OpenCL compiler coverage is the route set registered in
 `src/backends/opencl/compiler/opencl_kernel_unit_catalog.*`: activation,
-elementwise, Conv2D/GroupConv2D, Softmax, Pool2D, Range, ShapeOf, Tile,
-logical-bool elementwise, and compare/select when the model matches the
-family-specific artifact contracts.
+elementwise, Conv2D/GroupConv2D, Softmax, Pool2D, Range, Interpolate,
+Reduction, ShapeOf, Tile, logical-bool elementwise, and compare/select when the
+model matches the family-specific artifact contracts.
 
 Generated activation, elementwise, f32 Conv2D/GroupConv2D, f32/f16 Softmax,
 dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D, f32/f16/i64 Range,
-ShapeOf, Tile, logical-bool elementwise, and compare/select sources are
-embedded under `src/kernel_ir/opencl_kernels/`. There is no active handwritten
-OpenCL kernel-unit exception in the current registry. Conv2D/GroupConv2D is
-limited to f32 static 4D NCHW data/output, constant weights, and 2D
-stride/dilation/padding metadata. Pool2D is limited to f32/f16 static 4D NCHW
-MaxPool/AvgPool contracts with 2D kernel, stride, dilation, and padding
-metadata. OpenCL operation support requires a matching source artifact and
-registered kernel unit; unsupported variants fail during support probing or
-compilation.
+f32/f16 Interpolate, f32 numeric reduction, boolean logical reduction, ShapeOf,
+Tile, logical-bool elementwise, and compare/select sources are embedded under
+`src/kernel_ir/opencl_kernels/`. There is no active handwritten OpenCL
+kernel-unit exception in the current registry. Conv2D/GroupConv2D is limited to
+f32 static 4D NCHW data/output, constant weights, and 2D stride/dilation/padding
+metadata. Pool2D is limited to f32/f16 static 4D NCHW MaxPool/AvgPool contracts
+with 2D kernel, stride, dilation, and padding metadata. Reduction is limited to
+f32 numeric reductions and boolean logical reductions with static input/output
+shapes and constant axes. Interpolate is limited to f32/f16 static 4D NCHW
+spatial resize routes with supported nearest/linear semantics. OpenCL operation
+support requires a matching source artifact and registered kernel unit;
+unsupported variants fail during support probing or compilation.
 
-OpenCL MatMul, Interpolate, Reduction, Transpose, Concat, and Split are current
-limitations. Some helper sources or test fixtures may exist in the tree, but
-the backend catalog does not currently register those routes and operation
-support reports `missing_opencl_*_kernel_unit`.
+OpenCL MatMul, Transpose, Concat, and Split are current limitations. Some
+helper sources or test fixtures may exist in the tree, but the backend catalog
+does not currently register those routes and operation support reports
+`missing_opencl_*_kernel_unit`.
 
 For generated activation artifacts, `Swish` supports default beta, scalar
 constant beta, and runtime scalar beta tensor forms when the beta input is a

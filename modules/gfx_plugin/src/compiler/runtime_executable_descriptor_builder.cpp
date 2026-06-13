@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <memory>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -16,7 +15,7 @@
 
 #include "openvino/core/except.hpp"
 #include "compiler/pipeline_stage_runtime_descriptor_builder_detail.hpp"
-#include "runtime/gfx_logger.hpp"
+#include "kernel_ir/gfx_runtime_shape_rule.hpp"
 #include "runtime/tensor_binding_contract.hpp"
 
 namespace ov {
@@ -98,17 +97,6 @@ bool const_tensor_payloads_match(
 
 bool same_string(std::string_view lhs, const std::string &rhs) {
   return lhs.size() == rhs.size() && lhs.compare(rhs) == 0;
-}
-
-std::string join_diagnostics(const std::vector<std::string> &diagnostics) {
-  std::ostringstream oss;
-  for (size_t i = 0; i < diagnostics.size(); ++i) {
-    if (i) {
-      oss << "; ";
-    }
-    oss << diagnostics[i];
-  }
-  return oss.str();
 }
 
 const compiler::MemoryRegion *
@@ -202,6 +190,7 @@ RuntimeStageExecutableDescriptor make_stage_descriptor(
   descriptor.tensor_roles = artifact.kernel.tensor_roles;
   descriptor.scalar_roles = artifact.kernel.scalar_roles;
   descriptor.runtime_param_buffer_count = artifact.runtime_param_buffer_count;
+  descriptor.runtime_param_payload_kind = artifact.runtime_param_payload_kind;
   descriptor.runtime_param_i64_metadata = artifact.runtime_param_i64_metadata;
   descriptor.runtime_param_reduce_keep_dims =
       artifact.runtime_param_reduce_keep_dims;
@@ -788,6 +777,8 @@ verify_runtime_executable_descriptor(
         stage.scalar_roles != artifact.kernel.scalar_roles ||
         stage.runtime_param_buffer_count !=
             artifact.runtime_param_buffer_count ||
+        stage.runtime_param_payload_kind !=
+            artifact.runtime_param_payload_kind ||
         stage.runtime_param_i64_metadata !=
             artifact.runtime_param_i64_metadata ||
         stage.runtime_param_reduce_keep_dims !=
@@ -893,8 +884,7 @@ verify_runtime_executable_descriptor(
           std::to_string(i));
     }
     if (artifact.runtime_param_buffer_count != 0 &&
-        !descriptor_owns_runtime_param_payload(
-            stage, artifact.runtime_param_buffer_count)) {
+        !descriptor_owns_runtime_param_payload(stage)) {
       result.diagnostics.push_back(
           "runtime executable descriptor RuntimeParams ABI is not "
           "descriptor-owned at " +
@@ -909,6 +899,8 @@ verify_runtime_executable_descriptor(
     }
     if (stage.runtime_param_i64_metadata !=
             artifact.runtime_param_i64_metadata ||
+        stage.runtime_param_payload_kind !=
+            artifact.runtime_param_payload_kind ||
         stage.runtime_param_reduce_keep_dims !=
             artifact.runtime_param_reduce_keep_dims ||
         stage.runtime_param_reduce_keep_dims_valid !=
@@ -998,54 +990,6 @@ RuntimeExecutableDescriptor RuntimeExecutableDescriptorBuilder::build(
         executable.find_artifact_payload(artifact.artifact_key),
         executable.find_artifact_const_tensors(artifact.artifact_key)));
   }
-  return descriptor;
-}
-
-RuntimeExecutableDescriptor RuntimeExecutableDescriptorBuilder::build_finalized(
-    const RuntimeExecutableDescriptorBuildRequest &request) const {
-  OPENVINO_ASSERT(request.executable,
-                  "GFX: runtime executable descriptor build requires an "
-                  "ExecutableBundle");
-  OPENVINO_ASSERT(request.transformed_model,
-                  "GFX: runtime executable descriptor build requires a "
-                  "compiler-transformed model");
-  OPENVINO_ASSERT(request.backend_registry,
-                  "GFX: runtime executable descriptor build requires an "
-                  "explicit BackendRegistry");
-  OPENVINO_ASSERT(
-      request.target.backend() != GpuBackend::Unknown,
-      "GFX: runtime executable descriptor build requires concrete BackendTarget");
-
-  auto descriptor_seed = build(*request.executable);
-  detail::PipelineStageBuildRequest stage_request;
-  stage_request.graph = detail::make_pipeline_stage_graph_snapshot(
-      request.transformed_model,
-      detail::make_pipeline_stage_fusion_config(request.fusion_capabilities,
-                                                request.enable_fusion,
-                                                gfx_log_debug_enabled()));
-  stage_request.runtime_descriptor = &descriptor_seed;
-  stage_request.backend_registry = request.backend_registry;
-  stage_request.target = request.target;
-  stage_request.backend_name =
-      request.backend_name.empty() ? request.target.backend_id()
-                                   : request.backend_name;
-  stage_request.enable_fusion = request.enable_fusion;
-  stage_request.compile_trace = request.compile_trace;
-
-  auto descriptor =
-      detail::build_pipeline_stage_runtime_descriptor(stage_request);
-  const auto descriptor_verification =
-      verify_runtime_executable_descriptor(descriptor, *request.executable);
-  OPENVINO_ASSERT(
-      descriptor_verification.valid(),
-      "GFX: compiler produced invalid runtime executable descriptor: ",
-      join_diagnostics(descriptor_verification.diagnostics));
-  const auto materialization_verification =
-      verify_runtime_executable_descriptor_materialization(descriptor);
-  OPENVINO_ASSERT(
-      materialization_verification.valid(),
-      "GFX: compiler produced invalid runtime descriptor materialization: ",
-      join_diagnostics(materialization_verification.diagnostics));
   return descriptor;
 }
 

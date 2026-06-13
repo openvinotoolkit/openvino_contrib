@@ -676,7 +676,8 @@ void RuntimeInputResolver::ensure_output_shape(size_t output_idx,
 std::optional<RuntimeReduceInfo> runtime_reduce_info_from_descriptor(
     const RuntimeStageExecutableDescriptor &descriptor,
     const ov::Shape &input_shape, std::string_view stage_name) {
-  if (!is_reduce_runtime_param_stage(descriptor.op_family)) {
+  if (descriptor.runtime_param_payload_kind !=
+      RuntimeParamDescriptorPayloadKind::Reduce) {
     return std::nullopt;
   }
   OPENVINO_ASSERT(descriptor.runtime_param_reduce_keep_dims_valid,
@@ -692,7 +693,8 @@ RuntimeReduceDispatchPlan runtime_reduce_dispatch_from_descriptor(
     const RuntimeStageExecutableDescriptor &descriptor,
     std::string_view stage_name) {
   RuntimeReduceDispatchPlan plan;
-  if (!is_reduce_runtime_param_stage(descriptor.op_family)) {
+  if (descriptor.runtime_param_payload_kind !=
+      RuntimeParamDescriptorPayloadKind::Reduce) {
     return plan;
   }
   OPENVINO_ASSERT(!descriptor.entry_point.empty(),
@@ -740,17 +742,16 @@ materialize_descriptor_owned_runtime_param_payload(
     GpuBufferManager &buffer_manager,
     const RuntimeStageExecutableDescriptor &descriptor,
     const RuntimeInputResolver &inputs, const std::vector<GpuTensor *> &outputs,
-    size_t runtime_param_count,
     const std::vector<int32_t> &compiler_scalar_args,
     std::string_view stage_name,
     const std::vector<size_t> *direct_input_indices) {
+  const size_t runtime_param_count = descriptor.runtime_param_buffer_count;
   DescriptorOwnedRuntimeParamMaterialization materialization;
   materialization.scalar_args = compiler_scalar_args;
   materialization.descriptor_owned =
-      descriptor_owns_runtime_param_payload(descriptor, runtime_param_count);
+      descriptor_owns_runtime_param_payload(descriptor);
 
-  const auto payload_kind = descriptor_owned_runtime_param_payload_kind(
-      descriptor.op_family, runtime_param_count);
+  const auto payload_kind = descriptor.runtime_param_payload_kind;
   if (payload_kind == RuntimeParamDescriptorPayloadKind::None) {
     return materialization;
   }
@@ -932,6 +933,16 @@ materialize_descriptor_owned_runtime_param_payload(
     assign_output_contract(output_shape);
     break;
   }
+  case RuntimeParamDescriptorPayloadKind::Interpolate: {
+    const auto interpolate_plan = plan_interpolate_runtime_values(
+        descriptor_inputs, outputs, descriptor, stage_name);
+    payload = make_interpolate_runtime_param_payload(
+        buffer_manager, stage_name, interpolate_plan.input_shape,
+        interpolate_plan.values.output_shape, interpolate_plan.align_corners,
+        interpolate_plan.use_half_pixel, interpolate_plan.nearest_mode);
+    assign_runtime_value_outputs(interpolate_plan.values, outputs);
+    break;
+  }
   case RuntimeParamDescriptorPayloadKind::Softmax: {
     OPENVINO_ASSERT(
         descriptor.runtime_param_i64_metadata.size() == 3,
@@ -1043,7 +1054,7 @@ materialize_descriptor_owned_runtime_param_payload(
     payload = make_reduce_runtime_param_payload(
         buffer_manager, stage_name, input_shape, reduce_info->axes,
         reduce_info->keep_dims, output_shape, op_code);
-    assign_output_contract(output_shape);
+    assign_runtime_value_outputs(reduce_plan.values, outputs);
     break;
   }
   case RuntimeParamDescriptorPayloadKind::None:

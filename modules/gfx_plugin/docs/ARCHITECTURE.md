@@ -130,9 +130,9 @@ supported current path, never to a removed route.
 element-type and static-shape contracts and the shared classifier for generated
 source `RuntimeParams` payloads that can be materialized without an OpenVINO
 source node. The current descriptor-owned families are Broadcast, binary
-elementwise broadcast, Select, Tile, Softmax/LogSoftmax, Transpose, and Reduce
-when the descriptor carries the required static tensor contracts and runtime
-metadata.
+elementwise broadcast, Select, Tile, Interpolate, Softmax/LogSoftmax,
+Transpose, and Reduce when the descriptor carries the required static tensor
+contracts and runtime metadata.
 
 Kernel preparation is request-local and is mediated by
 `src/runtime/runtime_session.*` so descriptor-owned resource bindings and
@@ -428,15 +428,24 @@ Kernel contracts are split across the current compiler and kernel IR layers:
 - `src/compiler/pipeline_stage_plan.*`: compiler-side model-output flags,
   input links, and output-alias metadata used while planning compiled pipeline
   descriptors
+- `src/compiler/pipeline_stage_graph_snapshot.*`: compiler-owned snapshot of
+  ordered graph nodes and parameter indexes used while finalizing runtime
+  descriptors
 - `src/compiler/pipeline_stage_builder.*`: stage descriptor construction and
   node-to-stage mapping from compiler-owned planning contracts
+- `src/compiler/pipeline_stage_materialization_draft.*`: construction of
+  runtime-facing materialization plans and public-output descriptors from the
+  graph snapshot and runtime stage descriptors
 - `src/compiler/pipeline_stage_fusion.*`: compiler-owned fusion selection and
   vendor attention planning
 - `src/compiler/memory_plan.*`: compiler-owned memory regions, lifetimes, alias
   groups, transient arenas, and memory-plan fingerprints
-- `src/compiler/cache_envelope.*`: cache keys, wire-format serialization,
-  store/load helpers, payload identity/source records, stable-key validation,
-  and shared source-payload reconstruction
+- `src/compiler/cache_envelope.*` and `cache_envelope_wire.cpp`: cache keys,
+  wire-format serialization, store/load helpers, payload identity/source
+  records, stable-key validation, and shared source-payload reconstruction
+- `src/compiler/cache_materialization_contract.*` and
+  `cache_materialization_wire.hpp`: serialized descriptor materialization
+  contract used to reconstruct compiled pipeline ownership during cache import
 - `src/compiler/cache_import.*`: import contract reconstruction from serialized
   cache envelopes into runtime models, executable bundles, runtime descriptors,
   and materialization plans
@@ -448,10 +457,15 @@ Kernel contracts are split across the current compiler and kernel IR layers:
   records
 - `src/compiler/runtime_executable_descriptor_builder.*`: conversion and
   verification from compiler executable bundles into runtime executable
-  descriptors; graph-owned runtime stage plans are emitted separately and are not
-  embedded into cacheable descriptors
+  descriptors
+- `src/compiler/runtime_executable_descriptor_finalizer.cpp`: final descriptor
+  construction from a compiler graph snapshot, executable bundle, and backend
+  registry, including materialization verification
 - `src/runtime/executable_descriptor.*`: backend-neutral runtime descriptor
   records consumed by stage factories and `RuntimeSession`
+- `src/kernel_ir/gfx_runtime_shape_rule.*`: shared names and ownership checks
+  for runtime-shape rules that descriptors may materialize without source-node
+  access
 - `src/runtime/pipeline_stage_plan.hpp`: runtime-facing stage materialization
   plan emitted by the compiler builder and consumed by the materializer
 - `src/runtime/backend_stage_factory.hpp`: backend-facing stage creation
@@ -472,9 +486,18 @@ Kernel contracts are split across the current compiler and kernel IR layers:
 - `src/runtime/tensor_binding_contract.*`: descriptor-owned tensor
   element-type/static-shape parsing and generated `RuntimeParams` ownership
   classification shared by Metal and OpenCL runtime code
+- `src/common/runtime_param_descriptor.hpp` and
+  `src/runtime/gfx_kernel_runtime_params_*.hpp`: descriptor-owned runtime
+  parameter payload classification and the split runtime parameter builders for
+  movement, numeric, and scatter families
+- `src/runtime/runtime_shape_materializer.*`: request-time materialization for
+  runtime-shape buffers that are explicitly allowed by descriptor-owned runtime
+  shape rules
 - `src/runtime/runtime_session.*`: request-local resource binding tables and
   prepared executable objects that validate tensor bindings against descriptor
   memory-region ids
+- `src/runtime/runtime_output_memory_contract.*`: output buffer contract
+  application for transient arenas and descriptor-owned memory regions
 - `src/runtime/fused_output_lifetime_plan.*`: fused-stage output lifetime and
   alias-storage planning based on runtime memory contracts
 - `src/kernel_ir/gfx_kernel_manifest.hpp` and
@@ -583,7 +606,8 @@ Source-kernel data structures and shared helpers live in
 construction is backend-owned in files such as
 `src/backends/opencl/compiler/opencl_activation_source_artifact.cpp`,
 `opencl_conv_source_artifact.cpp`, `opencl_eltwise_source_artifact.cpp`,
-`opencl_pool_source_artifact.cpp`, `opencl_range_source_artifact.cpp`,
+`opencl_interpolate_source_artifact.cpp`, `opencl_pool_source_artifact.cpp`,
+`opencl_range_source_artifact.cpp`, `opencl_reduction_source_artifact.cpp`,
 `opencl_softmax_source_artifact.cpp`, and `opencl_tile_source_artifact.cpp`.
 Payload materialization, cache payload encoding/decoding, and payload routing
 are owned by `src/backends/opencl/compiler/opencl_kernel_artifacts.*` and
@@ -596,7 +620,8 @@ owns the list of registered generated units, operation-support entries, and
 artifact families that may materialize payloads. Family-specific backend
 compiler adapters, currently including `opencl_activation_kernel_unit.*`,
 `opencl_eltwise_kernel_unit.*`, `opencl_conv_kernel_unit.*`,
-`opencl_pool_kernel_unit.*`, `opencl_range_kernel_unit.*`,
+`opencl_interpolate_kernel_unit.*`, `opencl_pool_kernel_unit.*`,
+`opencl_range_kernel_unit.*`, `opencl_reduction_kernel_unit.*`,
 `opencl_shapeof_kernel_unit.*`, `opencl_softmax_kernel_unit.*`, and
 `opencl_tile_kernel_unit.*`, resolve generated `KernelUnit` records and
 materialize operation payloads before runtime descriptor construction.
@@ -609,9 +634,9 @@ policy intentionally does not fall back to generic MLIR support when no source
 artifact exists.
 
 Current catalog-registered OpenCL source artifacts cover Conv2D/GroupConv2D,
-Softmax, Pool2D, Range, Tile, ShapeOf, unary activation, binary elementwise,
-logical-bool elementwise, and compare/select families when shapes and element
-types match their contracts.
+Softmax, Pool2D, Range, Interpolate, Reduction, Tile, ShapeOf, unary
+activation, binary elementwise, logical-bool elementwise, and compare/select
+families when shapes and element types match their contracts.
 
 OpenCL source coverage is generated-kernel based. Conv2D and GroupConv2D use
 generated f32 units for static 4D NCHW data/output with constant weights and
@@ -621,17 +646,20 @@ runtime shape metadata. Range uses generated f32/f16/i64 units, including a
 specialized i64 unit-step source. Pool2D uses generated f32/f16 units for
 static 4D NCHW MaxPool and AvgPool. ShapeOf uses generated i32/i64 units with
 input-rank metadata. Tile uses generated f32/f16 static and dynamic-static-rank
-units. Activation and elementwise families use generated arithmetic,
-compare/select, and logical-bool source ids. The current OpenCL kernel registry
-has no active handwritten kernel-unit exception.
+units. Interpolate uses generated f32/f16 units for static 4D NCHW spatial
+resize routes with descriptor-owned semantic scalars. Reduction uses generated
+f32 numeric units and boolean logical units for static input/output shapes with
+constant reduction axes. Activation and elementwise families use generated
+arithmetic, compare/select, and logical-bool source ids. The current OpenCL
+kernel registry has no active handwritten kernel-unit exception.
 Keep those distinctions in the artifact contract rather than duplicating them
 in the OpenCL stage executor.
 Routes that require runtime shape arguments must mark the `KernelUnit`; the
 manifest, executable bundle, runtime descriptor, and infer pipeline carry that
 flag instead of deriving it from backend identity at request time.
 
-OpenCL MatMul, Interpolate, Reduction, Transpose, Concat, and Split are current
-catalog limitations. The backend intentionally reports
+OpenCL MatMul, Transpose, Concat, and Split are current catalog limitations.
+The backend intentionally reports
 `missing_opencl_*_kernel_unit` for those families until a generated unit is
 registered in `opencl_kernel_unit_catalog.*`, a family-owned adapter
 materializes the payload, and contract tests cover the route. Residual helper

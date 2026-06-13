@@ -14,31 +14,9 @@ namespace gfx_plugin {
 
 struct RuntimeStageExecutableDescriptor;
 
-enum class RuntimeParamDescriptorPayloadKind {
-    None,
-    BinaryBroadcast,
-    Broadcast,
-    Select,
-    Tile,
-    Softmax,
-    Transpose,
-    Reduce,
-};
-
 ov::element::Type element_type_from_contract(std::string_view name);
 
 bool parse_static_shape_contract(std::string_view text, ov::Shape& shape);
-
-bool is_binary_runtime_param_stage(std::string_view op_family) noexcept;
-
-bool is_reduce_runtime_param_stage(std::string_view op_family) noexcept;
-
-bool descriptor_owns_runtime_shape_rule(std::string_view op_family,
-                                        std::string_view runtime_shape_rule) noexcept;
-
-RuntimeParamDescriptorPayloadKind
-descriptor_owned_runtime_param_payload_kind(std::string_view op_family,
-                                            size_t runtime_param_count) noexcept;
 
 bool descriptor_has_static_shape_contracts(
     const RuntimeStageExecutableDescriptor &descriptor, size_t input_count,
@@ -48,8 +26,7 @@ bool descriptor_has_static_shape_contracts(
 // payload kind, role count, required bindings and metadata. Dynamic dimensions
 // may still be supplied by request tensors inside this schema at runtime.
 bool descriptor_owns_runtime_param_payload(
-    const RuntimeStageExecutableDescriptor &descriptor,
-    size_t runtime_param_count);
+    const RuntimeStageExecutableDescriptor &descriptor);
 
 }  // namespace gfx_plugin
 }  // namespace ov

@@ -4,9 +4,9 @@
 
 #include "compiler/cache_import.hpp"
 
+#include <map>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 
 #include "compiler/runtime_executable_descriptor_builder.hpp"
@@ -79,22 +79,6 @@ make_parameter_for_binding(const RuntimeTensorBindingContract &binding) {
   return parameter;
 }
 
-PipelineStageTensorRef make_parameter_ref(size_t index) {
-  PipelineStageTensorRef ref;
-  ref.kind = PipelineStageTensorRefKind::Parameter;
-  ref.index = index;
-  ref.port = 0;
-  return ref;
-}
-
-PipelineStageTensorRef make_stage_output_ref(size_t index, size_t port) {
-  PipelineStageTensorRef ref;
-  ref.kind = PipelineStageTensorRefKind::StageOutput;
-  ref.index = index;
-  ref.port = port;
-  return ref;
-}
-
 struct PublicOutputRecord {
   RuntimeTensorBindingContract binding;
   RuntimePublicOutputDescriptor descriptor;
@@ -130,111 +114,153 @@ std::shared_ptr<const ov::Model> make_runtime_model(
   return model;
 }
 
-void materialize_cache_pipeline(
-    CacheImportContract &contract,
-    RuntimeExecutableDescriptor &descriptor) {
-  std::unordered_set<std::string> consumed_regions;
-  for (const auto &stage : descriptor.stages) {
-    for (const auto &input : stage.input_bindings) {
-      if (!input.memory_region_id.empty()) {
-        consumed_regions.insert(input.memory_region_id);
-      }
+std::string shape_to_contract(const ov::Shape &shape) {
+  std::string result = "{";
+  for (size_t i = 0; i < shape.size(); ++i) {
+    if (i) {
+      result += ",";
     }
+    result += std::to_string(shape[i]);
   }
+  result += "}";
+  return result;
+}
 
-  std::unordered_map<std::string, PipelineStageTensorRef> tensor_refs;
-  std::unordered_map<std::string, size_t> parameter_index_by_region;
+bool same_binding_identity(const RuntimeTensorBindingContract &lhs,
+                           const RuntimeTensorBindingContract &rhs) {
+  return lhs.memory_region_id == rhs.memory_region_id &&
+         lhs.logical_name == rhs.logical_name &&
+         lhs.element_type == rhs.element_type &&
+         lhs.partial_shape == rhs.partial_shape &&
+         lhs.layout == rhs.layout && lhs.storage_kind == rhs.storage_kind;
+}
+
+RuntimeTensorBindingContract make_public_output_binding(
+    const RuntimePublicOutputDescriptor &output, size_t output_index) {
+  RuntimeTensorBindingContract binding;
+  binding.logical_name = "output" + std::to_string(output_index);
+  binding.memory_region_id = binding.logical_name;
+  binding.role = "tensor_output";
+  binding.element_type = output.static_type.get_type_name();
+  binding.partial_shape = shape_to_contract(output.static_shape);
+  binding.layout = "logical";
+  binding.storage_kind = "device_buffer";
+  binding.lifetime_class = "stage_output";
+  binding.alias_group = binding.memory_region_id;
+  return binding;
+}
+
+struct CacheRuntimeModelInputs {
   std::vector<std::shared_ptr<ov::op::v0::Parameter>> parameters;
-  std::vector<PublicOutputRecord> public_outputs;
+  std::unordered_map<size_t, RuntimeTensorBindingContract> bindings_by_index;
+};
 
-  descriptor.materialization_stages.reserve(descriptor.stages.size());
-  for (size_t stage_idx = 0; stage_idx < descriptor.stages.size();
-       ++stage_idx) {
-    const auto &stage = descriptor.stages[stage_idx];
-    PipelineStageMaterializationPlan plan;
-    plan.kind = PipelineStageMaterializationKind::SingleStage;
-    plan.descriptor_stage_index = stage_idx;
-    plan.materialized_descriptor = stage;
-    plan.materialized_descriptor_valid = true;
-    plan.io_plan.stage_name = stage.stage_name;
-    plan.io_plan.op_family = stage.op_family;
-    plan.io_plan.runtime_stage_index = stage_idx;
-
-    for (size_t input_idx = 0; input_idx < stage.input_bindings.size();
-         ++input_idx) {
-      const auto &binding = stage.input_bindings[input_idx];
-      PipelineStageInputLink input;
-      input.port = input_idx;
-      auto produced = tensor_refs.find(binding.memory_region_id);
-      if (produced != tensor_refs.end()) {
-        input.source_ref = produced->second;
-      } else if (binding.external_binding) {
-        auto param_it = parameter_index_by_region.find(binding.memory_region_id);
-        if (param_it == parameter_index_by_region.end()) {
-          const size_t parameter_index = parameters.size();
-          parameter_index_by_region.emplace(binding.memory_region_id,
-                                            parameter_index);
-          parameters.push_back(make_parameter_for_binding(binding));
-          input.source_ref = make_parameter_ref(parameter_index);
-        } else {
-          input.source_ref = make_parameter_ref(param_it->second);
-        }
-      }
-      if (!input.source_ref.valid()) {
-        contract.diagnostics.push_back(
-            "cache import cannot resolve input binding " +
-            std::to_string(stage_idx) + ":" + std::to_string(input_idx) +
-            " region=" + binding.memory_region_id);
-      }
-      plan.io_plan.inputs.push_back(std::move(input));
-    }
-
-    for (size_t output_idx = 0; output_idx < stage.output_bindings.size();
-         ++output_idx) {
-      const auto &binding = stage.output_bindings[output_idx];
-      PipelineStageOutputDesc output;
-      output.source_port = output_idx;
-      output.source_ref = make_stage_output_ref(stage_idx, output_idx);
-      if (!static_shape_and_type_from_binding(
-              binding, output.shape, output.type, contract.diagnostics,
-              "cache stage output " + std::to_string(stage_idx) + ":" +
-                  std::to_string(output_idx))) {
+CacheRuntimeModelInputs collect_runtime_model_inputs(
+    const RuntimeExecutableDescriptor &descriptor,
+    std::vector<std::string> &diagnostics) {
+  std::map<size_t, RuntimeTensorBindingContract> ordered_bindings;
+  for (const auto &plan : descriptor.materialization_stages) {
+    const auto &stage = plan.materialized_descriptor;
+    for (const auto &input : plan.io_plan.inputs) {
+      if (input.source_ref.kind != PipelineStageTensorRefKind::Parameter) {
         continue;
       }
-      output.is_model_output =
-          consumed_regions.count(binding.memory_region_id) == 0u;
-      plan.io_plan.outputs.push_back(output);
-      tensor_refs[binding.memory_region_id] = output.source_ref;
-
-      if (output.is_model_output) {
-        RuntimePublicOutputDescriptor public_descriptor;
-        public_descriptor.kind = RuntimePublicOutputSourceKind::StageOutput;
-        public_descriptor.index = stage_idx;
-        public_descriptor.port = output_idx;
-        public_descriptor.static_shape = output.shape;
-        public_descriptor.static_type = output.type;
-        public_outputs.push_back({binding, public_descriptor});
+      if (input.port >= stage.input_bindings.size()) {
+        diagnostics.push_back(
+            "cache import materialization parameter binding out of range: " +
+            std::to_string(input.source_ref.index) + ":" +
+            std::to_string(input.port));
+        continue;
+      }
+      const auto &binding = stage.input_bindings[input.port];
+      const auto [it, inserted] =
+          ordered_bindings.emplace(input.source_ref.index, binding);
+      if (!inserted && !same_binding_identity(it->second, binding)) {
+        diagnostics.push_back(
+            "cache import materialization parameter binding drift at " +
+            std::to_string(input.source_ref.index));
       }
     }
-
-    descriptor.materialization_stages.push_back(std::move(plan));
   }
 
-  for (const auto &public_output : public_outputs) {
-    descriptor.public_outputs.push_back(public_output.descriptor);
+  CacheRuntimeModelInputs inputs;
+  inputs.bindings_by_index.reserve(ordered_bindings.size());
+  inputs.parameters.reserve(ordered_bindings.size());
+  size_t expected_index = 0;
+  for (const auto &[index, binding] : ordered_bindings) {
+    if (index != expected_index) {
+      diagnostics.push_back(
+          "cache import materialization parameter index gap before " +
+          std::to_string(index));
+    }
+    inputs.bindings_by_index.emplace(index, binding);
+    inputs.parameters.push_back(make_parameter_for_binding(binding));
+    expected_index = index + 1;
   }
-  if (descriptor.public_outputs.empty() && !descriptor.stages.empty()) {
-    contract.diagnostics.emplace_back(
-        "cache import did not recover public model outputs");
-  }
+  return inputs;
+}
 
-  descriptor.materialization_finalized = true;
-  contract.runtime_model =
-      make_runtime_model(parameters, public_outputs, contract.diagnostics);
-  if (!contract.runtime_model) {
-    contract.diagnostics.emplace_back(
+std::vector<PublicOutputRecord> collect_runtime_model_outputs(
+    const RuntimeExecutableDescriptor &descriptor,
+    const CacheRuntimeModelInputs &inputs,
+    std::vector<std::string> &diagnostics) {
+  std::vector<PublicOutputRecord> outputs;
+  outputs.reserve(descriptor.public_outputs.size());
+  for (size_t i = 0; i < descriptor.public_outputs.size(); ++i) {
+    const auto &public_output = descriptor.public_outputs[i];
+    RuntimeTensorBindingContract binding =
+        make_public_output_binding(public_output, i);
+    if (public_output.kind == RuntimePublicOutputSourceKind::Parameter) {
+      const auto binding_it =
+          inputs.bindings_by_index.find(public_output.index);
+      if (binding_it == inputs.bindings_by_index.end()) {
+        diagnostics.push_back(
+            "cache import public output parameter is out of range at " +
+            std::to_string(i));
+        continue;
+      }
+      binding = binding_it->second;
+    } else if (public_output.kind ==
+               RuntimePublicOutputSourceKind::StageOutput) {
+      if (public_output.index >= descriptor.materialization_stages.size()) {
+        diagnostics.push_back(
+            "cache import public output stage is out of range at " +
+            std::to_string(i));
+        continue;
+      }
+      const auto &plan =
+          descriptor.materialization_stages[public_output.index];
+      if (public_output.port <
+          plan.materialized_descriptor.output_bindings.size()) {
+        binding =
+            plan.materialized_descriptor.output_bindings[public_output.port];
+      }
+    } else {
+      diagnostics.push_back("cache import public output kind is incomplete at " +
+                            std::to_string(i));
+      continue;
+    }
+    outputs.push_back({std::move(binding), public_output});
+  }
+  return outputs;
+}
+
+std::shared_ptr<const ov::Model> make_runtime_model_from_materialization(
+    const RuntimeExecutableDescriptor &descriptor,
+    std::vector<std::string> &diagnostics) {
+  const auto inputs = collect_runtime_model_inputs(descriptor, diagnostics);
+  const auto outputs =
+      collect_runtime_model_outputs(descriptor, inputs, diagnostics);
+  if (outputs.empty() && !descriptor.stages.empty()) {
+    diagnostics.emplace_back(
+        "cache import materialization contract has no public outputs");
+  }
+  auto model = make_runtime_model(inputs.parameters, outputs, diagnostics);
+  if (!model) {
+    diagnostics.emplace_back(
         "cache import could not reconstruct OpenVINO runtime model contract");
   }
+  return model;
 }
 
 } // namespace
@@ -268,17 +294,12 @@ make_cache_import_contract(const CacheEnvelope &envelope,
     return contract;
   }
 
-  auto descriptor =
-      RuntimeExecutableDescriptorBuilder{}.build(contract.executable);
+  auto descriptor = make_cache_envelope_runtime_descriptor_contract(
+      envelope, contract.executable);
   const auto descriptor_verification =
       verify_runtime_executable_descriptor(descriptor, contract.executable);
   append_prefixed(contract.diagnostics, "runtime descriptor: ",
                   descriptor_verification.diagnostics);
-  if (!contract.diagnostics.empty()) {
-    return contract;
-  }
-
-  materialize_cache_pipeline(contract, descriptor);
   const auto materialization_verification =
       verify_runtime_executable_descriptor_materialization(descriptor);
   append_prefixed(contract.diagnostics, "runtime materialization: ",
@@ -287,6 +308,9 @@ make_cache_import_contract(const CacheEnvelope &envelope,
     return contract;
   }
 
+  contract.runtime_model =
+      make_runtime_model_from_materialization(descriptor,
+                                              contract.diagnostics);
   contract.runtime_descriptor =
       std::make_shared<RuntimeExecutableDescriptor>(std::move(descriptor));
   if (!contract.runtime_descriptor || !contract.runtime_model) {

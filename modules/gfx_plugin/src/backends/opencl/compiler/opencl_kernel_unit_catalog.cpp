@@ -7,23 +7,15 @@
 #include "backends/opencl/compiler/opencl_activation_kernel_unit.hpp"
 #include "backends/opencl/compiler/opencl_conv_kernel_unit.hpp"
 #include "backends/opencl/compiler/opencl_eltwise_kernel_unit.hpp"
+#include "backends/opencl/compiler/opencl_interpolate_kernel_unit.hpp"
 #include "backends/opencl/compiler/opencl_pool_kernel_unit.hpp"
 #include "backends/opencl/compiler/opencl_range_kernel_unit.hpp"
+#include "backends/opencl/compiler/opencl_reduction_kernel_unit.hpp"
 #include "backends/opencl/compiler/opencl_shapeof_kernel_unit.hpp"
 #include "backends/opencl/compiler/opencl_softmax_kernel_unit.hpp"
 #include "backends/opencl/compiler/opencl_tile_kernel_unit.hpp"
 #include "openvino/op/concat.hpp"
-#include "openvino/op/interpolate.hpp"
 #include "openvino/op/matmul.hpp"
-#include "openvino/op/reduce_l1.hpp"
-#include "openvino/op/reduce_l2.hpp"
-#include "openvino/op/reduce_logical_and.hpp"
-#include "openvino/op/reduce_logical_or.hpp"
-#include "openvino/op/reduce_max.hpp"
-#include "openvino/op/reduce_mean.hpp"
-#include "openvino/op/reduce_min.hpp"
-#include "openvino/op/reduce_prod.hpp"
-#include "openvino/op/reduce_sum.hpp"
 #include "openvino/op/split.hpp"
 #include "openvino/op/transpose.hpp"
 #include "openvino/op/variadic_split.hpp"
@@ -33,26 +25,8 @@ namespace gfx_plugin {
 namespace compiler {
 namespace {
 
-bool is_interpolate_node(const std::shared_ptr<const ov::Node> &node) {
-  return ov::as_type_ptr<const ov::op::v0::Interpolate>(node) ||
-         ov::as_type_ptr<const ov::op::v4::Interpolate>(node) ||
-         ov::as_type_ptr<const ov::op::v11::Interpolate>(node);
-}
-
 bool is_matmul_node(const std::shared_ptr<const ov::Node> &node) {
   return static_cast<bool>(ov::as_type_ptr<const ov::op::v0::MatMul>(node));
-}
-
-bool is_reduction_node(const std::shared_ptr<const ov::Node> &node) {
-  return ov::as_type_ptr<const ov::op::v1::ReduceSum>(node) ||
-         ov::as_type_ptr<const ov::op::v1::ReduceMean>(node) ||
-         ov::as_type_ptr<const ov::op::v1::ReduceMax>(node) ||
-         ov::as_type_ptr<const ov::op::v1::ReduceMin>(node) ||
-         ov::as_type_ptr<const ov::op::v1::ReduceProd>(node) ||
-         ov::as_type_ptr<const ov::op::v4::ReduceL1>(node) ||
-         ov::as_type_ptr<const ov::op::v4::ReduceL2>(node) ||
-         ov::as_type_ptr<const ov::op::v1::ReduceLogicalAnd>(node) ||
-         ov::as_type_ptr<const ov::op::v1::ReduceLogicalOr>(node);
 }
 
 bool is_transpose_node(const std::shared_ptr<const ov::Node> &node) {
@@ -109,6 +83,10 @@ opencl_generated_kernel_unit_specs() {
       {"opencl/generated/eltwise_select_f16_dynamic", "Eltwise"},
       {"opencl/generated/pool2d_f32", "Pooling"},
       {"opencl/generated/pool2d_f16", "Pooling"},
+      {"opencl/generated/interpolate_f32", "Interpolate"},
+      {"opencl/generated/interpolate_f16", "Interpolate"},
+      {"opencl/generated/reduction_f32", "Reduction"},
+      {"opencl/generated/reduction_bool", "Reduction"},
       {"opencl/generated/softmax_f32", "Softmax"},
       {"opencl/generated/softmax_f16", "Softmax"},
       {"opencl/generated/softmax_f32_dynamic_static_rank", "Softmax"},
@@ -124,11 +102,11 @@ opencl_operation_support_entries() {
       {is_opencl_tile_node, query_opencl_tile_operation, nullptr},
       {is_opencl_softmax_node, query_opencl_softmax_operation, nullptr},
       {is_opencl_conv2d_node, query_opencl_conv2d_operation, nullptr},
-      {is_interpolate_node, nullptr, "missing_opencl_interpolate_kernel_unit"},
+      {is_opencl_interpolate_node, query_opencl_interpolate_operation, nullptr},
       {is_matmul_node, nullptr, "missing_opencl_matmul_kernel_unit"},
       {is_opencl_activation_node, query_opencl_activation_operation, nullptr},
       {is_opencl_eltwise_node, query_opencl_eltwise_operation, nullptr},
-      {is_reduction_node, nullptr, "missing_opencl_reduction_kernel_unit"},
+      {is_opencl_reduction_node, query_opencl_reduction_operation, nullptr},
       {is_opencl_pool2d_node, query_opencl_pool2d_operation, nullptr},
       {is_transpose_node, nullptr, "missing_opencl_transpose_kernel_unit"},
       {is_opencl_shapeof_node, query_opencl_shapeof_operation, nullptr},
@@ -150,12 +128,16 @@ const std::vector<OpenClArtifactFamilyEntry> &opencl_artifact_family_entries() {
        build_opencl_softmax_kernel_artifact_payload},
       {is_opencl_pool2d_node, make_opencl_pool2d_source_artifact,
        build_opencl_pool2d_kernel_artifact_payload},
+      {is_opencl_interpolate_node, make_opencl_interpolate_source_artifact,
+       build_opencl_interpolate_kernel_artifact_payload},
       {is_opencl_shapeof_node, make_opencl_shapeof_source_artifact,
        build_opencl_shapeof_kernel_artifact_payload},
       {is_opencl_activation_node, make_opencl_activation_source_artifact,
        build_opencl_activation_kernel_artifact_payload},
       {is_opencl_eltwise_node, make_opencl_eltwise_source_artifact,
        build_opencl_eltwise_kernel_artifact_payload},
+      {is_opencl_reduction_node, make_opencl_reduction_source_artifact,
+       build_opencl_reduction_kernel_artifact_payload},
   };
   return entries;
 }

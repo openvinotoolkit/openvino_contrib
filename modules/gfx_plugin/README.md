@@ -131,10 +131,12 @@ The high-level path is:
 4. `CompiledModel` asks
    `src/compiler/runtime_executable_descriptor_builder.*` to build and verify a
    `RuntimeExecutableDescriptor` from the compiler executable bundle. The
-   descriptor-owned stage materialization plan is produced by the compiler
-   pipeline-stage builder. Cache import uses `src/compiler/cache_import.*` to
-   reconstruct a runtime model, executable bundle, runtime descriptor, and
-   materialization plan from the serialized envelope.
+   descriptor-owned stage materialization plan is produced from the compiler
+   graph snapshot, pipeline-stage builder, and materialization draft helpers.
+   Cache import uses `src/compiler/cache_import.*` and
+   `src/compiler/cache_materialization_contract.*` to reconstruct a runtime
+   model, executable bundle, runtime descriptor, and materialization plan from
+   the serialized envelope.
 5. `CompiledModel::build_runtime_execution_plan()` consumes the compiler-owned
    runtime descriptor and delegates concrete stage materialization to
    `src/runtime/runtime_execution_plan.*`, which owns the materialized
@@ -151,9 +153,9 @@ The high-level path is:
    type/shape contracts and identifies the generated source families whose
    `RuntimeParams` payload can be materialized without an `ov::Node`.
    Current descriptor-owned `RuntimeParams` coverage includes Broadcast,
-   binary elementwise broadcast, Select, Tile, Softmax/LogSoftmax, Transpose,
-   and Reduce families when the required static tensor contracts and metadata
-   are present.
+   binary elementwise broadcast, Select, Tile, Interpolate,
+   Softmax/LogSoftmax, Transpose, and Reduce families when the required static
+   tensor contracts and metadata are present.
 7. `src/compiler/stage_policy.*` selects fusion, precision, submit policy,
    and other shared stage traits. The selected backend `StagePlacementPolicy`,
    `PostOpFusionCapabilities`, and source-kernel dispatch policy are passed
@@ -265,25 +267,27 @@ Backend operation support and kernel-unit registration live under
 Embedded OpenCL source units live under `src/kernel_ir/opencl_kernels/`.
 Current registered generated OpenCL routes include activation, elementwise,
 f32 Conv2D/GroupConv2D, f32/f16 Softmax, dynamic-static-rank f32/f16 Softmax,
-f32/f16 Pool2D, f32/f16/i64 Range, ShapeOf, Tile, logical-bool elementwise,
-and compare/select.
+f32/f16 Pool2D, f32/f16/i64 Range, f32/f16 Interpolate, f32 numeric reduction,
+boolean logical reduction, ShapeOf, Tile, logical-bool elementwise, and
+compare/select.
 There is no active handwritten OpenCL kernel-unit exception in the current
 registry.
 Family-specific OpenCL compiler adapters such as
 `opencl_activation_kernel_unit.*`, `opencl_eltwise_kernel_unit.*`,
-`opencl_conv_kernel_unit.*`, `opencl_pool_kernel_unit.*`,
-`opencl_range_kernel_unit.*`, `opencl_shapeof_kernel_unit.*`,
+`opencl_conv_kernel_unit.*`, `opencl_interpolate_kernel_unit.*`,
+`opencl_pool_kernel_unit.*`, `opencl_range_kernel_unit.*`,
+`opencl_reduction_kernel_unit.*`, `opencl_shapeof_kernel_unit.*`,
 `opencl_softmax_kernel_unit.*`, and `opencl_tile_kernel_unit.*` resolve
 generated `KernelUnit` records and materialize source payloads. Keep new family
-routes in those backend compiler adapters, put family source-artifact builders
-in `opencl_*_source_artifact.cpp`, and register them in
+routes in those backend compiler adapters, put family source-artifact builders in
+`opencl_*_source_artifact.cpp`, and register them in
 `opencl_kernel_unit_catalog.*` instead of adding special cases to request-time
 execution.
 The OpenCL compiler registry requires an explicit kernel unit for generated
 routes; there is no generic MLIR fallback for OpenCL operation support.
 Unsupported modes, axes, padding, shapes, or element types fail during support
 probing instead of falling through to a hidden runtime path.
-OpenCL MatMul, Interpolate, Reduction, Transpose, Concat, and Split are current
+OpenCL MatMul, Transpose, Concat, and Split are current
 limitations in the backend catalog: source helper code or tests may exist, but
 operation support reports `missing_opencl_*_kernel_unit` until a catalog entry,
 family adapter, payload resolver, and tests are added.
@@ -330,6 +334,11 @@ generated kernel units.
 Reduction lowering uses the same source-plan boundary. Numeric reductions cover
 the current f32 generated-kernel contract; logical reductions cover the current
 boolean contract. Both require static input/output shapes and constant axes.
+
+Interpolate lowering is family-owned. OpenCL generated Interpolate covers
+f32/f16 static 4D NCHW spatial resize routes for supported nearest/linear
+semantics with descriptor-owned scalar metadata. Unsupported element types,
+layouts, axes, or interpolation semantics fail during support probing.
 
 Softmax lowering is family-owned for `Softmax` and `LogSoftmax` on Metal. The
 generated Metal units cover f32/f16 static-shape Softmax and LogSoftmax with

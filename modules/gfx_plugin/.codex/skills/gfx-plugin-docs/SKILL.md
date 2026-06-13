@@ -76,12 +76,14 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
      scalars, constants, generated activation/elementwise units, generated f32
      Conv2D/GroupConv2D units, generated f32/f16 Softmax units,
      dynamic-static-rank Softmax units, generated f32/f16 Pool2D units,
-     generated f32/f16/i64 Range units, generated ShapeOf/Tile units,
-     generated compare/select and logical-bool elementwise units, the
+     generated f32/f16/i64 Range units, generated f32/f16 Interpolate units,
+     generated f32 numeric reduction units, generated boolean logical reduction
+     units, generated ShapeOf/Tile units, generated compare/select and
+     logical-bool elementwise units, the
      `opencl_kernel_unit_catalog.*` route catalog, family-specific OpenCL
      kernel-unit adapters, `Swish` default/static/runtime beta artifacts,
-     missing-route behavior for MatMul/Interpolate/Reduction/Transpose/
-     Concat/Split, chunking, or boolean-buffer behavior
+     missing-route behavior for MatMul/Transpose/Concat/Split, chunking, or
+     boolean-buffer behavior
    - OpenCL remote context/tensor behavior, external `cl_mem` validation, and
      backend-unavailable adapters
    - CLVK/CLSPV Raspberry OpenCL bundle wiring, OpenCL dynamic-loader search

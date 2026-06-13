@@ -13,6 +13,7 @@
 #include "compiler/executable_bundle.hpp"
 #include "compiler/operation_support.hpp"
 #include "openvino/core/model.hpp"
+#include "runtime/executable_descriptor.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -61,6 +62,17 @@ struct CacheEnvelopeVerificationResult {
   bool valid() const noexcept { return diagnostics.empty(); }
 };
 
+struct CacheMaterializationContract {
+  bool finalized = false;
+  std::vector<PipelineStageMaterializationPlan> stages;
+  std::vector<RuntimePublicOutputDescriptor> public_outputs;
+  PipelineStageRuntimeOptionsPlan runtime_options;
+
+  bool empty() const noexcept {
+    return !finalized && stages.empty() && public_outputs.empty();
+  }
+};
+
 struct ArtifactCacheStoreResult {
   bool success = false;
   std::string cache_key;
@@ -74,6 +86,7 @@ struct CacheEnvelope {
   ManifestBundle manifest;
   std::vector<KernelArtifactDescriptor> artifact_descriptors;
   std::vector<CacheBackendPayloadRecord> backend_payloads;
+  CacheMaterializationContract materialization;
 
   CacheEnvelopeVerificationResult verify(const ExecutableBundle &executable) const;
   bool valid(const ExecutableBundle &executable) const;
@@ -100,6 +113,7 @@ struct CacheEnvelopeBuildOptions {
 class CacheEnvelopeBuilder final {
 public:
   CacheEnvelope build(const ExecutableBundle &executable,
+                      const RuntimeExecutableDescriptor &runtime_descriptor,
                       const CacheEnvelopeBuildOptions &options) const;
 };
 
@@ -131,6 +145,10 @@ ExecutableBundle
 make_cache_envelope_executable_contract(
     const CacheEnvelope &envelope,
     CacheBackendPayloadDecoder backend_payload_decoder = {});
+RuntimeExecutableDescriptor
+make_cache_envelope_runtime_descriptor_contract(
+    const CacheEnvelope &envelope,
+    const ExecutableBundle &executable);
 
 } // namespace compiler
 } // namespace gfx_plugin

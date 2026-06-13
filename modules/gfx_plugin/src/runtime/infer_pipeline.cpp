@@ -4,11 +4,10 @@
 
 #include "runtime/infer_pipeline.hpp"
 
-#include "runtime/gfx_stage_runtime_values.hpp"
+#include "runtime/runtime_shape_materializer.hpp"
 #include "runtime/tensor_binding_contract.hpp"
 
 #include <limits>
-#include <string_view>
 #include <utility>
 
 namespace ov {
@@ -45,48 +44,6 @@ void prepare_stage_runtime_executable(InferStage& stage,
     prepared.prepare(*stage.stage, buffer_manager, std::move(bindings));
     stage.prepared_executable =
         std::make_unique<PreparedKernelExecutable>(std::move(prepared));
-}
-
-bool same_runtime_region_kind(const RuntimeMemoryRegionDescriptor& region,
-                              std::string_view kind) {
-    return region.kind.size() == kind.size() && region.kind.compare(kind) == 0;
-}
-
-BufferUsage usage_for_runtime_memory_region(const RuntimeMemoryRegionDescriptor& region,
-                                            const char* error_prefix) {
-    if (same_runtime_region_kind(region, "external_tensor")) {
-        return BufferUsage::IO;
-    }
-    if (same_runtime_region_kind(region, "immutable_tensor")) {
-        return BufferUsage::Const;
-    }
-    if (same_runtime_region_kind(region, "transient_tensor")) {
-        return region.host_visible ? BufferUsage::IO : BufferUsage::Intermediate;
-    }
-    OPENVINO_THROW(error_prefix,
-                   ": unsupported runtime memory region kind '",
-                   region.kind,
-                   "' for region ",
-                   region.region_id);
-}
-
-bool region_is_in_transient_arena(const RuntimeMemoryPlanDescriptor& plan,
-                                  const RuntimeMemoryRegionDescriptor& region) {
-    if (!same_runtime_region_kind(region, "transient_tensor") ||
-        region.external_binding || region.host_visible) {
-        return false;
-    }
-    for (const auto& arena : plan.transient_arenas) {
-        if (arena.storage_kind != region.storage_kind) {
-            continue;
-        }
-        if (std::find(arena.region_ids.begin(),
-                      arena.region_ids.end(),
-                      region.region_id) != arena.region_ids.end()) {
-            return true;
-        }
-    }
-    return false;
 }
 
 std::string stage_descriptor_name(const InferStage& stage) {
@@ -149,188 +106,7 @@ bool resolve_stage_output_ref(const PipelineStageTensorRef& ref,
     return true;
 }
 
-void assign_runtime_shapes_for_stage(InferStage& stage,
-                                     const std::vector<GpuTensor*>& inputs,
-                                     const char* error_prefix) {
-    const auto* descriptor = runtime_stage_descriptor_or_null(stage);
-    const std::string_view runtime_shape_rule =
-        descriptor ? std::string_view(descriptor->runtime_shape_rule)
-                   : std::string_view("static_or_descriptor");
-    if (runtime_shape_rule == "static_or_descriptor") {
-        for (size_t out_idx = 0; out_idx < stage.outputs.size(); ++out_idx) {
-            ensure_stage_output_shape(stage, out_idx);
-        }
-        return;
-    }
-    OPENVINO_ASSERT(descriptor,
-                    error_prefix,
-                    ": compiler-owned runtime stage descriptor is required "
-                    "for runtime shape rule '",
-                    std::string(runtime_shape_rule),
-                    "'");
-
-    std::vector<GpuTensor*> outputs;
-    outputs.reserve(stage.outputs.size());
-    for (auto& out : stage.outputs) {
-        outputs.push_back(out.get());
-    }
-
-    RuntimeInputResolver runtime_inputs;
-    runtime_inputs.inputs = &inputs;
-    runtime_inputs.descriptor = descriptor;
-    const auto stage_name =
-        !descriptor->stage_name.empty() ? descriptor->stage_name
-                                        : stage_descriptor_name(stage);
-
-    if (runtime_shape_rule == "concat") {
-        const auto plan = plan_concat_runtime_values(runtime_inputs, stage_name);
-        assign_runtime_value_outputs(plan.values, outputs);
-        return;
-    }
-
-    if (runtime_shape_rule == "broadcast") {
-        const ov::Shape in_shape = runtime_inputs.shape(0);
-        OPENVINO_ASSERT(!in_shape.empty(),
-                        error_prefix,
-                        ": Broadcast input shape is unknown for stage ",
-                        stage_name);
-        const auto plan = plan_broadcast_runtime_values(runtime_inputs, in_shape, stage_name);
-        assign_runtime_value_outputs(plan, outputs);
-        return;
-    }
-
-    if (runtime_shape_rule == "select") {
-        const auto plan = plan_select_runtime_values(runtime_inputs, stage_name);
-        OPENVINO_ASSERT(plan.valid(),
-                        error_prefix,
-                        ": Select runtime shapes are unknown for stage ",
-                        stage_name);
-        assign_runtime_value_outputs(plan.values, outputs);
-        return;
-    }
-
-    if (runtime_shape_rule == "shape_of") {
-        const auto plan = plan_shapeof_runtime_values(runtime_inputs, stage_name);
-        assign_runtime_value_outputs(plan, outputs);
-        return;
-    }
-
-    if (runtime_shape_rule == "slice") {
-        const bool requires_runtime_shape_args =
-            descriptor && descriptor->requires_runtime_shape_args;
-        const auto plan = plan_slice_runtime_values(runtime_inputs,
-                                                    outputs,
-                                                    requires_runtime_shape_args,
-                                                    stage_name);
-        assign_runtime_value_outputs(plan.values, outputs);
-        return;
-    }
-
-    if (runtime_shape_rule == "range") {
-        const auto plan = plan_range_runtime_values(runtime_inputs, stage_name);
-        assign_runtime_value_outputs(plan, outputs);
-        return;
-    }
-
-    if (runtime_shape_rule == "tile") {
-        const auto plan = plan_tile_runtime_values(runtime_inputs, outputs, stage_name);
-        OPENVINO_ASSERT(plan.valid(),
-                        error_prefix,
-                        ": Tile runtime shape is unknown for stage ",
-                        stage_name);
-        assign_runtime_value_outputs(plan.values, outputs);
-        return;
-    }
-
-    OPENVINO_THROW(error_prefix,
-                   ": unsupported compiler-owned runtime shape rule '",
-                   std::string(runtime_shape_rule),
-                   "' for stage ",
-                   stage_name);
-}
-
 }  // namespace
-
-bool runtime_output_uses_transient_arena(const InferStage& stage,
-                                         size_t output_index) {
-    if (!stage.runtime_session) {
-        return false;
-    }
-    const auto* region = runtime_output_memory_region_or_null(stage, output_index);
-    if (!region) {
-        return false;
-    }
-    return region_is_in_transient_arena(stage.runtime_session->descriptor().memory_plan,
-                                        *region);
-}
-
-bool apply_runtime_output_memory_contract(const InferStage& stage,
-                                          size_t output_index,
-                                          GpuBufferDesc& desc,
-                                          GpuTensor& output,
-                                          const char* error_prefix) {
-    const auto* descriptor = runtime_stage_descriptor_or_null(stage);
-    if (!descriptor) {
-        return false;
-    }
-    OPENVINO_ASSERT(stage.runtime_session,
-                    error_prefix,
-                    ": runtime memory plan is required for stage ",
-                    descriptor->stage_name);
-    const auto& memory_plan = stage.runtime_session->descriptor().memory_plan;
-    OPENVINO_ASSERT(!memory_plan.hidden_host_copies_allowed,
-                    error_prefix,
-                    ": runtime memory plan allows hidden host copies");
-    OPENVINO_ASSERT(output_index < descriptor->output_bindings.size(),
-                    error_prefix,
-                    ": runtime output binding missing for stage ",
-                    descriptor->stage_name,
-                    " output ",
-                    output_index);
-    const auto& binding = descriptor->output_bindings[output_index];
-    OPENVINO_ASSERT(!binding.memory_region_id.empty(),
-                    error_prefix,
-                    ": runtime output binding has no memory region for stage ",
-                    descriptor->stage_name,
-                    " output ",
-                    output_index);
-    const auto* region = runtime_output_memory_region_or_null(stage, output_index);
-    OPENVINO_ASSERT(region,
-                    error_prefix,
-                    ": runtime memory region '",
-                    binding.memory_region_id,
-                    "' is missing for stage ",
-                    descriptor->stage_name,
-                    " output ",
-                    output_index);
-    OPENVINO_ASSERT(region->alias_group == binding.alias_group,
-                    error_prefix,
-                    ": runtime output binding alias group drifts from memory plan for stage ",
-                    descriptor->stage_name,
-                    " output ",
-                    output_index);
-    OPENVINO_ASSERT(region->storage_kind == binding.storage_kind,
-                    error_prefix,
-                    ": runtime output binding storage kind drifts from memory plan for stage ",
-                    descriptor->stage_name,
-                    " output ",
-                    output_index);
-
-    desc.usage = usage_for_runtime_memory_region(*region, error_prefix);
-    if (desc.usage == BufferUsage::Const) {
-        desc.cpu_read = false;
-        desc.cpu_write = region->host_visible;
-        desc.prefer_device_local = !region->host_visible;
-    } else {
-        const bool host_visible =
-            region->host_visible || desc.usage == BufferUsage::IO;
-        desc.cpu_read = host_visible;
-        desc.cpu_write = host_visible;
-        desc.prefer_device_local = !host_visible;
-    }
-    output.prefer_private = desc.prefer_device_local;
-    return true;
-}
 
 bool is_view_op(const InferStage& stage) {
     if (const auto* descriptor = runtime_stage_descriptor_or_null(stage)) {
@@ -638,7 +414,9 @@ void assign_runtime_stage_output_shapes(
             prepared.resolved_inputs[input_idx] = resolved;
         }
 
-        assign_runtime_shapes_for_stage(stage, prepared.resolved_inputs, error_prefix);
+        materialize_runtime_stage_output_shapes(stage,
+                                                prepared.resolved_inputs,
+                                                error_prefix);
     }
 }
 

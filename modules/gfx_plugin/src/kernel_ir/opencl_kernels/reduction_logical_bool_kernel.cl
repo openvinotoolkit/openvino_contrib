@@ -3,8 +3,7 @@
 //
 
 static inline uint gfx_load_bool(__global const uchar *src, uint idx) {
-  const uint word = ((__global const uint *)src)[idx >> 2u];
-  return ((word >> ((idx & 3u) * 8u)) & 255u) == 0u ? 0u : 1u;
+  return src[idx] == 0u ? 0u : 1u;
 }
 
 static inline uint gfx_reduce_output_coord(uint input_axis, uint out_axis0,
@@ -100,42 +99,15 @@ __kernel void gfx_opencl_generated_reduction_bool(
     uint in_dim3, uint out_dim0, uint out_dim1, uint out_dim2, uint out_dim3,
     uint reduce_mask, uint out_axis0, uint out_axis1, uint out_axis2,
     uint out_axis3) {
-  const uint word_idx = (uint)get_global_id(0);
-  const uint base = word_idx * 4u;
-  if (base >= count) {
+  const uint gid = (uint)get_global_id(0);
+  if (gid >= count) {
     return;
   }
   (void)rank;
   (void)out_dim0;
 
-  uint packed = 0u;
-  if (base < count) {
-    packed |= gfx_reduce_logical_bool_at(
-                  src, base, op, out_rank, in_dim0, in_dim1, in_dim2, in_dim3,
-                  out_dim1, out_dim2, out_dim3, reduce_mask, out_axis0,
-                  out_axis1, out_axis2, out_axis3)
-              << 0u;
-  }
-  if (base + 1u < count) {
-    packed |= gfx_reduce_logical_bool_at(
-                  src, base + 1u, op, out_rank, in_dim0, in_dim1, in_dim2,
-                  in_dim3, out_dim1, out_dim2, out_dim3, reduce_mask, out_axis0,
-                  out_axis1, out_axis2, out_axis3)
-              << 8u;
-  }
-  if (base + 2u < count) {
-    packed |= gfx_reduce_logical_bool_at(
-                  src, base + 2u, op, out_rank, in_dim0, in_dim1, in_dim2,
-                  in_dim3, out_dim1, out_dim2, out_dim3, reduce_mask, out_axis0,
-                  out_axis1, out_axis2, out_axis3)
-              << 16u;
-  }
-  if (base + 3u < count) {
-    packed |= gfx_reduce_logical_bool_at(
-                  src, base + 3u, op, out_rank, in_dim0, in_dim1, in_dim2,
-                  in_dim3, out_dim1, out_dim2, out_dim3, reduce_mask, out_axis0,
-                  out_axis1, out_axis2, out_axis3)
-              << 24u;
-  }
-  ((__global uint *)dst)[word_idx] = packed;
+  dst[gid] = (uchar)gfx_reduce_logical_bool_at(
+      src, gid, op, out_rank, in_dim0, in_dim1, in_dim2, in_dim3, out_dim1,
+      out_dim2, out_dim3, reduce_mask, out_axis0, out_axis1, out_axis2,
+      out_axis3);
 }
