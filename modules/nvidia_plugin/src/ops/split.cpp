@@ -88,7 +88,7 @@ void SplitOp::Execute(const InferenceRequestContext& context,
     (*split_kernel_)(stream.get(), reinterpret_cast<const void*>(in.get()), reinterpret_cast<void**>(outputPtrs.get()));
 }
 
-CudaGraphCompatibility SplitOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::NONE; }
+CudaGraphCompatibility SplitOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::NONE; }
 
 OPERATION_REGISTER(SplitOp, Split);
 }  // namespace nvidia_gpu

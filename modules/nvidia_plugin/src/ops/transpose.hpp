@@ -24,7 +24,16 @@ public:
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
-    CudaGraphCompatibility GetCudaGraphCompatibility() const override;
+    CudaGraphCompatibility GetCudaGraphCompatibilityImpl() const override;
+
+private:
+    static bool isCuTensorPermutationFunctional(const ThreadContext& threadContext);
+
+    void runPermuteFallback(const InferenceRequestContext& context,
+                            const void* src,
+                            void* dst,
+                            const std::vector<int>& outputMode) const;
+
 
 private:
     using ExtentsMap = std::unordered_map<int, std::int64_t>;

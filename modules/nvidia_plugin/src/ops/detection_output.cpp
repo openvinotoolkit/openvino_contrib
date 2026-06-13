@@ -107,7 +107,7 @@ void DetectionOutputOp::Execute(const InferenceRequestContext& context,
     }
 }
 
-CudaGraphCompatibility DetectionOutputOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility DetectionOutputOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 void DetectionOutputOp::InitSharedImmutableWorkbuffers(const Buffers& buffers) {
     kernel_.value().initSharedImmutableWorkbuffers(buffers);
