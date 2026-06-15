@@ -362,10 +362,19 @@ def get_test_data_np(rgb_path, depth_path, cam_path, cad_path, seg_path, det_sco
         choose = choose[flag]
         cloud = cloud[flag]
 
-        if len(choose) <= cfg.n_sample_observed_point:
-            choose_idx = np.random.choice(np.arange(len(choose)), cfg.n_sample_observed_point)
-        else:
-            choose_idx = np.random.choice(np.arange(len(choose)), cfg.n_sample_observed_point, replace=False)
+        # Deterministic uniform-stride sampling. Using np.random.choice here
+        # makes PEM extremely sensitive to tiny mask perturbations (a 2-pixel
+        # change in a 4k-pixel mask flips which 2048 points are picked,
+        # which can swing AR from 95% to 25%). A uniform stride over the
+        # already-sorted `choose` array is invariant to small boundary noise
+        # between e.g. PyTorch- and OpenVINO-generated SAM masks, and was
+        # also the most stable option across fp32 / fp16 in our tests
+        # (FPS gave higher peak AR but regressed in fp16).
+        n_obs = cfg.n_sample_observed_point
+        n_pts = len(choose)
+        if n_pts == 0:
+            continue
+        choose_idx = np.linspace(0, n_pts - 1, n_obs).astype(np.int64)
         choose = choose[choose_idx]
         cloud = cloud[choose_idx]
 

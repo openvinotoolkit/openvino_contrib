@@ -214,7 +214,11 @@ class OVSamPredictor:
         # Use persistent request: reuses GPU buffers, no new allocation.
         self._encoder_request.infer({0: input_np})
         # Copy output immediately so the request buffer is free for reuse.
-        self.features = self._encoder_request.get_output_tensor(0).data.copy()
+        # Force fp32 so downstream decoder/post-processing is precision-stable
+        # even when the encoder is compiled with INFERENCE_PRECISION_HINT=fp16.
+        self.features = self._encoder_request.get_output_tensor(0).data.copy().astype(
+            np.float32
+        )
         self.is_image_set = True
 
     @torch.no_grad()
@@ -239,13 +243,15 @@ class OVSamPredictor:
         # OV mask decoder - called N times per image (once per point batch).
         # Use persistent request: one set of GPU buffers reused every call.
         # Outputs are copied immediately so the request is free for next call.
+        # `.float()` casts ensure downstream torch ops (interpolate, threshold,
+        # stability_score) run in fp32 even if the decoder was compiled fp16.
         self._decoder_request.infer([self.features, coords_np, labels_np])
         low_res_masks = torch.from_numpy(
             self._decoder_request.get_output_tensor(0).data.copy()
-        )  # [B, 3, 256, 256]
+        ).float()  # [B, 3, 256, 256]
         iou_predictions = torch.from_numpy(
             self._decoder_request.get_output_tensor(1).data.copy()
-        )  # [B, 3]
+        ).float()  # [B, 3]
 
         # Post-process: 256 -> 1024 -> crop to input_size -> original_size
         masks = F.interpolate(
@@ -262,7 +268,7 @@ class OVSamPredictor:
         if not return_logits:
             masks = masks > self.mask_threshold
 
-        return masks, iou_predictions, low_res_masks
+        return masks.float(), iou_predictions, low_res_masks
 
     def get_image_embedding(self) -> torch.Tensor:
         if not self.is_image_set:
@@ -915,8 +921,10 @@ class OVSamPredictorExt:
         input_4d = image[np.newaxis, ...]  # [1, H, W, 3]
 
         self._encoder_request.infer({'image': input_4d})
+        # Force fp32 so the cached embedding stays precision-stable across
+        # decoder calls regardless of encoder INFERENCE_PRECISION_HINT.
         self.features = self._encoder_request.get_output_tensor(
-            0).data.copy()                # [1, 256, 64, 64]
+            0).data.copy().astype(np.float32)  # [1, 256, 64, 64]
         input_size = self._encoder_request.get_output_tensor(
             1).data.copy()                # [1, 1, 1, 2] -> (new_h, new_w)
         self.input_size = (int(input_size.flat[0]), int(input_size.flat[1]))
@@ -952,18 +960,19 @@ class OVSamPredictorExt:
         n_outputs = len(self.decoder_compiled.outputs)
         if n_outputs >= 4:
             # v2 decoder: masks, iou, stability_scores, boxes
+            # Cast to fp32 for stable downstream torch ops under fp16 hint.
             masks = torch.from_numpy(
                 self._decoder_request.get_output_tensor(0).data.copy()
-            )                                                   # [B,3,H,W]
+            ).float()                                           # [B,3,H,W]
             iou_preds = torch.from_numpy(
                 self._decoder_request.get_output_tensor(1).data.copy()
-            )                                                   # [B, 3]
+            ).float()                                           # [B, 3]
             stability_scores = torch.from_numpy(
                 self._decoder_request.get_output_tensor(2).data.copy()
-            )                                                   # [B, 3]
+            ).float()                                           # [B, 3]
             boxes = torch.from_numpy(
                 self._decoder_request.get_output_tensor(3).data.copy()
-            )                                                   # [B, 3, 4]
+            ).float()                                           # [B, 3, 4]
 
             # v2 - return masks with stability_scores + boxes
             return masks, iou_preds, (stability_scores, boxes)
@@ -971,13 +980,13 @@ class OVSamPredictorExt:
             # v1 decoder: masks, iou, logits
             masks = torch.from_numpy(
                 self._decoder_request.get_output_tensor(0).data.copy()
-            )                                                   # [B,3,H,W]
+            ).float()                                           # [B,3,H,W]
             iou_preds = torch.from_numpy(
                 self._decoder_request.get_output_tensor(1).data.copy()
-            )                                                   # [B, 3]
+            ).float()                                           # [B, 3]
             logits = torch.from_numpy(
                 self._decoder_request.get_output_tensor(2).data.copy()
-            )                                                   # [B,3,H,W]
+            ).float()                                           # [B,3,H,W]
 
             if return_logits:
                 return logits, iou_preds, logits
@@ -1778,8 +1787,10 @@ if __name__ == "__main__":
              "(default: <image_dir>/output/results_ov_gpu/ism)",
     )
     parser.add_argument(
-        "--stability_score_thresh", type=float, default=0.85,
-        help="SAM stability_score_thresh (default: 0.85)",
+        "--stability_score_thresh", type=float, default=0.97,
+        help="SAM stability_score_thresh (default: 0.97, matches "
+             "run_inference_custom.py; lower values like 0.85 let in "
+             "lower-quality masks that hurt downstream PEM AR).",
     )
     parser.add_argument(
         "--segmentor_model", default="sam",
