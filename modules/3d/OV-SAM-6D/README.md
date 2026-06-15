@@ -1,3 +1,8 @@
+# Note
+
+_This directory is a fork from [SAM-6D](https://github.com/JiehongLin/SAM-6D) (commit 1c2543b)._
+-----------------------
+
 # <p align="center"> <font color=#008000>SAM-6D</font>: Segment Anything Model Meets Zero-Shot 6D Object Pose Estimation </p>
 
 ####  <p align="center"> [Jiehong Lin](https://jiehonglin.github.io/), [Lihua Liu](https://github.com/foollh), [Dekun Lu](https://github.com/WuTanKun), [Kui Jia](http://kuijia.site/)</p>

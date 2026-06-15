@@ -1,7 +1,3 @@
-# Note
-
-_This directory is a fork from [SAM-6D](https://github.com/JiehongLin/SAM-6D) (commit 1c2543b)._
------------------------
 # SAM-6D OpenVINO Setup and Inference Guide
 
 This guide explains how to set up and run the OpenVINO-based SAM-6D pipeline on Ubuntu 24.
