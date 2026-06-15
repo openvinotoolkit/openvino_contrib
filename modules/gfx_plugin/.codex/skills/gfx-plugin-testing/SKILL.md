@@ -26,10 +26,11 @@ validation in `modules/gfx_plugin/`.
   tables, storage bridges, or request binding.
 - The task changes OpenCL source artifacts, dynamic OpenCL runtime selection,
   source-stage execution, OpenCL runtime-bundle discovery, generated
-  activation/elementwise/MatMul units, generated Range/ShapeOf/Tile/Transpose,
+  activation/elementwise/MatMul units, generated Range/ShapeOf/Tile,
   generated compare/select or logical-bool elementwise units, family-specific
-  OpenCL kernel-unit adapters, runtime-shape allocation, chunked Concat/Split,
-  boolean-buffer behavior, constant materialization, OpenCL remote
+  OpenCL kernel-unit adapters, runtime-shape allocation, unsupported
+  Transpose/Concat/Split routes, boolean-buffer behavior, constant
+  materialization, OpenCL remote
   context/tensor behavior, or OpenCL op coverage.
 - The user wants compare-runner, microbench, profiling-runbook, Android, Linux,
   or Raspberry Pi validation guidance.
@@ -81,7 +82,8 @@ validation in `modules/gfx_plugin/`.
 Prefer:
 
 - `tests/unit/mlir_*_test.cpp`
-- `tests/unit/basic_ops_internal_test.cpp`
+- split `tests/unit/basic_ops_*_contract_test.cpp` files when the change moves
+  operation contracts, fusion policy, Apple ABI, or manifest metadata
 - transform-specific unit coverage
 - IR-shape assertions when possible
 
@@ -157,8 +159,8 @@ Inspect and extend:
 For Metal placement, MPSRT, MSL source planning, or request binding:
 
 - cover source-plan/manifest/model records in
-  `tests/unit/gfx_stage_policy_test.cpp` or
-  `tests/unit/basic_ops_internal_test.cpp`
+  `tests/unit/gfx_stage_policy_test.cpp` or the split
+  `tests/unit/basic_ops_*_contract_test.cpp` files
 - cover compiler-owned generated MSL and MPS/MPSGraph vendor-descriptor
   payloads in `tests/unit/gpu_backend_base_test.cpp`
 - cover request-time execution in `tests/backends/metal/gpu_backend_test.mm`
@@ -209,11 +211,15 @@ For OpenCL source-artifact changes:
 - include `tests/unit/gfx_interpolate_kernel_contract_test.cpp` when generated
   Interpolate source ids, descriptor-owned semantic scalars, static 4D NCHW
   resize contracts, or backend kernel-unit routes change
+- include `tests/unit/gfx_matmul_kernel_contract_test.cpp` when generated
+  OpenCL MatMul source ids, static f32 scalar contracts, backend kernel-unit
+  routes, or unsupported MatMul variants change
 - include `tests/unit/gfx_backend_architecture_contract_test.cpp` and the
   focused split source-artifact tests when generated Range, ShapeOf, Tile,
   compare/select, logical-bool elementwise, or catalog route ownership moves
-- include the relevant missing-route tests when MatMul, Transpose, Concat, or
-  Split behavior changes without becoming registered OpenCL routes
+- include the relevant missing-route tests when unsupported MatMul variants,
+  Transpose, Concat, or Split behavior changes without becoming registered
+  OpenCL routes
 - add `tests/unit/gpu_backend_base_test.cpp` coverage when the artifact should
   be present in the compiler executable bundle
 - add architecture-contract coverage when the common compiler should require
@@ -231,10 +237,12 @@ For OpenCL source-artifact changes:
 - validate with an OpenCL-capable target when the change depends on the real
   runtime rather than manifest-only logic
 
-OpenCL MatMul, Transpose, Concat, and Split are current catalog limitations.
-They should report `missing_opencl_*_kernel_unit` until the route is added to
+OpenCL Transpose, Concat, and Split are current catalog limitations. They
+should report `missing_opencl_*_kernel_unit` until the route is added to
 `opencl_kernel_unit_catalog.*`, implemented in a family-owned adapter,
 materialized through backend payload resolution, and covered by contract tests.
+OpenCL MatMul has a generated static f32 route; f16 and unsupported dynamic or
+broadcast variants should stay rejected by the MatMul family support contract.
 
 ## Command Pattern
 

@@ -45,9 +45,8 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
 
 1. Inspect the live source tree and current diff first.
 2. Identify whether the change affects:
-   - backend availability or default backend resolution
-   - configured backend availability generated from
-     `src/common/backend_config.hpp.in`
+   - backend availability, default backend resolution, or CMake-selected
+     backend registration/stub translation units
    - compiler service, backend registry, lowering-plan, manifest, executable
      bundle, pipeline-stage builder, pipeline-stage fusion selection,
      compiler-side pipeline-stage I/O plan, runtime pipeline-stage plan,
@@ -74,7 +73,8 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
      Pool2D vendor-route-only behavior, or MSL binding
    - OpenCL source-artifact coverage, runtime-shape handling, static f32
      scalars, constants, generated activation/elementwise units, generated f32
-     Conv2D/GroupConv2D units, generated f32/f16 Softmax units,
+     Conv2D/GroupConv2D units, generated f32 MatMul units,
+     generated f32/f16 Softmax units,
      dynamic-static-rank Softmax units, generated f32/f16 Pool2D units,
      generated f32/f16/i64 Range units, generated f32/f16 Interpolate units,
      generated f32 numeric reduction units, generated boolean logical reduction
@@ -82,8 +82,8 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
      logical-bool elementwise units, the
      `opencl_kernel_unit_catalog.*` route catalog, family-specific OpenCL
      kernel-unit adapters, `Swish` default/static/runtime beta artifacts,
-     missing-route behavior for MatMul/Transpose/Concat/Split, chunking, or
-     boolean-buffer behavior
+     missing-route behavior for Transpose/Concat/Split and unsupported MatMul
+     variants, chunking, or boolean-buffer behavior
    - OpenCL remote context/tensor behavior, external `cl_mem` validation, and
      backend-unavailable adapters
    - CLVK/CLSPV Raspberry OpenCL bundle wiring, OpenCL dynamic-loader search

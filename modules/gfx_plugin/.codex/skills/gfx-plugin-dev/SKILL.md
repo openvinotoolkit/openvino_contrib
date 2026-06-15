@@ -91,10 +91,11 @@ Then inspect the relevant code path:
 - Keep fused-output lifetime and alias-storage planning in
   `src/runtime/fused_output_lifetime_plan.*`; do not reintroduce runtime-stage
   type-name checks for view or lifetime classification.
-- Keep configured backend availability in `src/common/backend_config.hpp.in`;
-  `src/compiler/backend_config.hpp.in` is only the compiler-path include. The
-  default `BackendRegistry` contains only backend modules available in the
-  configured build.
+- Keep configured backend availability in CMake-selected source files and
+  backend registration/stub translation units. Do not reintroduce generated
+  `backend_config.hpp` headers or source-level macro branches for backend
+  routing. The default `BackendRegistry` contains only backend modules
+  registered by the configured build.
 - Keep Metal-specific code under `src/backends/metal/` and OpenCL-specific code
   under `src/backends/opencl/`.
 - Do not add CPU fallback for unsupported GPU stages.
@@ -239,18 +240,20 @@ For OpenCL source-artifact work:
    enqueue, or runtime-shape behavior changed.
 
 Current registered generated OpenCL routes include activation, elementwise,
-f32 Conv2D/GroupConv2D, f32/f16 Softmax, dynamic-static-rank f32/f16 Softmax,
-f32/f16 Pool2D, f32/f16/i64 Range, f32/f16 Interpolate, ShapeOf, Tile,
-compare/select, logical-bool elementwise, f32 numeric reduction, and boolean
-logical reduction. Activation, Eltwise, Conv2D/GroupConv2D, Interpolate,
-Pool2D, Range, Reduction, ShapeOf, Softmax, and Tile have family-specific
-OpenCL kernel-unit adapters under `src/backends/opencl/compiler/` and are
-listed in
+f32 Conv2D/GroupConv2D, f32 MatMul, f32/f16 Softmax,
+dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D, f32/f16/i64 Range,
+f32/f16 Interpolate, ShapeOf, Tile, compare/select, logical-bool elementwise,
+f32 numeric reduction, and boolean logical reduction. Activation, Eltwise,
+Conv2D/GroupConv2D, Interpolate, MatMul, Pool2D, Range, Reduction, ShapeOf,
+Softmax, and Tile have family-specific OpenCL kernel-unit adapters under
+`src/backends/opencl/compiler/` and are listed in
 `opencl_kernel_unit_catalog.*`. The current OpenCL kernel registry has no
-active handwritten kernel-unit exception. MatMul, Transpose, Concat, and Split
-are current OpenCL catalog limitations and should continue to report
+active handwritten kernel-unit exception. Transpose, Concat, and Split are
+current OpenCL catalog limitations and should continue to report
 `missing_opencl_*_kernel_unit` until catalog entries, family adapters, payload
-resolvers, and tests are added.
+resolvers, and tests are added. OpenCL MatMul has a generated static f32 route;
+f16 and unsupported variants should remain rejected by the MatMul family
+contract.
 
 Standalone OpenCL Conv2D microbench tools remain experimental probes. Plugin
 support must flow through `opencl_conv_kernel_unit.*`, support probing,

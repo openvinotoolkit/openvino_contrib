@@ -266,20 +266,21 @@ Backend operation support and kernel-unit registration live under
 
 Embedded OpenCL source units live under `src/kernel_ir/opencl_kernels/`.
 Current registered generated OpenCL routes include activation, elementwise,
-f32 Conv2D/GroupConv2D, f32/f16 Softmax, dynamic-static-rank f32/f16 Softmax,
-f32/f16 Pool2D, f32/f16/i64 Range, f32/f16 Interpolate, f32 numeric reduction,
-boolean logical reduction, ShapeOf, Tile, logical-bool elementwise, and
-compare/select.
+f32 Conv2D/GroupConv2D, f32 MatMul, f32/f16 Softmax,
+dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D, f32/f16/i64 Range,
+f32/f16 Interpolate, f32 numeric reduction, boolean logical reduction, ShapeOf,
+Tile, logical-bool elementwise, and compare/select.
 There is no active handwritten OpenCL kernel-unit exception in the current
 registry.
 Family-specific OpenCL compiler adapters such as
 `opencl_activation_kernel_unit.*`, `opencl_eltwise_kernel_unit.*`,
 `opencl_conv_kernel_unit.*`, `opencl_interpolate_kernel_unit.*`,
-`opencl_pool_kernel_unit.*`, `opencl_range_kernel_unit.*`,
-`opencl_reduction_kernel_unit.*`, `opencl_shapeof_kernel_unit.*`,
-`opencl_softmax_kernel_unit.*`, and `opencl_tile_kernel_unit.*` resolve
-generated `KernelUnit` records and materialize source payloads. Keep new family
-routes in those backend compiler adapters, put family source-artifact builders in
+`opencl_matmul_kernel_unit.*`, `opencl_pool_kernel_unit.*`,
+`opencl_range_kernel_unit.*`, `opencl_reduction_kernel_unit.*`,
+`opencl_shapeof_kernel_unit.*`, `opencl_softmax_kernel_unit.*`, and
+`opencl_tile_kernel_unit.*` resolve generated `KernelUnit` records and
+materialize source payloads. Keep new family routes in those backend compiler
+adapters, put family source-artifact builders in
 `opencl_*_source_artifact.cpp`, and register them in
 `opencl_kernel_unit_catalog.*` instead of adding special cases to request-time
 execution.
@@ -287,10 +288,12 @@ The OpenCL compiler registry requires an explicit kernel unit for generated
 routes; there is no generic MLIR fallback for OpenCL operation support.
 Unsupported modes, axes, padding, shapes, or element types fail during support
 probing instead of falling through to a hidden runtime path.
-OpenCL MatMul, Transpose, Concat, and Split are current
-limitations in the backend catalog: source helper code or tests may exist, but
-operation support reports `missing_opencl_*_kernel_unit` until a catalog entry,
-family adapter, payload resolver, and tests are added.
+OpenCL Transpose, Concat, and Split are current catalog limitations: source
+helper code or tests may exist, but operation support reports
+`missing_opencl_*_kernel_unit` until a catalog entry, family adapter, payload
+resolver, and tests are added. OpenCL MatMul currently has a generated f32 route
+for static f32 contracts only; unsupported variants such as f16 still fail
+through the family support contract.
 
 Generated activation artifacts cover the shared unary activation family and
 carry op-specific scalar payloads in the manifest. `Swish` supports the default
@@ -448,8 +451,10 @@ evidence, and do not use compare-runner timing as performance evidence.
 The test CMake flow uses `tests/tools/gfx_gtest_matrix.py` to capture
 `--gtest_list_tests` from real GFX test binaries and compare executable test
 matrices. `gfx_gtest_matrix_compare` is fail-closed: it requires explicit
-`GFX_GTEST_MATRIX_REFERENCE_ROOTS` for cross-target comparisons, and cross-build
-host capture fails unless an emulator is configured. Do not use
+`macos`, `android`, `rpi4`, and `rpi5` matrix labels through
+`GFX_GTEST_MATRIX_<TARGET>_ROOT` cache paths or equivalent `LABEL=DIR` entries
+in `GFX_GTEST_MATRIX_REFERENCE_ROOTS`; cross-build host capture fails unless an
+emulator is configured. Do not use
 source/file/string-presence checks as test readiness or architecture evidence;
 use executed contract coverage, route coverage, conformance tests, and
 profiling evidence instead.

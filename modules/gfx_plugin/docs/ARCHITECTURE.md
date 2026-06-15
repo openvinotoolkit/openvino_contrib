@@ -192,24 +192,25 @@ Runtime selection is requested with:
 - `GFX_BACKEND=opencl`
 
 On macOS, CMake disables OpenCL and uses Metal. On non-Apple builds, OpenCL is
-the source-kernel backend when enabled and available. Backend support checks are
-compiled into `common/backend_config.hpp` from
-`src/common/backend_config.hpp.in`; `compiler/backend_config.hpp` is a wrapper
-include for existing compiler-path users. Explicit `GFX_DEFAULT_BACKEND=metal`
-or `GFX_DEFAULT_BACKEND=opencl` is a hard configure-time request: CMake fails if
-the requested backend is unavailable instead of silently falling back to a
-different backend.
+the source-kernel backend when enabled and available. Explicit
+`GFX_DEFAULT_BACKEND=metal` or `GFX_DEFAULT_BACKEND=opencl` is a hard
+configure-time request: CMake fails if the requested backend is unavailable
+instead of silently falling back to a different backend.
 
-The compiler registry and runtime availability share the generated availability
-contract. The default `BackendRegistry` contains only the production backend
-modules available in the current build. `src/compiler/backend_module_provider.*`
-assembles the configured backend modules, including
-`src/backends/metal/compiler/metal_backend_module.*` and
-`src/backends/opencl/compiler/opencl_backend_module.*`. Runtime availability is
-provided separately through `src/runtime/backend_runtime_provider.*`, where each
-backend registers callbacks for backend-state creation, infer execution, and
-profiling trace-sink registration. Query, lowering, manifest, runtime-provider,
-and architecture contract tests reason about that configured backend set.
+Backend availability is expressed by CMake-selected translation units and linked
+targets, not by generated config headers or source-level macro branches. CMake
+selects the default-backend implementation in
+`src/common/gfx_backend_utils_default_*.cpp` and selects backend registration or
+stub files such as `metal_backend_registration.cpp`,
+`metal_backend_registration_stub.cpp`, `opencl_backend_registration.cpp` and
+`opencl_backend_registration_stub.cpp`. The default `BackendRegistry` contains
+only the production backend modules registered by those linked files. Runtime
+availability is provided separately through
+`src/runtime/backend_runtime_provider.*`, where each backend registers callbacks
+for backend-state creation, infer execution, and profiling trace-sink
+registration. Query, lowering, manifest, runtime-provider and architecture
+contract tests reason about that configured backend set through ordinary
+registry/capability objects.
 
 ## Stage Pipeline
 
@@ -293,10 +294,11 @@ runtime execution. The main objects are:
   compatibility fingerprint for one selected backend.
 - `BackendRegistry`: compiled-backend registry. Its default instance contains
   only the production backend modules available in the configured build, as
-  reported by `compiler/backend_config.hpp`. Each module owns backend transform
-  `PipelineOptions`, fusion capabilities, post-op fusion capabilities,
-  stage-placement policy, artifact payload resolver, and backend-owned vendor
-  attention artifact resolver when the backend supports that route.
+  registered by CMake-selected backend registration translation units. Each
+  module owns backend transform `PipelineOptions`, fusion capabilities, post-op
+  fusion capabilities, stage-placement policy, artifact payload resolver, and
+  backend-owned vendor attention artifact resolver when the backend supports
+  that route.
 - `OperationSupportPolicy` and `OperationLegalizer`: backend-aware operation
   legality and route selection.
 - `LoweringPlanner`: converts a transformed model into ordered
@@ -433,9 +435,11 @@ Kernel contracts are split across the current compiler and kernel IR layers:
   descriptors
 - `src/compiler/pipeline_stage_builder.*`: stage descriptor construction and
   node-to-stage mapping from compiler-owned planning contracts
-- `src/compiler/pipeline_stage_materialization_draft.*`: construction of
-  runtime-facing materialization plans and public-output descriptors from the
-  graph snapshot and runtime stage descriptors
+- `src/compiler/runtime_descriptor_materialization_plan.*`: construction of
+  runtime-facing materialization plans, public-output descriptors, and runtime
+  options from the graph snapshot and runtime stage descriptors
+- `src/compiler/runtime_descriptor_materialization_contract.hpp`: cache/import
+  contract marker for finalized descriptor-owned materialization records
 - `src/compiler/pipeline_stage_fusion.*`: compiler-owned fusion selection and
   vendor attention planning
 - `src/compiler/memory_plan.*`: compiler-owned memory regions, lifetimes, alias
@@ -620,11 +624,12 @@ owns the list of registered generated units, operation-support entries, and
 artifact families that may materialize payloads. Family-specific backend
 compiler adapters, currently including `opencl_activation_kernel_unit.*`,
 `opencl_eltwise_kernel_unit.*`, `opencl_conv_kernel_unit.*`,
-`opencl_interpolate_kernel_unit.*`, `opencl_pool_kernel_unit.*`,
-`opencl_range_kernel_unit.*`, `opencl_reduction_kernel_unit.*`,
-`opencl_shapeof_kernel_unit.*`, `opencl_softmax_kernel_unit.*`, and
-`opencl_tile_kernel_unit.*`, resolve generated `KernelUnit` records and
-materialize operation payloads before runtime descriptor construction.
+`opencl_interpolate_kernel_unit.*`, `opencl_matmul_kernel_unit.*`,
+`opencl_pool_kernel_unit.*`, `opencl_range_kernel_unit.*`,
+`opencl_reduction_kernel_unit.*`, `opencl_shapeof_kernel_unit.*`,
+`opencl_softmax_kernel_unit.*`, and `opencl_tile_kernel_unit.*`, resolve
+generated `KernelUnit` records and materialize operation payloads before runtime
+descriptor construction.
 
 OpenCL support is reported through explicit generated-kernel routes in the
 current registry. Source execution still requires a matching artifact payload,
@@ -634,37 +639,41 @@ policy intentionally does not fall back to generic MLIR support when no source
 artifact exists.
 
 Current catalog-registered OpenCL source artifacts cover Conv2D/GroupConv2D,
-Softmax, Pool2D, Range, Interpolate, Reduction, Tile, ShapeOf, unary
+MatMul, Softmax, Pool2D, Range, Interpolate, Reduction, Tile, ShapeOf, unary
 activation, binary elementwise, logical-bool elementwise, and compare/select
 families when shapes and element types match their contracts.
 
 OpenCL source coverage is generated-kernel based. Conv2D and GroupConv2D use
 generated f32 units for static 4D NCHW data/output with constant weights and
-explicit 2D stride/dilation/padding metadata. Softmax uses generated f32/f16
-units, including dynamic-output static-rank variants whose scalar ABI carries
-runtime shape metadata. Range uses generated f32/f16/i64 units, including a
-specialized i64 unit-step source. Pool2D uses generated f32/f16 units for
-static 4D NCHW MaxPool and AvgPool. ShapeOf uses generated i32/i64 units with
-input-rank metadata. Tile uses generated f32/f16 static and dynamic-static-rank
-units. Interpolate uses generated f32/f16 units for static 4D NCHW spatial
-resize routes with descriptor-owned semantic scalars. Reduction uses generated
-f32 numeric units and boolean logical units for static input/output shapes with
-constant reduction axes. Activation and elementwise families use generated
-arithmetic, compare/select, and logical-bool source ids. The current OpenCL
-kernel registry has no active handwritten kernel-unit exception.
+explicit 2D stride/dilation/padding metadata. MatMul uses a generated f32 unit
+for static f32 contracts with descriptor-owned m/n/k, batch-stride, and
+transpose stride scalars. Softmax uses generated f32/f16 units, including
+dynamic-output static-rank variants whose scalar ABI carries runtime shape
+metadata. Range uses generated f32/f16/i64 units, including a specialized i64
+unit-step source. Pool2D uses generated f32/f16 units for static 4D NCHW MaxPool
+and AvgPool. ShapeOf uses generated i32/i64 units with input-rank metadata.
+Tile uses generated f32/f16 static and dynamic-static-rank units. Interpolate
+uses generated f32/f16 units for static 4D NCHW spatial resize routes with
+descriptor-owned semantic scalars. Reduction uses generated f32 numeric units
+and boolean logical units for static input/output shapes with constant
+reduction axes. Activation and elementwise families use generated arithmetic,
+compare/select, and logical-bool source ids. The current OpenCL kernel registry
+has no active handwritten kernel-unit exception.
 Keep those distinctions in the artifact contract rather than duplicating them
 in the OpenCL stage executor.
 Routes that require runtime shape arguments must mark the `KernelUnit`; the
 manifest, executable bundle, runtime descriptor, and infer pipeline carry that
 flag instead of deriving it from backend identity at request time.
 
-OpenCL MatMul, Transpose, Concat, and Split are current catalog limitations.
-The backend intentionally reports
-`missing_opencl_*_kernel_unit` for those families until a generated unit is
-registered in `opencl_kernel_unit_catalog.*`, a family-owned adapter
-materializes the payload, and contract tests cover the route. Residual helper
-code or source-artifact tests for those families must not be documented as
-executable OpenCL support.
+OpenCL Transpose, Concat, and Split are current catalog limitations. The backend
+intentionally reports `missing_opencl_*_kernel_unit` for those families until a
+generated unit is registered in `opencl_kernel_unit_catalog.*`, a family-owned
+adapter materializes the payload, and contract tests cover the route. OpenCL
+MatMul is no longer in that missing-route set for static f32 contracts, but f16
+and unsupported dynamic/broadcast forms still fail through
+`missing_opencl_matmul_kernel_unit` or the family artifact contract. Residual
+helper code or source-artifact tests for unsupported families must not be
+documented as executable OpenCL support.
 
 Generated activation artifacts use manifest metadata for opcode, static f32
 scalars, direct tensor inputs, and scalar-parameter order. `Swish` supports the

@@ -89,10 +89,10 @@ Build-system notes:
   registration.
 - `src/compiler/pipeline_stage_graph_snapshot.*`,
   `src/compiler/pipeline_stage_builder.*`, and
-  `src/compiler/pipeline_stage_materialization_draft.*` own graph snapshotting,
-  stage descriptor construction, node-to-stage mapping, runtime-facing
-  materialization plans, and backend-policy handoff while consuming
-  compiler-owned plan/fusion contracts.
+  `src/compiler/runtime_descriptor_materialization_plan.*` own graph
+  snapshotting, stage descriptor construction, node-to-stage mapping,
+  runtime-facing materialization plans, and backend-policy handoff while
+  consuming compiler-owned plan/fusion contracts.
 - `src/compiler/pipeline_stage_fusion.*` owns compiler-side fusion selection,
   fusion contracts, residual-add detection, and vendor attention planning.
 - `src/compiler/pipeline_stage_plan.*` owns compiler-side compiled-pipeline
@@ -142,11 +142,13 @@ Build-system notes:
   used by Metal runtime and focused contract tests.
 - `gfx_plugin_metal` / `gfx_runtime_metal` and
   `gfx_plugin_opencl` / `gfx_runtime_opencl` contain backend-specific code.
-- `src/common/backend_config.hpp.in` is configured into the build tree with
-  backend availability booleans and the resolved default backend;
-  `src/compiler/backend_config.hpp.in` includes that common header for existing
-  compiler-path includes. Explicit `GFX_DEFAULT_BACKEND=metal|opencl` requests
-  fail CMake if the requested backend is unavailable.
+- Backend availability and the resolved default backend are expressed by
+  CMake-selected source files, not generated config headers or source-level
+  macro branches. `src/common/gfx_backend_utils_default_*.cpp` provides the
+  default/backend-supported contract for the configured target, and backend
+  module registration uses CMake-selected registration/stub translation units.
+  Explicit `GFX_DEFAULT_BACKEND=metal|opencl` requests fail CMake if the
+  requested backend is unavailable.
 - The OpenCL backend dynamically loads the target OpenCL runtime; it does not
   require a compile-time OpenCL SDK link.
 - `src/backends/opencl/runtime/opencl_runtime_bundle.*` owns plugin-local
@@ -185,7 +187,7 @@ Read in this order:
 7. `src/compiler/manifest.*` and `src/compiler/executable_bundle.*`
 8. `src/compiler/pipeline_stage_graph_snapshot.*`,
    `src/compiler/pipeline_stage_builder.*`, and
-   `src/compiler/pipeline_stage_materialization_draft.*`
+   `src/compiler/runtime_descriptor_materialization_plan.*`
 9. `src/compiler/pipeline_stage_fusion.*`
 10. `src/compiler/pipeline_stage_plan.*`
 11. `src/compiler/runtime_executable_descriptor_builder.*` and
@@ -220,7 +222,8 @@ For runtime planning, also inspect:
 - `src/compiler/stage_policy.*`
 - `src/compiler/pipeline_stage_builder.*`
 - `src/compiler/pipeline_stage_graph_snapshot.*`
-- `src/compiler/pipeline_stage_materialization_draft.*`
+- `src/compiler/runtime_descriptor_materialization_plan.*`
+- `src/compiler/runtime_descriptor_materialization_contract.hpp`
 - `src/compiler/pipeline_stage_fusion.*`
 - `src/compiler/pipeline_stage_plan.*`
 - `src/compiler/runtime_executable_descriptor_builder.*`
@@ -402,14 +405,15 @@ Common operation families that need extra care:
   `src/backends/opencl/compiler/opencl_kernel_artifacts.*`
 - OpenCL generated kernel units registered in
   `opencl_kernel_unit_catalog.*`: activation, elementwise, f32
-  Conv2D/GroupConv2D, f32/f16 Softmax, dynamic-static-rank f32/f16 Softmax,
-  f32/f16 Pool2D, f32/f16/i64 Range, f32/f16 Interpolate, f32 numeric
-  reduction, boolean logical reduction, ShapeOf, Tile, compare/select, and
-  logical-bool elementwise
-- current OpenCL catalog limitations: MatMul, Transpose, Concat, and Split
-  must remain unsupported with
-  `missing_opencl_*_kernel_unit` until they get catalog entries,
-  family-owned adapters, payload materialization, and tests
+  Conv2D/GroupConv2D, f32 MatMul, f32/f16 Softmax,
+  dynamic-static-rank f32/f16 Softmax, f32/f16 Pool2D, f32/f16/i64 Range,
+  f32/f16 Interpolate, f32 numeric reduction, boolean logical reduction,
+  ShapeOf, Tile, compare/select, and logical-bool elementwise
+- current OpenCL catalog limitations: Transpose, Concat, and Split must remain
+  unsupported with `missing_opencl_*_kernel_unit` until they get catalog
+  entries, family-owned adapters, payload materialization, and tests. OpenCL
+  MatMul has a generated static f32 route; f16 and unsupported shape variants
+  must stay rejected by the MatMul family support contract.
 - generated activation `Swish` routes, where default/static beta and runtime
   scalar beta must keep the MLIR, Metal MSL, and OpenCL artifact contracts
   aligned
@@ -486,10 +490,11 @@ registered generated kernel-unit ids, operation-support entries, and the
 artifact families that can materialize payloads. Family adapters such as
 `opencl_activation_kernel_unit.*`, `opencl_eltwise_kernel_unit.*`,
 `opencl_shapeof_kernel_unit.*`, `opencl_conv_kernel_unit.*`,
-`opencl_interpolate_kernel_unit.*`, `opencl_pool_kernel_unit.*`,
-`opencl_range_kernel_unit.*`, `opencl_reduction_kernel_unit.*`,
-`opencl_softmax_kernel_unit.*`, and `opencl_tile_kernel_unit.*` own
-family-specific support probing and payload materialization.
+`opencl_interpolate_kernel_unit.*`, `opencl_matmul_kernel_unit.*`,
+`opencl_pool_kernel_unit.*`, `opencl_range_kernel_unit.*`,
+`opencl_reduction_kernel_unit.*`, `opencl_softmax_kernel_unit.*`, and
+`opencl_tile_kernel_unit.*` own family-specific support probing and payload
+materialization.
 
 `src/backends/opencl/runtime/opencl_source_stage.*` should stay a generic
 artifact executor. Add metadata to artifacts rather than adding op-specific
@@ -498,10 +503,12 @@ branches to the executor.
 The current OpenCL kernel registry has no active handwritten kernel-unit
 exception. Do not introduce a baseline exception unless the generated-source
 contract cannot express the route and the exception is documented, tested, and
-reviewed. OpenCL MatMul, Transpose, Concat, and Split are currently not
-registered compiler routes; operation support rejects them with
+reviewed. OpenCL Transpose, Concat, and Split are currently not registered
+compiler routes; operation support rejects them with
 `missing_opencl_*_kernel_unit` until the catalog, family adapter, payload
-resolver, and tests are added.
+resolver, and tests are added. OpenCL MatMul is registered only for static f32
+contracts; f16 and unsupported variants should continue to fail through the
+MatMul family support contract.
 
 Generated or embedded source payloads should flow through compiler artifact
 descriptors and runtime kernel loaders. Do not pass ad-hoc source strings
@@ -674,10 +681,14 @@ Use `tests/tools/gfx_gtest_matrix.py` to capture or compare
 `--gtest_list_tests` output across production test targets. It detects
 duplicates, forbidden `DISABLED_` registrations, and matrix drift; it does not
 skip or filter tests. `gfx_gtest_matrix_compare` requires explicit
-`GFX_GTEST_MATRIX_REFERENCE_ROOTS`, and cross-build host capture fails unless
-`CMAKE_CROSSCOMPILING_EMULATOR` is configured. Native backend and
-unavailable-adapter coverage must be kept aligned through executable test
-registration, contract coverage, and route coverage rather than source parsing.
+`macos`, `android`, `rpi4`, and `rpi5` matrix labels through
+`GFX_GTEST_MATRIX_<TARGET>_ROOT` cache paths or equivalent `LABEL=DIR` entries
+in `GFX_GTEST_MATRIX_REFERENCE_ROOTS`. Native builds use
+`GFX_GTEST_MATRIX_CURRENT_LABEL` for the locally captured label; cross-build
+host capture fails unless `CMAKE_CROSSCOMPILING_EMULATOR` is configured. Native
+backend and unavailable-adapter coverage must be kept aligned through executable
+test registration, contract coverage, and route coverage rather than source
+parsing.
 
 ## Public Repository Hygiene
 

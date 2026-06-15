@@ -83,8 +83,11 @@ test registration or target composition; it fails on duplicate registrations,
 `DISABLED_` tests, and matrix drift. The CMake `gfx_gtest_matrix_capture`
 target uses the tool in `--check-only` mode when host execution is possible.
 `gfx_gtest_matrix_compare` requires explicit
-`GFX_GTEST_MATRIX_REFERENCE_ROOTS`, and cross-build host capture fails unless
-`CMAKE_CROSSCOMPILING_EMULATOR` is configured.
+`macos`, `android`, `rpi4`, and `rpi5` matrix labels through
+`GFX_GTEST_MATRIX_<TARGET>_ROOT` cache paths or equivalent `LABEL=DIR` entries
+in `GFX_GTEST_MATRIX_REFERENCE_ROOTS`. Native builds use
+`GFX_GTEST_MATRIX_CURRENT_LABEL` for the locally captured label; cross-build
+host capture fails unless `CMAKE_CROSSCOMPILING_EMULATOR` is configured.
 
 ## What To Test
 
@@ -222,6 +225,9 @@ For OpenCL source-artifact changes:
 - include `tests/unit/gfx_interpolate_kernel_contract_test.cpp` when OpenCL
   Interpolate source ids, semantic scalar metadata, static NCHW shape
   contracts, or kernel-unit routing changes
+- include `tests/unit/gfx_matmul_kernel_contract_test.cpp` when OpenCL generated
+  MatMul source ids, static f32 shape/stride scalar contracts, backend
+  kernel-unit routing, or unsupported MatMul variant behavior changes
 - include `tests/unit/gfx_opencl_source_artifacts_test.cpp` and
   `tests/unit/gfx_backend_architecture_contract_test.cpp` when OpenCL route
   catalog ownership, generated ShapeOf, Tile, compare/select, or logical-bool
@@ -264,7 +270,7 @@ For OpenCL source-artifact changes:
 For Metal placement or MPSRT changes:
 
 - cover manifest/source-plan records in `tests/unit/gfx_stage_policy_test.cpp`,
-  `tests/unit/basic_ops_internal_test.cpp`, or
+  the split `tests/unit/basic_ops_*_contract_test.cpp` files, or
   `tests/unit/gpu_backend_base_test.cpp`
 - cover compiler-owned generated MSL and MPS/MPSGraph `VendorDescriptor`
   payloads in `tests/unit/gpu_backend_base_test.cpp`
