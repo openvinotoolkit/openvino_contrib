@@ -46,6 +46,7 @@ OV_CLONE_DIR="${SCRIPT_DIR}/ov_build/openvino"
 OV_BUILD_DIR="${OV_CLONE_DIR}/build"
 VENV_DIR="${SCRIPT_DIR}/venv_ov2026_ws"
 BEV_BUILD_DIR="${SCRIPT_DIR}/openvino_extensions/bev_pool/build_ws"
+CMAKE_PY_VENV_DIR="${SCRIPT_DIR}/venv_cmake_py310"
 JOBS=$(nproc)
 
 MODEL_DIR=""
@@ -262,7 +263,20 @@ if [[ $SKIP_OV_BUILD -eq 0 ]]; then
   # Use Python 3.10 for wheel build (has distutils); will install wheel into Python 3.12 venv
   PYTHON310=$(command -v python3.10 2>/dev/null || true)
   [[ -n "$PYTHON310" ]] || die "python3.10 not found for OpenVINO build"
-  
+
+  # Use a dedicated Python 3.10 venv for cmake Python checks so we never depend
+  # on externally-managed system site-packages.
+  CMAKE_PYTHON310="${CMAKE_PY_VENV_DIR}/bin/python"
+  if [[ ! -x "$CMAKE_PYTHON310" ]]; then
+    info "  Creating cmake helper venv at ${CMAKE_PY_VENV_DIR}"
+    "$PYTHON310" -m venv "${CMAKE_PY_VENV_DIR}"
+  fi
+  info "  Ensuring cmake Python deps in helper venv (packaging, setuptools>=80, wheel>=0.45) …"
+  "${CMAKE_PYTHON310}" -m pip install --upgrade pip -q
+  "${CMAKE_PYTHON310}" -m pip install -q packaging "setuptools>=80" "wheel>=0.45"
+  "${CMAKE_PYTHON310}" -c 'import packaging, setuptools.command.bdist_wheel' >/dev/null 2>&1 || \
+    die "cmake helper venv is missing required wheel-build modules"
+
   info "Step 2: Configuring OpenVINO cmake  (jobs: ${JOBS}) …"
   mkdir -p "$OV_BUILD_DIR"
   run_quiet_step "Configuring OpenVINO" "${SCRIPT_DIR}/ov_build/logs/cmake_configure.log" \
@@ -276,7 +290,7 @@ if [[ $SKIP_OV_BUILD -eq 0 ]]; then
     -DENABLE_PYTHON_API=ON \
     -DENABLE_WHEEL=ON \
     -DENABLE_PYTHON_PACKAGING=OFF \
-    -DPython3_EXECUTABLE="${PYTHON310}" \
+    -DPython3_EXECUTABLE="${CMAKE_PYTHON310}" \
     -DENABLE_INTEL_CPU=OFF \
     -DENABLE_INTEL_NPU=OFF \
     -DENABLE_OV_TF_FRONTEND=OFF \
