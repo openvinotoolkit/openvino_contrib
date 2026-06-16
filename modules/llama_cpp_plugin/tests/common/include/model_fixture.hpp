@@ -11,7 +11,7 @@
 #include "openvino/runtime/infer_request.hpp"
 
 const std::string TEST_FILES_DIR = "test_data";
-const auto SEP = ov::util::FileTraits<char>::file_separator;
+const auto SEP = ov::test::utils::FileTraits<char>::file_separator;
 
 class CompiledModelTest : public ::testing::Test {
 public:

@@ -7,7 +7,7 @@
 #include "common_test_utils/test_constants.hpp"
 #include "cuda_test_constants.hpp"
 #include "functional_test_utils/skip_tests_config.hpp"
-#include "ov_finite_comparer.hpp"
+#include "ov_average_finder.hpp"
 #include "single_op_tests/group_convolution.hpp"
 
 namespace {
@@ -37,18 +37,29 @@ const auto group_conv_2d_params = ::testing::Combine(::testing::ValuesIn(kernels
                                                      ::testing::ValuesIn(num_groups),
                                                      ::testing::ValuesIn(pad_types));
 
+constexpr float THRESHOLD_BASE_FP32 = 1e-4f;
+constexpr float THRESHOLD_BASE_FP16 = 0.01f;
+
+class GroupConvolutionLayerThresholdTest : public AverageFinder<GroupConvolutionLayerTest> {
+protected:
+    void SetUp() override {
+        GroupConvolutionLayerTest::SetUp();
+        const auto& model_precision = std::get<1>(this->GetParam());
+        if (model_precision == ov::element::f32) {
+            this->threshold_base = THRESHOLD_BASE_FP32;
+        } else if (model_precision == ov::element::f16) {
+            this->threshold_base = THRESHOLD_BASE_FP16;
+        }
+    }
+};
+
 INSTANTIATE_TEST_CASE_P(smoke_GroupConvolutionCUDA2D_Run,
-                        GroupConvolutionLayerTest,
+                        GroupConvolutionLayerThresholdTest,
                         ::testing::Combine(group_conv_2d_params,
                                            ::testing::ValuesIn(model_types),
                                            ::testing::Values(static_shapes_to_test_representation(input_shapes)),
                                            ::testing::Values(DEVICE_NVIDIA)),
-                        GroupConvolutionLayerTest::getTestCaseName);
-
-class GroupConvolutionLayerThresholdTest : public FiniteComparer<GroupConvolutionLayerTest> {
-protected:
-    void SetUp() override { GroupConvolutionLayerTest::SetUp(); }
-};
+                        GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 TEST_P(GroupConvolutionLayerThresholdTest, Inference) {
     SKIP_IF_CURRENT_TEST_IS_DISABLED()
