@@ -47,12 +47,12 @@ Then inspect the relevant code path:
   `src/runtime/backend_runtime.*`,
   `src/runtime/backend_runtime_provider.*`, and
   `src/runtime/backend_request_state.hpp`
-- backend stage factory and pipeline materialization:
+- backend stage factory and runtime materialization:
   `src/runtime/backend_stage_factory.hpp`,
-  `src/runtime/pipeline_stage_desc.hpp`,
+  `src/runtime/runtime_materialized_stage.hpp`,
   `src/runtime/pipeline_stage_plan.hpp`, and
   `src/runtime/runtime_execution_plan.*`,
-  `src/runtime/pipeline_stage_materializer.*`
+  `src/runtime/runtime_stage_materializer.*`
 - kernel manifests and shared source-artifact records: `src/kernel_ir/`
 - MLIR builders and backend hooks: `src/mlir/`
 - graph rewrites: `src/transforms/`
@@ -72,11 +72,11 @@ Then inspect the relevant code path:
   manifests, executable bundles, runtime executable descriptor
   build/verification, tensor-layout plans, stage-placement value objects, and
   artifact descriptors in `src/compiler/`.
-- Keep descriptor-backed stage creation, `PipelineStageDesc`, vendor primitive
-  artifact materialization, and fused sequence materialization in
+- Keep descriptor-backed stage creation, `RuntimeMaterializedStage`, vendor
+  primitive artifact materialization, and fused sequence materialization in
   `src/runtime/backend_stage_factory.hpp`,
-  `src/runtime/pipeline_stage_desc.hpp`, and
-  `src/runtime/pipeline_stage_materializer.*`.
+  `src/runtime/runtime_materialized_stage.hpp`, and
+  `src/runtime/runtime_stage_materializer.*`.
 - Keep descriptor element-type/static-shape parsing and generated source
   `RuntimeParams` ownership rules in `src/runtime/tensor_binding_contract.*`;
   do not duplicate them in Metal/OpenCL request-time code.
@@ -143,13 +143,15 @@ For Metal placement, MPSRT, or MSL source changes, keep these aligned:
 - `src/compiler/memory_plan.*`
 - `src/runtime/fused_output_lifetime_plan.*`
 - `src/runtime/backend_stage_factory.hpp`
-- `src/runtime/pipeline_stage_desc.hpp`
+- `src/runtime/runtime_materialized_stage.hpp`
 - `src/runtime/pipeline_stage_plan.hpp`
 - `src/runtime/runtime_execution_plan.*`
-- `src/runtime/pipeline_stage_materializer.*`
+- `src/runtime/runtime_stage_materializer.*`
 - `src/runtime/runtime_session.*`
 - `src/backends/metal/compiler/`
 - `src/backends/metal/compiler/metal_stage_placement.*`
+- `src/backends/metal/compiler/metal_conv_post_op_fusion_contract.*`
+- `src/backends/metal/compiler/metal_mpsrt_program_cache_payload_codec.*`
 - `src/compiler/stage_policy.*`
 - `src/runtime/view_only_stage.*`
 - `src/kernel_ir/gfx_kernel_manifest.hpp`
@@ -158,6 +160,7 @@ For Metal placement, MPSRT, or MSL source changes, keep these aligned:
 - `src/backends/metal/common/mpsrt/gfx_mpsrt_builder_plan.hpp`
 - `src/backends/metal/common/mpsrt/gfx_mpsrt_plan.hpp`
 - `src/backends/metal/common/mpsrt/gfx_mpsrt_program.hpp`
+- `src/backends/metal/common/mpsrt/gfx_mpsrt_program_artifact_payload.hpp`
 - `src/backends/metal/common/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp`
 - `src/backends/metal/runtime/mpsrt/gfx_mpsrt_model.*`
 - `src/backends/metal/compiler/apple_mlir_stage_hooks.*`
@@ -174,6 +177,7 @@ For Metal placement, MPSRT, or MSL source changes, keep these aligned:
 - `src/backends/metal/common/mpsrt/gfx_mpsrt_vendor_contract.hpp`
 - `src/backends/metal/common/mpsrt/gfx_mpsrt_vendor_artifact_payload.hpp`
 - `src/backends/metal/runtime/metal_runtime_kernel_loader.*`
+- `src/backends/metal/runtime/mpsrt_program_stage.*`
 - `src/backends/metal/runtime/mpsrt_vendor_primitive_stage.*`
 - `src/backends/metal/runtime/mpsrt/`
 

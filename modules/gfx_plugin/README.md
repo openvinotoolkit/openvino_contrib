@@ -92,10 +92,10 @@ Read these files first:
   construction used by backend compiler routes
 - `src/backends/metal/`: Metal plugin glue, Objective-C++ runtime, memory
   management, profiling, backend compiler module, Apple MSL/MPS/MPSRT source
-  planning, Metal cache payload encoding, shared MPSRT ABI records, MPSRT vendor
-  primitive contracts, MSL compilation, runtime kernel loading, MPSRT
-  preparation, descriptor-backed vendor primitive stages, and MPS/MPSGraph
-  vendor primitive execution
+  planning, Metal cache payload encoding, shared MPSRT ABI/program records,
+  MPSRT program and vendor primitive contracts, MSL compilation, runtime kernel
+  loading, MPSRT preparation, descriptor-backed MPSRT program and vendor
+  primitive stages, and MPS/MPSGraph vendor primitive execution
 - `src/backends/opencl/`: OpenCL plugin glue, remote context/tensor support,
   dynamic API loader, buffer manager, backend compiler policy, backend-owned
   family source-artifact construction and payload materialization, program
@@ -132,7 +132,8 @@ The high-level path is:
    `src/compiler/runtime_executable_descriptor_builder.*` to build and verify a
    `RuntimeExecutableDescriptor` from the compiler executable bundle. The
    descriptor-owned stage materialization plan is produced from the compiler
-   graph snapshot, pipeline-stage builder, and materialization draft helpers.
+   graph snapshot, pipeline-stage builder, and
+   `src/compiler/runtime_descriptor_materialization_plan.*`.
    Cache import uses `src/compiler/cache_import.*` and
    `src/compiler/cache_materialization_contract.*` to reconstruct a runtime
    model, executable bundle, runtime descriptor, and materialization plan from
@@ -140,13 +141,13 @@ The high-level path is:
 5. `CompiledModel::build_runtime_execution_plan()` consumes the compiler-owned
    runtime descriptor and delegates concrete stage materialization to
    `src/runtime/runtime_execution_plan.*`, which owns the materialized
-   `PipelineStageDesc` vector and verifies descriptor/stage consistency. The
+   `RuntimeMaterializedStage` vector and verifies descriptor/stage consistency. The
    compiler stage builder uses `src/compiler/pipeline_stage_plan.*` for
    model-output flags, input links, and output aliases,
    `src/compiler/pipeline_stage_fusion.*` for fusion selection, and emits
    runtime-facing plans in `src/runtime/pipeline_stage_plan.hpp`.
-6. Pipeline records are `PipelineStageDesc` values from
-   `src/runtime/pipeline_stage_desc.hpp`. Fused output lifetimes are derived
+6. Runtime materialized stage records are `RuntimeMaterializedStage` values from
+   `src/runtime/runtime_materialized_stage.hpp`. Fused output lifetimes are derived
    from runtime memory contracts in
    `src/runtime/fused_output_lifetime_plan.*`.
    `src/runtime/tensor_binding_contract.*` parses descriptor-owned tensor
@@ -212,12 +213,14 @@ The Metal backend is the Apple production path. It combines:
 - Apple MSL custom kernels for general elementwise, layout, reduction, shape,
   slice, scatter/gather, RoPE, RMS, compressed MatMul, and SDPA helper paths
 - backend compiler policy, generated MSL artifact payloads, and MPS/MPSGraph
-  vendor descriptor payloads under
+  vendor descriptor or MPSRT program payloads under
   `src/backends/metal/compiler/`
-- shared MPSRT ABI and builder records under
+- shared MPSRT ABI, builder, typed-program, and payload records under
   `src/backends/metal/common/mpsrt/`
 - MPSRT runtime-model construction and request encoding under
   `src/backends/metal/runtime/mpsrt/`
+- descriptor-backed MPSRT program execution in
+  `src/backends/metal/runtime/mpsrt_program_stage.*`
 - embedded MPSRT helper kernels under `src/kernel_ir/metal_kernels/`
 - Objective-C++ request-time execution under `src/backends/metal/runtime/`
 

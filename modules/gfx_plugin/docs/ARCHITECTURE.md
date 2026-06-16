@@ -97,15 +97,15 @@ parallel support tables.
 - compiled-model properties
 - profiling configuration and report ownership
 
-The compiled pipeline is a sequence of `PipelineStageDesc` records wrapping
-backend-specific `GpuStage` instances. One stage may represent one OpenVINO node,
-a fused sequence, a stateful helper, a view-style alias, or a materialized
-constant output.
+The compiled runtime plan is a sequence of `RuntimeMaterializedStage` records
+wrapping backend-specific `GpuStage` instances. One stage may represent one
+OpenVINO node, a fused sequence, a stateful helper, a view-style alias, or a
+materialized constant output.
 
 `build_runtime_execution_plan()` consumes the compiler-owned materialization
 plan inside the runtime executable descriptor and delegates concrete stage
 materialization to `src/runtime/runtime_execution_plan.*` and
-`src/runtime/pipeline_stage_materializer.*`. The runtime materialization plan is
+`src/runtime/runtime_stage_materializer.*`. The runtime materialization plan is
 emitted by `src/compiler/pipeline_stage_builder.*` and is reconstructed by
 `src/compiler/cache_import.*` during cache import. The builder owns stage
 ordering, node-to-stage mapping, parameter index map, absorbed input
@@ -115,12 +115,12 @@ planning contracts in
 `src/compiler/pipeline_stage_fusion.*`. `CompiledModel` should not accumulate
 backend-specific stage construction logic.
 
-`RuntimeExecutionPlan` owns the materialized `PipelineStageDesc` vector and the
+`RuntimeExecutionPlan` owns the materialized `RuntimeMaterializedStage` vector and the
 `RuntimeExecutableDescriptor` used to build it. Infer execution receives that
 plan instead of an independent descriptor vector so the reusable infer pipeline
 cannot drift from the descriptor imported or compiled by the compiler service.
 
-`src/runtime/pipeline_stage_materializer.*` passes the matching
+`src/runtime/runtime_stage_materializer.*` passes the matching
 `RuntimeStageExecutableDescriptor` to backend stage creation through
 `BackendStageFactory`. Backends may consume that descriptor for payload kind,
 entry point, ABI fingerprint, explicit roles, and artifact payload. If a
@@ -228,8 +228,8 @@ Important stage hooks:
 
 `src/runtime/fused_sequence_stage.*` combines compatible stages when fusion
 rules allow one runtime path to cover several OpenVINO nodes. Internal output
-lifetimes for such stages are carried by `PipelineStageDesc` records in
-`src/runtime/pipeline_stage_desc.hpp` and consumed by the shared inference
+lifetimes for such stages are carried by `RuntimeMaterializedStage` records in
+`src/runtime/runtime_materialized_stage.hpp` and consumed by the shared inference
 pipeline; runtime stages must not reclassify tensor views or lifetimes from
 operation type names.
 `src/runtime/fused_output_lifetime_plan.*` computes that metadata from
@@ -237,7 +237,7 @@ operation type names.
 
 `src/runtime/backend_stage_factory.hpp` is the runtime-facing backend boundary.
 `BackendState` implements that interface, while
-`src/runtime/pipeline_stage_materializer.*` owns descriptor lookup,
+`src/runtime/runtime_stage_materializer.*` owns descriptor lookup,
 stage-index validation, descriptor-backed backend stage creation, vendor
 primitive artifact materialization, and fused sequence materialization. Do not
 recreate these decisions inside backend request code.
@@ -325,7 +325,7 @@ runtime execution. The main objects are:
   envelope key using model/backend/fusion fingerprints, then loads or stores
   the corresponding cache envelope files.
 - `PipelineStageBuilder`: converts the transformed model plus runtime
-  executable descriptor into `PipelineStageDesc` records using the selected
+  executable descriptor into `RuntimeMaterializedStage` records using the selected
   backend policy, fusion planner, stage materializer, and pipeline-stage I/O
   planner.
 - `PipelineStageFusion`: selects post-op, residual-add, attention, and vendor
@@ -474,11 +474,11 @@ Kernel contracts are split across the current compiler and kernel IR layers:
   plan emitted by the compiler builder and consumed by the materializer
 - `src/runtime/backend_stage_factory.hpp`: backend-facing stage creation
   interface implemented by backend state
-- `src/runtime/pipeline_stage_desc.hpp`: runtime pipeline descriptor record
+- `src/runtime/runtime_materialized_stage.hpp`: runtime materialized stage record
   shared by compiled model, infer planning, and stateful helpers
 - `src/runtime/runtime_execution_plan.*`: owner of the materialized stage list
   and the runtime descriptor used to create it
-- `src/runtime/pipeline_stage_materializer.*`: descriptor lookup, backend stage
+- `src/runtime/runtime_stage_materializer.*`: descriptor lookup, backend stage
   creation, vendor primitive artifact materialization, and fused sequence
   materialization
 - `src/runtime/descriptor_const_tensor_materializer.*`: shared materialization
@@ -524,11 +524,13 @@ The Metal backend is split into:
 - compiler policy and artifact materialization in `src/backends/metal/compiler/`
 - plugin glue in `src/backends/metal/plugin/`
 - runtime/memory/profiling in `src/backends/metal/runtime/`
+- descriptor-backed typed MPSRT program execution in
+  `src/backends/metal/runtime/mpsrt_program_stage.*`
 - descriptor-backed vendor primitive execution in
   `src/backends/metal/runtime/mpsrt_vendor_primitive_stage.*`
 - MSL compilation in `src/backends/metal/codegen/`
-- shared MPSRT ABI, builder-plan, and vendor primitive contract records in
-  `src/backends/metal/common/mpsrt/`
+- shared MPSRT ABI, builder-plan, typed-program, program payload, and vendor
+  primitive contract records in `src/backends/metal/common/mpsrt/`
 - MPSRT runtime-model construction, preparation, and request encoding in
   `src/backends/metal/runtime/mpsrt/`
 - embedded helper kernels in `src/kernel_ir/metal_kernels/`
@@ -547,12 +549,20 @@ kernel-buffer order before encoding commands. MSL dispatch stages must not
 depend on implicit positional conventions when a manifest supplies explicit
 roles.
 
-Generated MSL and vendor descriptor payloads are loaded through runtime
-descriptors. Current descriptor-backed Metal payload coverage includes generated
-MSL for `ShapeOf`, `Range`, `Tile`, `Concat`, `Split`, `Slice`, `Transpose`,
-activation, elementwise, numeric/logical reduction, Softmax/LogSoftmax, and
-causal SDPA helper forms, plus embedded MPSRT helper kernels for image bridges
-and TopK post-processing.
+Generated MSL, typed MPSRT program, and vendor descriptor payloads are loaded
+through runtime descriptors. Current descriptor-backed Metal payload coverage
+includes generated MSL for `ShapeOf`, `Range`, `Tile`, `Concat`, `Split`,
+`Slice`, `Transpose`, activation, elementwise, numeric/logical reduction,
+Softmax/LogSoftmax, and causal SDPA helper forms, plus embedded MPSRT helper
+kernels for image bridges and TopK post-processing.
+
+Typed MPSRT program payloads use
+`src/backends/metal/common/mpsrt/gfx_mpsrt_program_artifact_payload.hpp`.
+Cache serialization for that payload kind is owned by
+`src/backends/metal/compiler/metal_mpsrt_program_cache_payload_codec.*`, and
+runtime execution is owned by `src/backends/metal/runtime/mpsrt_program_stage.*`.
+The runtime stage validates the descriptor-backed `AppleMpsrtProgram` payload
+instead of reconstructing MPSRT model state from source graph nodes.
 
 Generated Metal activation payloads are produced by
 `src/backends/metal/compiler/msl_codegen_apple_msl_activation.*`. They use
@@ -744,8 +754,8 @@ The CMake layout separates shared contracts from backend payload ownership:
 - `src/runtime/runtime_execution_plan.*`: runtime owner for materialized stages
   and their descriptor contract
 - `src/runtime/backend_stage_factory.hpp`,
-  `src/runtime/pipeline_stage_desc.hpp`, and
-  `src/runtime/pipeline_stage_materializer.*`: runtime-facing stage creation
+  `src/runtime/runtime_materialized_stage.hpp`, and
+  `src/runtime/runtime_stage_materializer.*`: runtime-facing stage creation
   and materialization contracts
 - `gfx_mlir_stage_support`: MLIR lowering, pass, dialect, and backend-hook
   support
@@ -789,7 +799,7 @@ Do not move OpenCL source payload materialization back into
   `CompiledModel` or backend-specific request code.
 - Keep descriptor-backed stage creation in
   `src/runtime/runtime_execution_plan.*`,
-  `src/runtime/pipeline_stage_materializer.*`, and backend implementations of
+  `src/runtime/runtime_stage_materializer.*`, and backend implementations of
   `BackendStageFactory`.
 - Keep memory-region ids, alias groups, transient arenas, and descriptor
   verification in `src/compiler/memory_plan.*`,

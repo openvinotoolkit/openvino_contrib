@@ -88,6 +88,28 @@ target uses the tool in `--check-only` mode when host execution is possible.
 in `GFX_GTEST_MATRIX_REFERENCE_ROOTS`. Native builds use
 `GFX_GTEST_MATRIX_CURRENT_LABEL` for the locally captured label; cross-build
 host capture fails unless `CMAKE_CROSSCOMPILING_EMULATOR` is configured.
+Use `tests/tools/gfx_gtest_device_matrix.py` to create the Android/RPi roots
+from the matching build output. Android capture runs through `adb`; Raspberry
+Pi 4 and Raspberry Pi 5 capture runs through SSH device files. In Android and
+Raspberry build directories, the CMake device-capture targets default to the
+current `ov_gfx_*` target output directory and depend on the production test
+binaries before capture. Use `gfx_gtest_matrix_capture_current_devices` in a
+matching Android/Raspberry build dir, `gfx_gtest_matrix_capture_android_devices`
+for Android-only capture, and `gfx_gtest_matrix_capture_raspberry_devices` for
+RPi4/RPi5 capture. `gfx_gtest_matrix_capture_devices` is the explicit all-remote
+aggregate and is valid only when every required local root/device file is
+configured. Use `GFX_GTEST_MATRIX_*_LOCAL_ROOT` only to compare a different
+build tree deliberately; stale deploy directories are not acceptance evidence.
+The helper only executes `ov_gfx_func_tests`, `ov_gfx_unit_tests`, and
+`ov_gfx_runtime_micro_tests` with `--gtest_list_tests`; it does not filter, skip,
+or rewrite tests.
+
+`tests/tools/gfx_architecture_guard.py` is the architecture/publication hygiene
+gate for legacy backend identities. The `gfx_architecture_guard` target and
+`ov_gfx_architecture_guard` CTest entry reject GFX-owned Vulkan/SPIR-V source,
+CMake target, or build-artifact names while allowing CLVK/CLSPV internals under
+the OpenCL delivery path. This guard is not functional coverage; pair it with
+the relevant contract tests.
 
 ## What To Test
 
@@ -151,12 +173,12 @@ For compiler-service, manifest, or executable-descriptor changes:
 - backend artifact tests when payload materialization reaches Metal or OpenCL
   runtime loaders
 - architecture-contract coverage when `BackendStageFactory`,
-  `PipelineStageBuildRequest`, `PipelineStageMaterializer`, or
-  `PipelineStageDesc` ownership changes
+  `PipelineStageBuildRequest`, `RuntimeStageMaterializer`, or
+  `RuntimeMaterializedStage` ownership changes
 - split contract coverage when ownership moves into descriptor/materialization
   helpers:
   `tests/unit/gfx_runtime_descriptor_contract_test.cpp`,
-  `tests/unit/gfx_pipeline_stage_materialization_contract_test.cpp`,
+  `tests/unit/gfx_runtime_stage_materialization_contract_test.cpp`,
   `tests/unit/gfx_runtime_param_descriptor_contract_test.cpp`,
   `tests/unit/gfx_backend_artifact_payload_contract_test.cpp`,
   `tests/unit/gfx_const_tensor_descriptor_contract_test.cpp`,
@@ -187,7 +209,7 @@ For scheduling, cache, or infer-path changes:
 - `tests/unit/gpu_const_cache_test.cpp`
 - `tests/unit/gfx_memory_cache_contract_test.cpp`
 - `tests/unit/gfx_runtime_descriptor_contract_test.cpp`
-- `tests/unit/gfx_pipeline_stage_materialization_contract_test.cpp`
+- `tests/unit/gfx_runtime_stage_materialization_contract_test.cpp`
 - `tests/unit/gfx_runtime_param_descriptor_contract_test.cpp`
 - `tests/unit/gfx_runtime_execution_plan_contract_test.cpp`
 - `tests/unit/kernel_arg_reuse_test.cpp`
@@ -272,8 +294,10 @@ For Metal placement or MPSRT changes:
 - cover manifest/source-plan records in `tests/unit/gfx_stage_policy_test.cpp`,
   the split `tests/unit/basic_ops_*_contract_test.cpp` files, or
   `tests/unit/gpu_backend_base_test.cpp`
-- cover compiler-owned generated MSL and MPS/MPSGraph `VendorDescriptor`
-  payloads in `tests/unit/gpu_backend_base_test.cpp`
+- cover compiler-owned generated MSL, typed MPSRT program, and MPS/MPSGraph
+  `VendorDescriptor` payloads in `tests/unit/gpu_backend_base_test.cpp`
+- cover MPSRT program cache payloads in
+  `tests/unit/gfx_metal_mpsrt_program_cache_contract_test.cpp`
 - cover fused vendor attention artifact materialization and the absence of the
   deleted standalone `mps_graph_attention_stage.*` route in
   `tests/unit/gfx_backend_architecture_contract_test.cpp`

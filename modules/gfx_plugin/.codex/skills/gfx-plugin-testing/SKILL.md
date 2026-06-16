@@ -18,8 +18,8 @@ validation in `modules/gfx_plugin/`.
   import/repository behavior, runtime executable descriptors, runtime execution
   plans, or runtime-session binding behavior.
 - The task changes pipeline-stage descriptor construction, fusion selection,
-  `BackendStageFactory`, `RuntimeExecutionPlan`, `PipelineStageMaterializer`,
-  or `PipelineStageDesc` ownership.
+  `BackendStageFactory`, `RuntimeExecutionPlan`, `RuntimeStageMaterializer`,
+  or `RuntimeMaterializedStage` ownership.
 - The task changes backend stage-placement policy.
 - The task changes Metal placement, MPSRT metadata, MSL kernel-family routing,
   MPS/MPSGraph vendor descriptors, shared MPSRT vendor contracts, resource
@@ -55,7 +55,7 @@ validation in `modules/gfx_plugin/`.
   payload-materialization, runtime-session, and manifest-routing contracts
 - split descriptor/materialization suites:
   `tests/unit/gfx_runtime_descriptor_contract_test.cpp`,
-  `tests/unit/gfx_pipeline_stage_materialization_contract_test.cpp`,
+  `tests/unit/gfx_runtime_stage_materialization_contract_test.cpp`,
   `tests/unit/gfx_runtime_param_descriptor_contract_test.cpp`,
   `tests/unit/gfx_backend_artifact_payload_contract_test.cpp`,
   `tests/unit/gfx_const_tensor_descriptor_contract_test.cpp`,
@@ -74,6 +74,10 @@ validation in `modules/gfx_plugin/`.
 - `tests/tools/gfx_gtest_matrix.py`: compares captured `--gtest_list_tests`
   output across production test targets and rejects duplicates, `DISABLED_`
   registrations, and matrix drift
+- `tests/tools/gfx_gtest_device_matrix.py`: captures the same registrations from
+  Android adb or Raspberry Pi SSH targets without filtering or rewriting tests
+- `tests/tools/gfx_architecture_guard.py`: rejects legacy GFX-owned
+  Vulkan/SPIR-V source, CMake target, and artifact identities
 
 ## Test Selection Rules
 
@@ -106,11 +110,11 @@ Prefer:
 - `tests/unit/gfx_backend_architecture_contract_test.cpp`
 - `tests/unit/plugin_tests.cpp` when `query_model()` or compile behavior moved
 - `tests/unit/gfx_backend_architecture_contract_test.cpp` when
-  `PipelineStageBuildRequest`, `PipelineStageMaterializer`,
+  `PipelineStageBuildRequest`, `RuntimeStageMaterializer`,
   `RuntimeExecutionPlan`, `BackendStageFactory`, vendor attention artifact
-  ownership, or `PipelineStageDesc` location changes
+  ownership, or `RuntimeMaterializedStage` location changes
 - `tests/unit/gfx_runtime_descriptor_contract_test.cpp`,
-  `tests/unit/gfx_pipeline_stage_materialization_contract_test.cpp`,
+  `tests/unit/gfx_runtime_stage_materialization_contract_test.cpp`,
   `tests/unit/gfx_runtime_param_descriptor_contract_test.cpp`,
   `tests/unit/gfx_backend_artifact_payload_contract_test.cpp`,
   `tests/unit/gfx_const_tensor_descriptor_contract_test.cpp`,

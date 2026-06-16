@@ -115,14 +115,14 @@ Build-system notes:
   contract, not a persisted native backend executable cache.
 - `src/runtime/runtime_execution_plan.*` owns the materialized stage list and
   the runtime descriptor used to create it. Infer execution consumes this plan
-  instead of a detached `PipelineStageDesc` vector.
+  instead of a detached runtime stage vector.
 - `src/runtime/runtime_session.*` owns request-local descriptor binding tables
   and prepared executable objects.
 - `src/runtime/backend_stage_factory.hpp` is the backend-facing runtime stage
   creation interface implemented by backend state.
-- `src/runtime/pipeline_stage_desc.hpp` owns the pipeline descriptor record
-  shared by compiled model, infer planning, and stateful helpers.
-- `src/runtime/pipeline_stage_materializer.*` owns runtime descriptor lookup,
+- `src/runtime/runtime_materialized_stage.hpp` owns the materialized runtime
+  stage record shared by compiled model, infer planning, and stateful helpers.
+- `src/runtime/runtime_stage_materializer.*` owns runtime descriptor lookup,
   descriptor-backed backend stage creation, vendor primitive artifact
   materialization, and fused sequence materialization.
 - `src/runtime/stage_materialization_context.hpp` is the runtime handoff object
@@ -166,6 +166,9 @@ Build-system notes:
   `plugins.xml` used by GFX test binaries.
 - `tests/tools/gfx_gtest_matrix.py` can capture `--gtest_list_tests` from the
   production test binaries and reject duplicate or disabled registrations.
+  `tests/tools/gfx_gtest_device_matrix.py` captures the same registrations from
+  staged Android and Raspberry Pi runtime roots through adb/SSH so matrix roots
+  come from device execution rather than host-side cross-build guesses.
   Architecture readiness must not be proven through source/file/string-presence
   checks; use executed contract coverage, route coverage, backend conformance
   tests, and profiling evidence.
@@ -202,10 +205,10 @@ Read in this order:
 16. `src/runtime/backend_runtime.*` and
    `src/runtime/backend_runtime_provider.*`
 17. `src/runtime/backend_stage_factory.hpp`
-18. `src/runtime/pipeline_stage_desc.hpp`
+18. `src/runtime/runtime_materialized_stage.hpp`
 19. `src/runtime/pipeline_stage_plan.hpp`
 20. `src/runtime/runtime_execution_plan.*`
-21. `src/runtime/pipeline_stage_materializer.*`
+21. `src/runtime/runtime_stage_materializer.*`
 22. `src/runtime/infer_pipeline.*`, `src/runtime/infer_executor.*`, and
    `src/runtime/infer_submission.*`
 23. `src/plugin/compiled_model.cpp`
@@ -237,10 +240,10 @@ For runtime planning, also inspect:
 - `src/runtime/backend_runtime_provider.*`
 - `src/runtime/backend_request_state.hpp`
 - `src/runtime/backend_stage_factory.hpp`
-- `src/runtime/pipeline_stage_desc.hpp`
+- `src/runtime/runtime_materialized_stage.hpp`
 - `src/runtime/pipeline_stage_plan.hpp`
 - `src/runtime/runtime_execution_plan.*`
-- `src/runtime/pipeline_stage_materializer.*`
+- `src/runtime/runtime_stage_materializer.*`
 - `src/runtime/runtime_session.*`
 - `src/runtime/infer_pipeline.*`
 - `src/runtime/infer_executor.*`
@@ -269,6 +272,8 @@ For Metal placement, MPSRT, or MSL source planning, also inspect:
 - `src/backends/metal/compiler/apple_stage_pipeline.*`
 - `src/backends/metal/compiler/apple_vendor_descriptors.*`
 - `src/backends/metal/compiler/apple_mpsrt_source_plan.hpp`
+- `src/backends/metal/compiler/metal_mpsrt_program_cache_payload_codec.*`
+- `src/backends/metal/compiler/metal_conv_post_op_fusion_contract.*`
 - `src/backends/metal/compiler/msl_codegen_apple_msl*.{cpp,hpp}`
 - `src/backends/metal/compiler/msl_codegen_apple_mps.*`
 - `src/backends/metal/compiler/msl_codegen_matmul_*`
@@ -277,10 +282,12 @@ For Metal placement, MPSRT, or MSL source planning, also inspect:
 - `src/backends/metal/common/mpsrt/gfx_mpsrt_abi.hpp`
 - `src/backends/metal/common/mpsrt/gfx_mpsrt_plan.hpp`
 - `src/backends/metal/common/mpsrt/gfx_mpsrt_program.hpp`
+- `src/backends/metal/common/mpsrt/gfx_mpsrt_program_artifact_payload.hpp`
 - `src/backends/metal/common/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp`
 - `src/backends/metal/common/mpsrt/gfx_mpsrt_vendor_contract.hpp`
 - `src/backends/metal/common/mpsrt/gfx_mpsrt_vendor_artifact_payload.hpp`
 - `src/backends/metal/runtime/metal_runtime_kernel_loader.*`
+- `src/backends/metal/runtime/mpsrt_program_stage.*`
 - `src/backends/metal/runtime/mpsrt_vendor_primitive_stage.*`
 - `src/backends/metal/runtime/mpsrt/gfx_mpsrt_model.*`
 - `src/mlir/gfx_mpsrt_dialect.*`
@@ -341,9 +348,9 @@ For OpenCL source execution, start with:
      and vendor attention fusion selection
    - compiler pipeline-stage I/O plan for input links, model-output flags, and
      output aliases
-   - compiler graph snapshot and materialization draft for runtime-facing stage
-     plans and public output descriptors
-   - runtime pipeline-stage materializer for descriptor-backed stage creation
+   - compiler graph snapshot and runtime descriptor materialization plan for
+     runtime-facing stage plans and public output descriptors
+   - runtime stage materializer for descriptor-backed stage creation
      and vendor attention artifact materialization
    - compiler memory plan for region ids, alias groups, lifetimes, and arenas
    - cache materialization contract for descriptor-owned cache import/export
@@ -396,8 +403,8 @@ Common operation families that need extra care:
   binary elementwise broadcast, `Select`, `Tile`, Interpolate,
   Softmax/LogSoftmax, Transpose, and Reduce families; keep the ownership rules in
   `src/runtime/tensor_binding_contract.*`
-- Metal MPS/MPSGraph vendor descriptors, vendor attention artifacts, and MPSRT
-  storage bridges
+- Metal MPS/MPSGraph vendor descriptors, MPSRT program payloads, vendor attention
+  artifacts, and MPSRT storage bridges
 - Metal custom MSL source plans with explicit kernel-buffer order
 - OpenCL source artifacts with scalar ABI, static u32/f32 scalars, constants,
   chunking, and boolean output padding
@@ -441,8 +448,8 @@ Prefer these shared locations:
   `src/runtime/gfx_partitioning.*`
 - descriptor-backed stage creation and pipeline descriptors:
   `src/runtime/backend_stage_factory.hpp`,
-  `src/runtime/pipeline_stage_desc.hpp`, and
-  `src/runtime/pipeline_stage_materializer.*`
+  `src/runtime/runtime_materialized_stage.hpp`, and
+  `src/runtime/runtime_stage_materializer.*`
 - binding and manifest contracts: `src/kernel_ir/` and
   `src/mlir/gfx_backend_custom_kernel_adapter.*`
 - infer planning and submission: `src/runtime/infer_pipeline.*`,
@@ -597,19 +604,23 @@ Embedded MPSRT helper kernels live under `src/kernel_ir/metal_kernels/` and are
 exposed through runtime loaders. Keep helper source ownership there instead of
 reintroducing large inline MSL strings in request encoders.
 
-Compiler-owned Metal payloads now include both generated MSL sources and
-MPS/MPSGraph `VendorDescriptor` payloads. When adding a vendor primitive route,
-update the Metal operation policy, `metal_kernel_artifacts.*`, the typed vendor
-descriptor helpers in `src/backends/metal/compiler/apple_vendor_descriptors.*`,
-the shared contract/payload headers in `src/backends/metal/common/mpsrt/`, and
+Compiler-owned Metal payloads include generated MSL sources, typed MPSRT program
+payloads, and MPS/MPSGraph `VendorDescriptor` payloads. When adding a typed
+program route, update `metal_kernel_artifacts.*`,
+`metal_mpsrt_program_cache_payload_codec.*`, the shared program payload headers
+in `src/backends/metal/common/mpsrt/`, and `mpsrt_program_stage.*`. When adding
+a vendor primitive route, update the Metal operation policy,
+`metal_kernel_artifacts.*`, the typed vendor descriptor helpers in
+`src/backends/metal/compiler/apple_vendor_descriptors.*`, the shared
+contract/payload headers in `src/backends/metal/common/mpsrt/`, and
 `mpsrt_vendor_primitive_stage.*` only if the existing runtime contract cannot
-express the new primitive. Do not rebuild vendor descriptors from request-time
-node checks.
+express the new primitive. Do not rebuild Metal payloads from request-time node
+checks.
 
 Fused vendor attention routes are compiler/runtime descriptor routes. Add or
 change the fusion contract in `src/compiler/pipeline_stage_fusion.*`, the
 backend artifact resolver in `src/backends/metal/compiler/metal_kernel_artifacts.*`,
-and the materialization path in `src/runtime/pipeline_stage_materializer.*`.
+and the materialization path in `src/runtime/runtime_stage_materializer.*`.
 Do not reintroduce the deleted standalone
 `src/backends/metal/runtime/mps_graph_attention_stage.*`.
 
@@ -685,10 +696,18 @@ skip or filter tests. `gfx_gtest_matrix_compare` requires explicit
 `GFX_GTEST_MATRIX_<TARGET>_ROOT` cache paths or equivalent `LABEL=DIR` entries
 in `GFX_GTEST_MATRIX_REFERENCE_ROOTS`. Native builds use
 `GFX_GTEST_MATRIX_CURRENT_LABEL` for the locally captured label; cross-build
-host capture fails unless `CMAKE_CROSSCOMPILING_EMULATOR` is configured. Native
-backend and unavailable-adapter coverage must be kept aligned through executable
-test registration, contract coverage, and route coverage rather than source
-parsing.
+host capture fails unless `CMAKE_CROSSCOMPILING_EMULATOR` is configured.
+Android/RPi device capture targets use the current `ov_gfx_*` target output
+directory when invoked from the matching cross-build and rebuild the production
+test binaries first. Use `gfx_gtest_matrix_capture_current_devices` for the
+current Android/Raspberry build context, `gfx_gtest_matrix_capture_android_devices`
+for Android-only capture, and `gfx_gtest_matrix_capture_raspberry_devices` for
+RPi4/RPi5 capture. The all-remote `gfx_gtest_matrix_capture_devices` target
+requires every local root/device file to be configured explicitly. Set
+`GFX_GTEST_MATRIX_*_LOCAL_ROOT` only when intentionally capturing another build
+tree; do not use stale deploy copies as acceptance evidence. Native backend and
+unavailable-adapter coverage must be kept aligned through executable test
+registration, contract coverage, and route coverage rather than source parsing.
 
 ## Public Repository Hygiene
 
