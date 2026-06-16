@@ -19,11 +19,13 @@ from prettytable import PrettyTable
 # ── Detect execution mode ──────────────────────────────────────────────────────
 CUDA_DISABLED = os.getenv('CUDA_VISIBLE_DEVICES', '').strip() == ''
 OPENVINO_MODE = os.getenv('FLASHOCC_OPENVINO_MODE', '0') == '1'
+# Deployment-first default: do not attempt CUDA DVR build unless explicitly enabled.
+ENABLE_CUDA_DVR = os.getenv('FLASHOCC_ENABLE_CUDA_DVR', '0') == '1'
 
 _USE_CUDA_DVR = False
 dvr = None
 
-if not CUDA_DISABLED and not OPENVINO_MODE and torch.cuda.is_available():
+if ENABLE_CUDA_DVR and not CUDA_DISABLED and not OPENVINO_MODE and torch.cuda.is_available():
     try:
         from torch.utils.cpp_extension import load as _cpp_load
         dvr = _cpp_load(

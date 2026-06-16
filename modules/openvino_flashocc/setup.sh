@@ -21,8 +21,6 @@
 #
 # Usage:
 #   bash setup.sh \
-#       --data-pkl   /path/to/nuscenes_infos_val.pkl \
-#       --data-root  /path/to/nuscenes \
 #       [--num-samples 80] \
 #       [--jobs 16] \
 #       [--model-dir /path/to/split_f16out] \
@@ -33,7 +31,7 @@
 #       [--run-test]
 #
 # After setup, run inference with:
-#   bash run_flashocc_ov_ws.sh [--num-samples N] [--data-pkl ...] [...]
+#   bash run_flashocc_ov_ws.sh [--num-samples N] [--ov-device GPU|CPU]
 # =============================================================================
 set -euo pipefail
 
@@ -52,8 +50,6 @@ JOBS=$(nproc)
 MODEL_DIR=""
 MODEL_VARIANT="m0"
 PREPARE_MODELS=0
-DATA_PKL="${SCRIPT_DIR}/data/nuscenes/nuscenes_infos_val.pkl"
-DATA_ROOT="${SCRIPT_DIR}/data/nuscenes"
 NUM_SAMPLES=80
 SKIP_OV_BUILD=0
 SKIP_BEVPOOL_BUILD=0
@@ -133,7 +129,7 @@ prepare_models_if_needed() {
   "$CONV_PIP" install --no-build-isolation "mmcv-full==1.6.0" -q
   "$CONV_PIP" install "mmdet==2.28.2" "mmsegmentation==0.30.0" -q
   "$CONV_PIP" install --no-build-isolation --no-deps "mmdet3d==1.0.0rc4" -q
-  "$CONV_PIP" install "opencv-python<4.10" nuscenes-devkit lyft_dataset_sdk tensorboard "numba>=0.56,<0.60" "networkx>=2.8,<3" "numpy==1.23.5" plyfile scikit-image "trimesh>=2.35.39,<2.35.40" -q
+  "$CONV_PIP" install "opencv-python<4.10" tensorboard "numba>=0.56,<0.60" "networkx>=2.8,<3" "numpy==1.23.5" plyfile scikit-image "trimesh>=2.35.39,<2.35.40" -q
   "$CONV_PIP" install "openvino>=2024.0" onnx -q
 
   mkdir -p "${SCRIPT_DIR}/checkpoints"
@@ -179,8 +175,6 @@ while [[ $# -gt 0 ]]; do
     --model-dir)         MODEL_DIR="$2";    shift 2 ;;
     --model-variant)     MODEL_VARIANT="$2"; shift 2 ;;
     --prepare-models)    PREPARE_MODELS=1;   shift ;;
-    --data-pkl)          DATA_PKL="$2";     shift 2 ;;
-    --data-root)         DATA_ROOT="$2";    shift 2 ;;
     --num-samples)       NUM_SAMPLES="$2";  shift 2 ;;
     --jobs)              JOBS="$2";         shift 2 ;;
     --skip-ov-build)     SKIP_OV_BUILD=1;   shift ;;
@@ -379,8 +373,6 @@ cat > "${SCRIPT_DIR}/setup.env" <<EOF
 OV_RELEASE_DIR="${OV_RELEASE_DIR}"
 OV_BEV_SO="${BEV_SO}"
 FLASHOCC_MODEL_DIR="${MODEL_DIR}"
-FLASHOCC_DATA_PKL="${DATA_PKL}"
-FLASHOCC_DATA_ROOT="${DATA_ROOT}"
 EOF
 ok "setup.env written"
 
@@ -405,7 +397,5 @@ echo ""
 if [[ $RUN_TEST -eq 1 ]]; then
   info "Step 8: Running E2E benchmark (${NUM_SAMPLES} samples) …"
   bash "${SCRIPT_DIR}/run_flashocc_ov_ws.sh" \
-    --num-samples "$NUM_SAMPLES" \
-    --data-pkl    "$DATA_PKL" \
-    --data-root   "$DATA_ROOT"
+    --num-samples "$NUM_SAMPLES"
 fi

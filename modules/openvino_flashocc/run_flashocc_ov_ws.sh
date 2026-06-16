@@ -134,9 +134,8 @@ EXT_ARGS=()
 
 # ── Run ───────────────────────────────────────────────────────────────────────
 cd "${SCRIPT_DIR}"
-exec "${VENV}/bin/python3" run_compare_flashocc_pt_ov.py \
+exec "${VENV}/bin/python3" run_flashocc_ov.py \
   --model-dir             "$MODEL_DIR" \
-  --run                   "$RUN_MODE" \
   --data-pkl              "$DATA_PKL" \
   --data-root             "$DATA_ROOT" \
   --num-samples           "$NUM_SAMPLES" \
