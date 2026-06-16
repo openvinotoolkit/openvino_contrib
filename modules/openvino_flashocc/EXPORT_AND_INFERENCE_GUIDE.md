@@ -118,7 +118,6 @@ openvino_flashocc/
 ├── setup.sh                              # Full setup: clone OV, build, create venv
 ├── setup.env                             # Auto-generated paths (written by setup.sh)
 ├── requirements.txt                      # Python deps for this module
-├── requirements_ov.txt                   # Backward-compatible dependency list used by setup.sh
 ├── openvino_extensions/
 │   └── bev_pool/                         # Custom BEVPool OV C++ extension
 │       ├── bev_pool_op.cpp / .hpp

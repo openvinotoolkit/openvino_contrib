@@ -1,3 +1,4 @@
+// Copyright (C) 2018-2026 Intel Corporation
 /*
  * BEVPoolBinSort GPU Kernel — Single-Workgroup Counting Sort
  *

@@ -1,3 +1,4 @@
+# Copyright (C) 2018-2026 Intel Corporation
 """
 BEVPool OpenCL GPU implementation for FlashOCC.
 

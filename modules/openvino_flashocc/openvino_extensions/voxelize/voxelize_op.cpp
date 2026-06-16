@@ -1,3 +1,4 @@
+// Copyright (C) 2018-2026 Intel Corporation
 // Voxelization CPU Reference Implementation for OpenVINO
 
 #include "voxelize_op.hpp"

@@ -1,3 +1,4 @@
+// Copyright (C) 2018-2026 Intel Corporation
 // SparseEncoder Operation for OpenVINO
 //
 // Full sparse encoder pipeline as a single OV custom op.

@@ -1,3 +1,5 @@
+# Copyright (C) 2018-2026 Intel Corporation
+
 #!/usr/bin/env bash
 # =============================================================================
 # setup.sh — FlashOCC OpenVINO 2026.3 environment setup
@@ -340,7 +342,7 @@ ok "OV installed: $("$VENV_PY" -c 'import openvino; print(openvino.__version__)'
 
 # ── Step 5: Install requirements.txt ─────────────────────────────────────────
 info "Step 5: Installing requirements.txt …"
-"$VENV_PIP" install -r "${SCRIPT_DIR}/requirements_ov.txt" -q
+"$VENV_PIP" install -r "${SCRIPT_DIR}/requirements.txt" -q
 ok "Dependencies installed"
 
 # ── Step 6: Build bev_pool extension ─────────────────────────────────────────
