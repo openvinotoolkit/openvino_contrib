@@ -89,48 +89,31 @@ Options:
 ### 3. Run E2E inference
 
 ```bash
-bash run_flashocc_ov_ws.sh [--num-samples 80] [--data-pkl ...] [--data-root ...]
+bash run_flashocc_ov_ws.sh [--num-samples 80] [--ov-device GPU]
 ```
 
 This is the main entry point for the full benchmark workflow. It calls
-`run_compare_flashocc_pt_ov.py` in OpenVINO mode and keeps the richer CLI
-available for PyTorch-vs-OpenVINO comparison, saved-label consistency checks,
-tensor dumps, and other debugging features.
+`run_flashocc_ov.py` and runs the optimized OpenVINO deployment pipeline.
+Use it for end-to-end inference, profiling, tensor dumps, and other deployment
+debugging tasks.
 
-### 4. Simple OV-only latency runner
+### 4. Run the Python entry directly (optional)
 
-If you only want a lightweight smoke test or stage-latency measurement for the
-OpenVINO pipeline, use `run_flashocc_ov_latency.py` directly instead of the
-full comparison script.
-
-Use this when you want:
-
-- a smaller CLI focused only on OpenVINO inference
-- quick validation that exported IR models run end to end on real samples
-- per-stage latency and throughput without the PyTorch/comparison surface
+For explicit provider selection or direct script control, run `run_flashocc_ov.py`:
 
 ```bash
-python run_flashocc_ov_latency.py \
+python run_flashocc_ov.py \
      --model-dir /path/to/split_f16out \
-     --data-pkl /path/to/nuscenes_infos_val.pkl \
-     --data-root /path/to/nuscenes \
-     --ov-device GPU \
-     --num-samples 20
+     --sample-provider random \
+     --num-samples 20 \
+     --ov-device GPU
 ```
-
-Use `run_compare_flashocc_pt_ov.py` when you need any of the following:
-
-- PyTorch vs OpenVINO comparison
-- saved-label consistency analysis
-- GT comparison and CSV export
-- tensor dumping or deeper debugging workflows
 
 ## Directory Layout (after setup)
 
 ```
 openvino_flashocc/
-├── run_flashocc_ov_latency.py          # Simple OV-only latency/smoke-test runner
-├── run_compare_flashocc_pt_ov.py         # E2E inference script (all OV optimizations)
+├── run_flashocc_ov.py                    # E2E inference script (all OV optimizations)
 ├── run_flashocc_ov_ws.sh                 # Benchmark runner (reads setup.env)
 ├── setup.sh                              # Full setup: clone OV, build, create venv
 ├── setup.env                             # Auto-generated paths (written by setup.sh)
