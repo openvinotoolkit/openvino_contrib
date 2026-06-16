@@ -1,3 +1,5 @@
+# Copyright (C) 2018-2026 Intel Corporation
+
 #!/usr/bin/env bash
 # run_flashocc_ov_ws.sh — Run FlashOCC E2E with workspace-built OpenVINO 2026.3
 #

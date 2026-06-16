@@ -1,3 +1,5 @@
+# Copyright (C) 2018-2026 Intel Corporation
+
 #!/usr/bin/env python3
 """FlashOCC OpenVINO end-to-end inference runner.
 

@@ -1,3 +1,4 @@
+// Copyright (C) 2018-2026 Intel Corporation
 /*
  * BEVPool V2 GPU Kernel — Pre-sorted Interval-Based Scatter (No Atomics)
  *

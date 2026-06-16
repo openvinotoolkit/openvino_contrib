@@ -1,3 +1,4 @@
+// Copyright (C) 2018-2026 Intel Corporation
 // OpenVINO Extension Entry Point for Sparse Encoder
 
 #include <openvino/core/extension.hpp>

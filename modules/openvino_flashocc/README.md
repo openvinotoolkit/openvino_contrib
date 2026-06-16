@@ -82,7 +82,7 @@ exact array shapes and dtypes every provider must return.
 ## Quick Links
 
 - Full instructions: [README_OV.md](./README_OV.md)
-- Python dependencies: [requirements_ov.txt](./requirements_ov.txt)
+- Python dependencies: [requirements.txt](./requirements.txt)
 
 ## Notes
 

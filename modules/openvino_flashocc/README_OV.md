@@ -165,7 +165,7 @@ FlashOCC/
 ├── run_flashocc_ov_ws.sh                 # Benchmark runner (reads setup.env)
 ├── setup.sh                              # Full setup: clone OV, build, create venv
 ├── setup.env                             # Auto-generated paths (written by setup.sh)
-├── requirements_ov.txt                   # Python deps (excluding OV — built from source)
+├── requirements.txt                      # Python deps (excluding OV — built from source)
 ├── openvino_extensions/
 │   └── bev_pool/                         # Custom BEVPool OV C++ extension
 │       ├── bev_pool_op.cpp / .hpp

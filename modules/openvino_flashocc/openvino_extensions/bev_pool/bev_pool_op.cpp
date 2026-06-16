@@ -1,3 +1,4 @@
+// Copyright (C) 2018-2026 Intel Corporation
 // BEVPool Operation CPU Implementation for OpenVINO
 // Reference fallback; GPU acceleration via OpenCL custom layer
 

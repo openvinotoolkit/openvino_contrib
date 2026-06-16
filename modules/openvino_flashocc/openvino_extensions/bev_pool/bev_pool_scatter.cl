@@ -1,3 +1,4 @@
+// Copyright (C) 2018-2026 Intel Corporation
 /*
  * BEVPoolScatter GPU Kernel for OpenVINO Custom Layer — Per-Pixel Optimized
  *

@@ -1,3 +1,4 @@
+// Copyright (C) 2018-2026 Intel Corporation
 // BEVPool Operations for OpenVINO
 // Implements BEV pooling using int32 fixed-point atomics for speed.
 //

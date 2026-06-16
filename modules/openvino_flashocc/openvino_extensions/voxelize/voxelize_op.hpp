@@ -1,3 +1,4 @@
+// Copyright (C) 2018-2026 Intel Corporation
 // Voxelization Operations for OpenVINO
 //
 // Three-layer GPU-accelerated voxelization:

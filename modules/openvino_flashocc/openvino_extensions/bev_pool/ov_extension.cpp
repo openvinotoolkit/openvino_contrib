@@ -1,3 +1,4 @@
+// Copyright (C) 2018-2026 Intel Corporation
 // OpenVINO Extension Entry Point for BEVPool Operations
 
 #include <openvino/core/extension.hpp>
