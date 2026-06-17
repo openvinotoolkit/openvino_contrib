@@ -245,4 +245,70 @@ def bev_pool_v2(depth, feat, ranks_depth, ranks_feat, ranks_bev,
     )
 
 
-__all__ = ["bev_pool", "bev_pool_v2"]
+class TRTBEVPoolv2(torch.autograd.Function):
+    """Compatibility shim for legacy TRT-style calls used by model code."""
+
+    @staticmethod
+    def symbolic(g,
+                 depth,
+                 feat,
+                 ranks_depth,
+                 ranks_feat,
+                 ranks_bev,
+                 interval_starts,
+                 interval_lengths,
+                 output_height=128,
+                 output_width=128,
+                 output_z=1):
+        return g.op(
+            "mmdeploy::bev_pool_v2",
+            depth,
+            feat,
+            ranks_depth,
+            ranks_feat,
+            ranks_bev,
+            interval_starts,
+            interval_lengths,
+            output_height_i=output_height,
+            output_width_i=output_width,
+            output_z_i=output_z,
+        )
+
+    @staticmethod
+    def forward(g,
+                depth,
+                feat,
+                ranks_depth,
+                ranks_feat,
+                ranks_bev,
+                interval_starts,
+                interval_lengths,
+                output_height=128,
+                output_width=128,
+                output_z=1):
+        feat = feat.unsqueeze(0)
+        depth = depth.unsqueeze(0)
+        bev_feat_shape = (
+            depth.shape[0],
+            output_z,
+            output_height,
+            output_width,
+            feat.shape[-1],
+        )
+        bev_feat = bev_pool_v2(
+            depth,
+            feat,
+            ranks_depth,
+            ranks_feat,
+            ranks_bev,
+            bev_feat_shape,
+            interval_starts,
+            interval_lengths,
+        )
+        if output_z == 1:
+            bev_feat = bev_feat.squeeze(2)
+            bev_feat = bev_feat.permute(0, 2, 3, 1)
+        return bev_feat
+
+
+__all__ = ["bev_pool", "bev_pool_v2", "TRTBEVPoolv2"]

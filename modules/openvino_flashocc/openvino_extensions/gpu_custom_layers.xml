@@ -1,7 +1,6 @@
 # Copyright (C) 2018-2026 Intel Corporation
 <!--
-  OpenVINO Custom GPU Kernel Configuration
-  Combined config for all BEVFusion custom operations.
+    OpenVINO Custom GPU Kernel Configuration for FlashOCC BEV pool operations.
 -->
 
 <!-- ═══ BEVPool: fused softmax + scatter (backward-compatible) ═══ -->
@@ -110,29 +109,3 @@
     <WorkSizes global="1024,1,1" local="1024,1,1"/>
 </CustomLayer>
 
-<!-- ═══ VoxelizeScatter: GPU hash-table voxelization (single WG) ═══ -->
-<CustomLayer name="VoxelizeScatter" type="SimpleGPU" version="1">
-    <Kernel entry="voxelize_scatter">
-        <Source filename="voxelize_scatter.cl"/>
-    </Kernel>
-    <Buffers>
-        <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
-        <Tensor arg-index="1" type="input"  port-index="1" format="BFYX"/>
-        <Tensor arg-index="2" type="output" port-index="0" format="BFYX"/>
-    </Buffers>
-    <CompilerOptions options="-cl-mad-enable"/>
-    <WorkSizes global="1024,1,1" local="1024,1,1"/>
-</CustomLayer>
-
-<!-- ═══ VoxelizeMean: int32 → float32 mean features (single WG) ═══ -->
-<CustomLayer name="VoxelizeMean" type="SimpleGPU" version="1">
-    <Kernel entry="voxelize_mean">
-        <Source filename="voxelize_mean.cl"/>
-    </Kernel>
-    <Buffers>
-        <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
-        <Tensor arg-index="1" type="output" port-index="0" format="BFYX"/>
-    </Buffers>
-    <CompilerOptions options="-cl-mad-enable"/>
-    <WorkSizes global="1024,1,1" local="1024,1,1"/>
-</CustomLayer>

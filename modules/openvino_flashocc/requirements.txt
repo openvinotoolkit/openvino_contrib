@@ -5,5 +5,4 @@
 numpy>=2.0.0
 onnx>=1.14.0
 opencv-python-headless>=4.8.0
-pyopencl>=2024.1
 packaging>=23.0
