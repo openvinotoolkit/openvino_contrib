@@ -1,10 +1,11 @@
 import os
 
-# Conversion-safe mode avoids importing dataset/core modules that pull optional
-# CUDA/C++ ops (mmcv._ext) unavailable in CPU-only conversion environments.
-if os.getenv("FLASHOCC_CONVERSION_SAFE_IMPORTS", "0") == "1":
-	from .models import *
-else:
-	from .datasets import *
+# Default to OV-only safe imports. Legacy full imports can be enabled explicitly.
+from .models import *
+
+if os.getenv("FLASHOCC_ENABLE_LEGACY_IMPORTS", "0") == "1":
 	from .core import *
-	from .models import *
+	try:
+		from .datasets import *
+	except Exception:
+		pass
