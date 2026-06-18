@@ -13,6 +13,13 @@ package genai
 #include <stdlib.h>
 #include <string.h>
 #include "openvino/genai/c/llm_pipeline.h"
+#include "openvino/genai/c/vlm_pipeline.h"
+
+static ov_status_e ov_genai_vlm_pipeline_create_cgo(const char* models_path,
+                                                     const char* device,
+                                                     ov_genai_vlm_pipeline** pipe) {
+    return ov_genai_vlm_pipeline_create(models_path, device, 0, pipe);
+}
 #include "openvino/genai/c/visibility.h"
 
 #include "openvino/c/openvino.h"
@@ -67,7 +74,11 @@ type SamplingParams struct {
 // 	pipe *C.LLMPipelineHandle
 // }
 
-type Model *C.ov_genai_llm_pipeline
+type modelHandle struct {
+	llm *C.ov_genai_llm_pipeline
+	vlm *C.ov_genai_vlm_pipeline
+}
+type Model *modelHandle
 
 func IsGGUF(filePath string) (bool, error) {
 	file, err := os.Open(filePath)
@@ -185,7 +196,7 @@ func UnpackTarGz(tarGzPath string, destDir string) error {
 	return nil
 }
 
-func CreatePipeline(modelsPath string, device string) *C.ov_genai_llm_pipeline {
+func CreatePipeline(modelsPath string, device string) Model {
 	cModelsPath := C.CString(modelsPath)
 	cDevice := C.CString(device)
 
@@ -200,7 +211,7 @@ func CreatePipeline(modelsPath string, device string) *C.ov_genai_llm_pipeline {
 	} else {
 		C.ov_genai_llm_pipeline_create_cgo(cModelsPath, cDevice, &pipeline)
 	}
-	return pipeline
+	return &modelHandle{llm: pipeline}
 }
 
 func PrintGenaiMetrics(metrics *C.ov_genai_perf_metrics) {
@@ -294,7 +305,14 @@ func SetSamplingParams(samplingparameters *SamplingParams) *C.ov_genai_generatio
 	return cConfig
 }
 
-func GenerateTextWithMetrics(pipeline *C.ov_genai_llm_pipeline, input string, samplingparameters *SamplingParams, seq *Sequence) string {
+func GenerateTextWithMetrics(model Model, input string, samplingparameters *SamplingParams, seq *Sequence) string {
+	if model.vlm != nil {
+		return generateTextVLM(model.vlm, input, samplingparameters, seq)
+	}
+	return generateTextLLM(model.llm, input, samplingparameters, seq)
+}
+
+func generateTextLLM(pipeline *C.ov_genai_llm_pipeline, input string, samplingparameters *SamplingParams, seq *Sequence) string {
 	cInput := C.CString(input)
 	defer C.free(unsafe.Pointer(cInput))
 
@@ -348,7 +366,11 @@ func GenerateText(pipeline *C.ov_genai_llm_pipeline, input string, streamer_call
 }
 
 func FreeModel(model Model) {
-	C.ov_genai_llm_pipeline_free(model)
+	if model.vlm != nil {
+		C.ov_genai_vlm_pipeline_free(model.vlm)
+	} else {
+		C.ov_genai_llm_pipeline_free(model.llm)
+	}
 }
 
 func GetGenaiAvailableDevices() []map[string]string {
@@ -398,6 +420,40 @@ func GetOvVersion() {
 	defer C.ov_version_free(&ov_version)
 }
 
+
+func generateTextVLM(pipeline *C.ov_genai_vlm_pipeline, input string, samplingparameters *SamplingParams, seq *Sequence) string {
+	cInput := C.CString(input)
+	defer C.free(unsafe.Pointer(cInput))
+
+	cConfig := SetSamplingParams(samplingparameters)
+	var result *C.ov_genai_vlm_decoded_results
+
+	var streamer C.streamer_callback
+	streamer.callback_func = (C.callback_function)(unsafe.Pointer(C.goCallbackBridge))
+	streamer.args = unsafe.Pointer(seq)
+
+	C.ov_genai_vlm_pipeline_start_chat(pipeline)
+	C.ov_genai_vlm_pipeline_generate(pipeline, cInput, nil, 0, (*C.ov_genai_generation_config)(cConfig), &streamer, &result)
+	C.ov_genai_vlm_pipeline_finish_chat(pipeline)
+
+	output_size := C.size_t(0)
+	C.ov_genai_vlm_decoded_results_get_string(result, (*C.char)(nil), &output_size)
+	cOutput := C.malloc(output_size)
+	defer C.free(cOutput)
+	C.ov_genai_vlm_decoded_results_get_string(result, (*C.char)(cOutput), &output_size)
+
+	return C.GoString((*C.char)(cOutput))
+}
+
+func CreateVLMPipeline(modelsPath string, device string) Model {
+	cModelsPath := C.CString(modelsPath)
+	cDevice := C.CString(device)
+	defer C.free(unsafe.Pointer(cModelsPath))
+	defer C.free(unsafe.Pointer(cDevice))
+	var pipeline *C.ov_genai_vlm_pipeline
+	C.ov_genai_vlm_pipeline_create_cgo(cModelsPath, cDevice, &pipeline)
+	return &modelHandle{vlm: pipeline}
+}
 //export goCallbackBridge
 func goCallbackBridge(args *C.char, gen_result unsafe.Pointer) C.int {
 	if args != nil {
@@ -411,10 +467,10 @@ func goCallbackBridge(args *C.char, gen_result unsafe.Pointer) C.int {
 		// fmt.Printf("%s", goStr)
 		// os.Stdout.Sync()
 		FlushPending((*Sequence)(result))
-		return C.OV_GENAI_STREAMMING_STATUS_RUNNING
+		return C.OV_GENAI_STREAMING_STATUS_RUNNING
 	} else {
 		fmt.Println("Callback executed with NULL message!")
-		return C.OV_GENAI_STREAMMING_STATUS_STOP
+		return C.OV_GENAI_STREAMING_STATUS_STOP
 	}
 }
 

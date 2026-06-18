@@ -428,9 +428,20 @@ func (s *Server) loadModel(mpath string, mname string, device string) {
 			}
 		}
 
-		ov_model_path = filepath.Join(tempDir, subdirs[0])
+		if len(subdirs) > 0 { ov_model_path = filepath.Join(tempDir, subdirs[0]) } else { ov_model_path = tempDir }
 	}
 
+	// VLM models have openvino_language_model.xml instead of openvino_model.xml
+	if _, e1 := os.Stat(filepath.Join(ov_model_path, "openvino_model.xml")); os.IsNotExist(e1) {
+		if _, e2 := os.Stat(filepath.Join(ov_model_path, "openvino_language_model.xml")); e2 == nil {
+			log.Printf("VLM model detected, using VLMPipeline: %s", ov_model_path)
+			s.model = genai.CreateVLMPipeline(ov_model_path, device)
+			log.Printf("The model had been loaded by GenAI VLMPipeline, ov_model_path: %s , %s", ov_model_path, device)
+			s.status = ServerStatusReady
+			s.ready.Done()
+			return
+		}
+	}
 	s.model = genai.CreatePipeline(ov_model_path, device)
 	log.Printf("The model had been load by GenAI, ov_model_path: %s , %s", ov_model_path, device)
 	s.status = ServerStatusReady
