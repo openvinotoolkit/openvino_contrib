@@ -5,8 +5,13 @@ from mmcv.cnn import ConvModule
 from mmcv.runner import BaseModule
 import numpy as np
 from mmdet3d.models.builder import HEADS, build_loss
-from ..losses.semkitti_loss import sem_scal_loss, geo_scal_loss
-from ..losses.lovasz_softmax import lovasz_softmax
+
+
+def _get_occ_loss_helpers():
+    from ..losses.semkitti_loss import sem_scal_loss, geo_scal_loss
+    from ..losses.lovasz_softmax import lovasz_softmax
+
+    return sem_scal_loss, geo_scal_loss, lovasz_softmax
 
 
 nusc_class_frequencies = np.array([
@@ -364,6 +369,7 @@ class BEVOCCHead2D_V2(BaseModule):      # Use stronger loss setting
         loss = dict()
         voxel_semantics = voxel_semantics.long()    # (B, Dx, Dy, Dz)
         preds = occ_pred.permute(0, 4, 1, 2, 3).contiguous()    # (B, n_cls, Dx, Dy, Dz)
+        sem_scal_loss, geo_scal_loss, lovasz_softmax = _get_occ_loss_helpers()
         loss_occ = self.loss_occ(
             preds,
             voxel_semantics,

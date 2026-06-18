@@ -1,2 +1,1 @@
-from .bbox import *
-from .hook import *
+# Core is not required for OpenVINO conversion or inference.
