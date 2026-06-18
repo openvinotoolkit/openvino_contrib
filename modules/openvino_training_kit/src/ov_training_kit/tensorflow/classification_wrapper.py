@@ -1,3 +1,6 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 import tensorflow as tf
 from .base_wrapper import BaseWrapper
 from sklearn.metrics import (

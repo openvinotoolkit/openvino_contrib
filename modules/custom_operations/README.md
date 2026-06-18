@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Collection of Custom Operations using OpenVINO Extensibility Mechanism
 
 This module provides a guide and the implementation of a few custom operations in the Intel OpenVINO runtime using its [Extensibility Mechanism](https://docs.openvino.ai/latest/openvino_docs_Extensibility_UG_Intro.html).

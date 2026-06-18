@@ -1,3 +1,6 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 from .base_wrapper import BaseWrapper
 from .classification_wrapper import ClassificationWrapper
 from .regression_wrapper import RegressionWrapper

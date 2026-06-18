@@ -1,3 +1,6 @@
+// Copyright (C) 2018-2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { ChatOpenVINO } from 'openvino-langchain';
 import { basename } from 'node:path';

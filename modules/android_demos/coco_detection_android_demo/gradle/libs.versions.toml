@@ -1,3 +1,6 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 [versions]
 agp = "8.4.2"
 kotlin = "1.9.0"

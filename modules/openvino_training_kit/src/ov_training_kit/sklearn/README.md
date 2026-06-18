@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Scikit-learn Models with OpenVINO Optimization
 
 This module provides custom wrappers for popular `scikit-learn` models, enabling:

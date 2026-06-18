@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # OpenVINO™ LangChain.js adapter
 
 This package contains the LangChain.js integrations for OpenVINO™

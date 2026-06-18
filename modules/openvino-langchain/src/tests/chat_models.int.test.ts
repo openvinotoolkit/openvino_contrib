@@ -1,3 +1,6 @@
+// Copyright (C) 2018-2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 import { test, expect, beforeAll } from '@jest/globals';
 import { ChatOpenVINO } from '../chat_models.js';
 import { BaseMessage, HumanMessage } from '@langchain/core/messages';
