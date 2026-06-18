@@ -28,5 +28,9 @@ header:
     - 'modules/ollama_openvino/**'
     # Third-party license inventory, not a source file.
     - 'third-party-programs.txt'
+    # Machine-readable manifest for the third-party license inventory.
+    - '.github/scripts/third-party-programs/third-party-programs.json'
+    # Verbatim third-party license texts that cannot carry an Intel header.
+    - '.github/scripts/third-party-programs/licenses/**'
 
   comment: never
