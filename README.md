@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Repository for OpenVINO's extra modules
 
 This repository is intended for the development of so-called "extra" modules, contributed functionality. New modules quite often do not have stable API, and they are not well-tested. Thus, they shouldn't be released as a part of official OpenVINO distribution, since the library maintains backward compatibility, and tries to provide decent performance and stability.

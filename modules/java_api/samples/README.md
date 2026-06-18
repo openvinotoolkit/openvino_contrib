@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Samples
 
 The OpenVINO samples are simple console applications that show how to utilize specific OpenVINO API capabilities within an application. The following samples are available
