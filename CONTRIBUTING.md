@@ -1,4 +1,9 @@
 
+<!--
+Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # How to Contribute to OpenVINO&trade; Contrib repository
 
 We appreciate your intention to contribute to already existed modules or to propose a new one.

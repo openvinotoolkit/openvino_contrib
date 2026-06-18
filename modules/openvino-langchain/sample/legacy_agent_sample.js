@@ -1,3 +1,6 @@
+// Copyright (C) 2018-2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 import { basename } from 'node:path';
 import { ChatOpenVINO } from 'openvino-langchain';
 import { createToolCallingAgent, AgentExecutor } from 'langchain/agents';
