@@ -1,3 +1,6 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 name: Good First Issue
 description: Create a Good First Issue for new contributors.
 title: "[Good First Issue]: "

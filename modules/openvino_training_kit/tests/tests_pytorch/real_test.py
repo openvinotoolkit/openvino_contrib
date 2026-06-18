@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2018-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 """End-to-end test for PyTorch ClassificationWrapper with OpenVINO optimization on CIFAR-10.

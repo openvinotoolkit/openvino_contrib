@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # OpenVino training kit
 
 Wrappers for scikit-learn, PyTorch and Tensorflow models with OpenVINO optimization.

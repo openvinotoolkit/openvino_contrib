@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Generative AI Models Optimization Examples
 
 This folder provides examples for evaluating and optimizing Generative AI models across different scenarios.

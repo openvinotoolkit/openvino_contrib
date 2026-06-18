@@ -1,3 +1,6 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 from setuptools import setup, find_packages
 
 with open("README.md", "r", encoding="utf-8") as f:

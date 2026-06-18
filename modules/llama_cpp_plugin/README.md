@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+
 ### Build instructions
 
 This plugin should be built in the same fashion as the rest of the modules:

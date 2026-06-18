@@ -1,4 +1,7 @@
 #!/bin/bash
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 
 # cmake build targets / test suities to run
 SUITES=(ov_nvidia_unit_tests ov_nvidia_func_tests)

@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # NVIDIA GPU plugin operation set specification
 
 This specification document based on [opset12](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/opset12.md) operation set supported in OpenVINO.
