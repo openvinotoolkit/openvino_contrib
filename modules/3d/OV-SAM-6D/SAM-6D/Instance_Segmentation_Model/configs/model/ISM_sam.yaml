@@ -7,6 +7,7 @@ visible_thred: 0.5
 pointcloud_sample_num: 2048
 
 defaults:
+  - _self_
   - segmentor_model: sam
   - descriptor_model: dinov2
   

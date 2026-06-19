@@ -28,7 +28,7 @@ import torch
 import torch.nn.functional as F
 import torchvision.transforms as T
 from torchvision.ops.boxes import box_area
-import imageio
+import imageio.v2 as imageio
 from plyfile import PlyData
 
 import openvino as ov
@@ -59,6 +59,34 @@ from model.utils import BatchedData, Detections, convert_npz_to_json
 from utils.inout import save_json_bop23
 from PIL import Image
 from eval_utils import evaluate_and_print_map
+
+
+def stabilize_masks(masks):
+    """Deterministically denoise SAM mask boundaries.
+
+    OpenVINO/GPU and PyTorch SAM decoders produce logits that differ by a few
+    ULPs, which flips isolated single boundary pixels at the mask_threshold
+    crossing. Those ~few-pixel differences are benign for the segmentation
+    metric (IoU) but shift the deterministic point sampling in the downstream
+    fp16 Pose Estimation Model, which can swing AR dramatically. A 3x3 binary
+    majority (median) filter removes isolated protrusions and fills isolated
+    1-pixel dents while leaving smooth edges untouched, yielding a canonical,
+    backend-independent boundary.
+
+    Args:
+        masks: ``np.ndarray`` of shape ``[N, H, W]`` (bool or numeric).
+
+    Returns:
+        ``np.ndarray`` of the same shape/dtype with denoised boundaries.
+    """
+    if masks is None or len(masks) == 0:
+        return masks
+    out = np.zeros_like(masks)
+    for i in range(masks.shape[0]):
+        binary = (masks[i] > 0).astype(np.uint8) * 255
+        denoised = cv2.medianBlur(binary, 3)
+        out[i] = (denoised > 127).astype(masks.dtype)
+    return out
 
 
 def _calculate_query_translation_ov(proposals, depth,
@@ -1409,7 +1437,7 @@ def init_model_ov(
                 _prec = "f32"
             else:
                 _prec = (
-                    "f32" if "sam_mask_decoder" in _name or "fastsam" in _name
+                    "f32" if "sam_mask_decoder" in _name
                     else "f16"
                 )
             config = {"PERFORMANCE_HINT": "LATENCY",
@@ -1580,14 +1608,10 @@ def init_model_ov_ext(
             model_ir = core.read_model(xml_path)
 
         if device.upper().startswith("GPU"):
-            _name = os.path.basename(xml_path)
             if precision == "fp32":
                 _prec = "f32"
             else:
-                _prec = (
-                    "f32" if "fastsam" in _name
-                    else "f16"
-                )
+                _prec = "f16"
             config = {"PERFORMANCE_HINT": "LATENCY",
                       "NUM_STREAMS": "1",
                       "INFERENCE_PRECISION_HINT": _prec}
@@ -2162,6 +2186,9 @@ if __name__ == "__main__":
                     for key in det_score.keys
                 })
                 det_np.to_numpy()
+                # Stabilize SAM mask boundaries (backend-independent denoise)
+                # so downstream fp16 point sampling is deterministic.
+                det_np.masks = stabilize_masks(det_np.masks)
                 save_path = os.path.join(output_dir, "detection_ism")
                 os.makedirs(output_dir, exist_ok=True)
                 det_np.save_to_file(0, frame_id, 0, save_path, "Custom",
