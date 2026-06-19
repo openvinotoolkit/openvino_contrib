@@ -52,8 +52,10 @@ from __future__ import absolute_import, division, print_function
 import os
 import sys
 import argparse
-import numpy as np
+
 import cv2
+import numpy as np
+import openvino as ov
 
 # make lib/ importable
 _cur = os.path.dirname(os.path.abspath(__file__))
@@ -83,12 +85,14 @@ class CdpnOVInference:
     extension_path : str or None
         Path to the CDPN extension .so (e.g. cdpn_cpu_extension.so).
         Required for E2E models.
+    inference_precision : str
+        GPU inference precision hint: 'f32', 'f16', or 'none'. Ignored on CPU.
     """
 
     def __init__(self, model_path, obj_info,
                  device='CPU', camera_matrix=None,
-                 extension_path=None):
-        import openvino as ov
+                 extension_path=None,
+                 inference_precision='f32'):
 
         self.device = device
         self.obj_info = obj_info
@@ -130,15 +134,26 @@ class CdpnOVInference:
                     gpu_config))
 
         if device == 'GPU':
-            # Force FP32 inference precision on GPU
-            config[ov.properties.hint.inference_precision()] = ov.Type.f32
-            print('[CdpnOVInference] GPU: forcing FP32 inference precision')
+            precision_key = inference_precision.lower()
+            if precision_key in ('f32', 'fp32'):
+                config[ov.properties.hint.inference_precision()] = ov.Type.f32
+                print('[CdpnOVInference] GPU: using FP32 inference precision')
+            elif precision_key in ('f16', 'fp16'):
+                config[ov.properties.hint.inference_precision()] = ov.Type.f16
+                print('[CdpnOVInference] GPU: using FP16 inference precision')
+            elif precision_key in ('none', 'auto'):
+                print('[CdpnOVInference] GPU: using plugin default inference precision')
+            else:
+                raise ValueError('Unsupported GPU inference precision: {}'.format(
+                    inference_precision))
 
         print('[CdpnOVInference] OpenVINO {} - device: {}'.format(
             ov.__version__, device))
 
         self.model = self.core.read_model(model_path)
         self.compiled = self.core.compile_model(self.model, device, config)
+
+        self._infer_request = self.compiled.create_infer_request()
 
         # Detect model type by checking output names
         output_names = set()
@@ -196,7 +211,6 @@ class CdpnOVInference:
             'pnp_success'    : bool
         """
         assert len(rgb_list) == len(box_list) == len(obj_list)
-        num_samples = len(rgb_list)
 
         # E2E path: entire pipeline in the graph including PnP
         if self.model_type == 'e2e':
@@ -312,7 +326,7 @@ class CdpnOVInference:
             bwh_batch[idx, 0, 0]  = bbox_whs[idx]
             camK_batch[idx, 0, 0] = cam_K_arr
 
-        ov_out = self.compiled({
+        ov_out = self._infer_request.infer({
             'image': img_batch,
             'bbox': bbox_batch,
             'obj_extents': ext_batch,
@@ -396,7 +410,7 @@ class CdpnOVInference:
             bwh_batch[idx, 0, 0] = bbox_whs[idx]
             camK_batch[idx, 0, 0] = cam_K_arr
 
-        ov_out = self.compiled({
+        ov_out = self._infer_request.infer({
             'image': img_batch,
             'bbox': bbox_batch,
             'obj_extents': ext_batch,
@@ -462,7 +476,7 @@ class CdpnOVInference:
             rgb_list, box_list)
 
         # Step 2: Single batched OV forward
-        ov_res = self.compiled(inp_batch)
+        ov_res = self._infer_request.infer(inp_batch)
 
         raw_rot_all = ov_res[0]
         raw_trans_all = ov_res[1]
@@ -682,6 +696,9 @@ def main():
                         help='Max samples per object (0 = all)')
     parser.add_argument('--extension', type=str, default=None,
                         help='Path to CDPN extension .so')
+    parser.add_argument('--infer_precision', type=str, default='f32',
+                        choices=('f32', 'f16', 'none'),
+                        help='GPU inference precision hint (default: f32)')
     args = parser.parse_args()
 
     if args.gpu:
@@ -706,6 +723,7 @@ def main():
         obj_info=obj_info,
         device=device,
         extension_path=args.extension,
+        inference_precision=args.infer_precision,
     )
 
     # 3. Determine which objects to test

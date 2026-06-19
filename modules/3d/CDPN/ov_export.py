@@ -54,6 +54,7 @@ from __future__ import absolute_import, division, print_function
 import argparse
 import os
 import sys
+import xml.etree.ElementTree as ET
 
 import numpy as np
 import torch
@@ -62,6 +63,7 @@ import openvino as ov
 from openvino import opset13 as opset
 from openvino import Type as OVType
 from openvino.op import Result as OVResult
+import openvino.passes as ov_passes
 
 
 
@@ -98,7 +100,7 @@ def build_cdpn_model(cfg_path, checkpoint_path):
     return model, cfg
 
 
-def _slice_last_dim(opset, tensor, start_idx, end_idx):
+def _slice_last_dim(tensor, start_idx, end_idx):
     axis_3 = opset.constant(np.array([3], dtype=np.int64))
     one_step = opset.constant(np.array([1], dtype=np.int64))
 
@@ -108,7 +110,7 @@ def _slice_last_dim(opset, tensor, start_idx, end_idx):
                        one_step, axis_3)
 
 
-def _build_coord_denorm_subgraph(opset, coord_maps, obj_extents):
+def _build_coord_denorm_subgraph(coord_maps, obj_extents):
     split_axis = opset.constant(np.int64(1))
     split_lengths = opset.constant(np.array([3, 1], dtype=np.int64))
     coord_split = opset.variadic_split(coord_maps, split_axis, split_lengths)
@@ -130,23 +132,23 @@ def _build_coord_denorm_subgraph(opset, coord_maps, obj_extents):
     return denorm_coords, confidence
 
 
-def _build_trans_decode_subgraph(opset, raw_trans_4d, bbox_wh, crop_meta,
+def _build_trans_decode_subgraph(raw_trans_4d, bbox_wh, crop_meta,
                                  cam_K, out_res=64.0):
-    ratio_dcx = _slice_last_dim(opset, raw_trans_4d, 0, 1)
-    ratio_dcy = _slice_last_dim(opset, raw_trans_4d, 1, 2)
-    ratio_depth = _slice_last_dim(opset, raw_trans_4d, 2, 3)
+    ratio_dcx = _slice_last_dim(raw_trans_4d, 0, 1)
+    ratio_dcy = _slice_last_dim(raw_trans_4d, 1, 2)
+    ratio_depth = _slice_last_dim(raw_trans_4d, 2, 3)
 
-    bw = _slice_last_dim(opset, bbox_wh, 0, 1)
-    bh = _slice_last_dim(opset, bbox_wh, 1, 2)
+    bw = _slice_last_dim(bbox_wh, 0, 1)
+    bh = _slice_last_dim(bbox_wh, 1, 2)
 
-    c_w = _slice_last_dim(opset, crop_meta, 0, 1)
-    c_h = _slice_last_dim(opset, crop_meta, 1, 2)
-    s_val = _slice_last_dim(opset, crop_meta, 2, 3)
+    c_w = _slice_last_dim(crop_meta, 0, 1)
+    c_h = _slice_last_dim(crop_meta, 1, 2)
+    s_val = _slice_last_dim(crop_meta, 2, 3)
 
-    fx = _slice_last_dim(opset, cam_K, 0, 1)
-    fy = _slice_last_dim(opset, cam_K, 1, 2)
-    cx = _slice_last_dim(opset, cam_K, 2, 3)
-    cy = _slice_last_dim(opset, cam_K, 3, 4)
+    fx = _slice_last_dim(cam_K, 0, 1)
+    fy = _slice_last_dim(cam_K, 1, 2)
+    cx = _slice_last_dim(cam_K, 2, 3)
+    cy = _slice_last_dim(cam_K, 3, 4)
 
     out_res_const = opset.constant(np.float32(out_res))
     pred_depth = opset.multiply(ratio_depth, opset.divide(out_res_const, s_val))
@@ -159,7 +161,7 @@ def _build_trans_decode_subgraph(opset, raw_trans_4d, bbox_wh, crop_meta,
     return opset.concat([tx, ty, pred_depth], axis=3)
 
 
-def _make_CdpnPreprocess(ov, OVType):
+def _make_CdpnPreprocess():
     """Factory: return the CdpnPreprocess graph-topology wrapper class.
 
     Defined as a factory because ov/OVType are lazy-imported inside each
@@ -216,7 +218,7 @@ def _make_CdpnPreprocess(ov, OVType):
     return CdpnPreprocess
 
 
-def _build_composite_input_params(opset, ov, OVType):
+def _build_composite_input_params():
     """Create the 5 shared 4D-BFYX input parameters used by EXTNN and E2E graphs."""
     param_image = opset.parameter(
         ov.PartialShape([-1, -1, -1, 3]), OVType.u8, name='image')
@@ -232,7 +234,7 @@ def _build_composite_input_params(opset, ov, OVType):
     return param_image, param_bbox, param_extents, param_bbox_wh, param_cam_K
 
 
-def _rewire_nn_body(opset, nn_model, tensor_out):
+def _rewire_nn_body(nn_model, tensor_out):
     """Rewire nn_model's input to tensor_out; return (coord_maps_node, raw_trans_4d).
 
     Replaces the NN Parameter input with the output of a preceding custom op
@@ -267,7 +269,7 @@ def _make_verify_inputs():
     }
 
 
-def _save_ir(ov, model, output_dir, basename, tag):
+def _save_ir(model, output_dir, basename, tag):
     """Save OV model as FP32 IR; print file size; return (xml_path, bin_path, size_mb)."""
     xml_path = os.path.join(output_dir, basename + '.xml')
     bin_path = os.path.join(output_dir, basename + '.bin')
@@ -338,7 +340,7 @@ def export_to_ov_ir(model, output_dir, basename='cdpn_stage3',
 
     # Save FP32
     xml_path, bin_path, bin_size = _save_ir(
-        ov, ov_model, output_dir, basename, 'ov_export:nn')
+        ov_model, output_dir, basename, 'ov_export:nn')
     results = {'xml': xml_path, 'bin': bin_path, 'size_mb': bin_size, 'ov_model': ov_model}
 
     # Verification
@@ -408,7 +410,7 @@ def export_extnn_model(output_dir, basename='cdpn_stage3_extnn',
     # At inference time:
     #   CPU → cdpn_extension.so provides evaluate() in C++
     #   GPU → cdpn_custom_gpu_kernels.xml + .cl kernels (SimpleGPU)
-    CdpnPreprocess = _make_CdpnPreprocess(ov, OVType)
+    CdpnPreprocess = _make_CdpnPreprocess()
 
     # Step 1: Get NN body
     if nn_ov_model is not None:
@@ -423,7 +425,7 @@ def export_extnn_model(output_dir, basename='cdpn_stage3_extnn',
 
     # Input parameters (all 4D)
     param_image, param_bbox, param_extents, param_bbox_wh, param_cam_K = \
-        _build_composite_input_params(opset, ov, OVType)
+        _build_composite_input_params()
 
     # CdpnPreprocess: image + bbox -> tensor + crop_meta
     preprocess = CdpnPreprocess(
@@ -432,16 +434,16 @@ def export_extnn_model(output_dir, basename='cdpn_stage3_extnn',
     crop_meta_out = preprocess.output(1)   # [N, 1, 1, 5]
 
     # Rewire NN body input; extract coord_maps and raw_trans_4d
-    coord_maps_node, raw_trans_4d = _rewire_nn_body(opset, nn_model, tensor_out)
+    coord_maps_node, raw_trans_4d = _rewire_nn_body(nn_model, tensor_out)
 
     denorm_coords_4d, confidence_4d = _build_coord_denorm_subgraph(
-        opset, coord_maps_node, param_extents.output(0))
+        coord_maps_node, param_extents.output(0))
 
     eps = opset.constant(np.float32(1e-30))
     crop_meta_for_trans = opset.add(crop_meta_out, eps)
 
     translation_4d = _build_trans_decode_subgraph(
-        opset, raw_trans_4d, param_bbox_wh.output(0),
+        raw_trans_4d, param_bbox_wh.output(0),
         crop_meta_for_trans, param_cam_K.output(0))
 
 
@@ -477,7 +479,7 @@ def export_extnn_model(output_dir, basename='cdpn_stage3_extnn',
 
     # Step 4: Save EXTNN model
     xml_path, bin_path, bin_size = _save_ir(
-        ov, extnn_model, output_dir, basename, 'ov_export:extnn')
+        extnn_model, output_dir, basename, 'ov_export:extnn')
     results = {'xml': xml_path, 'bin': bin_path, 'size_mb': bin_size}
 
     # Step 5: Verification
@@ -542,7 +544,7 @@ def export_e2e_model(output_dir, basename='cdpn_stage3_e2e',
     """
     os.makedirs(output_dir, exist_ok=True)
 
-    CdpnPreprocess = _make_CdpnPreprocess(ov, OVType)
+    CdpnPreprocess = _make_CdpnPreprocess()
 
     class CdpnPnpSolve(ov.Op):
         """denorm[3,64,64] + conf[64,64] + obj_ext[3] + crop_meta[5] + cam_K[4]
@@ -605,7 +607,7 @@ def export_e2e_model(output_dir, basename='cdpn_stage3_e2e',
 
     # Input parameters
     param_image, param_bbox, param_extents, param_bbox_wh, param_cam_K = \
-        _build_composite_input_params(opset, ov, OVType)
+        _build_composite_input_params()
 
     # CdpnPreprocess: image + bbox -> tensor + crop_meta
     preprocess = CdpnPreprocess(
@@ -614,10 +616,10 @@ def export_e2e_model(output_dir, basename='cdpn_stage3_e2e',
     crop_meta_out = preprocess.output(1)  # [N, 1, 1, 5]  (4D)
 
     # Rewire NN body input; extract coord_maps and raw_trans_4d to receive CdpnPreprocess output
-    coord_maps_node, raw_trans_4d = _rewire_nn_body(opset, nn_model, tensor_out)
+    coord_maps_node, raw_trans_4d = _rewire_nn_body(nn_model, tensor_out)
 
     denorm_coords_4d, confidence_4d = _build_coord_denorm_subgraph(
-        opset, coord_maps_node, param_extents.output(0))
+        coord_maps_node, param_extents.output(0))
 
     # CdpnTransDecode: replace with standard opset (same as EXTNN export)
     eps = opset.constant(np.float32(1e-30))
@@ -625,7 +627,7 @@ def export_e2e_model(output_dir, basename='cdpn_stage3_e2e',
     crop_meta_for_pnp = opset.add(crop_meta_out, eps)
 
     translation_4d = _build_trans_decode_subgraph(
-        opset, raw_trans_4d, param_bbox_wh.output(0),
+        raw_trans_4d, param_bbox_wh.output(0),
         crop_meta_for_trans, param_cam_K.output(0))
 
     # CdpnPnpSolve: denorm_coords + confidence + obj_ext + crop_meta + cam_K
@@ -687,7 +689,7 @@ def export_e2e_model(output_dir, basename='cdpn_stage3_e2e',
 
     # Step 4: Save
     xml_path, bin_path, bin_size = _save_ir(
-        ov, e2e_model, output_dir, basename, 'ov_export:e2e')
+        e2e_model, output_dir, basename, 'ov_export:e2e')
     results = {'xml': xml_path, 'bin': bin_path, 'size_mb': bin_size}
 
     # Step 5: Verification (requires extension .so)
@@ -715,6 +717,647 @@ def export_e2e_model(output_dir, basename='cdpn_stage3_e2e',
     return results
 
 
+def _find_nn_head_entry_map(model):
+    entry_names = {}
+    tags = (
+        ('trans', 'trans_head_net.features.1/'),
+        ('rot', 'rot_head_net.features.1/'),
+    )
+    for op in model.get_ordered_ops():
+        if op.get_type_name() not in ('Convolution', 'ConvolutionBackpropData'):
+            continue
+        consumers = []
+        for output in op.outputs():
+            consumers.extend(
+                target.get_node().get_friendly_name()
+                for target in output.get_target_inputs())
+        for tag, marker in tags:
+            if any(marker in name for name in consumers):
+                entry_names[tag] = op.get_friendly_name()
+    missing = [tag for tag, _ in tags if tag not in entry_names]
+    if missing:
+        raise RuntimeError('Expected NN head entry ops for {}, found {}'.format(
+            ', '.join(missing), entry_names))
+    return entry_names
+
+
+def _find_rot_final_conv_name(model):
+    matches = []
+    for op in model.get_ordered_ops():
+        name = op.get_friendly_name()
+        if (op.get_type_name() == 'Convolution'
+                and 'rot_head_net.features.27/' in name):
+            matches.append(name)
+    if len(matches) != 1:
+        raise RuntimeError('Expected one final RotHead conv, found {}'.format(
+            matches))
+    return matches[0]
+
+
+def _constant_input_names(model, op_names):
+    names = set()
+    for op in model.get_ordered_ops():
+        if op.get_friendly_name() not in op_names:
+            continue
+        for inp in op.inputs():
+            source = inp.get_source_output().get_node()
+            if source.get_type_name() == 'Constant':
+                names.add(source.get_friendly_name())
+    return names
+
+
+def _downstream_op_names(model, entry_names):
+    stack = []
+    for op in model.get_ordered_ops():
+        if op.get_friendly_name() in entry_names:
+            stack.append(op)
+    if not stack:
+        raise RuntimeError('Entry ops not found: {}'.format(
+            ', '.join(entry_names)))
+
+    names = set()
+    while stack:
+        op = stack.pop()
+        name = op.get_friendly_name()
+        if name in names:
+            continue
+        names.add(name)
+        for output in op.outputs():
+            for target_input in output.get_target_inputs():
+                target = target_input.get_node()
+                if target.get_type_name() != 'Result':
+                    stack.append(target)
+
+    for op in model.get_ordered_ops():
+        if op.get_friendly_name() not in names:
+            continue
+        for inp in op.inputs():
+            source = inp.get_source_output().get_node()
+            if source.get_type_name() == 'Constant':
+                names.add(source.get_friendly_name())
+    return names
+
+
+def _is_float_output(output):
+    elem_type = str(output.get_element_type()).lower()
+    return ('float' in elem_type or 'f16' in elem_type
+            or 'f32' in elem_type or 'bf16' in elem_type)
+
+
+def _wrap_fp16_island_ops(model, op_names):
+    input_converts = 0
+    output_converts = 0
+    for op in list(model.get_ordered_ops()):
+        name = op.get_friendly_name()
+        if name not in op_names:
+            continue
+        for idx, inp in enumerate(op.inputs()):
+            source = inp.get_source_output()
+            source_node = source.get_node()
+            if source_node.get_type_name() == 'Constant':
+                continue
+            if not _is_float_output(source):
+                continue
+            to_f16 = opset.convert(source, ov.Type.f16)
+            to_f16.set_friendly_name(name + '/input{}_fp16'.format(idx))
+            inp.replace_source_output(to_f16.output(0))
+            input_converts += 1
+
+        for port, output in enumerate(op.outputs()):
+            if not _is_float_output(output):
+                continue
+            for target_input in list(output.get_target_inputs()):
+                target = target_input.get_node()
+                if (target.get_type_name() != 'Result'
+                        and target.get_friendly_name() in op_names):
+                    continue
+                to_f32 = opset.convert(output, ov.Type.f32)
+                to_f32.set_friendly_name(name + '/output{}_fp32'.format(port))
+                target_input.replace_source_output(to_f32.output(0))
+                output_converts += 1
+    return input_converts, output_converts
+
+
+def _inject_rt_attribute(xml_path, layer_names, attr_name):
+    tree = ET.parse(xml_path)
+    root = tree.getroot()
+    layers = root.find('layers')
+    if layers is None:
+        raise RuntimeError('No <layers> found in {}'.format(xml_path))
+
+    marked = 0
+    for layer in layers.findall('layer'):
+        if layer.get('name') not in layer_names:
+            continue
+        rt_info = layer.find('rt_info')
+        if rt_info is None:
+            rt_info = ET.Element('rt_info')
+            output = layer.find('output')
+            children = list(layer)
+            insert_at = children.index(output) + 1 if output in children else 0
+            layer.insert(insert_at, rt_info)
+        if any(child.get('name') == attr_name for child in rt_info):
+            continue
+        ET.SubElement(rt_info, 'attribute', {
+            'name': attr_name,
+            'version': '0',
+        })
+        marked += 1
+    tree.write(xml_path, encoding='UTF-8', xml_declaration=True)
+    return marked
+
+
+def export_nn_mixed_fp16_ir(model_path, output_dir,
+                            basename='cdpn_stage3_fp16'):
+    """
+    Export NN IR with FP16 backbone/trans head and part of rot head core.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    core = ov.Core()
+    original = core.read_model(model_path)
+
+    head_entry_map = _find_nn_head_entry_map(original)
+    rot_entry_name = head_entry_map['rot']
+
+    rot_final_conv_name = _find_rot_final_conv_name(original)
+    fp16_island_names = set([rot_final_conv_name])
+
+    fp16_island_constants = _constant_input_names(original, fp16_island_names)
+    rot_head_names = _downstream_op_names(original, [rot_entry_name])
+
+    precise_names = rot_head_names - fp16_island_names - fp16_island_constants
+
+    head_constants = {}
+    for op in original.get_ordered_ops():
+        if (op.get_friendly_name() in precise_names
+                and op.get_type_name() == 'Constant'
+                and _is_float_output(op.output(0))):
+            head_constants[op.get_friendly_name()] = op.get_data().astype(np.float32)
+
+    mixed_model = core.read_model(model_path)
+
+    manager = ov_passes.Manager()
+    manager.register_pass(ov_passes.ConvertFP32ToFP16())
+    manager.run_passes(mixed_model)
+
+    for op in list(mixed_model.get_ordered_ops()):
+        name = op.get_friendly_name()
+        if name not in head_constants:
+            continue
+        restored = opset.constant(head_constants[name])
+        restored.set_friendly_name(name + '/fp32')
+        for target_input in list(op.output(0).get_target_inputs()):
+            target_input.replace_source_output(restored.output(0))
+
+    for op in mixed_model.get_ordered_ops():
+        if op.get_friendly_name() != rot_entry_name:
+            continue
+        source = op.input(0).get_source_output()
+        to_f32 = opset.convert(source, ov.Type.f32)
+        to_f32.set_friendly_name(op.get_friendly_name() + '/input_fp32')
+        op.input(0).replace_source_output(to_f32.output(0))
+
+    fp16_inputs, fp16_outputs = _wrap_fp16_island_ops(
+        mixed_model, fp16_island_names)
+
+    mixed_model.validate_nodes_and_infer_types()
+
+    xml_path = os.path.join(output_dir, basename + '.xml')
+    ov.save_model(mixed_model, xml_path, compress_to_fp16=False)
+
+    marked = _inject_rt_attribute(xml_path, precise_names, 'precise')
+
+    bin_path = os.path.join(output_dir, basename + '.bin')
+    size_mb = os.path.getsize(bin_path) / 1e6
+
+    print('[ov_export:fp16] Mixed NN IR: {} ({:.1f} MB)'.format(
+        xml_path, size_mb))
+    print('[ov_export:fp16] RotHead core kept FP32 from: {}'.format(
+        rot_entry_name))
+    print('[ov_export:fp16] FP16 island ops: {}'.format(
+        ', '.join(sorted(fp16_island_names))))
+    print('[ov_export:fp16] Restored {} FP32 constants; marked {} precise layers'.format(
+        len(head_constants), marked))
+    print('[ov_export:fp16] Inserted FP16 island converts: {} input, {} output'.format(
+        fp16_inputs, fp16_outputs))
+
+    return {'xml': xml_path, 'bin': bin_path, 'size_mb': size_mb}
+
+
+def _find_single_consumer_name(model, op_name, consumer_type=None):
+    source = None
+    for op in model.get_ordered_ops():
+        if op.get_friendly_name() == op_name:
+            source = op
+            break
+    if source is None:
+        raise RuntimeError('Op not found: {}'.format(op_name))
+    matches = []
+    for output in source.outputs():
+        for target_input in output.get_target_inputs():
+            target = target_input.get_node()
+            if consumer_type is None or target.get_type_name() == consumer_type:
+                matches.append(target.get_friendly_name())
+    if len(matches) != 1:
+        raise RuntimeError('Expected one consumer for {}, found {}'.format(
+            op_name, matches))
+    return matches[0]
+
+
+def _ordered_region_op_names(model, start_name, end_name):
+    ordered = model.get_ordered_ops()
+    start_idx = None
+    end_idx = None
+
+    for idx, op in enumerate(ordered):
+        name = op.get_friendly_name()
+        if name == start_name:
+            start_idx = idx
+        if name == end_name:
+            end_idx = idx
+
+    if start_idx is None or end_idx is None or end_idx < start_idx:
+        raise RuntimeError('Invalid ordered region: {} -> {}'.format(
+            start_name, end_name))
+
+    names = set(op.get_friendly_name() for op in ordered[start_idx:end_idx + 1])
+
+    for op in ordered[start_idx:end_idx + 1]:
+        for inp in op.inputs():
+            source = inp.get_source_output().get_node()
+            if source.get_type_name() == 'Constant':
+                names.add(source.get_friendly_name())
+
+    return names
+
+
+def _prepare_composite_fp16_inputs(model):
+    inserted = 0
+    for op in list(model.get_ordered_ops()):
+        if op.get_type_name() != 'CdpnPreprocess':
+            continue
+        tensor_out = op.output(0)
+        if _is_float_output(tensor_out):
+            to_f16 = opset.convert(tensor_out, ov.Type.f16)
+            to_f16.set_friendly_name(op.get_friendly_name() + '/tensor_fp16')
+            for target_input in list(tensor_out.get_target_inputs()):
+                if target_input.get_node() is to_f16:
+                    continue
+                target_input.replace_source_output(to_f16.output(0))
+                inserted += 1
+
+        if len(op.outputs()) < 2:
+            continue
+        crop_meta_out = op.output(1)
+        if not _is_float_output(crop_meta_out):
+            continue
+        to_f16 = opset.convert(crop_meta_out, ov.Type.f16)
+        to_f16.set_friendly_name(op.get_friendly_name() + '/crop_meta_fp16')
+        for target_input in list(crop_meta_out.get_target_inputs()):
+            target = target_input.get_node()
+            if target is to_f16 or target.get_type_name() == 'Result':
+                continue
+            target_input.replace_source_output(to_f16.output(0))
+            inserted += 1
+    return inserted
+
+
+def _convert_precise_region_inputs_to_f32(model, precise_names,
+                                          skip_source_names=None):
+    skip_source_names = skip_source_names or set()
+    inserted = 0
+    for op in list(model.get_ordered_ops()):
+        if op.get_friendly_name() not in precise_names:
+            continue
+        if op.get_type_name() in ('Constant', 'Parameter', 'Result'):
+            continue
+        for idx, inp in enumerate(op.inputs()):
+            source = inp.get_source_output()
+            source_node = source.get_node()
+            source_name = source_node.get_friendly_name()
+            if source_name in precise_names or source_name in skip_source_names:
+                continue
+            if not _is_float_output(source):
+                continue
+            to_f32 = opset.convert(source, ov.Type.f32)
+            to_f32.set_friendly_name(
+                op.get_friendly_name() + '/input{}_fp32'.format(idx))
+            inp.replace_source_output(to_f32.output(0))
+            inserted += 1
+    return inserted
+
+
+def _convert_region_outputs_to_f16(model, source_names, target_region_names):
+    inserted = 0
+    for op in list(model.get_ordered_ops()):
+        if op.get_friendly_name() not in source_names:
+            continue
+        for port, output in enumerate(op.outputs()):
+            if not _is_float_output(output):
+                continue
+            to_f16 = None
+            for target_input in list(output.get_target_inputs()):
+                target = target_input.get_node()
+                if target.get_type_name() == 'Result':
+                    continue
+                if target.get_friendly_name() in target_region_names:
+                    continue
+                if to_f16 is None:
+                    to_f16 = opset.convert(output, ov.Type.f16)
+                    to_f16.set_friendly_name(
+                        op.get_friendly_name() + '/output{}_fp16'.format(port))
+                target_input.replace_source_output(to_f16.output(0))
+                inserted += 1
+    return inserted
+
+
+def export_extnn_mixed_fp16_ir(model_path, output_dir,
+                               basename='cdpn_stage3_extnn_fp16',
+                               extension_path=None):
+    """
+    Export EXTNN IR with FP16 NN body/postproc and FP32 custom boundaries.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    core = ov.Core()
+
+    if extension_path is None:
+        extension_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            'ov_plugins', 'build', 'cdpn_extension.so')
+    if extension_path and os.path.isfile(extension_path):
+        core.add_extension(extension_path)
+
+    original = core.read_model(model_path)
+    output_names = set()
+    for output in original.outputs:
+        output_names.update(output.get_names())
+
+    tag = 'ov_export:fp16-extnn'
+    if 'crop_meta' not in output_names:
+        raise RuntimeError('Expected EXTNN model with crop_meta output')
+
+    head_entry_map = _find_nn_head_entry_map(original)
+    rot_entry_name = head_entry_map['rot']
+
+    rot_final_conv_name = _find_rot_final_conv_name(original)
+    rot_final_add_name = _find_single_consumer_name(
+        original, rot_final_conv_name, consumer_type='Add')
+    fp16_island_names = set([rot_final_conv_name])
+
+    fp16_island_constants = _constant_input_names(original, fp16_island_names)
+    rot_head_names = _ordered_region_op_names(
+            original, rot_entry_name, rot_final_add_name)
+
+    custom_precise_names = set(
+        op.get_friendly_name() for op in original.get_ordered_ops()
+        if op.get_type_name() in ('CdpnPreprocess', 'CdpnPnpSolve'))
+    precise_names = ((rot_head_names | custom_precise_names)
+                     - fp16_island_names - fp16_island_constants)
+
+    fp32_constants = {}
+    for op in original.get_ordered_ops():
+        if (op.get_friendly_name() in precise_names
+                and op.get_type_name() == 'Constant'
+                and _is_float_output(op.output(0))):
+            fp32_constants[op.get_friendly_name()] = op.get_data().astype(np.float32)
+
+    mixed_model = core.read_model(model_path)
+    preprocess_converts = _prepare_composite_fp16_inputs(mixed_model)
+    pose_concat_converts = 0
+
+    manager = ov_passes.Manager()
+    manager.register_pass(ov_passes.ConvertFP32ToFP16())
+    manager.run_passes(mixed_model)
+
+    for op in list(mixed_model.get_ordered_ops()):
+        name = op.get_friendly_name()
+        if name not in fp32_constants:
+            continue
+        restored = opset.constant(fp32_constants[name])
+        restored.set_friendly_name(name + '/fp32')
+        for target_input in list(op.output(0).get_target_inputs()):
+            target_input.replace_source_output(restored.output(0))
+
+    for op in mixed_model.get_ordered_ops():
+        if op.get_friendly_name() != rot_entry_name:
+            continue
+        source = op.input(0).get_source_output()
+        to_f32 = opset.convert(source, ov.Type.f32)
+        to_f32.set_friendly_name(op.get_friendly_name() + '/input_fp32')
+        op.input(0).replace_source_output(to_f32.output(0))
+
+    fp16_inputs, fp16_outputs = _wrap_fp16_island_ops(
+        mixed_model, fp16_island_names)
+
+    precise_boundary_converts = _convert_precise_region_inputs_to_f32(
+        mixed_model, precise_names, skip_source_names=fp16_island_names)
+
+    precise_output_converts = 0
+    precise_output_converts = _convert_region_outputs_to_f16(
+        mixed_model, [rot_final_add_name], precise_names)
+
+    mixed_model.validate_nodes_and_infer_types()
+
+    xml_path = os.path.join(output_dir, basename + '.xml')
+    ov.save_model(mixed_model, xml_path, compress_to_fp16=False)
+
+    marked = _inject_rt_attribute(xml_path, precise_names, 'precise')
+
+    bin_path = os.path.join(output_dir, basename + '.bin')
+    size_mb = os.path.getsize(bin_path) / 1e6
+
+    print('[{}] Mixed composite IR: {} ({:.1f} MB)'.format(
+        tag, xml_path, size_mb))
+    print('[{}] RotHead core kept FP32 from: {}'.format(
+        tag,
+        rot_entry_name))
+    print('[{}] FP16 island ops: {}'.format(
+        tag,
+        ', '.join(sorted(fp16_island_names))))
+    print('[{}] Restored {} FP32 constants; marked {} precise layers'.format(
+        tag,
+        len(fp32_constants), marked))
+    print('[{}] Inserted FP16 island converts: {} input, {} output'.format(
+        tag,
+        fp16_inputs, fp16_outputs))
+    print('[{}] Inserted precise-boundary FP32 converts: {}'.format(
+        tag,
+        precise_boundary_converts))
+    print('[{}] Inserted precise-output FP16 converts: {}'.format(
+        tag,
+        precise_output_converts))
+    print('[{}] Inserted CdpnPreprocess FP16 tensor converts: {}'.format(
+        tag,
+        preprocess_converts))
+    print('[{}] Inserted E2E pose concat FP32 converts: {}'.format(
+        tag,
+        pose_concat_converts))
+
+    return {'xml': xml_path, 'bin': bin_path, 'size_mb': size_mb}
+
+
+def _prepare_e2e_pose_concat_inputs(model):
+    inserted = 0
+
+    for op in list(model.get_ordered_ops()):
+        if op.get_type_name() != 'Concat':
+            continue
+
+        shape = op.output(0).get_partial_shape()
+        if shape.rank.is_dynamic or shape.rank.get_length() != 3:
+            continue
+
+        dims = list(shape)
+        if dims[1].is_dynamic or dims[2].is_dynamic:
+            continue
+
+        if dims[1].get_length() != 3 or dims[2].get_length() != 4:
+            continue
+
+        for idx, inp in enumerate(op.inputs()):
+            source = inp.get_source_output()
+            if not _is_float_output(source):
+                continue
+
+            to_f32 = opset.convert(source, ov.Type.f32)
+            to_f32.set_friendly_name(
+                op.get_friendly_name() + '/input{}_fp32'.format(idx))
+            inp.replace_source_output(to_f32.output(0))
+
+            inserted += 1
+
+    return inserted
+
+
+def export_e2e_mixed_fp16_ir(model_path, output_dir,
+                             basename='cdpn_stage3_e2e_fp16',
+                             extension_path=None):
+    """Export E2E IR with FP16 NN/body postproc including PnP
+    and FP32 custom boundary.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    core = ov.Core()
+    if extension_path is None:
+        extension_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            'ov_plugins', 'build', 'cdpn_extension.so')
+    if extension_path and os.path.isfile(extension_path):
+        core.add_extension(extension_path)
+
+    original = core.read_model(model_path)
+    output_names = set()
+    for output in original.outputs:
+        output_names.update(output.get_names())
+
+    tag = 'ov_export:fp16-e2e'
+    if 'pose_rot' not in output_names:
+        raise RuntimeError('Expected E2E model with pose_rot output')
+    if not any(op.get_type_name() == 'CdpnPnpSolve'
+               for op in original.get_ordered_ops()):
+        raise RuntimeError('Expected E2E model with CdpnPnpSolve op')
+
+    head_entry_map = _find_nn_head_entry_map(original)
+    rot_entry_name = head_entry_map['rot']
+
+    rot_final_conv_name = _find_rot_final_conv_name(original)
+    rot_final_add_name = _find_single_consumer_name(
+        original, rot_final_conv_name, consumer_type='Add')
+    fp16_island_names = set([rot_final_conv_name])
+
+    fp16_island_constants = _constant_input_names(original, fp16_island_names)
+    rot_head_names = _ordered_region_op_names(
+        original, rot_entry_name, rot_final_add_name)
+
+    custom_precise_names = set(
+        op.get_friendly_name() for op in original.get_ordered_ops()
+        if op.get_type_name() in ('CdpnPreprocess', 'CdpnPnpSolve'))
+    precise_names = ((rot_head_names | custom_precise_names)
+                     - fp16_island_names - fp16_island_constants)
+
+    fp32_constants = {}
+    for op in original.get_ordered_ops():
+        if (op.get_friendly_name() in precise_names
+                and op.get_type_name() == 'Constant'
+                and _is_float_output(op.output(0))):
+            fp32_constants[op.get_friendly_name()] = op.get_data().astype(np.float32)
+
+    mixed_model = core.read_model(model_path)
+    preprocess_converts = _prepare_composite_fp16_inputs(mixed_model)
+    pose_concat_converts = _prepare_e2e_pose_concat_inputs(mixed_model)
+
+    manager = ov_passes.Manager()
+    manager.register_pass(ov_passes.ConvertFP32ToFP16())
+    manager.run_passes(mixed_model)
+
+    for op in list(mixed_model.get_ordered_ops()):
+        name = op.get_friendly_name()
+        if name not in fp32_constants:
+            continue
+        restored = opset.constant(fp32_constants[name])
+        restored.set_friendly_name(name + '/fp32')
+        for target_input in list(op.output(0).get_target_inputs()):
+            target_input.replace_source_output(restored.output(0))
+
+    for op in mixed_model.get_ordered_ops():
+        if op.get_friendly_name() != rot_entry_name:
+            continue
+        source = op.input(0).get_source_output()
+        to_f32 = opset.convert(source, ov.Type.f32)
+        to_f32.set_friendly_name(op.get_friendly_name() + '/input_fp32')
+        op.input(0).replace_source_output(to_f32.output(0))
+
+    fp16_inputs, fp16_outputs = _wrap_fp16_island_ops(
+        mixed_model, fp16_island_names)
+
+    precise_boundary_converts = _convert_precise_region_inputs_to_f32(
+        mixed_model, precise_names, skip_source_names=fp16_island_names)
+
+    precise_output_converts = _convert_region_outputs_to_f16(
+        mixed_model, [rot_final_add_name], precise_names)
+
+    mixed_model.validate_nodes_and_infer_types()
+
+    xml_path = os.path.join(output_dir, basename + '.xml')
+    ov.save_model(mixed_model, xml_path, compress_to_fp16=False)
+
+    marked = _inject_rt_attribute(xml_path, precise_names, 'precise')
+
+    bin_path = os.path.join(output_dir, basename + '.bin')
+    size_mb = os.path.getsize(bin_path) / 1e6
+
+    print('[{}] Mixed E2E IR: {} ({:.1f} MB)'.format(
+        tag, xml_path, size_mb))
+    print('[{}] RotHead core kept FP32 from: {}'.format(
+        tag,
+        rot_entry_name))
+    print('[{}] FP16 island ops: {}'.format(
+        tag,
+        ', '.join(sorted(fp16_island_names))))
+    print('[{}] Restored {} FP32 constants; marked {} precise layers'.format(
+        tag,
+        len(fp32_constants), marked))
+    print('[{}] Inserted FP16 island converts: {} input, {} output'.format(
+        tag,
+        fp16_inputs, fp16_outputs))
+    print('[{}] Inserted precise-boundary FP32 converts: {}'.format(
+        tag,
+        precise_boundary_converts))
+    print('[{}] Inserted precise-output FP16 converts: {}'.format(
+        tag,
+        precise_output_converts))
+    print('[{}] Inserted CdpnPreprocess FP16 tensor converts: {}'.format(
+        tag,
+        preprocess_converts))
+    print('[{}] Inserted E2E pose concat FP32 converts: {}'.format(
+        tag,
+        pose_concat_converts))
+
+    return {'xml': xml_path, 'bin': bin_path, 'size_mb': size_mb}
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Export CDPN to OpenVINO IR (direct path)')
@@ -732,6 +1375,12 @@ if __name__ == '__main__':
                         help='Also export EXTNN model with pre/post processing')
     parser.add_argument('--e2e', action='store_true',
                         help='Also export E2E model with custom extension ops')
+    parser.add_argument('--fp16_nn', action='store_true',
+                        help='Also export NN mixed FP16 IR')
+    parser.add_argument('--fp16_extnn', action='store_true',
+                        help='Also export EXTNN mixed FP16 IR (requires --extnn)')
+    parser.add_argument('--fp16_e2e', action='store_true',
+                        help='Also export E2E mixed FP16 IR (requires --e2e)')
     parser.add_argument('--extension', type=str, default=None,
                         help='Path to cdpn_extension.so')
     args = parser.parse_args()
@@ -745,26 +1394,43 @@ if __name__ == '__main__':
     # Always export the NN body first
     nn_results = export_to_ov_ir(model, args.output_dir, args.basename, args.verify)
 
+    if args.fp16_nn:
+        export_nn_mixed_fp16_ir(
+            nn_results['xml'], args.output_dir,
+            basename=args.basename + '_fp16')
+
     # Optionally export the EXTNN model
-    if args.extnn:
+    if args.extnn or args.fp16_extnn:
         print()
         print('=' * 70)
         print('[ov_export] Building EXTNN model with pre/post processing ops ...')
         print('=' * 70)
-        export_extnn_model(args.output_dir,
+        extnn_results = export_extnn_model(args.output_dir,
                           basename=args.basename + '_extnn',
                           extension_path=args.extension,
                           verify=args.verify,
                           nn_ov_model=nn_results.get('ov_model'))
 
+        if args.fp16_extnn:
+            export_extnn_mixed_fp16_ir(
+                extnn_results['xml'], args.output_dir,
+                basename=args.basename + '_extnn_fp16',
+                extension_path=args.extension)
+
     # Optionally export the E2E model (requires ov_plugins extension at runtime)
-    if args.e2e:
+    if args.e2e or args.fp16_e2e:
         print()
         print('=' * 70)
         print('[ov_export] Building E2E model with custom extension ops ...')
         print('=' * 70)
-        export_e2e_model(args.output_dir,
+        e2e_results = export_e2e_model(args.output_dir,
                          basename=args.basename + '_e2e',
                          extension_path=args.extension,
                          verify=args.verify,
                          nn_ov_model=nn_results.get('ov_model'))
+
+        if args.fp16_e2e:
+            export_e2e_mixed_fp16_ir(
+                e2e_results['xml'], args.output_dir,
+                basename=args.basename + '_e2e_fp16',
+                extension_path=args.extension)
