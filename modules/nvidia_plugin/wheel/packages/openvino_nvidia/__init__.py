@@ -1,3 +1,6 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 import os
 import defusedxml.ElementTree as ET
 from defusedxml import defuse_stdlib

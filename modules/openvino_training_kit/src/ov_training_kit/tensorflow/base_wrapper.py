@@ -1,3 +1,6 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 try:
     import intel_extension_for_tensorflow as itex
     ITEX_AVAILABLE = True

@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # OpenVINO Kit - TensorFlow Integration
 
 Wrappers for TensorFlow/Keras models with OpenVINO for inference, quantization, and deployment.

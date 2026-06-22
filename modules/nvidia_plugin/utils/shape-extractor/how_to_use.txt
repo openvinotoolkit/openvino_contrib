@@ -1,3 +1,6 @@
+Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+
 First of all install dependencies:
 python3 -m pip install -r ./requirements.txt
 
