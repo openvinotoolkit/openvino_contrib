@@ -1,4 +1,6 @@
 # Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 
 #!/usr/bin/env bash
 # run_flashocc_ov_ws.sh — Run FlashOCC E2E with workspace-built OpenVINO 2026.3

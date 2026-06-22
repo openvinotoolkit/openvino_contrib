@@ -1,3 +1,6 @@
+<!-- Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0 -->
+
 # OpenVINO FlashOCC Export and Inference Guide
 
 This guide explains how to export FlashOCC to OpenVINO IR and run OpenVINO

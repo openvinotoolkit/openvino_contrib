@@ -1,4 +1,8 @@
-// Copyright (C) 2018-2026 Intel Corporation
+/*
+ * Copyright (C) 2018-2026 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // BEVPool Operations for OpenVINO
 // Implements BEV pooling using int32 fixed-point atomics for speed.
 //
