@@ -45,6 +45,54 @@ python ov_infer.py \
    --<cpu|gpu> \
    --batch_size 4
 ```
+
+FP16 (mixed precision) keeps sensitive layers in FP32 while running the bulk of the network in FP16. Can be used when faster GPU inference with minimal accuracy loss is required.
+
+Export:
+```bash
+python ov_export.py \
+   --cfg tools/exps_cfg/config_rot_trans.yaml \
+   --load_model checkpoints/stage3.checkpoint \
+   --output_dir checkpoints \
+   --basename cdpn_stage3 \
+   --fp16_nn
+```
+
+Inference:
+```bash
+python ov_infer.py \
+   --model checkpoints/cdpn_stage3_fp16.xml \
+   --dataset_dir dataset/lm_full \
+   --batch_size 4 \
+   --infer_precision f16 \
+   --gpu
+```
+
+INT8 (quantized) uses NNCF post-training quantization to shrink the model and maximize throughput. It requires a calibration dataset and is best suited for GPU or NPU deployments where throughput matters most.
+
+Export:
+```bash
+python ov_export.py \
+   --cfg tools/exps_cfg/config_rot_trans.yaml \
+   --load_model checkpoints/stage3.checkpoint \
+   --output_dir checkpoints \
+   --basename cdpn_stage3 \
+   --dataset_dir dataset/lm_full \
+   --int8_nn \
+   --int8_subset_size 300 \
+   --int8_target_device GPU
+```
+
+Inference:
+```bash
+python ov_infer.py \
+   --model checkpoints/cdpn_stage3_int8.xml \
+   --dataset_dir dataset/lm_full \
+   --int8_nn \
+   --infer_precision none \
+   --batch_size 4 \
+   --gpu
+```
 </details>
 
 
