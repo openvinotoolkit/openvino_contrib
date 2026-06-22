@@ -1358,6 +1358,367 @@ def export_e2e_mixed_fp16_ir(model_path, output_dir,
     return {'xml': xml_path, 'bin': bin_path, 'size_mb': size_mb}
 
 
+_NN_INT8_HEAD_GROUPS = (
+    'trans_conv0', 'trans_conv1', 'trans_mlp0',
+    'rot_conv1', 'rot_conv7',
+)
+
+_NN_FP16_HEAD_GROUPS = (
+    'trans_conv2', 'trans_mlp1', 'trans_mlp2',
+    'rot_conv2', 'rot_conv5', 'rot_conv8', 'rot_final',
+)
+
+
+def _find_head_layer_op_name(model, marker):
+    matches = []
+    for op in model.get_ordered_ops():
+        name = op.get_friendly_name()
+        if marker not in name or '/fq_' in name:
+            continue
+        matches.append(name)
+
+    if len(matches) != 1:
+        raise RuntimeError('[ov_export:find_head_layer_op_name] Expected one op containing {}, found {}'.format(
+            marker, matches))
+
+    return matches[0]
+
+
+def _nn_head_feature_group_names(model, prefix, bn_idx):
+    bn_name = _find_head_layer_op_name(
+        model, '{}.features.{}/'.format(prefix, bn_idx))
+    relu_name = _find_head_layer_op_name(
+        model, '{}.features.{}/'.format(prefix, bn_idx + 1))
+
+    bn_op = None
+    for op in model.get_ordered_ops():
+        if op.get_friendly_name() == bn_name:
+            bn_op = op
+            break
+
+    if bn_op is None:
+        raise RuntimeError('[ov_export:_nn_head_feature_group_names] BatchNorm op not found: {}'.format(bn_name))
+
+    conv_name = bn_op.input(0).get_source_output().get_node().get_friendly_name()
+
+    return set([conv_name, bn_name, relu_name])
+
+
+def _nn_trans_linear_group_names(model, linear_idx, relu_idx=None):
+    names = set([
+        _find_head_layer_op_name(
+            model,
+            'trans_head_net.linears.{}/aten::linear/MatMul'.format(linear_idx)),
+        _find_head_layer_op_name(
+            model,
+            'trans_head_net.linears.{}/aten::linear/Add'.format(linear_idx)),
+    ])
+
+    if relu_idx is not None:
+        names.add(_find_head_layer_op_name(
+            model,
+            'trans_head_net.linears.{}/aten::relu_/Relu'.format(relu_idx)))
+
+    return names
+
+
+def _nn_head_layer_groups(model):
+    groups = {}
+    for idx, bn_idx in enumerate((1, 4, 7)):
+        groups['trans_conv{}'.format(idx)] = _nn_head_feature_group_names(
+            model, 'trans_head_net', bn_idx)
+    groups['trans_mlp0'] = _nn_trans_linear_group_names(model, 0, 1)
+    groups['trans_mlp1'] = _nn_trans_linear_group_names(model, 2, 3)
+    groups['trans_mlp2'] = _nn_trans_linear_group_names(model, 4)
+
+    for idx, bn_idx in enumerate((1, 4, 7, 10, 13, 16, 19, 22, 25)):
+        groups['rot_conv{}'.format(idx)] = _nn_head_feature_group_names(
+            model, 'rot_head_net', bn_idx)
+
+    rot_final_conv_name = _find_rot_final_conv_name(model)
+    rot_final_add_name = _find_single_consumer_name(
+        model, rot_final_conv_name, 'Add')
+    groups['rot_final'] = set([rot_final_conv_name, rot_final_add_name])
+
+    return groups
+
+
+def _nn_head_group_region_names(model, group_names):
+    available = _nn_head_layer_groups(model)
+
+    unknown = [name for name in group_names if name not in available]
+    if unknown:
+        raise RuntimeError('[ov_export:nn_head_group_region_names] Unknown NN head groups: {}'.format(
+            ', '.join(unknown)))
+
+    op_names = set()
+    for group_name in group_names:
+        op_names.update(available[group_name])
+
+    constant_names = _constant_input_names(model, op_names)
+
+    return op_names, constant_names, op_names | constant_names
+
+
+def _nn_int8_precise_scope(model):
+    head_entry_map = _find_nn_head_entry_map(model)
+
+    trans_entry_name = head_entry_map['trans']
+    rot_entry_name = head_entry_map['rot']
+
+    rot_final_conv_name = _find_rot_final_conv_name(model)
+    trans_head_names = _downstream_op_names(model, [trans_entry_name])
+    rot_head_names = _downstream_op_names(model, [rot_entry_name])
+    head_names = rot_head_names | trans_head_names
+
+    int8_op_names, int8_constant_names, int8_region_names = (
+        _nn_head_group_region_names(model, _NN_INT8_HEAD_GROUPS))
+    fp16_op_names, fp16_constant_names, fp16_region_names = (
+        _nn_head_group_region_names(model, _NN_FP16_HEAD_GROUPS))
+
+    precise_names = head_names - int8_region_names - fp16_region_names
+    ignored_for_nncf = head_names - int8_region_names
+
+    ignored_names = set()
+    for op in model.get_ordered_ops():
+        if op.get_friendly_name() not in ignored_for_nncf:
+            continue
+        if op.get_type_name() in ('Constant', 'Parameter', 'Result'):
+            continue
+        ignored_names.add(op.get_friendly_name())
+
+    return {
+        'trans_entry_name': trans_entry_name,
+        'rot_entry_name': rot_entry_name,
+        'rot_final_conv_name': rot_final_conv_name,
+        'head_names': head_names,
+        'int8_group_names': _NN_INT8_HEAD_GROUPS,
+        'fp16_group_names': _NN_FP16_HEAD_GROUPS,
+        'int8_op_names': int8_op_names,
+        'int8_constant_names': int8_constant_names,
+        'int8_region_names': int8_region_names,
+        'fp16_op_names': fp16_op_names,
+        'fp16_constant_names': fp16_constant_names,
+        'fp16_region_names': fp16_region_names,
+        'precise_names': precise_names,
+        'ignored_names': ignored_names,
+    }
+
+
+def _balanced_calibration_indices(dataset, limit):
+    total = len(dataset)
+    if limit <= 0 or limit >= total:
+        return list(range(total))
+
+    annot = getattr(dataset, 'annot', None)
+    if not annot:
+        return list(range(min(limit, total)))
+
+    by_obj = {}
+    for idx, item in enumerate(annot):
+        by_obj.setdefault(item.get('obj', ''), []).append(idx)
+
+    obj_names = sorted(by_obj)
+    offsets = dict((obj, 0) for obj in obj_names)
+    selected = []
+    while len(selected) < limit:
+        progressed = False
+        for obj in obj_names:
+            offset = offsets[obj]
+            if offset >= len(by_obj[obj]):
+                continue
+            selected.append(by_obj[obj][offset])
+            offsets[obj] = offset + 1
+            progressed = True
+            if len(selected) >= limit:
+                break
+        if not progressed:
+            break
+
+    return selected
+
+
+class _NNInt8CalibrationData(object):
+    def __init__(self, dataset, indices):
+        self._dataset = dataset
+        self._indices = indices
+        self.batch_size = 1
+
+    def __len__(self):
+        return len(self._indices)
+
+    def __iter__(self):
+        for idx in self._indices:
+            sample = self._dataset[idx]
+            inp = sample[2]
+            yield np.expand_dims(inp.astype(np.float32, copy=False), axis=0)
+
+
+def _make_nn_int8_calibration_dataset(cfg, subset_size, dataset_dir=None):
+    import nncf
+    from datasets.lm import LM
+
+    if dataset_dir:
+        import ref
+        ref.lm_dir = dataset_dir
+        ref.lm_test_dir = os.path.join(dataset_dir, 'real_test')
+        ref.lm_train_real_dir = os.path.join(dataset_dir, 'real_train')
+        ref.lm_train_imgn_dir = os.path.join(dataset_dir, 'imgn')
+        ref.lm_model_info_pth = os.path.join(dataset_dir, 'models', 'models_info.txt')
+        ref.cache_dir = os.path.join(os.path.dirname(dataset_dir), 'dataset_cache')
+
+    dataset = LM(cfg, 'test')
+    if len(dataset) == 0:
+        raise RuntimeError('[ov_export:make_nn_int8_calibration_dataset] No calibration samples found in dataset')
+
+    limit = len(dataset) if subset_size <= 0 else min(subset_size, len(dataset))
+    indices = _balanced_calibration_indices(dataset, limit)
+    data_source = _NNInt8CalibrationData(dataset, indices)
+
+    return nncf.Dataset(data_source), len(indices)
+
+
+def _nncf_target_device(nncf, target_device):
+    key = target_device.upper()
+    try:
+        return getattr(nncf.TargetDevice, key)
+    except AttributeError:
+        raise ValueError('[ov_export:nncf_target_device] Unsupported NNCF target device: {}'.format(
+            target_device))
+
+
+def _nncf_quantization_preset(nncf, preset):
+    key = preset.upper()
+    try:
+        return getattr(nncf.QuantizationPreset, key)
+    except AttributeError:
+        raise ValueError('[ov_export:nncf_quantization_preset] Unsupported NNCF quantization preset: {}'.format(
+            preset))
+
+
+def _convert_region_constants_to_f16(model, region_names):
+    converted = 0
+    rewired = 0
+    for op in list(model.get_ordered_ops()):
+        name = op.get_friendly_name()
+        if name not in region_names or op.get_type_name() != 'Constant':
+            continue
+        if not _is_float_output(op.output(0)):
+            continue
+
+        targets = [target_input for target_input in list(
+            op.output(0).get_target_inputs())
+            if target_input.get_node().get_friendly_name() in region_names]
+        if not targets:
+            continue
+
+        replacement = opset.constant(op.get_data().astype(np.float16))
+        replacement.set_friendly_name(name + '/fp16')
+        for target_input in targets:
+            target_input.replace_source_output(replacement.output(0))
+            rewired += 1
+        converted += 1
+
+    return converted, rewired
+
+
+def _nn_int8_quantization_point_summary(model, head_names):
+    total = 0
+    named_inside_head = 0
+    directly_feeding_head = 0
+    for op in model.get_ordered_ops():
+        if op.get_type_name() != 'FakeQuantize':
+            continue
+        total += 1
+
+        if op.get_friendly_name() in head_names:
+            named_inside_head += 1
+
+        consumers = []
+        for output in op.outputs():
+            for target_input in output.get_target_inputs():
+                consumers.append(target_input.get_node().get_friendly_name())
+
+        if any(consumer in head_names for consumer in consumers):
+            directly_feeding_head += 1
+
+    return total, named_inside_head, directly_feeding_head
+
+
+def export_nn_int8_ir(model_path, output_dir, cfg,
+                      basename='cdpn_stage3_int8', subset_size=300,
+                      target_device='GPU', preset='PERFORMANCE',
+                      dataset_dir=None):
+    """Export NN IR with NNCF INT8 PTQ and a mixed-precision head policy.
+    """
+    import nncf
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    core = ov.Core()
+    ov_model = core.read_model(model_path)
+
+    scope = _nn_int8_precise_scope(ov_model)
+    if not scope['ignored_names']:
+        print('[ov_export:int8-nn] No FP32 precise NN layers found for INT8 export')
+
+    calibration_dataset, calibration_size = _make_nn_int8_calibration_dataset(
+        cfg, subset_size, dataset_dir=dataset_dir)
+    ignored_scope = nncf.IgnoredScope(
+        names=sorted(scope['ignored_names']), validate=True)
+
+    print('[ov_export:int8-nn] Calibration samples: {}'.format(
+        calibration_size))
+    print('[ov_export:int8-nn] Target device: {}, preset: {}'.format(
+        target_device.upper(), preset.upper()))
+    print('[ov_export:int8-nn] INT8 head groups: {}'.format(
+        ', '.join(scope['int8_group_names'])))
+    print('[ov_export:int8-nn] FP16 head groups: {}'.format(
+        ', '.join(scope['fp16_group_names'])))
+    print('[ov_export:int8-nn] FP32 precise head layers: {}'.format(
+        len(scope['precise_names'])))
+    print('[ov_export:int8-nn] Ignored NNCF layers: {}'.format(
+        len(scope['ignored_names'])))
+
+    quantized_model = nncf.quantize(
+        ov_model,
+        calibration_dataset,
+        subset_size=calibration_size,
+        target_device=_nncf_target_device(nncf, target_device),
+        preset=_nncf_quantization_preset(nncf, preset),
+        ignored_scope=ignored_scope)
+
+    fp16_op_names, fp16_constant_names, fp16_region_names = (
+        _nn_head_group_region_names(quantized_model, scope['fp16_group_names']))
+    constants_converted, constant_edges = _convert_region_constants_to_f16(
+        quantized_model, fp16_region_names)
+    fp16_inputs, fp16_outputs = _wrap_fp16_island_ops(
+        quantized_model, fp16_op_names)
+    quantized_model.validate_nodes_and_infer_types()
+
+    xml_path, bin_path, size_mb = _save_ir(
+        quantized_model, output_dir, basename, 'ov_export:int8-nn')
+    marked = _inject_rt_attribute(xml_path, scope['precise_names'], 'precise')
+
+    int8_points, head_points, head_feed_points = (
+        _nn_int8_quantization_point_summary(
+            quantized_model, scope['head_names']))
+
+    print('[ov_export:int8-nn] NNCF INT8 quantization points: {}'.format(
+        int8_points))
+    print('[ov_export:int8-nn] Head quantization points: named={}, directly_feeding={}'.format(
+        head_points, head_feed_points))
+    print('[ov_export:int8-nn] FP16 constants converted: {} constants, {} edges'.format(
+        constants_converted, constant_edges))
+    print('[ov_export:int8-nn] FP16 head converts: {} input, {} output'.format(
+        fp16_inputs, fp16_outputs))
+    print('[ov_export:int8-nn] Marked {} precise FP32 layers'.format(marked))
+    return {'xml': xml_path, 'bin': bin_path, 'size_mb': size_mb,
+            'ov_model': quantized_model,
+            'precise_names': scope['precise_names'],
+            'int8_quantization_points': int8_points}
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Export CDPN to OpenVINO IR (direct path)')
@@ -1381,6 +1742,18 @@ if __name__ == '__main__':
                         help='Also export EXTNN mixed FP16 IR (requires --extnn)')
     parser.add_argument('--fp16_e2e', action='store_true',
                         help='Also export E2E mixed FP16 IR (requires --e2e)')
+    parser.add_argument('--int8_nn', action='store_true',
+                        help='Also export NN INT8 IR via NNCF PTQ')
+    parser.add_argument('--dataset_dir', type=str, default=None,
+                        help='Dataset dir used by config and NNCF calibration')
+    parser.add_argument('--int8_subset_size', type=int, default=300,
+                        help='Calibration samples for NNCF PTQ (0 = all)')
+    parser.add_argument('--int8_target_device', type=str, default='GPU',
+                        choices=('CPU','GPU', 'NPU'),
+                        help='NNCF PTQ target device (default: GPU)')
+    parser.add_argument('--int8_preset', type=str, default='PERFORMANCE',
+                        choices=('PERFORMANCE', 'MIXED'),
+                        help='NNCF quantization preset (default: PERFORMANCE)')
     parser.add_argument('--extension', type=str, default=None,
                         help='Path to cdpn_extension.so')
     args = parser.parse_args()
@@ -1388,6 +1761,9 @@ if __name__ == '__main__':
     if args.extnn and args.e2e:
         parser.error('Export --extnn and --e2e in separate invocations; '
                      'each composite export rewires the converted NN body.')
+    if ((args.int8_nn)
+            and not args.dataset_dir):
+        parser.error('--dataset_dir is required for INT8 calibration')
 
     model, cfg = build_cdpn_model(args.cfg, args.load_model)
 
@@ -1398,6 +1774,16 @@ if __name__ == '__main__':
         export_nn_mixed_fp16_ir(
             nn_results['xml'], args.output_dir,
             basename=args.basename + '_fp16')
+
+    int8_nn_results = None
+    if args.int8_nn:
+        int8_nn_results = export_nn_int8_ir(
+            nn_results['xml'], args.output_dir, cfg,
+            basename=args.basename + '_int8',
+            subset_size=args.int8_subset_size,
+            target_device=args.int8_target_device,
+            preset=args.int8_preset,
+            dataset_dir=args.dataset_dir)
 
     # Optionally export the EXTNN model
     if args.extnn or args.fp16_extnn:

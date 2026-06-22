@@ -5,6 +5,7 @@ openvino==2026.3.1
 numpy==2.5.2
 opencv-python==5.0.0.93
 scipy==1.18.1
+nncf==3.2.0
 
 # Config & IO
 PyYAML==6.0.3
