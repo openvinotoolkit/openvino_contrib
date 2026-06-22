@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright (C) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
 
 # Activate conda environment (optional, uncomment if needed)
 # source ~/miniconda3/etc/profile.d/conda.sh
@@ -26,7 +28,7 @@ export SEG_PATH=$OUTPUT_DIR/sam6d_results/detection_ism.json
 # Check dependencies
 command -v git >/dev/null 2>&1 || { echo >&2 "[ERROR] git is not installed. Please install git."; exit 1; }
 command -v conda >/dev/null 2>&1 || echo "[WARNING] conda not found. Please activate your conda environment manually."
-#command -v nvcc >/dev/null 2>&1 || echo "[WARNING] nvcc not found. Please check your CUDA installation."
+#command -v nvcc >/dev/null 2>&1 || echo "[WARNING] Please check your CUDA installation."
 
 # Check key files and directories
 for f in "$CAD_PATH" "$RGB_PATH" "$DEPTH_PATH" "$CAMERA_PATH"; do
@@ -48,4 +50,3 @@ echo "[INFO] CAMERA_PATH=$CAMERA_PATH"
 echo "[INFO] OUTPUT_DIR=$OUTPUT_DIR"
 #echo "[INFO] CUDA PATH=$PATH"
 #echo "[INFO] CUDA LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
-
