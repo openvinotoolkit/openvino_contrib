@@ -1,3 +1,7 @@
+#!/bin/bash
+# Copyright (C) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 ### Create conda environment
 conda env create -f environment.yaml
 conda activate sam6d
