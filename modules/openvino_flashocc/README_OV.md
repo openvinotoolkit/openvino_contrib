@@ -1,3 +1,6 @@
+<!-- Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0 -->
+
 # FlashOCC — OpenVINO Inference on Intel iGPU
 
 Optimized end-to-end inference for **FlashOCC** (3D occupancy prediction) using

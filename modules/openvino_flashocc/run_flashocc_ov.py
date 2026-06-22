@@ -1,4 +1,6 @@
 # Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 
 #!/usr/bin/env python3
 """FlashOCC OpenVINO end-to-end inference runner.

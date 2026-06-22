@@ -1,3 +1,6 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 # FlashOCC OpenVINO inference — Python package requirements
 # NOTE: openvino itself is built from source (deepaks2/openvino @ gpu-flashocc-fixes)
 #       and installed as a wheel by setup.sh. Do NOT add openvino here.

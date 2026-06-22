@@ -1,3 +1,6 @@
+<!-- Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0 -->
+
 # OpenVINO FlashOCC
 
 OpenVINO-enabled FlashOCC workflow for 3D occupancy prediction.

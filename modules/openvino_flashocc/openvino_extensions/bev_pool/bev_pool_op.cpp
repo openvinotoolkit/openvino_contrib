@@ -1,4 +1,8 @@
-// Copyright (C) 2018-2026 Intel Corporation
+/*
+ * Copyright (C) 2018-2026 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // BEVPool Operation CPU Implementation for OpenVINO
 // Reference fallback; GPU acceleration via OpenCL custom layer
 
