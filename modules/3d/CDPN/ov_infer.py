@@ -151,6 +151,13 @@ class CdpnOVInference:
             ov.__version__, device))
 
         self.model = self.core.read_model(model_path)
+
+        self.int8_quantization_points = sum(1 for op in self.model.get_ordered_ops()
+            if op.get_type_name() == 'FakeQuantize')
+        if self.int8_quantization_points:
+            print('[CdpnOVInference] Model contains {} INT8 quantization points'.format(
+                self.int8_quantization_points))
+
         self.compiled = self.core.compile_model(self.model, device, config)
 
         self._infer_request = self.compiled.create_infer_request()
@@ -699,6 +706,8 @@ def main():
     parser.add_argument('--infer_precision', type=str, default='f32',
                         choices=('f32', 'f16', 'none'),
                         help='GPU inference precision hint (default: f32)')
+    parser.add_argument('--int8_nn', action='store_true', default=False,
+                        help='Require an INT8 NN-only model')
     args = parser.parse_args()
 
     if args.gpu:
@@ -725,6 +734,17 @@ def main():
         extension_path=args.extension,
         inference_precision=args.infer_precision,
     )
+
+    if args.int8_nn:
+        if infer.model_type != 'nn_only':
+            raise RuntimeError('--int8_nn expects a NN model, detected {}'.format(
+                infer.model_type))
+
+        if infer.int8_quantization_points <= 0:
+            raise RuntimeError('--int8_nn expects an INT8 model with quantization points')
+
+        print('INT8 NN accuracy check: {} INT8 quantization points'.format(
+            infer.int8_quantization_points))
 
     # 3. Determine which objects to test
     if args.obj_name and args.obj_name.lower() != 'all':
