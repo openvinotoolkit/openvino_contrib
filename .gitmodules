@@ -1,0 +1,3 @@
+[submodule "modules/3d/CDPN/cdpn_repo"]
+	path = modules/3d/CDPN/cdpn_repo
+	url = https://github.com/LZGMatrix/CDPN_ICCV2019_ZhigangLi
