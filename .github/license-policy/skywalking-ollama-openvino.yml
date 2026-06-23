@@ -1,0 +1,9 @@
+license:
+  spdx-id: Apache-2.0
+
+dependency:
+  files:
+    - modules/ollama_openvino/go.mod
+
+  licenses: []
+  excludes: []
