@@ -1,8 +1,10 @@
-// Copyright (C) 2021-2023 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
+
+#include <cmath>
 
 #include <error.hpp>
 
@@ -80,7 +82,7 @@ class AverageFinderBase : virtual public SubgraphBaseTest {
             } else {
                 ov::nvidia_gpu::throw_ov_exception(std::string{"Unsupported type: "} + type.get_type_name());
             }
-            if (!isinf(average))
+            if (!std::isinf(average))
                 abs_threshold = average * threshold_base;
             std::cout << "threshold = " << abs_threshold << '\n';
         }

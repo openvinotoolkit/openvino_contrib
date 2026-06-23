@@ -1,3 +1,6 @@
+// Copyright (C) 2018-2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 import { test, expect } from '@jest/globals';
 import { PromptTemplate } from '@langchain/core/prompts';
 import { OpenVINO } from '../llms.js';

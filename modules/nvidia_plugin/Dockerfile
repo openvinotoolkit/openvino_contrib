@@ -1,6 +1,10 @@
-FROM nvidia/cuda:11.8.0-runtime-ubuntu20.04
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+FROM nvidia/cuda:11.8.0-runtime-ubuntu22.04
+
 ARG enable_tensorrt
-ADD https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-ubuntu2004.pin /etc/apt/preferences.d/cuda-repository-pin-600
+ADD https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-ubuntu2204.pin /etc/apt/preferences.d/cuda-repository-pin-600
 
 # nv-tensorrt-repo-*.deb packages
 COPY *.deb  /
@@ -15,8 +19,8 @@ RUN set -exuo pipefail ; \
 		software-properties-common \
 	; \
 	if [[ ${enable_tensorrt-} == "1" ]] ; then dpkg -i /nv-tensorrt-repo-*.deb ; fi; \
-	apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/3bf863cc.pub ; \
-	add-apt-repository "deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/ /" ; \
+	apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/3bf863cc.pub ; \
+	add-apt-repository "deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/ /" ; \
 	apt update ; \
 	DEBIAN_FRONTEND=noninteractive apt install -y \
 		./libcudnn*.deb \

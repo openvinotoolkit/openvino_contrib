@@ -34,7 +34,8 @@ class CudaInferRequest : public ov::ISyncInferRequest {
 public:
     using Ptr = std::shared_ptr<CudaInferRequest>;
 
-    explicit CudaInferRequest(const std::shared_ptr<const CompiledModel>& compiled_model);
+    explicit CudaInferRequest(const std::shared_ptr<const CompiledModel>& compiled_model, 
+                              const std::shared_ptr<ov::threading::ITaskExecutor>& wait_executor);
     ~CudaInferRequest() = default;
 
     void infer() override;
@@ -59,6 +60,7 @@ private:
     std::array<openvino::itt::handle_t, static_cast<std::size_t>(PerfStages::NumOfStages)> _profilingTask;
     std::optional<MemoryPool::Proxy> memory_proxy_;
     CancellationToken cancellation_token_;
+    const std::shared_ptr<ov::threading::ITaskExecutor> wait_executor_;
     std::unique_ptr<IExecutionDelegator> executionDelegator_;
     std::vector<std::shared_ptr<ov::Tensor>> input_tensors_;
     std::vector<std::shared_ptr<ov::Tensor>> output_tensors_;

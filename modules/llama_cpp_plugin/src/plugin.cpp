@@ -1,4 +1,4 @@
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 #include "plugin.hpp"
@@ -9,6 +9,8 @@
 #include "openvino/op/constant.hpp"
 #include "openvino/runtime/internal_properties.hpp"
 #include "openvino/util/log.hpp"
+#include "openvino/runtime/shared_buffer.hpp"
+#include "openvino/util/file_util.hpp"
 
 namespace {
 static constexpr const char* wait_executor_name = "LlamaCppWaitExecutor";
@@ -33,7 +35,7 @@ std::shared_ptr<ov::ICompiledModel> LlamaCppPlugin::compile_model(const std::sha
     OPENVINO_THROW_NOT_IMPLEMENTED("Currently only direct GGUF file loading is "
                                    "supported for the LLAMA_CPP* plugins");
 }
-std::shared_ptr<ov::ICompiledModel> LlamaCppPlugin::compile_model(const std::string& fname,
+std::shared_ptr<ov::ICompiledModel> LlamaCppPlugin::compile_model(const std::filesystem::path& fname,
                                                                   const ov::AnyMap& properties) const {
     size_t num_threads = 0;
     auto it = properties.find(ov::inference_num_threads.name());
@@ -43,7 +45,7 @@ std::shared_ptr<ov::ICompiledModel> LlamaCppPlugin::compile_model(const std::str
     } else {
         num_threads = m_num_threads;
     }
-    return std::make_shared<LlamaCppModel>(fname, shared_from_this(), num_threads);
+    return std::make_shared<LlamaCppModel>(ov::util::path_to_string(fname), shared_from_this(), num_threads);
 }
 
 void LlamaCppPlugin::set_property(const ov::AnyMap& properties) {
@@ -52,6 +54,7 @@ void LlamaCppPlugin::set_property(const ov::AnyMap& properties) {
             int num_threads = map_entry.second.as<int>();
             OPENVINO_ASSERT(num_threads >= 0, "INFERENCE_NUM_THREADS cannot be negative");
             m_num_threads = num_threads;
+            continue;
         }
         OPENVINO_THROW_NOT_IMPLEMENTED("llama_cpp_plugin: setting property ", map_entry.first, "not implemented");
     }
@@ -101,6 +104,21 @@ std::shared_ptr<ov::ICompiledModel> LlamaCppPlugin::import_model(std::istream& m
                                                                  const ov::SoPtr<ov::IRemoteContext>& context,
                                                                  const ov::AnyMap& properties) const {
     OPENVINO_THROW_NOT_IMPLEMENTED("llama_cpp_plugin: model importing not implemented");
+}
+
+std::shared_ptr<ov::ICompiledModel> LlamaCppPlugin::import_model(const ov::Tensor& model,
+                                                                 const ov::AnyMap& properties) const {
+    ov::SharedStreamBuffer buffer{model.data(), model.get_byte_size()};
+    std::istream stream{&buffer};
+    return import_model(stream, properties);
+}
+
+std::shared_ptr<ov::ICompiledModel> LlamaCppPlugin::import_model(const ov::Tensor& model,
+                                                                 const ov::SoPtr<ov::IRemoteContext>& context,
+                                                                 const ov::AnyMap& properties) const {
+    ov::SharedStreamBuffer buffer{model.data(), model.get_byte_size()};
+    std::istream stream{&buffer};
+    return import_model(stream, context, properties);
 }
 
 ov::SupportedOpsMap LlamaCppPlugin::query_model(const std::shared_ptr<const ov::Model>& model,

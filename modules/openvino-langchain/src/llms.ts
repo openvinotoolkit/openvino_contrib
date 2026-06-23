@@ -1,3 +1,6 @@
+// Copyright (C) 2018-2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 import { CallbackManagerForLLMRun } from '@langchain/core/callbacks/manager';
 import { LLM, BaseLLMParams } from '@langchain/core/language_models/llms';
 import { GenerationChunk } from '@langchain/core/outputs';
@@ -58,8 +61,6 @@ export class OpenVINO extends LLM {
 
     // generation option setup
     const generateOptions: GenerationConfig = { ...this.generateOptions };
-    // to avoid a warning about result type
-    generateOptions['return_decoded_results'] = true;
     if (options.stop) {
       const set = new Set(options.stop);
       generateOptions.stop_strings = set;
