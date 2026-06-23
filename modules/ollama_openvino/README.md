@@ -867,6 +867,11 @@ Then build and run Ollama from the root directory of the repository:
    ```shell
    go build -o ollama.exe
    ```
+   **Note:**
+   If you encounter the error message, "This app can't run on your PC. To find a version for your PC, check with the software publisher," please rebuild the executable using:
+   ```shell
+   go build -ldflags="-s -w" -o ollama.exe
+   ```
 
 6. If you don't want to recompile ollama, you can choose to directly use the compiled executable file, and then initialize the genai environment in `step 3` to run ollama directly.
    
@@ -905,6 +910,11 @@ Then build and run Ollama from the root directory of the repository:
 5. building Ollama
    ```shell
    go build -o ollama
+   ```
+   **Note:**
+   If you encounter the error message, "This app can't run on your PC. To find a version for your PC, check with the software publisher," please rebuild the executable using:
+   ```shell
+   go build -ldflags="-s -w" -o ollama.exe
    ```
 
 6. If you don't want to recompile ollama, you can choose to directly use the compiled executable file, and then initialize the genai environment in `step 3` to run ollama directly [ollama](https://drive.google.com/file/d/1HEyZNNCbWSidKNQl4MRsD8FuwEZtdyew/view?usp=drive_link). 
