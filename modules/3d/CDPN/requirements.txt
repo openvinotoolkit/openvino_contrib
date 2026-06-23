@@ -1,10 +1,11 @@
 # CDPN Dependencies
 torch==2.10.0
 torchvision==0.25.0 --index-url https://download.pytorch.org/whl/xpu
-openvino==2026.1.0
 numpy==1.26.4
 opencv-python==4.11.0.86
 scipy==1.17.1
+openvino==2026.2.0
+nncf==3.2.0
 
 # Config & IO
 PyYAML==6.0.3
