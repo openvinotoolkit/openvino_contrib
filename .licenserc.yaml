@@ -18,6 +18,8 @@ header:
 
   paths-ignore:
     - 'LICENSE'
+    # JSON files do not support comments, not a source file.
+    - '**/*.json'
     # Sample document content used by the RAG example, not a source file.
     - 'modules/openvino-langchain/sample/data/document_sample.txt'
     # Third-party PointPillars fork; keep original upstream notices intact.
