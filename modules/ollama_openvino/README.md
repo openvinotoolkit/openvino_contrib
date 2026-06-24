@@ -616,7 +616,7 @@ ollama serve
 The native Ollama only supports models in the GGUF format, the Ollama-OV invoke OpenVINO GenAI which requires models in the OpenVINO format. Therefore, we have enabled support for OpenVINO model files in Ollama. For public LLMs, you can access and download OpenVINO IR model from HuggingFace or ModelScope:
 | Model              | Parameters | Size  |Compression | Download                         | Device   |
 | ------------------ | ---------- | ----- | -----------|-------------------- |----------|
-| Qwen3-0.6B-int4-ov | 0.6B | 0.4GB | INT4_ASYM_128  ratio 0.8 | [ModelScope](https://www.modelscope.cn/models/OpenVINO/Qwen3-1.7B-int4-ov/summary) | CPU, GPU, NPU(base) |
+| Qwen3-0.6B-int4-ov | 0.6B | 0.4GB | INT4_ASYM_128  ratio 0.8 | [ModelScope](https://www.modelscope.cn/models/OpenVINO/Qwen3-0.6B-int4-ov/summary) | CPU, GPU, NPU(base) |
 | Qwen3-1.7B-int4-ov | 1.7B | 1.2GB | INT4_ASYM_128  ratio 0.8 | [ModelScope](https://www.modelscope.cn/models/OpenVINO/Qwen3-1.7B-int4-ov/) | CPU, GPU, NPU(base) |
 | Qwen3-4B-int4-ov   | 4B   | 2.6GB | INT4_ASYM_128  ratio 0.8 | [ModelScope](https://www.modelscope.cn/models/OpenVINO/Qwen3-4B-int4-ov) | CPU, GPU, NPU(base) |
 | Qwen3-1.7B-int4-sym-ov-npu | 1.7B | 1.0GB | INT4_SYM_CW | [ModelScope](https://modelscope.cn/models/zhaohb/Qwen3-1.7B-int4-sym-ov-npu) | NPU(best) |
