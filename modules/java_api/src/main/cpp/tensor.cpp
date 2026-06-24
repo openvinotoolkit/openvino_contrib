@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2023 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 #include <jni.h> // JNI header provided by JDK
@@ -110,6 +110,19 @@ JNIEXPORT jintArray JNICALL Java_org_intel_openvino_Tensor_GetShape(JNIEnv *env,
 
         env->ReleaseIntArrayElements(result, arr, 0);
         return result;
+    )
+    return 0;
+}
+
+JNIEXPORT jint JNICALL Java_org_intel_openvino_Tensor_GetElementType(JNIEnv *env, jobject, jlong addr)
+{
+    JNI_METHOD(
+        "GetElementType",
+        Tensor *ov_tensor = (Tensor *)addr;
+
+        element::Type_t t_type = ov_tensor->get_element_type();
+        jint type = static_cast<jint>(t_type);
+        return type;
     )
     return 0;
 }

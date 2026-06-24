@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2023 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 package org.intel.openvino;
@@ -56,6 +56,11 @@ public class Tensor extends Wrapper {
         return GetShape(nativeObj);
     }
 
+    /** Returns the tensor element type. */
+    public ElementType get_element_type() {
+        return ElementType.valueOf(GetElementType(nativeObj));
+    }
+
     /** Returns a tensor data as floating point array. */
     public float[] data() {
         return asFloat(nativeObj);
@@ -76,6 +81,8 @@ public class Tensor extends Wrapper {
     private static native long TensorLong(int[] shape, long[] data);
 
     private static native int[] GetShape(long addr);
+
+    private static native int GetElementType(long addr);
 
     private static native float[] asFloat(long addr);
 

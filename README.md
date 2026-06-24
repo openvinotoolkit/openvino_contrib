@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Repository for OpenVINO's extra modules
 
 This repository is intended for the development of so-called "extra" modules, contributed functionality. New modules quite often do not have stable API, and they are not well-tested. Thus, they shouldn't be released as a part of official OpenVINO distribution, since the library maintains backward compatibility, and tries to provide decent performance and stability.
@@ -16,7 +21,10 @@ This list gives an overview of all modules available inside the contrib reposito
 * [**OpenVINO Code**](./modules/openvino_code): VSCode extension for AI code completion with OpenVINO.
 * [**Ollama-OpenVINO**](./modules/ollama_openvino): OpenVINO GenAI empowered Ollama which accelerate LLM on Intel platforms(including CPU, iGPU/dGPU, NPU).
 * [**ov_training_kit**](./modules/ov_training_kit): Training Kit Python library -- provides scikit-learn, PyTorch and Tensorflow wrappers for training, optimization, and deployment with OpenVINO on AI PCs.
-* [**3D Point Pillars**](./modules/3d/pointPillars): Use OpenVINO to perform 3D object detection with PointPillars model.
+* [**OpenVino BEVFusion**](./modules/openvino_bevfusion): OpenVino supported implementation of the BEVFusion model.
+* [**3D**](./modules/3d): A collection of 3D vision models implemented with OpenVINO. Currently, it includes the following models:
+  * [**PointPillars**](./modules/3d/pointPillars): Use OpenVINO to perform 3D object detection with PointPillars model.
+  * [**CDPN**](./modules/3d/CDPN): Use OpenVINO to perform 6-DoF object pose estimation with CDPN model.
 
 ## How to build OpenVINO with extra modules
 You can build OpenVINO, so it will include the modules from this repository. Contrib modules are under constant development and it is recommended to use them alongside the master branch or latest releases of OpenVINO.
@@ -41,7 +49,10 @@ Additional build instructions are available for the following modules:
 * [**custom_operations**](./modules/custom_operations/README.md)
 * [**ollama_OpenVINO**](./modules/ollama_openvino)
 * [**openvino-langchain**](./modules/openvino-langchain): LangChain.js integrations for OpenVINO™
-* [**3D Point Pillars**](./modules/3d/pointPillars): Check the [README](./modules/3d/pointPillars/README.md) for detailed usage and build instructions.
+* [**OpenVino BEVFusion**](./modules/openvino_bevfusion): Check the [INSTRUCTIONS](./modules/openvino_bevfusion/EXPORT_AND_INFERENCE_GUIDE.md) for detailed usage and build instructions.
+* **3D**:
+  * [**Point Pillars**](./modules/3d/pointPillars): Check the [README](./modules/3d/pointPillars/README.md) for detailed usage and build instructions.
+  * [**CDPN**](./modules/3d/CDPN): Check the [README](./modules/3d/CDPN/README.md) for detailed usage and build instructions.
 
 ## Update the repository documentation
 In order to keep a clean overview containing all contributed modules, the following files need to be created/adapted:

@@ -1,6 +1,9 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 torch
 onnx
 tensorboard
 pytest
 # open3d==0.16.0 - need to update with new release
-onnxscript==0.5.4
+onnxscript
