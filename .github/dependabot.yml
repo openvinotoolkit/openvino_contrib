@@ -3,6 +3,27 @@
 
 # Dependabot config for openvino_contrib.
 #
+# Dependabot has no shared-defaults/inheritance and rejects YAML anchors
+# (`YAML aliases are not supported`, dependabot/dependabot-core#1582), so every
+# `updates` block below repeats the same shape. To keep that controllable:
+#
+# SHARED SETTINGS — keep identical across ALL blocks; change here, then mirror:
+#   schedule.interval: "weekly"
+#   groups: one `<eco>-security` (applies-to: security-updates) + one
+#           `<eco>-version` (applies-to: version-updates), both patterns ["*"]
+#   labels: "dependencies" + the ecosystem label
+#   commit-message.prefix: "deps(<eco>)"
+#
+# PER-BLOCK DIFFERENCES — the only values that legitimately vary:
+#   ecosystem | location           | day     | PR limit | label
+#   pip       | /modules/**/*      | monday  | 10       | python
+#   npm       | /modules/**/*      | monday  | 10       | javascript
+#   gomod     | /modules/ollama_openvino | monday | 10  | go
+#   gradle    | /modules/**/*      | tuesday | 10       | java
+#   docker    | /modules/**/*      | tuesday | 5        | docker
+#   actions   | /                  | tuesday | 5        | github-actions
+#
+# Notes:
 # - `/modules/**/*` globstar matches manifests at any depth under modules/.
 # - `applies-to: security-updates` requires "Dependabot security updates"
 #   (+ Dependency graph + alerts) enabled in repo settings; the file alone
