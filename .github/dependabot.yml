@@ -1,36 +1,23 @@
 # Copyright (C) 2018-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-# Dependabot configuration for openvino_contrib.
+# Dependabot config for openvino_contrib.
 #
-# Goals:
-#   * Cover every supported manifest under modules/ (pip, npm, gomod, gradle,
-#     docker) plus the GitHub Actions workflows.
-#   * Keep the PR count low by grouping all updates of an ecosystem into a
-#     single PR per manifest directory, for BOTH security and version updates
-#     (see the `groups` blocks with `applies-to`). Without the
-#     `applies-to: security-updates` group, Dependabot opens one PR per alert.
-#   * Stay future-proof: the `directories: ["/modules/**"]` glob automatically
-#     picks up new modules without editing this file.
-#
-# Notes:
-#   * Security updates ignore `open-pull-requests-limit`; the limit only caps
-#     version-update PRs.
-#   * Major version bumps that close security alerts (e.g. electron, lxml,
-#     scikit-learn, langsmith) are intentionally kept in the grouped PRs via
-#     `patterns: ["*"]` so a module's fixes land together; review them as a set.
+# - `/modules/**/*` globstar matches manifests at any depth under modules/.
+# - `applies-to: security-updates` requires "Dependabot security updates"
+#   (+ Dependency graph + alerts) enabled in repo settings; the file alone
+#   does not enable security updates.
+# - Only the `dependencies` label is auto-created; ecosystem labels must exist
+#   in the repo or Dependabot ignores them.
+# - Security updates ignore `open-pull-requests-limit`.
 
 version: 2
 
 updates:
-  # ---------------------------------------------------------------------------
-  # Python — requirements*.txt and setup.py across all modules
-  # (3d/CDPN, 3d/pointPillars, custom_operations/tests, genai_optimizations,
-  #  nvidia_plugin/*, openvino_bevfusion, openvino_training_kit, token_merging)
-  # ---------------------------------------------------------------------------
+  # pip — requirements*.txt and setup.py
   - package-ecosystem: "pip"
     directories:
-      - "/modules/**"
+      - "/modules/**/*"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -50,13 +37,10 @@ updates:
         patterns:
           - "*"
 
-  # ---------------------------------------------------------------------------
-  # JavaScript / TypeScript — npm lockfiles
-  # (ollama_openvino/macapp, openvino-langchain, openvino-langchain/sample)
-  # ---------------------------------------------------------------------------
+  # npm — package.json lockfiles
   - package-ecosystem: "npm"
     directories:
-      - "/modules/**"
+      - "/modules/**/*"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -76,9 +60,7 @@ updates:
         patterns:
           - "*"
 
-  # ---------------------------------------------------------------------------
-  # Go modules — ollama_openvino
-  # ---------------------------------------------------------------------------
+  # gomod — ollama_openvino
   - package-ecosystem: "gomod"
     directory: "/modules/ollama_openvino"
     schedule:
@@ -100,13 +82,10 @@ updates:
         patterns:
           - "*"
 
-  # ---------------------------------------------------------------------------
-  # Java / Kotlin — Gradle builds and version catalogs
-  # (java_api + samples, android_demos/coco_detection_android_demo)
-  # ---------------------------------------------------------------------------
+  # gradle — build.gradle and version catalogs (Java/Kotlin)
   - package-ecosystem: "gradle"
     directories:
-      - "/modules/**"
+      - "/modules/**/*"
     schedule:
       interval: "weekly"
       day: "tuesday"
@@ -126,13 +105,10 @@ updates:
         patterns:
           - "*"
 
-  # ---------------------------------------------------------------------------
-  # Dockerfiles — base image updates
-  # (3d/pointPillars/devops, nvidia_plugin, ollama_openvino)
-  # ---------------------------------------------------------------------------
+  # docker — Dockerfile base images
   - package-ecosystem: "docker"
     directories:
-      - "/modules/**"
+      - "/modules/**/*"
     schedule:
       interval: "weekly"
       day: "tuesday"
@@ -152,9 +128,7 @@ updates:
         patterns:
           - "*"
 
-  # ---------------------------------------------------------------------------
-  # GitHub Actions — workflows under .github/workflows (SHA-pinned)
-  # ---------------------------------------------------------------------------
+  # github-actions — workflows under .github/workflows
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
