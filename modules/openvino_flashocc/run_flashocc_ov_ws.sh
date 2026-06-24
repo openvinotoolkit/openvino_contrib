@@ -26,8 +26,7 @@
 #   Optimized:   30.2ms / 33.1 fps   (+40.3% throughput)
 #
 # Usage:
-#   bash run_flashocc_ov_ws.sh [--num-samples N] [--data-pkl PATH]
-#                               [--data-root PATH] [--ov-device GPU|CPU]
+#   bash run_flashocc_ov_ws.sh [--num-samples N] [--ov-device GPU|CPU]
 #   First run:  bash setup.sh --model-dir /path/to/split_f16out ...
 set -euo pipefail
 
@@ -44,20 +43,15 @@ else
   OV_RELEASE_DIR="${OV_RELEASE_DIR:-}"
   OV_BEV_SO="${OV_BEV_SO:-}"
   FLASHOCC_MODEL_DIR="${FLASHOCC_MODEL_DIR:-}"
-  FLASHOCC_DATA_PKL="${FLASHOCC_DATA_PKL:-}"
-  FLASHOCC_DATA_ROOT="${FLASHOCC_DATA_ROOT:-}"
 fi
 
 # ── Defaults (can be overridden via CLI args) ─────────────────────────────────
 MODEL_DIR="${FLASHOCC_MODEL_DIR:-${SCRIPT_DIR}/work_dirs/flashocc-r50-m0/openvino/split_f16out}"
-DATA_PKL="${FLASHOCC_DATA_PKL:-${SCRIPT_DIR}/data/nuscenes/nuscenes_infos_val.pkl}"
-DATA_ROOT="${FLASHOCC_DATA_ROOT:-${SCRIPT_DIR}/data/nuscenes}"
-RUN_MODE="openvino"
 NUM_SAMPLES=80
 RUN_DURATION=0
 OV_DEVICE="GPU"
 OV_BEVPOOL_DEVICE="GPU"
-LATENCY_WARMUP=5
+WARMUP_FRAMES=5
 OV_EXT_SO="${OV_BEV_SO:-${SCRIPT_DIR}/openvino_extensions/bev_pool/build_ws/libopenvino_bevpool_extension.so}"
 OV_GPU_CONFIG="${SCRIPT_DIR}/openvino_extensions/bev_pool/bev_pool_gpu_panterlake.xml"
 
@@ -65,9 +59,6 @@ usage() {
   cat <<HELP
 Usage: $0 [options]
   --model-dir DIR      IR model directory with split_f16out models  (default: \$MODEL_DIR)
-  --run MODE           Run mode: openvino|pytorch                   (default: openvino)
-  --data-pkl FILE      NuScenes val pkl path                        (default: \$DATA_PKL)
-  --data-root DIR      NuScenes data root                           (default: \$DATA_ROOT)
   --num-samples N      Frames to infer                              (default: $NUM_SAMPLES)
   --run-duration SECS  Run for at least this many seconds, cycling the batch (default: disabled)
   --ov-device DEV      OV inference device                          (default: $OV_DEVICE)
@@ -79,9 +70,6 @@ HELP
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --model-dir)    MODEL_DIR="$2";    shift 2 ;;
-    --run)          RUN_MODE="$2";     shift 2 ;;
-    --data-pkl)     DATA_PKL="$2";     shift 2 ;;
-    --data-root)    DATA_ROOT="$2";    shift 2 ;;
     --num-samples)  NUM_SAMPLES="$2";  shift 2 ;;
     --run-duration) RUN_DURATION="$2"; shift 2 ;;
     --ov-device)    OV_DEVICE="$2";    shift 2 ;;
@@ -126,7 +114,7 @@ OV_VER=$("${VENV}/bin/python3" -c 'import openvino; print(openvino.__version__)'
 echo "  OV version  : ${OV_VER}"
 echo "  Device      : ${OV_DEVICE} / BEVpool: ${OV_BEVPOOL_DEVICE}"
 echo "  Model dir   : ${MODEL_DIR}"
-echo "  Samples     : ${NUM_SAMPLES}  (warmup: ${LATENCY_WARMUP})"
+echo "  Frames      : ${NUM_SAMPLES}  (warmup: ${WARMUP_FRAMES})"
 [[ "$RUN_DURATION" != "0" ]] && echo "  Run duration : ${RUN_DURATION}s (sample batch recycled until budget)"
 echo ""
 
@@ -139,14 +127,11 @@ EXT_ARGS=()
 # ── Run ───────────────────────────────────────────────────────────────────────
 cd "${SCRIPT_DIR}"
 exec "${VENV}/bin/python3" run_flashocc_ov.py \
-  --model-dir             "$MODEL_DIR" \
-  --data-pkl              "$DATA_PKL" \
-  --data-root             "$DATA_ROOT" \
-  --num-samples           "$NUM_SAMPLES" \
-  --ov-device             "$OV_DEVICE" \
-  --ov-bevpool-device     "$OV_BEVPOOL_DEVICE" \
-  --latency-warmup-frames "$LATENCY_WARMUP" \
-  --ov-disable-infer-only-timing \
+  --model-dir         "$MODEL_DIR" \
+  --num-samples       "$NUM_SAMPLES" \
+  --ov-device         "$OV_DEVICE" \
+  --ov-bevpool-device "$OV_BEVPOOL_DEVICE" \
+  --warmup-frames     "$WARMUP_FRAMES" \
   --ov-enc-inference-precision f16 \
   --ov-trk-inference-precision f16 \
   "${EXT_ARGS[@]}" \
