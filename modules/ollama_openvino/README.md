@@ -581,39 +581,72 @@ Getting started with large language models and using the [GenAI](https://github.
   <img src="./images/ollama_openvino_new.gif" alt="Ollama-OV" width="900" height="400">
 </div>
 
-We provide two ways to download the executable file of Ollama, one is to download it from Google Drive, and the other is to download it from Baidu Drive:
-## Google Driver
+<div style="text-align:center;">
+  <img src="./images/ollama_vlm_test.gif" alt="Ollama-OV" width="900" height="600">
+</div>
+
+## Current features (OpenVINO backend)
+
+Capabilities below apply when the model uses `ModelBackend "OpenVINO"` in the Modelfile (Ollama-OV + [OpenVINO GenAI](https://github.com/openvinotoolkit/openvino.genai)).
+
+LLM and VLM both use OpenVINO GenAI `chat_history` on `/api/chat`: full `messages`, tools / function calling, and `enable_thinking` (when the model supports them). VLM also sends images from the latest `role: user` message (or top-level `image_data` as a fallback).
+
+| Area | What works today |
+|------|------------------|
+| LLM (`genairunner`) | `ov_genai_llm_pipeline` + `generate_with_history`; streaming tokens via the Go callback. |
+| VLM (`vlmrunner`) | `ov_genai_vlm_pipeline` + `generate_with_history` with the same message / tools / thinking wiring; images apply to the last user turn only (see Model library (VLM)). Legacy prompt + `image_data` still works when no `messages` are sent. |
+| Chat, tools, thinking | `messages` → `chat_history` + `set_tools` + `extra_context`; multi-turn `role: "tool"` + `tool_call_id`. Quick check: `python scripts/test_vlm_tools.py`. |
+| Token usage | `ov_genai_perf_metrics` fills `prompt_eval_count` / `eval_count` and OpenAI-style `usage` (LLM and VLM). |
+| Devices | CPU, GPU, and NPU where the model package and drivers support it (see model tables). |
+| GGUF (experimental) | Optional GGUF → GenAI path for development; not recommended for production (see Import from GGUF file below). |
+
+> 中文摘要：LLM/VLM 均支持 `messages` → `chat_history`、工具调用与 thinking；VLM 图像绑定最后一轮 user。另有真实 token 统计、CPU/GPU/NPU 与实验性 GGUF。可用 `scripts/test_vlm_tools.py` 验证 VLM 工具调用。
+
+<!-- ## Google Drive Download Links
+
 ### Windows
-[Download exe](https://drive.google.com/file/d/12eXPdCSSNx53fmK7KnEZ3WFMSiaX2M-Y/view?usp=sharing) + [Download OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.3.0.0.dev20250630/openvino_genai_windows_2025.3.0.0.dev20250630_x86_64.zip)
 
-### Linux(Ubuntu 22.04)
-[Download](https://drive.google.com/file/d/11-Gmk9nEMsr7lrUV2E_gFOAhxXErLsoh/view?usp=sharing) + [Donwload OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.3.0.0.dev20250630/openvino_genai_ubuntu22_2025.3.0.0.dev20250630_x86_64.tar.gz)
-
-## 百度云盘
-### Windows
-[Download exe](https://pan.baidu.com/s/1nFok-DqBy-VoiXIwghE71Q?pwd=3m2m) + [Download OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.3.0.0.dev20250630/openvino_genai_windows_2025.3.0.0.dev20250630_x86_64.zip)
-
-### Linux(Ubuntu 22.04)
-[Download](https://pan.baidu.com/s/16roqb9JVN_k1H_fk2JFXHg?pwd=t5q7) + [Donwload OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.3.0.0.dev20250630/openvino_genai_ubuntu22_2025.3.0.0.dev20250630_x86_64.tar.gz)
+- [ollama.exe Download](https://drive.google.com/drive/folders/11fVeRbVfWS5MONAFX30w9Hsz2hMT3yaG?usp=sharing)
+- [OpenVINO GenAI Download](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2026.3.0.0.dev20260516/openvino_genai_windows_2026.3.0.0.dev20260516_x86_64.zip) -->
 
 ## Docker
-### Linux
-We also prepared a Dockerfile to help developers quickly build Docker images: [Dockerfile](./Dockerfile_genai_ubuntu24)
+
+### Linux Docker
+
+We also prepared a Dockerfile to help developers quickly build Docker images [Dockerfile](./Dockerfile_genai_ubuntu24):
+
 ```shell
 docker build -t ollama_openvino_ubuntu24:v1 -f Dockerfile_genai_ubuntu24 .
 ```
-Then, start and enter the Docker container.
+
+Then, start and enter the Docker container:
+
 ```shell
-docker run -it --rm --entrypoint /bin/bash ollama_openvino_ubuntu24:v1
+docker run -it --rm --device=/dev/dri:/dev/dri  --device=/dev/accel:/dev/accel --entrypoint /bin/bash ollama_openvino_ubuntu24:v1
 ```
-Execute the following inside the container:
+
+> [!NOTE]
+> The `--device=/dev/dri:/dev/dri` mounts the iGPU/dGPU devices directory into the container.
+> The ` --device=/dev/accel:/dev/accel` mounts the NPU devices directory into the container.
+
+Execute the following commands inside the container:
+
 ```shell
-source /home/ollama_ov_server/openvino_genai_ubuntu22_2025.3.0.0.dev20250630_x86_64/setupvars.sh
+source /home/ollama_ov_server/openvino_genai_windows_2026.3.0.0.dev20260516_x86_64/setupvars.sh
 ollama serve
 ```
 
-## Model library
-The native Ollama only supports models in the GGUF format, the Ollama-OV invoke OpenVINO GenAI which requires models in the OpenVINO format. Therefore, we have enabled support for OpenVINO model files in Ollama. For public LLMs, you can access and download OpenVINO IR model from HuggingFace or ModelScope:
+## Model library (VLM)
+The native Ollama only supports models in the GGUF format, the Ollama-OV invoke OpenVINO GenAI which requires models in the OpenVINO format. Therefore, we have enabled support for OpenVINO model files in Ollama. For public VLMs, you can access and download OpenVINO IR model from HuggingFace or ModelScope:
+| Model              | Parameters | Size  |Compression | Download                         | Device   |
+| ------------------ | ---------- | ----- | -----------|-------------------- |----------|
+| Qwen2.5-VL-3B-Instruct-int4-ov | 3B | 2.5GB | INT4_ASYM_128  ratio 1.0 | [ModelScope](https://www.modelscope.cn/models/zhaohb/Qwen2.5-VL-3B-Instruct-int4-ov/summary) | CPU, GPU, NPU(base) |
+| Qwen3.5-4B-int4-ov | 4B | 3.5GB | INT4_ASYM_128  ratio 1.0 | [HuggingFace](https://huggingface.co/yangsu0423/Qwen3.5-4B-int4-ov) | CPU, GPU, NPU(base) |
+| Qwen3.5-9B-int4-ov | 9B | 6.1GB | INT4_ASYM_128  ratio 1.0 | [HuggingFace](https://huggingface.co/yangsu0423/Qwen3.5-9B-int4-ov) | CPU, GPU, NPU(base) |
+| gemma-3-4b-it-ov-int4 | 4B | 3.5GB | INT4_ASYM_128  ratio 1.0 | [HuggingFace](https://huggingface.co/yangsu0423/gemma-3-4b-it-ov-int4) | CPU, GPU, NPU(base) |
+
+## Model library (LLM)
+
 | Model              | Parameters | Size  |Compression | Download                         | Device   |
 | ------------------ | ---------- | ----- | -----------|-------------------- |----------|
 | Qwen3-0.6B-int4-ov | 0.6B | 0.4GB | INT4_ASYM_128  ratio 0.8 | [ModelScope](https://www.modelscope.cn/models/OpenVINO/Qwen3-1.7B-int4-ov/summary) | CPU, GPU, NPU(base) |
@@ -692,7 +725,7 @@ We added two new parameters to Modelfile based on the original parameters:
 How to create an Ollama model based on Openvino IR
 
 <div align="center">
-  <img src="./images/ollama-create.png" alt="How to create an Ollama model based on Openvino IR" width="400" height="400">
+  <img src="./images/ollama_create.png" alt="How to create an Ollama model based on Openvino IR" width="400" height="400">
 </div>
 
 #### Example
@@ -717,9 +750,9 @@ Let's take [deepseek-ai/DeepSeek-R1-Distill-Qwen-7B](https://hf-mirror.com/deeps
       ```
 
 
-2. Package OpenVINO IR into a tar.gz file
+2. Package OpenVINO IR into a tar.gz file. [Qwen2.5-VL-3B-Instruct-int4-ov link](https://www.modelscope.cn/models/zhaohb/Qwen2.5-VL-3B-Instruct-int4-ov)
     ```bash
-    tar -zcvf DeepSeek-R1-Distill-Qwen-7B-int4-ov.tar.gz DeepSeek-R1-Distill-Qwen-7B-int4-ov
+    tar -zcvf Qwen2.5-VL-3B-Instruct.tar.gz Qwen2.5-VL-3B-Instruct-int4-ov
     ```
 
 3. Create a file named `Modelfile`, with a `FROM` instruction with the local filepath to the model you want to import.
@@ -727,40 +760,90 @@ Let's take [deepseek-ai/DeepSeek-R1-Distill-Qwen-7B](https://hf-mirror.com/deeps
 
    Note:
 
-   1. The `ModelType "OpenVINO"` parameter is mandatory and must be explicitly set.
-   2. The `InferDevice` parameter is optional:
+   1. The `ModelBackend "OpenVINO"` parameter is mandatory and must be explicitly set.
+   2. The `ModelType "<VLM/LLM>"` parameter indicates the model type—either VLM (Vision-Language Model) or LLM (Large Language Model)—and the appropriate runner is selected based on this parameter. 
+   3. The `InferDevice` parameter is optional:
       - If not specified, the system will prioritize using the GPU by default. If no GPU is available, it will automatically fall back to using the CPU. If InferDevice is explicitly set, the system will strictly use the specified device. If the specified device is unavailable, the system will follow the same fallback strategy as when InferDevice is not set (i.e., GPU first, then CPU).
       - If there are multiple GPUs in the environment, you can specify which GPU device to use by indicating GPU:<id>. For example, GPU:0 or GPU:1.
-   3. For more information on working with a Modelfile, see the [Modelfile](./docs/modelfile.md) documentation.
       
-4. Unzip OpenVINO GenAI package and set environment
+4. Unzip OpenVINO GenAI package and set environment.[openvino_genai_windows_2026.3.0.0.dev20260516_x86_64](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2026.3.0.0.dev20260516/openvino_genai_windows_2026.3.0.0.dev20260516_x86_64.zip)
    ```shell
-   cd openvino_genai_ubuntu22_2025.3.0.0.dev20250630_x86_64
+   cd openvino_genai_windows_2026.3.0.0.dev20260516_x86_64
    setupvars.bat
    ```
 
 5. Create the model in Ollama
 
-   ```shell
-   ollama create DeepSeek-R1-Distill-Qwen-7B-int4-ov:v1 -f Modelfile
-   ```
-   You will see output similar to the following:
-   ```shell
-      gathering model components 
-      copying file sha256:77acf6474e4cafb67e57fe899264e9ca39a215ad7bb8f5e6b877dcfa0fabf919 100% 
-      using existing layer sha256:77acf6474e4cafb67e57fe899264e9ca39a215ad7bb8f5e6b877dcfa0fabf919 
-      creating new layer sha256:9b345e4ef9f87ebc77c918a4a0cee4a83e8ea78049c0ee2dc1ddd2a337cf7179 
-      creating new layer sha256:ea49523d744c40bc900b4462c43132d1c8a8de5216fa8436cc0e8b3e89dddbe3 
-      creating new layer sha256:b6bf5bcca7a15f0a06e22dcf5f41c6c0925caaab85ec837067ea98b843bf917a 
-      writing manifest 
-      success 
-   ```
+   1. LLM Model
+      a. Create Modelfile
+         ```shell
+         cat Modelfile
+         ```
+         ```plaintext
+         FROM Qwen3-4B-int4-asym-ov.tar.gz
+         ModelBackend "OpenVINO"
+         ModelType "LLM"
+         InferDevice "GPU"
+         PARAMETER repeat_penalty 1.0
+         PARAMETER top_p 1.0
+         PARAMETER temperature 1.0
+         ```
+      b. Create an Ollama model from the Modelfile
+         ```shell
+         ollama create Qwen3-4B-int4-asym-ov:v1 -f Modelfile
+         ```
+      c. Run the model
+         ```shell
+         ollama run Qwen3-4B-int4-asym-ov:v1
+         ```
 
-6. Run the model                     
+   2. VLM Model
+      a. Create Modelfile
+         ```shell
+         cat Modelfile
+         ```
+         ```plaintext
+         FROM Qwen2.5-VL-3B-Instruct.tar.gz
+         ModelBackend "OpenVINO"
+         ModelType "VLM"
+         InferDevice "GPU"
+         PARAMETER repeat_penalty 1.0
+         PARAMETER top_p 1.0
+         PARAMETER temperature 1.0
+         ```
+      b. Create an Ollama model from the Modelfile
+         ```shell
+         ollama create Qwen2.5-VL-3B-Instruct:v1 -f Modelfile
+         ```
+      c. Run the model
+         ```shell
+         ollama run Qwen2.5-VL-3B-Instruct:v1
+         ```
+         Example interaction with VLM:**
+         ```shell
+         >>> What's in this image? C:\path\to\cat.jpg
+         Added image 'C:\path\to\cat.jpg'
+         The image shows a close-up of a cat with striking green eyes and tabby markings on its fur...
+         ```
 
-   ```shell
-   ollama run DeepSeek-R1-Distill-Qwen-7B-int4-ov:v1
-   ```
+### Self-hosted Ollama Registry
+
+After `ollama create`, push models to a private registry with `ollama-registry` ([`registryserver/`](registryserver/)) and pull them on other machines with the same Ollama-OpenVINO build. Unlike `registry.ollama.ai`, it keeps OpenVINO manifest layers (`modelbackend`, `modeltype`, `inferdevice`) unchanged and includes a web UI for namespaces, models, and tags.
+
+<div align="center">
+  <img src="./images/ollama_registry.png" alt="Ollama Registry self-hosted web UI listing models under namespace zhaohb" width="900">
+</div>
+
+**Typical workflow**
+
+1. Start the registry: `ollama-registry serve --addr :5000 --root <storage-dir>`
+2. Set `OLLAMA_REGISTRY` on the machine running `ollama serve` (optional — short names without `host:port`)
+3. `ollama cp` → `ollama push --insecure <namespace>/<model>:<tag>`
+4. On another host: `ollama pull --insecure ...` → `ollama run ...`
+
+GGUF-packaged models created with `ollama create` can be pushed the same way; the registry does not rewrite layer mediaTypes.
+
+More detail: [`registryserver/README.md`](registryserver/README.md).
 
 ### Import from GGUF file（Experimental feature, not recommended for production use.）
 
@@ -780,7 +863,8 @@ Using the qwen2.5-3b-instruct-q4_k_m.gguf model as an example：
 1. the corresponding Modelfile is as follows
    ```shell
    FROM  qwen2.5-3b-instruct-q4_k_m.gguf
-   ModelType "OpenVINO"
+   ModelBackend "OpenVINO"
+   ModelType "LLM"
    InferDevice "GPU"
    PARAMETER stop "<|im_end|>"
    PARAMETER repeat_penalty 1.0
@@ -805,7 +889,7 @@ Reference link: [openvino-genai-supports-gguf-models](https://blog.openvino.ai/b
 ### Show model information
 
 ```shell
-ollama show DeepSeek-R1-Distill-Qwen-7B-int4-ov:v1 
+ollama show Qwen2.5-VL-3B-Instruct:v1 
 ```
 
 ### List models on your computer
@@ -823,7 +907,7 @@ ollama ps
 ### Stop a model which is currently running
 
 ```shell
-ollama stop DeepSeek-R1-Distill-Qwen-7B-int4-ov:v1 
+ollama stop Qwen2.5-VL-3B-Instruct:v1 
 ```
 
 ## Building from source
@@ -851,9 +935,9 @@ Then build and run Ollama from the root directory of the repository:
 
 3. Initialize the GenAI environment
 
-   Download GenAI runtime from [GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.3.0.0.dev20250630/openvino_genai_windows_2025.3.0.0.dev20250630_x86_64.zip), then extract it to a directory openvino_genai_windows_2025.3.0.0.dev20250630_x86_64.
+   Download GenAI runtime from [GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2026.3.0.0.dev20260516/openvino_genai_windows_2026.3.0.0.dev20260516_x86_64.zip), then extract it to a directory openvino_genai_windows_2026.3.0.0.dev20260516_x86_64.
    ```shell
-   cd openvino_genai_windows_2025.3.0.0.dev20250630_x86_64
+   cd openvino_genai_windows_2026.3.0.0.dev20260516_x86_64
    setupvars.bat
    ```
   
@@ -867,6 +951,11 @@ Then build and run Ollama from the root directory of the repository:
    ```shell
    go build -o ollama.exe
    ```
+ **Note:**
+ If you encounter the error message, "This app can't run on your PC. To find a version for your PC, check with the software publisher," please rebuild the executable using:
+ ```shell
+ go build -ldflags="-s -w" -o ollama.exe
+ ```
 
 6. If you don't want to recompile ollama, you can choose to directly use the compiled executable file, and then initialize the genai environment in `step 3` to run ollama directly.
    
@@ -890,9 +979,9 @@ Then build and run Ollama from the root directory of the repository:
 
 3. Initialize the GenAI environment
 
-   Download GenAI runtime from [GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.3.0.0.dev20250630/openvino_genai_ubuntu22_2025.3.0.0.dev20250630_x86_64.tar.gz), then extract it to a directory openvino_genai_ubuntu22_2025.3.0.0.dev20250630_x86_64.
+   Download GenAI runtime from [GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2026.3.0.0.dev20260516/openvino_genai_ubuntu22_2026.3.0.0.dev20260516_x86_64.tar.gz), then extract it to a directory openvino_genai_ubuntu22_2026.3.0.0.dev20260516_x86_64.
    ```shell
-   cd openvino_genai_ubuntu22_2025.3.0.0.dev20250630_x86_64
+   cd openvino_genai_ubuntu22_2026.3.0.0.dev20260516_x86_64
    source setupvars.sh
    ```
   
@@ -906,10 +995,11 @@ Then build and run Ollama from the root directory of the repository:
    ```shell
    go build -o ollama
    ```
-
-6. If you don't want to recompile ollama, you can choose to directly use the compiled executable file, and then initialize the genai environment in `step 3` to run ollama directly [ollama](https://drive.google.com/file/d/1HEyZNNCbWSidKNQl4MRsD8FuwEZtdyew/view?usp=drive_link). 
-
-   If you encounter problems during use, it is recommended to rebuild from source.
+ **Note:**
+ If you encounter the error message, "This app can't run on your PC. To find a version for your PC, check with the software publisher," please rebuild the executable using:
+ ```shell
+ go build -ldflags="-s -w" -o ollama.exe
+ ```
 
 
 ### Running local builds
@@ -935,8 +1025,86 @@ Then build and run Ollama from the root directory of the repository:
 3. Finally, in a separate shell, run a model:
 
    ```shell
-   ollama run DeepSeek-R1-Distill-Qwen-7B-int4-ov:v1 
+   ollama run Qwen2.5-VL-3B-Instruct:v1
    ```
+
+## TOON Format Support (Experimental)
+
+This project includes experimental support for [TOON (Token-Oriented Object Notation)](https://github.com/toon-format/toon), a compact, human-readable format designed for LLM prompts. In scenarios with JSON data, converting to TOON format can significantly reduce input token counts, leading to improved Time To First Token (TTFT) performance.
+
+> **Note:** TOON conversion is **disabled by default**. Enable it via the `ENABLE_TOON_CONVERSION` environment variable.
+
+### Features
+
+- 🎯 **Token Reduction**
+- ⚡ **Performance**
+- 🔧 **Configurable**: Easy enable/disable via environment variable
+- 🔍 **Automatic Detection**: Automatically detects and converts JSON structures in prompts
+
+### Usage
+
+#### Enabling TOON Conversion
+
+**Windows (CMD):**
+```cmd
+set ENABLE_TOON_CONVERSION=true
+```
+
+#### Disabling TOON Conversion
+
+**Windows (CMD):**
+```cmd
+set ENABLE_TOON_CONVERSION=
+```
+
+### Testing
+
+A test script is provided to demonstrate TOON format conversion and compare performance metrics:
+
+```bash
+cd toon_test_scripts
+python test.py
+```
+
+**Performance with TOON enabled:**
+```
+time=2025-12-12T15:05:11.837+08:00 level=INFO source=genai.go:241 msg="Genai Metrics info:"
+time=2025-12-12T15:05:11.838+08:00 level=INFO source=genai.go:245 msg="Load time: 4328.00"
+time=2025-12-12T15:05:11.838+08:00 level=INFO source=genai.go:250 msg="Generate time: 54594.21 ± 0.00 ms"
+time=2025-12-12T15:05:11.838+08:00 level=INFO source=genai.go:255 msg="Tokenization time: 4.81 ± 0.00 ms"
+time=2025-12-12T15:05:11.838+08:00 level=INFO source=genai.go:260 msg="Detokenization time: 0.23 ± 0.00 ms"
+time=2025-12-12T15:05:11.838+08:00 level=INFO source=genai.go:265 msg="TTFT: 2006.88 ± 0.00 ms"
+time=2025-12-12T15:05:11.838+08:00 level=INFO source=genai.go:270 msg="TPOT: 35.44 ± 2.31 ms/token"
+time=2025-12-12T15:05:11.838+08:00 level=INFO source=genai.go:274 msg="Num of generation tokens: 1500"
+time=2025-12-12T15:05:11.838+08:00 level=INFO source=genai.go:278 msg="Num of input tokens: 4095"
+time=2025-12-12T15:05:11.838+08:00 level=INFO source=genai.go:283 msg="Throughput: 28.21 ± 1.84 tokens/s"
+```
+
+**Performance with TOON disabled:**
+```
+time=2025-12-12T15:07:33.965+08:00 level=INFO source=genai.go:241 msg="Genai Metrics info:"
+time=2025-12-12T15:07:33.965+08:00 level=INFO source=genai.go:245 msg="Load time: 5271.00"
+time=2025-12-12T15:07:33.965+08:00 level=INFO source=genai.go:250 msg="Generate time: 52376.58 ± 0.00 ms"
+time=2025-12-12T15:07:33.965+08:00 level=INFO source=genai.go:255 msg="Tokenization time: 5.01 ± 0.00 ms"
+time=2025-12-12T15:07:33.965+08:00 level=INFO source=genai.go:260 msg="Detokenization time: 0.28 ± 0.00 ms"
+time=2025-12-12T15:07:33.965+08:00 level=INFO source=genai.go:265 msg="TTFT: 3253.89 ± 0.00 ms"
+time=2025-12-12T15:07:33.965+08:00 level=INFO source=genai.go:270 msg="TPOT: 37.02 ± 1.78 ms/token"
+time=2025-12-12T15:07:33.965+08:00 level=INFO source=genai.go:274 msg="Num of generation tokens: 1343"
+time=2025-12-12T15:07:33.965+08:00 level=INFO source=genai.go:278 msg="Num of input tokens: 6036"
+time=2025-12-12T15:07:33.965+08:00 level=INFO source=genai.go:283 msg="Throughput: 27.01 ± 1.30 tokens/s"
+```
+
+### Performance Comparison
+
+The following table compares performance metrics with TOON conversion enabled vs. disabled:
+
+| Configuration | TTFT      | Input Tokens | Token Reduction | TTFT Improvement |
+|---------------|-----------|--------------|-----------------|------------------|
+| **TOON Enabled**  | 2,007 ms  | 4,096        | **32.1%**       | **38.3% faster** |
+| TOON Disabled | 3,254 ms  | 6,036        | Baseline              | Baseline         |
+
+The conversion preserves all data while significantly reducing token count, especially for structured data like arrays and nested objects.
+
 
 ## Community Integrations
 ### Terminal
@@ -953,7 +1121,13 @@ Then build and run Ollama from the root directory of the repository:
       <img src="./images/ollama_ov_anythingllm.gif" alt="Ollama-OV" width="900" height="400">
    </div>
 
+- [open-webui](https://github.com/open-webui/open-webui)
+   <div style="text-align:center;">
+      <img src="./images/ollama_openweb_ui.gif" alt="Ollama-OV" width="900" height="400">
+   </div>
+
 ## Future Development Plan
 Here are some features and improvements planned for future releases:
    
-1. **Multimodal models**: Support for multimodal models that can process both text and image data.
+1. **Multimodal models**: Support for multimodal models that can process both text and image data.  ✅ **DONE**
+2. **Embedding models**: Support for embedding models that can generate embeddings from text or images. 

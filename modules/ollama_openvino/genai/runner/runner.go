@@ -6,11 +6,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"net"
 	"net/http"
-	"net/http/httputil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -19,14 +19,17 @@ import (
 	"time"
 
 	"github.com/ollama/ollama/api"
-	"github.com/ollama/ollama/genai"
+	"github.com/ollama/ollama/genai/common"
+	llamaserver "github.com/ollama/ollama/llm/llama"
 	"golang.org/x/sync/semaphore"
 )
 
 type NewSequenceParams struct {
 	numPredict     int
 	stop           []string
-	samplingParams *genai.SamplingParams
+	samplingParams *common.SamplingParams
+	tools          []api.Tool
+	messages       []api.Message
 }
 
 type Server struct {
@@ -35,7 +38,7 @@ type Server struct {
 	ready sync.WaitGroup
 
 	// loaded model
-	model genai.Model
+	model common.Model
 
 	// status for external health reporting - loading, ready to serve, etc.
 	status ServerStatus
@@ -54,11 +57,14 @@ type Server struct {
 	// this is context state needed for decoding
 	mu sync.Mutex
 
+	// protects load operations
+	loadMu sync.Mutex
+
 	// indicates that data is ready for processing
 	cond *sync.Cond
 
 	// the list of simultaneous sequences being evaluated
-	seqs []*(genai.Sequence)
+	seqs []*(common.Sequence)
 
 	// seqs can have a maximum of parallel entries, which
 	// is enfoced by seqSem
@@ -66,6 +72,15 @@ type Server struct {
 
 	// next sequence for prompt processing to avoid starvation
 	nextSeq int
+
+	// number of requests currently queued in completion() waiting for a free
+	// sequence slot (guarded by mu) — surfaced in logs for visibility.
+	queued int
+
+	// model metadata for load operation
+	modelPath   string
+	modelName   string
+	inferDevice string
 }
 
 func (s *Server) allNil() bool {
@@ -77,8 +92,8 @@ func (s *Server) allNil() bool {
 	return true
 }
 
-func (s *Server) inputs(prompt string, images []ImageData) ([]genai.Input, error) {
-	var inputs []genai.Input
+func (s *Server) inputs(prompt string, images []ImageData) ([]common.Input, error) {
+	var inputs []common.Input
 	var parts []string
 
 	parts = []string{prompt}
@@ -88,13 +103,13 @@ func (s *Server) inputs(prompt string, images []ImageData) ([]genai.Input, error
 		// for _, t := range part {
 		// 	inputs = append(inputs, input{prompt: string(t)})
 		// }
-		inputs = append(inputs, genai.Input{Prompt: string(part)})
+		inputs = append(inputs, common.Input{Prompt: string(part)})
 	}
 
 	return inputs, nil
 }
 
-func (s *Server) NewSequence(prompt string, images []ImageData, params NewSequenceParams) (*(genai.Sequence), error) {
+func (s *Server) NewSequence(prompt string, images []ImageData, params NewSequenceParams) (*(common.Sequence), error) {
 	s.ready.Wait()
 
 	startTime := time.Now()
@@ -106,13 +121,17 @@ func (s *Server) NewSequence(prompt string, images []ImageData, params NewSequen
 		return nil, errors.New("no input provided")
 	}
 
-	return genai.NewSequence(inputs, len(inputs), startTime, params.samplingParams, params.numPredict), nil
+	seq := common.NewSequence(inputs, len(inputs), startTime, params.samplingParams, params.numPredict, params.tools)
+	if len(params.messages) > 0 {
+		seq.SetMessages(params.messages)
+	}
+	return seq, nil
 }
 
 func (s *Server) removeSequence(seqIndex int, reason string) {
 	seq := s.seqs[seqIndex]
 
-	genai.FlushPending(seq)
+	common.FlushPending(seq)
 	seq.SetDoneReason(reason)
 	seq.CloseResponses()
 	s.seqs[seqIndex] = nil
@@ -146,11 +165,25 @@ func (s *Server) processBatch() error {
 		}
 
 		seq.SetStartGenerationTime(time.Now())
-		for _, input := range seq.GetInputs() {
-			genai.GenerateTextWithMetrics(s.model, input.GetPrompt(), seq.GetSamplingParameters(), seq)
-			// log.Printf("gen result: ", seq.GetpendingResponses())
+		if tools := seq.GetTools(); len(tools) > 0 {
+			log.Printf("tools available: %d", len(tools))
+			for _, t := range tools {
+				log.Printf("  tool: %s", t.Function.Name)
+			}
+		}
+
+		if msgs := seq.GetMessages(); len(msgs) > 0 {
+			log.Printf("generating with chat history, %d messages", len(msgs))
+			common.GenerateWithChatHistory(s.model, msgs, seq.GetTools(), seq.GetSamplingParameters(), seq)
+		} else {
+			for _, input := range seq.GetInputs() {
+				// log.Printf("gen prompt: %s", input.GetPrompt())
+				common.GenerateTextWithMetrics(s.model, input.GetPrompt(), seq.GetSamplingParameters(), seq)
+			}
 		}
 		s.removeSequence(i, "")
+		// A slot just freed — wake any requests queued in completion().
+		s.cond.Broadcast()
 	}
 	return nil
 }
@@ -188,12 +221,14 @@ type ImageData struct {
 }
 
 type CompletionRequest struct {
-	Prompt      string      `json:"prompt"`
-	Images      []ImageData `json:"image_data"`
-	Grammar     string      `json:"grammar"`
-	CachePrompt bool        `json:"cache_prompt"`
+	Prompt      string        `json:"prompt"`
+	Images      []ImageData   `json:"image_data"`
+	Grammar     string        `json:"grammar"`
+	CachePrompt bool          `json:"cache_prompt"`
+	Tools       []api.Tool    `json:"tools,omitempty"`
+	Messages    []api.Message `json:"messages,omitempty"`
 
-	Options
+	Options *api.Options
 }
 
 type Timings struct {
@@ -233,17 +268,32 @@ func (s *Server) run(ctx context.Context) {
 }
 
 func (s *Server) completion(w http.ResponseWriter, r *http.Request) {
-	requestDump, err := httputil.DumpRequest(r, true)
+	// requestDump, err := httputil.DumpRequest(r, true)
+	// if err != nil {
+	// 	log.Println("Error dumping request:", err)
+	// }
+	// log.Printf("Request info :\n%s", requestDump)
+
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		log.Println("Error dumping request:", err)
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
 	}
-	log.Printf("Request info :\n%s", requestDump)
 
 	var req CompletionRequest
-	req.Options = Options(api.DefaultOptions())
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	opts := api.DefaultOptions()
+	req.Options = &opts
+
+	if err := json.Unmarshal(body, &req); err != nil {
 		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
+	}
+
+	var rawMap map[string]any
+	if err := json.Unmarshal(body, &rawMap); err == nil {
+		if err := req.Options.FromMap(rawMap); err != nil {
+			log.Printf("warning: failed to parse options from request: %v", err)
+		}
 	}
 
 	// Set the headers to indicate streaming
@@ -256,44 +306,81 @@ func (s *Server) completion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var samplingParams genai.SamplingParams
-	samplingParams.TopK = req.TopK
-	samplingParams.TopP = req.TopP
-	samplingParams.Temp = req.Temperature
-	samplingParams.MaxNewToken = req.MaxNewToken
-	samplingParams.StopIds = req.StopId
-	samplingParams.StopString = req.Stop
-	samplingParams.RepeatLastN = req.RepeatLastN
-	samplingParams.RepeatPenalty = req.RepeatPenalty
+	var samplingParams common.SamplingParams
+	samplingParams.TopK = req.Options.TopK
+	samplingParams.TopP = req.Options.TopP
+	samplingParams.Temp = req.Options.Temperature
+	samplingParams.MaxNewToken = req.Options.MaxNewToken
+	samplingParams.StopIds = req.Options.StopId
+	samplingParams.StopString = req.Options.Stop
+	samplingParams.RepeatLastN = req.Options.RepeatLastN
+	samplingParams.RepeatPenalty = req.Options.RepeatPenalty
+	samplingParams.EnableThinking = req.Options.EnableThinking
 
 	seq, err := s.NewSequence(req.Prompt, req.Images, NewSequenceParams{
-		numPredict: req.NumPredict,
-		// stop:           req.Stop,
+		numPredict:     req.Options.NumPredict,
 		samplingParams: &samplingParams,
+		tools:          req.Tools,
+		messages:       req.Messages,
 	})
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to create new sequence: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	s.mu.Lock()
-	found := false
+	// Claim a sequence slot, WAITING for one to free up rather than rejecting.
+	// The number of slots (len(s.seqs) == --parallel) bounds how many requests
+	// are in flight at once; the rest queue here. A request whose client
+	// disconnects (ctx cancelled) stops waiting instead of blocking forever —
+	// a watcher goroutine broadcasts the cond on cancellation to wake us.
+	reqCtx := r.Context()
+	watchDone := make(chan struct{})
+	go func() {
+		select {
+		case <-reqCtx.Done():
+			s.mu.Lock()
+			s.cond.Broadcast()
+			s.mu.Unlock()
+		case <-watchDone:
+		}
+	}()
+	defer close(watchDone)
 
-	for i, sq := range s.seqs {
-		if sq == nil {
-			s.seqs[i] = seq
-			s.cond.Signal()
-			found = true
+	s.mu.Lock()
+	claimed := false
+	counted := false // whether we've added ourselves to the queued tally
+	for {
+		if reqCtx.Err() != nil {
+			if counted {
+				s.queued--
+			}
+			log.Printf("queue: request cancelled while waiting (%d still queued)", s.queued)
+			s.mu.Unlock()
+			return // client gave up while queued
+		}
+		for i, sq := range s.seqs {
+			if sq == nil {
+				s.seqs[i] = seq
+				s.cond.Signal() // wake the run loop to process it
+				claimed = true
+				break
+			}
+		}
+		if claimed {
+			if counted {
+				s.queued--
+			}
 			break
 		}
+		// No free slot: join the queue (count once) and wait.
+		if !counted {
+			s.queued++
+			counted = true
+			log.Printf("queue: no free slot, request waiting (%d now queued, %d slots)", s.queued, len(s.seqs))
+		}
+		s.cond.Wait() // wait for a slot to free (or for ctx cancel)
 	}
-
 	s.mu.Unlock()
-
-	if !found {
-		http.Error(w, "could not find an available sequence", http.StatusInternalServerError)
-		return
-	}
 
 	for {
 		select {
@@ -317,9 +404,9 @@ func (s *Server) completion(w http.ResponseWriter, r *http.Request) {
 					Stop:         true,
 					StoppedLimit: seq.GetDoneReason() == "limit",
 					Timings: Timings{
-						PromptN:     seq.GetNumPromptInputs(),
+						PromptN:     seq.FinalPromptN(),
 						PromptMS:    float64(seq.GetStartGenerationTime().Sub(seq.GetStartProcessingTime()).Milliseconds()),
-						PredictedN:  seq.GetNumDecoded(),
+						PredictedN:  seq.FinalPredictedN(),
 						PredictedMS: float64(time.Since(seq.GetStartGenerationTime()).Milliseconds()),
 					},
 				}); err != nil {
@@ -342,6 +429,7 @@ type ServerStatus int
 const (
 	ServerStatusReady ServerStatus = iota
 	ServerStatusLoadingModel
+	ServerStatusLaunched
 	ServerStatusError
 )
 
@@ -351,18 +439,82 @@ func (s ServerStatus) ToString() string {
 		return "ok"
 	case ServerStatusLoadingModel:
 		return "loading model"
+	case ServerStatusLaunched:
+		return "launched"
 	default:
 		return "server error"
 	}
 }
 
+type LoadRequest struct {
+	ModelPath   string `json:"model_path"`
+	ShortName   string `json:"short_name"`
+	ModelType   string `json:"model_type"`
+	InferDevice string `json:"infer_device"`
+}
+
+type LoadResponse struct {
+	Success bool `json:"success"`
+}
+
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(&HealthResponse{
-		Status:   s.status.ToString(),
+
+	var llamaStatus llamaserver.ServerStatus
+	switch s.status {
+	case ServerStatusReady:
+		llamaStatus = llamaserver.ServerStatusReady
+	case ServerStatusLoadingModel:
+		llamaStatus = llamaserver.ServerStatusLoadingModel
+	case ServerStatusLaunched:
+		llamaStatus = llamaserver.ServerStatusLaunched
+	case ServerStatusError:
+		llamaStatus = llamaserver.ServerStatusError
+	default:
+		llamaStatus = llamaserver.ServerStatusError
+	}
+
+	if err := json.NewEncoder(w).Encode(&llamaserver.ServerStatusResponse{
+		Status:   llamaStatus,
 		Progress: s.progress,
 	}); err != nil {
 		http.Error(w, fmt.Sprintf("failed to encode response: %v", err), http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) load(w http.ResponseWriter, r *http.Request) {
+	s.loadMu.Lock()
+	defer s.loadMu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+
+	var req LoadRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	slog.Info("load", "request", req)
+
+	s.modelPath = req.ModelPath
+	s.modelName = req.ShortName
+	s.inferDevice = req.InferDevice
+
+	if s.status == ServerStatusLoadingModel || s.status == ServerStatusReady {
+		resp := LoadResponse{Success: true}
+		if err := json.NewEncoder(w).Encode(&resp); err != nil {
+			http.Error(w, fmt.Sprintf("failed to encode response: %v", err), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	s.status = ServerStatusLoadingModel
+	go s.loadModel(req.ModelPath, req.ShortName, req.InferDevice)
+
+	resp := LoadResponse{Success: true}
+	if err := json.NewEncoder(w).Encode(&resp); err != nil {
+		http.Error(w, fmt.Sprintf("failed to encode response: %v", err), http.StatusInternalServerError)
+		return
 	}
 }
 
@@ -383,7 +535,7 @@ func (s *Server) loadModel(mpath string, mname string, device string) {
 	tempDir := filepath.Join("/tmp", ov_ir_dir)
 	ov_model_path := ""
 
-	isGGUF, err := genai.IsGGUF(mpath)
+	isGGUF, err := common.IsGGUF(mpath)
 	if err != nil {
 		fmt.Printf("Error checking file: %v\n", err)
 		panic(err)
@@ -398,14 +550,14 @@ func (s *Server) loadModel(mpath string, mname string, device string) {
 				fmt.Errorf("Error creating dir: %v", err)
 				panic(err)
 			}
-			err = genai.CopyFile(mpath, ov_model_path)
+			err = common.CopyFile(mpath, ov_model_path)
 			if err != nil {
 				panic(err)
 			}
 		}
 	}
 
-	isGzip, err := genai.IsGzipByMagicBytes(mpath)
+	isGzip, err := common.IsGzipByMagicBytes(mpath)
 	if err != nil {
 		fmt.Printf("Error checking file: %v\n", err)
 	}
@@ -414,7 +566,7 @@ func (s *Server) loadModel(mpath string, mname string, device string) {
 		// for OpenVINO IR
 		_, err = os.Stat(tempDir)
 		if os.IsNotExist(err) {
-			err = genai.UnpackTarGz(mpath, tempDir)
+			err = common.UnpackTarGz(mpath, tempDir)
 			if err != nil {
 				panic(err)
 			}
@@ -431,13 +583,15 @@ func (s *Server) loadModel(mpath string, mname string, device string) {
 		ov_model_path = filepath.Join(tempDir, subdirs[0])
 	}
 
-	s.model = genai.CreatePipeline(ov_model_path, device)
+	s.model = common.CreatePipeline(ov_model_path, device)
 	log.Printf("The model had been load by GenAI, ov_model_path: %s , %s", ov_model_path, device)
 	s.status = ServerStatusReady
 	s.ready.Done()
 }
 
 func Execute(args []string) error {
+	log.Printf("LLM Execute called with args: %+v", args)
+
 	fs := flag.NewFlagSet("genairunner", flag.ExitOnError)
 	mpath := fs.String("model", "", "Path to model binary file")
 	mname := fs.String("modelname", "", "Name of the model")
@@ -450,9 +604,12 @@ func Execute(args []string) error {
 		fmt.Fprintf(fs.Output(), "Runner usage\n")
 		fs.PrintDefaults()
 	}
-	if err := fs.Parse(args[1:]); err != nil {
+
+	if err := fs.Parse(args); err != nil {
 		return err
 	}
+
+	log.Printf("Parsed flags - model: %s, modelname: %s, device: %s", *mpath, *mname, *device)
 
 	level := slog.LevelInfo
 	if *verbose {
@@ -473,12 +630,11 @@ func Execute(args []string) error {
 	slog.Info("starting go genairunner")
 
 	server := &Server{
-		seqs:   make([]*genai.Sequence, *parallel),
-		status: ServerStatusLoadingModel,
+		seqs:   make([]*common.Sequence, *parallel),
+		status: ServerStatusLaunched,
 	}
 
 	server.ready.Add(1)
-	go server.loadModel(*mpath, *mname, *device)
 
 	server.cond = sync.NewCond(&server.mu)
 
@@ -495,6 +651,7 @@ func Execute(args []string) error {
 	defer listener.Close()
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /load", server.load)
 	mux.HandleFunc("/completion", server.completion)
 	mux.HandleFunc("/health", server.health)
 
