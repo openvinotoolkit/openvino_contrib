@@ -29,20 +29,24 @@ import (
 	"github.com/ollama/ollama/envconfig"
 	"github.com/ollama/ollama/format"
 	"github.com/ollama/ollama/fs/ggml"
-	"github.com/ollama/ollama/genai"
+	"github.com/ollama/ollama/genai/common"
 	"github.com/ollama/ollama/llama"
 	"github.com/ollama/ollama/llm"
 	llamaserver "github.com/ollama/ollama/llm/llama"
+	"github.com/ollama/ollama/ml"
 )
 
 type GenaiServer interface {
+	ModelPath() string
 	Ping(ctx context.Context) error
+	Load(ctx context.Context, gpus []ml.DeviceInfo, requireFull bool, modelpath string, shortname string, modeltype string, inferdevice string) error
 	WaitUntilRunning(ctx context.Context) error
 	Completion(ctx context.Context, req llamaserver.CompletionRequest, fn func(llamaserver.CompletionResponse)) error
 	Close() error
 	EstimatedVRAM() uint64 // Total VRAM across all GPUs
 	EstimatedTotal() uint64
 	EstimatedVRAMByGPU(gpuID string) uint64
+	Pid() int
 }
 
 // GenaillmServer is an instance of the llama.cpp server
@@ -55,14 +59,11 @@ type GenaillmServer struct {
 	numParallel int
 	modelPath   string
 	modelName   string
-	modelLock   sync.Mutex  // Temporary until we switch fully to Go server
-	model       genai.Model // If non-nil, the runner is a new Go server
+	modelLock   sync.Mutex   // Temporary until we switch fully to Go server
+	model       common.Model // If non-nil, the runner is a new Go server
 
-	estimate    llm.MemoryEstimate
-	totalLayers uint64
-	// gpuCount     int
-	gpus         discover.GpuInfoList // Recorded just before the model loaded, free space will be incorrect
-	loadDuration time.Duration        // Record how long it took the model to load
+	totalLayers  uint64
+	loadDuration time.Duration // Record how long it took the model to load
 	loadProgress float32
 
 	sem *semaphore.Weighted
@@ -84,7 +85,7 @@ func GenaiLoadModel(model string, maxArraySize int) (*ggml.GGML, error) {
 	}
 	defer f.Close()
 
-	ggml, _, err := ggml.Decode(f, maxArraySize)
+	ggml, err := ggml.Decode(f, maxArraySize)
 	return ggml, err
 }
 
@@ -139,14 +140,14 @@ func addIndexToDuplicates(input []string) []string {
 }
 
 // NewGenaiServer will run a server
-func NewGenaiServer(gpus discover.GpuInfoList, model string, modelname string, inferdevice string, f *ggml.GGML, adapters, projectors []string, opts api.Options, numParallel int) (GenaiServer, error) {
+func NewGenaiServer(gpus []ml.DeviceInfo, model string, modelname string, modeltype string, inferdevice string, f *ggml.GGML, adapters, projectors []string, opts api.Options, numParallel int) (GenaiServer, error) {
 	systemInfo := discover.GetSystemInfo()
-	systemTotalMemory := systemInfo.System.TotalMemory
-	systemFreeMemory := systemInfo.System.FreeMemory
-	systemSwapFreeMemory := systemInfo.System.FreeSwap
+	systemTotalMemory := systemInfo.TotalMemory
+	systemFreeMemory := systemInfo.FreeMemory
+	systemSwapFreeMemory := systemInfo.FreeSwap
 	slog.Info("system memory", "total", format.HumanBytes2(systemTotalMemory), "free", format.HumanBytes2(systemFreeMemory), "free_swap", format.HumanBytes2(systemSwapFreeMemory))
 
-	genai_device := genai.GetGenaiAvailableDevices()
+	genai_device := common.GetGenaiAvailableDevices()
 	var genai_device_list []string
 	for i := 0; i < int(len(genai_device)); i++ {
 		genai_device_list = append(genai_device_list, genai_device[i]["device_name"])
@@ -160,10 +161,6 @@ func NewGenaiServer(gpus discover.GpuInfoList, model string, modelname string, i
 		"--device", inferdevice,
 		// "--ctx-size", strconv.Itoa(opts.NumCtx),
 		// "--batch-size", strconv.Itoa(opts.NumBatch),
-	}
-
-	if envconfig.Debug() {
-		params = append(params, "--verbose")
 	}
 
 	params = append(params, "--parallel", strconv.Itoa(numParallel))
@@ -182,6 +179,10 @@ func NewGenaiServer(gpus discover.GpuInfoList, model string, modelname string, i
 			port = rand.Intn(65535-49152) + 49152 // get a random port in the ephemeral range
 		}
 		finalParams := []string{"genairunner"}
+		// Add --genai-vlm-engine right after genairunner if modeltype is VLM
+		if modeltype == "VLM" {
+			finalParams = append(finalParams, "--genai-vlm-engine")
+		}
 		if envconfig.NewEngine() {
 			finalParams = append(finalParams, "--ollama-engine")
 		}
@@ -234,37 +235,18 @@ func NewGenaiServer(gpus discover.GpuInfoList, model string, modelname string, i
 		s.cmd.Stderr = s.status
 		s.cmd.SysProcAttr = llm.LlamaServerSysProcAttr
 
-		envWorkarounds := [][2]string{}
-		for _, gpu := range gpus {
-			envWorkarounds = append(envWorkarounds, gpu.EnvWorkarounds...)
-		}
-		visibleDevicesEnv, visibleDevicesEnvVal := gpus.GetVisibleDevicesEnv()
 		pathEnvVal := strings.Join(libraryPaths, string(filepath.ListSeparator))
 
-		// Update or add the path and visible devices variable with our adjusted version
 		pathNeeded := true
-		devicesNeeded := visibleDevicesEnv != ""
 		for i := range s.cmd.Env {
 			cmp := strings.SplitN(s.cmd.Env[i], "=", 2)
 			if strings.EqualFold(cmp[0], pathEnv) {
 				s.cmd.Env[i] = pathEnv + "=" + pathEnvVal
 				pathNeeded = false
-			} else if devicesNeeded && strings.EqualFold(cmp[0], visibleDevicesEnv) {
-				s.cmd.Env[i] = visibleDevicesEnv + "=" + visibleDevicesEnvVal
-				devicesNeeded = false
-			} else if len(envWorkarounds) != 0 {
-				for _, kv := range envWorkarounds {
-					if strings.EqualFold(cmp[0], kv[0]) {
-						s.cmd.Env[i] = kv[0] + "=" + kv[1]
-					}
-				}
 			}
 		}
 		if pathNeeded {
 			s.cmd.Env = append(s.cmd.Env, pathEnv+"="+pathEnvVal)
-		}
-		if devicesNeeded {
-			s.cmd.Env = append(s.cmd.Env, visibleDevicesEnv+"="+visibleDevicesEnvVal)
 		}
 
 		slog.Info("starting llama server", "cmd", s.cmd.String())
@@ -295,6 +277,98 @@ func NewGenaiServer(gpus discover.GpuInfoList, model string, modelname string, i
 
 		return s, nil
 	}
+}
+
+type GenaiLoadRequest struct {
+	ModelPath   string `json:"model_path"`
+	ShortName   string `json:"short_name"`
+	ModelType   string `json:"model_type"`
+	InferDevice string `json:"infer_device"`
+}
+
+type GenaiLoadResponse struct {
+	Success bool `json:"success"`
+}
+
+func (s *GenaillmServer) waitUntilRunnerLaunched(ctx context.Context) error {
+	for {
+		_, err := s.getServerStatus(ctx)
+		if err == nil {
+			break
+		}
+
+		t := time.NewTimer(10 * time.Millisecond)
+		select {
+		case <-t.C:
+			continue
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+	return nil
+}
+
+func (s *GenaillmServer) Load(ctx context.Context, gpus []ml.DeviceInfo, requireFull bool, modelpath string, shortname string, modeltype string, inferdevice string) error {
+	log.Printf("waiting for genai runner to start listening")
+
+	if err := s.waitUntilRunnerLaunched(ctx); err != nil {
+		return err
+	}
+	resp, err := s.initModel(ctx, modelpath, shortname, modeltype, inferdevice)
+	if err != nil {
+		return err
+	}
+
+	if !resp.Success {
+		return errors.New("failed to load model")
+	}
+
+	log.Printf("genai runner is ready to accept load request")
+	return nil
+}
+
+func (s *GenaillmServer) initModel(ctx context.Context, modelpath string, shortname string, modeltype string, inferdevice string) (*GenaiLoadResponse, error) {
+	req := GenaiLoadRequest{
+		ModelPath:   modelpath,
+		ShortName:   shortname,
+		ModelType:   modeltype,
+		InferDevice: inferdevice,
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling load data: %w", err)
+	}
+
+	r, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("http://127.0.0.1:%d/load", s.port), bytes.NewBuffer(data))
+	if err != nil {
+		return nil, fmt.Errorf("error creating load request: %w", err)
+	}
+	r.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(r)
+	if err != nil {
+		return nil, fmt.Errorf("do load request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read load request: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		log.Printf("llm load error: %s", body)
+		return nil, fmt.Errorf("%s", body)
+	}
+
+	var llmResp GenaiLoadResponse
+	if err := json.Unmarshal(body, &llmResp); err != nil {
+		return nil, fmt.Errorf("load unmarshal encode response: %w", err)
+	}
+
+	return &llmResp, nil
 }
 
 func (s *GenaillmServer) getServerStatus(ctx context.Context) (llamaserver.ServerStatus, error) {
@@ -331,21 +405,19 @@ func (s *GenaillmServer) getServerStatus(ctx context.Context) (llamaserver.Serve
 		return llamaserver.ServerStatusError, fmt.Errorf("read health request: %w", err)
 	}
 
-	var status llamaserver.ServerStatusResp
-	if err := json.Unmarshal(body, &status); err != nil {
+	var ssr llamaserver.ServerStatusResponse
+	if err := json.Unmarshal(body, &ssr); err != nil {
 		return llamaserver.ServerStatusError, fmt.Errorf("health unmarshal encode response: %w", err)
 	}
 
-	switch status.Status {
-	case "ok":
-		return llamaserver.ServerStatusReady, nil
-	case "no slot available":
-		return llamaserver.ServerStatusNoSlotsAvailable, nil
-	case "loading model":
-		s.loadProgress = status.Progress
-		return llamaserver.ServerStatusLoadingModel, nil
+	switch ssr.Status {
+	case llamaserver.ServerStatusLoadingModel:
+		s.loadProgress = ssr.Progress
+		return ssr.Status, nil
+	case llamaserver.ServerStatusLaunched, llamaserver.ServerStatusReady, llamaserver.ServerStatusNoSlotsAvailable:
+		return ssr.Status, nil
 	default:
-		return llamaserver.ServerStatusError, fmt.Errorf("server error: %+v", status)
+		return ssr.Status, fmt.Errorf("server error: %+v", ssr)
 	}
 }
 
@@ -420,7 +492,7 @@ func (s *GenaillmServer) WaitUntilRunning(ctx context.Context) error {
 		status, _ := s.getServerStatus(ctx)
 		if lastStatus != status && status != llamaserver.ServerStatusReady {
 			// Only log on status changes
-			slog.Info("waiting for server to become available", "status", status.ToString())
+			slog.Info("waiting for server to become available", "status", status)
 		}
 		switch status {
 		case llamaserver.ServerStatusReady:
@@ -434,7 +506,7 @@ func (s *GenaillmServer) WaitUntilRunning(ctx context.Context) error {
 				slog.Debug(fmt.Sprintf("model load progress %0.2f", s.loadProgress))
 				stallTimer = time.Now().Add(stallDuration)
 			} else if !fullyLoaded && int(s.loadProgress*100.0) >= 100 {
-				slog.Debug("model load completed, waiting for server to become available", "status", status.ToString())
+				slog.Debug("model load completed, waiting for server to become available", "status", status)
 				stallTimer = time.Now().Add(stallDuration)
 				fullyLoaded = true
 			}
@@ -442,6 +514,17 @@ func (s *GenaillmServer) WaitUntilRunning(ctx context.Context) error {
 			continue
 		}
 	}
+}
+
+func (s *GenaillmServer) Pid() int {
+	if s.cmd != nil && s.cmd.Process != nil {
+		return s.cmd.Process.Pid
+	}
+	return -1
+}
+
+func (s *GenaillmServer) ModelPath() string {
+	return s.modelPath
 }
 
 var grammarJSON = `
@@ -502,13 +585,16 @@ func (s *GenaillmServer) Completion(ctx context.Context, req llamaserver.Complet
 		"repeat_penalty":    req.Options.RepeatPenalty,
 		"presence_penalty":  req.Options.PresencePenalty,
 		"frequency_penalty": req.Options.FrequencyPenalty,
-		"mirostat":          req.Options.Mirostat,
-		"mirostat_tau":      req.Options.MirostatTau,
-		"mirostat_eta":      req.Options.MirostatEta,
 		"seed":              req.Options.Seed,
 		"stop":              req.Options.Stop,
 		"image_data":        req.Images,
 		"cache_prompt":      true,
+		"tools":             req.Tools,
+		"enable_thinking":   req.Options.EnableThinking,
+	}
+
+	if len(req.Messages) > 0 {
+		request["messages"] = req.Messages
 	}
 
 	if len(req.Format) > 0 {
@@ -553,7 +639,7 @@ func (s *GenaillmServer) Completion(ctx context.Context, req llamaserver.Complet
 	if err != nil {
 		return err
 	} else if status != llamaserver.ServerStatusReady {
-		return fmt.Errorf("unexpected server status: %s", status.ToString())
+		return fmt.Errorf("unexpected server status: %v", status)
 	}
 
 	// Handling JSON marshaling with special characters unescaped.
@@ -637,9 +723,9 @@ func (s *GenaillmServer) Completion(ctx context.Context, req llamaserver.Complet
 			}
 
 			if c.Stop {
-				doneReason := "stop"
+				doneReason := llamaserver.DoneReasonStop
 				if c.StoppedLimit {
-					doneReason = "length"
+					doneReason = llamaserver.DoneReasonLength
 				}
 
 				fn(llamaserver.CompletionResponse{
@@ -688,12 +774,12 @@ func (s *GenaillmServer) Clear(mname string) error {
 func (s *GenaillmServer) Close() error {
 	s.modelLock.Lock()
 	if s.modelName != "" {
-		genai.FreeModel(s.model)
+		common.FreeModel(s.model)
 	}
 	s.modelLock.Unlock()
 
 	if s.cmd != nil {
-		slog.Debug("stopping llama server")
+		log.Printf("stopping llama server pid=%d", s.Pid())
 		if s.cmd.ProcessState != nil && s.cmd.ProcessState.Exited() {
 			s.Clear(s.modelName)
 			s.modelName = ""
@@ -720,21 +806,14 @@ func (s *GenaillmServer) Close() error {
 }
 
 func (s *GenaillmServer) EstimatedVRAM() uint64 {
-	return s.estimate.VRAMSize
+	return 0
 }
 
 func (s *GenaillmServer) EstimatedTotal() uint64 {
-	return s.estimate.TotalSize
+	return 0
 }
 
 func (s *GenaillmServer) EstimatedVRAMByGPU(gpuID string) uint64 {
-	for i, gpu := range s.gpus {
-		if gpu.ID == gpuID {
-			if i < len(s.estimate.GPUSizes) {
-				return s.estimate.GPUSizes[i]
-			}
-		}
-	}
 	return 0
 }
 

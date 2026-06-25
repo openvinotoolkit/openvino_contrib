@@ -1,0 +1,86 @@
+{{define "title"}}{{.Namespace}}/{{.Model}} · Ollama Registry{{end}}
+{{define "content"}}
+<div class="crumbs"><a href="/">Models</a> / <a href="/{{.Namespace}}">{{.Namespace}}</a> / {{.Model}}</div>
+<h1 class="title">
+  {{.Namespace}}/{{.Model}}
+  {{if .IsPublic}}<span class="mt-badge" style="background:#e7f7ec;color:#1a7f37">public</span>
+  {{else}}<span class="mt-badge" style="background:#fdeaea;color:#b3261e">private</span>{{end}}
+</h1>
+<div class="subtitle">{{len .Tags}} tag{{if ne (len .Tags) 1}}s{{end}} stored on this registry.</div>
+
+{{if .IsOwner}}
+<section class="box">
+  <h3>Visibility</h3>
+  <p class="subtitle" style="margin-top:0">
+    {{if .IsPublic}}This model is <strong>public</strong> — anyone can see and pull it.
+    {{else}}This model is <strong>private</strong> — only you can see and pull it.{{end}}
+  </p>
+  <button id="visBtn" type="button"
+          data-ns="{{.Namespace}}" data-model="{{.Model}}" data-public="{{.IsPublic}}"
+          style="padding:8px 14px;border:1px solid var(--border-strong);border-radius:6px;background:var(--bg);cursor:pointer">
+    {{if .IsPublic}}Make private{{else}}Make public{{end}}
+  </button>
+  <span id="visMsg" class="subtitle" style="margin-left:10px"></span>
+</section>
+<script>
+(function () {
+  var btn = document.getElementById("visBtn");
+  if (!btn) return;
+  btn.addEventListener("click", function () {
+    var makePublic = btn.getAttribute("data-public") !== "true";
+    var model = btn.getAttribute("data-model");
+    var body = new URLSearchParams(); body.set("public", makePublic ? "true" : "false");
+    btn.disabled = true;
+    fetch("/api/account/visibility/" + encodeURIComponent(model), {
+      method: "POST",
+      headers: {"Content-Type": "application/x-www-form-urlencoded"},
+      body: body.toString(),
+    }).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    }).then(function () {
+      location.reload();
+    }).catch(function (e) {
+      btn.disabled = false;
+      document.getElementById("visMsg").textContent = "Failed: " + e.message;
+    });
+  });
+})();
+</script>
+{{end}}
+
+{{if .Tags}}
+<section class="box">
+  <h3>Pull the latest tag</h3>
+  <pre class="command">ollama pull --insecure {{.Host}}/{{.Namespace}}/{{.Model}}:{{(index .Tags 0).Tag}}</pre>
+  <pre class="command">ollama run --insecure {{.Host}}/{{.Namespace}}/{{.Model}}:{{(index .Tags 0).Tag}}</pre>
+</section>
+
+<section class="box">
+  <h3>Tags</h3>
+  <table class="layers-table">
+    <thead>
+      <tr><th>Tag</th><th>Size</th><th>Layers</th><th>Backend</th><th>Updated</th></tr>
+    </thead>
+    <tbody>
+      {{range .Tags}}
+      <tr>
+        <td>
+          <a href="/{{$.Namespace}}/{{$.Model}}/{{.Tag}}"><strong>{{.Tag}}</strong></a>
+          <div class="digest">{{shortDigest .Digest}}</div>
+        </td>
+        <td class="size">{{humanSize .Size}}</td>
+        <td class="size">{{.LayerCount}}</td>
+        <td>
+          {{if .Backend}}<span class="mt-badge openvino">{{.Backend}}{{if .ModelType}} · {{.ModelType}}{{end}}{{if .Device}} · {{.Device}}{{end}}</span>{{else}}—{{end}}
+        </td>
+        <td class="size">{{since .UpdatedAt}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</section>
+{{else}}
+<div class="empty">No tags found.</div>
+{{end}}
+{{end}}

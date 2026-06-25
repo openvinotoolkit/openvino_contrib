@@ -7,7 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -35,22 +38,70 @@ func Unqualified(n Name) error {
 const MissingPart = "!MISSING!"
 
 const (
-	defaultHost      = "registry.ollama.ai"
-	defaultNamespace = "library"
-	defaultTag       = "latest"
+	defaultHost           = "registry.ollama.ai"
+	defaultNamespace      = "library"
+	defaultTag            = "latest"
+	defaultProtocolScheme = "https"
 )
 
-// DefaultName returns a name with the default values for the host, namespace,
-// and tag parts. The model and digest parts are empty.
+// activeDefaultHost returns the host that ParseName should fall back to when a
+// model reference omits its host. When the OLLAMA_REGISTRY environment
+// variable is set (typically to the hostname of a self-hosted registry such
+// as "127.0.0.1:5000"), the first entry in that list takes precedence over
+// registry.ollama.ai for parsing purposes — short names resolve there.
+func activeDefaultHost() string {
+	if hosts := implicitHosts(); len(hosts) > 0 && hosts[0] != defaultHost {
+		return hosts[0]
+	}
+	return defaultHost
+}
+
+// implicitHosts is the list of hosts that DisplayShortest will hide. The
+// official registry.ollama.ai is always implicit, plus every host listed in
+// OLLAMA_REGISTRY (semicolon-separated, since `:` already appears inside
+// "host:port"). The first entry in OLLAMA_REGISTRY is also used as the
+// parsing default by activeDefaultHost.
 //
-//   - The default host is ("registry.ollama.ai")
+// Example: OLLAMA_REGISTRY="127.0.0.1:5000;hub.lan:5000" makes both your
+// loopback registry and your LAN registry render without their hostname in
+// `ollama list`, and `ollama run qwen3:latest` resolves against
+// 127.0.0.1:5000.
+func implicitHosts() []string {
+	out := make([]string, 0, 2)
+	if env := strings.TrimSpace(os.Getenv("OLLAMA_REGISTRY")); env != "" {
+		for _, h := range strings.Split(env, ";") {
+			if h = strings.TrimSpace(h); h != "" {
+				out = append(out, h)
+			}
+		}
+	}
+	out = append(out, defaultHost)
+	return out
+}
+
+func isImplicitHost(host string) bool {
+	for _, h := range implicitHosts() {
+		if strings.EqualFold(host, h) {
+			return true
+		}
+	}
+	return false
+}
+
+// DefaultName returns a name with the default values for the host, namespace,
+// tag, and protocol scheme parts. The model and digest parts are empty.
+//
+//   - The default host is ("registry.ollama.ai", or whatever OLLAMA_REGISTRY
+//     points at)
 //   - The default namespace is ("library")
 //   - The default tag is ("latest")
+//   - The default protocol scheme is ("https")
 func DefaultName() Name {
 	return Name{
-		Host:      defaultHost,
-		Namespace: defaultNamespace,
-		Tag:       defaultTag,
+		Host:           activeDefaultHost(),
+		Namespace:      defaultNamespace,
+		Tag:            defaultTag,
+		ProtocolScheme: defaultProtocolScheme,
 	}
 }
 
@@ -87,10 +138,11 @@ func (k partKind) String() string {
 // It is not guaranteed to be valid. Use [Name.IsValid] to check if the name
 // is valid.
 type Name struct {
-	Host      string
-	Namespace string
-	Model     string
-	Tag       string
+	Host           string
+	Namespace      string
+	Model          string
+	Tag            string
+	ProtocolScheme string
 }
 
 // ParseName parses and assembles a Name from a name string. The
@@ -160,7 +212,9 @@ func ParseNameBare(s string) Name {
 	}
 
 	scheme, host, ok := strings.Cut(s, "://")
-	if !ok {
+	if ok {
+		n.ProtocolScheme = scheme
+	} else {
 		host = scheme
 	}
 	n.Host = host
@@ -178,7 +232,7 @@ func ParseNameFromFilepath(s string) (n Name) {
 		return Name{}
 	}
 
-	n.Host = parts[0]
+	n.Host = unescapeHostForFS(parts[0])
 	n.Namespace = parts[1]
 	n.Model = parts[2]
 	n.Tag = parts[3]
@@ -189,12 +243,32 @@ func ParseNameFromFilepath(s string) (n Name) {
 	return n
 }
 
-// Merge merges the host, namespace, and tag parts of the two names,
+// escapeHostForFS rewrites characters in host that are not safe for the
+// filesystem on the current OS. On Windows the colon used for "host:port" is
+// reserved for drive letters and alternate data streams, so it is encoded as
+// "%3A". On other platforms host is returned unchanged.
+func escapeHostForFS(host string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ReplaceAll(host, ":", "%3A")
+	}
+	return host
+}
+
+// unescapeHostForFS reverses escapeHostForFS.
+func unescapeHostForFS(s string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ReplaceAll(s, "%3A", ":")
+	}
+	return s
+}
+
+// Merge merges the host, namespace, tag, and protocol scheme parts of the two names,
 // preferring the non-empty parts of a.
 func Merge(a, b Name) Name {
 	a.Host = cmp.Or(a.Host, b.Host)
 	a.Namespace = cmp.Or(a.Namespace, b.Namespace)
 	a.Tag = cmp.Or(a.Tag, b.Tag)
+	a.ProtocolScheme = cmp.Or(a.ProtocolScheme, b.ProtocolScheme)
 	return a
 }
 
@@ -220,10 +294,15 @@ func (n Name) String() string {
 }
 
 // DisplayShortest returns a short string version of the name.
+//
+// Host is omitted when it matches any entry in implicitHosts() — by default
+// just registry.ollama.ai, plus anything the user listed in OLLAMA_REGISTRY.
+// This keeps both the public hub and self-hosted registries rendering as
+// plain "namespace/model:tag" in `ollama list`.
 func (n Name) DisplayShortest() string {
 	var sb strings.Builder
 
-	if !strings.EqualFold(n.Host, defaultHost) {
+	if !isImplicitHost(n.Host) {
 		sb.WriteString(n.Host)
 		sb.WriteByte('/')
 		sb.WriteString(n.Namespace)
@@ -286,7 +365,7 @@ func (n Name) Filepath() string {
 		panic("illegal attempt to get filepath of invalid name")
 	}
 	return filepath.Join(
-		n.Host,
+		escapeHostForFS(n.Host),
 		n.Namespace,
 		n.Model,
 		n.Tag,
@@ -303,6 +382,23 @@ func (n Name) EqualFold(o Name) bool {
 		strings.EqualFold(n.Namespace, o.Namespace) &&
 		strings.EqualFold(n.Model, o.Model) &&
 		strings.EqualFold(n.Tag, o.Tag)
+}
+
+// BaseURL returns the base URL for the registry.
+func (n Name) BaseURL() *url.URL {
+	return &url.URL{
+		Scheme: n.ProtocolScheme,
+		Host:   n.Host,
+	}
+}
+
+// DisplayNamespaceModel returns the namespace and model joined by "/".
+func (n Name) DisplayNamespaceModel() string {
+	var b strings.Builder
+	b.WriteString(n.Namespace)
+	b.WriteByte('/')
+	b.WriteString(n.Model)
+	return b.String()
 }
 
 func isValidLen(kind partKind, s string) bool {

@@ -1,0 +1,84 @@
+{{define "title"}}Admin · Ollama Registry{{end}}
+{{define "content"}}
+<div class="crumbs"><a href="/">Models</a> / Admin</div>
+<h1 class="title">User administration</h1>
+<div class="subtitle">{{len .Users}} registered account{{if ne (len .Users) 1}}s{{end}}.</div>
+
+{{if .Message}}
+<div class="box" style="border-color:#bfe3c9;background:#e7f7ec;color:#1a7f37;padding:10px 14px">{{.Message}}</div>
+{{end}}
+{{if .Error}}
+<div class="box" style="border-color:#f3c2c2;background:#fdeaea;color:#b3261e;padding:10px 14px">{{.Error}}</div>
+{{end}}
+
+{{if .Users}}
+<section class="box">
+  <table class="layers-table">
+    <thead>
+      <tr><th>User</th><th>Models</th><th>Role</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+      {{range .Users}}
+      <tr>
+        <td>
+          <a href="/{{.Name}}"><strong>{{.Name}}</strong></a>
+          {{if .IsYou}}<span class="mono">(you)</span>{{end}}
+        </td>
+        <td class="size">{{.ModelCount}}</td>
+        <td>{{if .IsAdmin}}<span class="mt-badge" style="background:#eaf2ff;color:#1a3a8a">admin</span>{{else}}user{{end}}</td>
+        <td>
+          {{if .IsAdmin}}
+            <span class="mono" style="color:var(--fg-faint)">protected</span>
+          {{else}}
+            <button type="button" class="del-btn" data-user="{{.Name}}" data-models="{{.ModelCount}}"
+                    style="padding:6px 10px;border:1px solid #e0a3a3;border-radius:6px;background:#fff;color:#b3261e;cursor:pointer">
+              Delete…
+            </button>
+          {{end}}
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</section>
+
+<!-- Hidden delete form posted by the JS confirm dialog. -->
+<form id="delForm" method="POST" action="/admin/users/delete" style="display:none">
+  <input type="hidden" name="username" id="delUser">
+  <input type="hidden" name="with_models" id="delWithModels" value="false">
+</form>
+
+<script>
+(function () {
+  var form = document.getElementById("delForm");
+  document.querySelectorAll(".del-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var user = btn.getAttribute("data-user");
+      var n = parseInt(btn.getAttribute("data-models") || "0", 10);
+      var withModels = false;
+      if (n > 0) {
+        // Three-way choice: cancel / keep models / delete models too.
+        var keep = confirm(
+          "Delete user \"" + user + "\"?\n\n" +
+          "This user has " + n + " model(s).\n\n" +
+          "OK = delete the ACCOUNT ONLY (keep their models).\n" +
+          "Cancel = stop and choose again.");
+        if (!keep) return;
+        withModels = confirm(
+          "Also DELETE all " + n + " of " + user + "'s models?\n\n" +
+          "OK = delete account AND models (cannot be undone).\n" +
+          "Cancel = delete the account but KEEP the models.");
+      } else {
+        if (!confirm("Delete user \"" + user + "\"? They have no models.")) return;
+      }
+      document.getElementById("delUser").value = user;
+      document.getElementById("delWithModels").value = withModels ? "true" : "false";
+      form.submit();
+    });
+  });
+})();
+</script>
+{{else}}
+<div class="empty">No accounts registered yet.</div>
+{{end}}
+{{end}}
