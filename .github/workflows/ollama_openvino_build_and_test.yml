@@ -35,6 +35,11 @@ jobs:
           mkdir -p go
           tar xvzf go1.24.1.linux-amd64.tar.gz
 
+      - name: Install OpenCL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ocl-icd-opencl-dev
+
       - name: Download model
         run: |
           pip install -U huggingface_hub
