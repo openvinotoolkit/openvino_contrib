@@ -7,7 +7,7 @@ on:
   pull_request:
     paths:
       - 'modules/ollama_openvino/**'
-      - '.github/workflows/ollama_openvino_build_and_test'
+      - '.github/workflows/ollama_openvino_build_and_test.yml'
 
 permissions: read-all
 
@@ -32,8 +32,8 @@ jobs:
       - name: Install go
         run: |
           wget https://go.dev/dl/go1.24.1.linux-amd64.tar.gz
-          mkdir -p go
           tar xvzf go1.24.1.linux-amd64.tar.gz
+          echo "${{ github.workspace }}/go/bin" >> $GITHUB_PATH
 
       - name: Install OpenCL
         run: |
