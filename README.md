@@ -49,7 +49,7 @@ Additional build instructions are available for the following modules:
 * **3D**:
   * [**Point Pillars**](./modules/3d/pointPillars): Check the [README](./modules/3d/pointPillars/README.md) for detailed usage and build instructions.
   * [**CDPN**](./modules/3d/CDPN): Check the [README](./modules/3d/CDPN/README.md) for detailed usage and build instructions.
-  * [**SAM6D**](./modules/3d/OV-SAM-6D/SAM-6D): Check the [OV_README](./modules/3d/OV-SAM-6D/SAM-6D/OV_README.md) for how to run SAM6D.
+  * [**SAM6D**](./modules/3d/OV-SAM-6D): Check the [OV_README](./modules/3d/OV-SAM-6D/OV_README.md) for how to run SAM6D.
 
 ## Update the repository documentation
 In order to keep a clean overview containing all contributed modules, the following files need to be created/adapted:

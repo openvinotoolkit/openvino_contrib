@@ -1,0 +1,85 @@
+--- a/Instance_Segmentation_Model/configs/model/ISM_fastsam.yaml
++++ b/Instance_Segmentation_Model/configs/model/ISM_fastsam.yaml
+@@ -7,6 +7,7 @@
+ pointcloud_sample_num: 2048
+ 
+ defaults:
++  - _self_
+   - segmentor_model: fast_sam
+   - descriptor_model: dinov2
+   
+--- a/Instance_Segmentation_Model/configs/model/ISM_sam.yaml
++++ b/Instance_Segmentation_Model/configs/model/ISM_sam.yaml
+@@ -7,6 +7,7 @@
+ pointcloud_sample_num: 2048
+ 
+ defaults:
++  - _self_
+   - segmentor_model: sam
+   - descriptor_model: dinov2
+   
+--- a/Instance_Segmentation_Model/run_inference_custom.py
++++ b/Instance_Segmentation_Model/run_inference_custom.py
+@@ -1,4 +1,5 @@
+ import os, sys
++import re
+ import numpy as np
+ import shutil
+ from tqdm import tqdm
+@@ -92,7 +93,40 @@
+     batch['depth_scale'] = torch.from_numpy(depth_scale).unsqueeze(0).to(device)
+     return batch
+ 
+-def run_inference(segmentor_model, output_dir, cad_path, rgb_path, depth_path, cam_path, stability_score_thresh):
++def _parse_obj_id_from_cad(cad_path):
++    """Extract BOP object id from CAD filename, e.g. 'obj_000005.ply' -> 5.
++    Falls back to the last integer found in the basename. Returns 1 if none found.
++    """
++    name = os.path.basename(cad_path)
++    m = re.search(r'obj_(\d+)', name)
++    if m:
++        return int(m.group(1))
++    nums = re.findall(r'\d+', name)
++    return int(nums[-1]) if nums else 1
++
++
++def _parse_image_id_from_rgb(rgb_path):
++    """Extract image_id from sibling 'mask_visib/<image_id>_<inst>.png' if present.
++    Falls back to digits in the rgb filename, else 0.
++    """
++    scene_dir = os.path.dirname(os.path.abspath(rgb_path))
++    mask_dir = os.path.join(scene_dir, 'mask_visib')
++    if os.path.isdir(mask_dir):
++        for fname in sorted(os.listdir(mask_dir)):
++            m = re.match(r'(\d+)_\d+\.png$', fname)
++            if m:
++                return int(m.group(1))
++    nums = re.findall(r'\d+', os.path.basename(rgb_path))
++    return int(nums[-1]) if nums else 0
++
++
++def run_inference(segmentor_model, output_dir, cad_path, rgb_path, depth_path, cam_path, stability_score_thresh,
++                  obj_id=None, image_id=None, scene_id=0):
++    if obj_id is None:
++        obj_id = _parse_obj_id_from_cad(cad_path)
++    if image_id is None:
++        image_id = _parse_image_id_from_rgb(rgb_path)
++    logging.info(f"Using scene_id={scene_id}, image_id={image_id}, obj_id={obj_id}")
+     with initialize(version_base=None, config_path="configs"):
+         cfg = compose(config_name='run_inference.yaml')
+ 
+@@ -200,11 +234,12 @@
+     final_score = (semantic_score + appe_scores + geometric_score*visible_ratio) / (1 + 1 + visible_ratio)
+ 
+     detections.add_attribute("scores", final_score)
+-    detections.add_attribute("object_ids", torch.zeros_like(final_score))   
++    # category_id is written as object_ids + 1 in save_to_file, so subtract 1 here
++    detections.add_attribute("object_ids", torch.full_like(final_score, fill_value=obj_id - 1))
+          
+     detections.to_numpy()
+     save_path = f"{output_dir}/sam6d_results/detection_ism"
+-    detections.save_to_file(0, 0, 0, save_path, "Custom", return_results=False)
++    detections.save_to_file(scene_id, image_id, 0, save_path, "Custom", return_results=False)
+     detections = convert_npz_to_json(idx=0, list_npz_paths=[save_path+".npz"])
+     save_json_bop23(save_path+".json", detections)
+     vis_img = visualize(rgb, detections, f"{output_dir}/sam6d_results/vis_ism.png")
