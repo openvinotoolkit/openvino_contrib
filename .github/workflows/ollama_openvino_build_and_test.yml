@@ -75,7 +75,7 @@ jobs:
           export PATH=$PATH:${{ github.workspace }}/openvino_contrib/modules/ollama_openvino/bin
           source openvino_genai_ubuntu22_2026.3.0.0.dev20260516_x86_64/setupvars.sh
           export GODEBUG=cgocheck=0
-          echo -e 'FROM TinyLlama-1.1B-Chat-v1.0-int4-ov.tar.gz\nModelBackend "OpenVINO"\nModelType "LLM"\nInferDevice "GPU"' > Modelfile
+          echo -e 'FROM TinyLlama-1.1B-Chat-v1.0-int4-ov.tar.gz\nModelBackend "OpenVINO"\nModelType "LLM"\nInferDevice "CPU"' > Modelfile
           ollama serve &
           sleep 10
           tmux new-session -d -s createsession 'ollama create TinyLlama-1.1B-Chat-v1.0-int4-ov:v1 -f Modelfile'
