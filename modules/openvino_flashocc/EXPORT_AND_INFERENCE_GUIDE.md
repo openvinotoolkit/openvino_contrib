@@ -60,8 +60,6 @@ installs all dependencies, builds the bev_pool extension.
 bash setup.sh \
     --prepare-models \
     --model-variant m0 \
-    --data-pkl   /path/to/nuscenes_infos_val.pkl \
-    --data-root  /path/to/nuscenes \
     --jobs $(nproc)
 ```
 
@@ -70,8 +68,6 @@ bash setup.sh \
 ```bash
 bash setup.sh \
     --model-dir  /path/to/split_f16out \
-    --data-pkl   /path/to/nuscenes_infos_val.pkl \
-    --data-root  /path/to/nuscenes \
     --jobs $(nproc)
 ```
 
@@ -81,12 +77,10 @@ Options:
 | `--model-dir PATH` | Path to pre-built `split_f16out/` IR directory. If omitted, defaults to `./split_f16out` |
 | `--model-variant m0\|m1` | Which checkpoint to download (`m0`=ResNet50, `m1`=ResNet50-M1). Default: `m0` |
 | `--prepare-models` | Force model download + IR generation even if IR files already exist |
-| `--data-pkl PATH` | NuScenes validation pkl file |
-| `--data-root PATH` | NuScenes dataset root (directory containing `samples/`, `sweeps/`) |
 | `--jobs N` | Parallel build jobs (default: `nproc`) |
 | `--skip-ov-build` | Reuse existing `ov_build/` clone (skip clone + build) |
 | `--skip-bevpool-build` | Skip bev_pool extension build |
-| `--run-test` | Run 80-sample E2E benchmark immediately after setup |
+| `--run-test` | Run E2E benchmark immediately after setup |
 | `--num-samples N` | Samples for `--run-test` (default: 80) |
 
 ### 3. Run E2E inference

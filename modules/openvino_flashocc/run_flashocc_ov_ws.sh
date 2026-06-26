@@ -21,7 +21,7 @@
 #     • Single OV Core shared across all models
 #     • NaN debug disabled; PERF_COUNT disabled
 #
-# Performance (Intel Xe3 Pantherlake iGPU, 80 NuScenes samples):
+# Performance (Intel Xe3 Pantherlake iGPU, 80 samples):
 #   Baseline:    42.4ms / 23.6 fps
 #   Optimized:   30.2ms / 33.1 fps   (+40.3% throughput)
 #

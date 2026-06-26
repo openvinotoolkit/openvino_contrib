@@ -403,9 +403,19 @@ else
   prepare_models_if_needed "$MODEL_DIR"
 fi
 
+# Allow conversion/export-only workflow to complete cleanly without requiring
+# OpenVINO clone/build artifacts.
+if [[ $SKIP_OV_BUILD -eq 1 && $SKIP_BEVPOOL_BUILD -eq 1 && $RUN_TEST -eq 0 ]]; then
+  ok "Prepare-models-only flow complete (OV/bev_pool build skipped)"
+  exit 0
+fi
+
 # ── Step 1: Clone OpenVINO ────────────────────────────────────────────────────
 if [[ $SKIP_OV_BUILD -eq 0 ]]; then
   info "Step 1: Cloning ${OV_REPO}  (branch: ${OV_BRANCH}) …"
+  OV_CLONE_BASE="${SCRIPT_DIR}/ov_build/openvino"
+  OV_CLONE_DIR="${OV_CLONE_BASE}"
+  OV_BUILD_DIR="${OV_CLONE_DIR}/build"
   if [[ -d "$OV_CLONE_DIR/.git" ]]; then
     warn "ov_build/openvino already exists — fetching latest commits"
     git -C "$OV_CLONE_DIR" fetch origin
@@ -418,16 +428,38 @@ if [[ $SKIP_OV_BUILD -eq 0 ]]; then
     fi
   fi
 
-  # Init submodules (oneDNN + others needed for GPU build)
+  # Init submodules (oneDNN + others needed for GPU build).
+  # Use --jobs 1 to avoid the parallel-worker "Unable to read current working
+  # directory" cascade that happens when one clone fails mid-flight and git
+  # has already chdir'd into a now-missing directory.  Retry up to 3 times,
+  # and if a checkout breaks mid-run, rotate to a fresh clone path so the next
+  # attempt does not inherit stale .git lock files from the failed repository.
   info "  Updating submodules …"
-  git -C "$OV_CLONE_DIR" submodule update --init --recursive \
-    thirdparty/oneDNN \
-    thirdparty/ocl/clhpp_headers \
-    thirdparty/ocl/icd_loader \
-    thirdparty/ittapi \
-    thirdparty/telemetry \
-    thirdparty/pugixml \
-    2>/dev/null || git -C "$OV_CLONE_DIR" submodule update --init --recursive
+  _sm_ok=0
+  for _attempt in 1 2 3; do
+    info "    submodule update attempt ${_attempt}/3"
+    # Remove orphaned tmp_pack_* files that prevent re-clone on retry.
+    find "${OV_CLONE_DIR}/.git/modules" -type f -name 'tmp_pack_*' -delete 2>/dev/null || true
+    git -C "$OV_CLONE_DIR" submodule sync --recursive 2>/dev/null || true
+    if git -C "$OV_CLONE_DIR" submodule update --init --recursive --jobs 1; then
+      _sm_ok=1
+      break
+    fi
+    if [[ ${_attempt} -lt 3 ]]; then
+      warn "  Submodule update failed; recreating OpenVINO checkout for retry"
+      if [[ -z "${OV_LOCAL_REPO_DIR}" || "${OV_CLONE_DIR}" != "${OV_LOCAL_REPO_DIR}" ]]; then
+        _next_clone_dir="${OV_CLONE_BASE}.retry${_attempt}"
+        rm -rf "${OV_CLONE_DIR}" "${_next_clone_dir}"
+        mkdir -p "${SCRIPT_DIR}/ov_build"
+        git clone --depth 50 --branch "$OV_BRANCH" "$OV_REPO" "${_next_clone_dir}"
+        OV_CLONE_DIR="${_next_clone_dir}"
+        OV_BUILD_DIR="${OV_CLONE_DIR}/build"
+      else
+        warn "  Using local OpenVINO checkout; cannot recreate the repository automatically"
+      fi
+    fi
+  done
+  [[ ${_sm_ok} -eq 1 ]] || die "Failed to initialise OpenVINO submodules after 3 attempts"
   ok "Clone done: $(git -C "$OV_CLONE_DIR" log --oneline -1)"
 
   # ── Step 2: Build OpenVINO ─────────────────────────────────────────────────
@@ -477,12 +509,12 @@ if [[ $SKIP_OV_BUILD -eq 0 ]]; then
     --target openvino_intel_gpu_plugin ie_wheel \
     -j "${JOBS}"
 
-  OV_WHEEL=$(ls "${OV_BUILD_DIR}"/wheels/openvino-*.whl 2>/dev/null | head -1)
+  OV_WHEEL="$(find "${OV_BUILD_DIR}/wheels" -maxdepth 1 -type f -name 'openvino-*.whl' -print -quit 2>/dev/null || true)"
   [[ -n "$OV_WHEEL" ]] || die "OV wheel not found in ${OV_BUILD_DIR}/wheels/ — build may have failed"
   ok "OpenVINO built: $(basename "$OV_WHEEL")"
 else
   info "Step 1-2: Skipping OV clone/build (--skip-ov-build)"
-  OV_WHEEL=$(ls "${OV_BUILD_DIR}"/wheels/openvino-*.whl 2>/dev/null | head -1)
+  OV_WHEEL="$(find "${OV_BUILD_DIR}/wheels" -maxdepth 1 -type f -name 'openvino-*.whl' -print -quit 2>/dev/null || true)"
   [[ -n "$OV_WHEEL" ]] || die "No wheel in ${OV_BUILD_DIR}/wheels/ — cannot skip build without existing wheel"
   ok "Reusing existing wheel: $(basename "$OV_WHEEL")"
 fi
