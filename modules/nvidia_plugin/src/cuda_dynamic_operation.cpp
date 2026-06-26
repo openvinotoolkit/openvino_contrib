@@ -75,7 +75,55 @@ DynamicOperation::DynamicOperation(const CreationContext& context,
     : OperationBase(context, *node, std::move(inputIds), IndexCollection{}),
       original_node_{node},
       creation_context_{context},
-      dynamic_output_ids_{std::move(outputIds)} {}
+      dynamic_output_ids_{std::move(outputIds)} {
+    has_dynamic_output_ = computeHasDynamicOutput();
+}
+
+bool DynamicOperation::computeHasDynamicOutput() const {
+    // Value-dependence is a structural property of the node: clone it with concrete
+    // placeholder input shapes (dynamic dims -> 1) and check whether the output
+    // stays dynamic. If it does, the output depends on input VALUES (Broadcast
+    // target shape, Reshape pattern, ...) and the cache key must fold those values
+    // in. Done once here (single-threaded) instead of lazily in the const Execute()
+    // path, so the very first cache key is already value-sensitive and the shared
+    // flag is never written concurrently.
+    try {
+        ov::OutputVector new_inputs;
+        new_inputs.reserve(original_node_->get_input_size());
+        for (size_t i = 0; i < original_node_->get_input_size(); ++i) {
+            if (std::dynamic_pointer_cast<ov::op::v0::Constant>(original_node_->get_input_node_shared_ptr(i))) {
+                new_inputs.push_back(original_node_->input_value(i));
+                continue;
+            }
+            const auto& pshape = original_node_->get_input_partial_shape(i);
+            if (pshape.rank().is_dynamic()) {
+                // No concrete shape available -- be conservative and always fold
+                // values (safe: never under-keys, at worst an extra cache entry).
+                return true;
+            }
+            ov::Shape concrete;
+            concrete.reserve(pshape.size());
+            for (const auto& d : pshape) {
+                concrete.push_back(d.is_static() ? d.get_length() : 1);
+            }
+            new_inputs.push_back(
+                std::make_shared<ov::op::v0::Parameter>(original_node_->get_input_element_type(i), concrete)
+                    ->output(0));
+        }
+        auto cloned = original_node_->clone_with_new_inputs(new_inputs);
+        cloned->validate_and_infer_types();
+        for (size_t i = 0; i < cloned->get_output_size(); ++i) {
+            if (cloned->get_output_partial_shape(i).is_dynamic()) {
+                return true;
+            }
+        }
+        return false;
+    } catch (...) {
+        // If the probe can't run (e.g. an op needing a runtime context), assume
+        // value-dependent so the key never under-keys.
+        return true;
+    }
+}
 
 void DynamicOperation::Execute(const InferenceRequestContext& context,
                                Inputs inputTensors,
@@ -384,16 +432,9 @@ DynamicOperation::createCachedOperation(
     auto cloned = original_node_->clone_with_new_inputs(new_inputs);
     cloned->validate_and_infer_types();
 
-    // 2. If the output stays dynamic the op needs input VALUES (Broadcast target
-    //    shape, Reshape pattern, ...). Retry: download small integer inputs and
-    //    fold them in as Constants.
-    for (size_t i = 0; i < cloned->get_output_size(); ++i) {
-        if (cloned->get_output_partial_shape(i).is_dynamic()) {
-            has_dynamic_output_ = true;
-            break;
-        }
-    }
-
+    // 2. Value-dependent ops (has_dynamic_output_, determined at construction) need
+    //    input VALUES (Broadcast target shape, Reshape pattern, ...): re-clone with
+    //    the small integer inputs folded in as Constants so the output shape infers.
     if (has_dynamic_output_) {
         new_inputs.clear();
         for (size_t i = 0; i < original_node_->get_input_size(); ++i) {
@@ -404,9 +445,8 @@ DynamicOperation::createCachedOperation(
             const auto& shape = key.input_shapes[i];
             auto elem_type = original_node_->get_input_element_type(i);
             if (isShapeValueInput(shape, elem_type) && i < input_ptrs.size()) {
-                // Reuse the values already downloaded for the cache key; only the
-                // first encounter (before this op was flagged value-dependent)
-                // arrives here with an empty entry and must download them now.
+                // Reuse the values already downloaded for the cache key (always
+                // populated for value-dependent ops); download as a safe fallback.
                 std::vector<int64_t> values =
                     (i < key.input_values.size() && !key.input_values[i].empty())
                         ? key.input_values[i]

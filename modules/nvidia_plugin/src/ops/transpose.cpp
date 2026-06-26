@@ -77,7 +77,11 @@ TransposeOp::TransposeOp(const CreationContext& context,
         throw_ov_exception(fmt::format("TransposeOp: unsupported permutationElementsType_: {}",
                                      ov::element::Type{permutationElementsType_}.get_type_name()));
     }
-    inputExtents_.size();
+    // Probe cuTENSOR functionality at construction time (outside any CUDA-graph
+    // capture). std::call_once makes the actual probe run once globally; Execute()
+    // then only reads the cached result, so the probe's synchronizing calls can
+    // never invalidate a stream capture during the first inference.
+    isCuTensorPermutationFunctional();
 }
 
 void TransposeOp::Execute(const InferenceRequestContext& context,
@@ -96,7 +100,7 @@ void TransposeOp::Execute(const InferenceRequestContext& context,
     // cuTENSOR 1.x on Ada), cutensorPermutation returns SUCCESS while the
     // output stays unwritten. Probe actual functionality once per process and
     // route Transpose through the built-in fallback kernel if it is broken.
-    if (!isCuTensorPermutationFunctional(threadContext)) {
+    if (!isCuTensorPermutationFunctional()) {
         runPermuteFallback(context, inputTensors[0].get(), outputTensors[0].get(), outputMode);
         return;
     }
@@ -130,11 +134,16 @@ void TransposeOp::Execute(const InferenceRequestContext& context,
 
 }
 
-bool TransposeOp::isCuTensorPermutationFunctional(const ThreadContext& threadContext) {
+bool TransposeOp::isCuTensorPermutationFunctional() {
     static std::once_flag probe_once;
     static bool functional = false;
-    std::call_once(probe_once, [&threadContext] {
-        functional = [&threadContext]() -> bool {
+    std::call_once(probe_once, [] {
+        functional = []() -> bool {
+            // Self-contained probe (own cuTENSOR handle + stream) so it can run at
+            // construction time, outside any CUDA-graph capture: the synchronizing
+            // cudaMalloc/cudaStreamSynchronize/cudaFree below would invalidate a
+            // ThreadLocal-mode capture if this first ran during inference.
+            CUDA::CuTensorHandle probe_handle;
             cudaStream_t probe_stream = nullptr;
             if (cudaStreamCreateWithFlags(&probe_stream, cudaStreamNonBlocking) != cudaSuccess) {
                 return false;
@@ -161,18 +170,18 @@ bool TransposeOp::isCuTensorPermutationFunctional(const ThreadContext& threadCon
                 const int64_t out_strides[2] = {1, 2};  // output laid out transposed
                 const int modes[2] = {0, 1};
                 cutensorTensorDescriptor_t in_desc{}, out_desc{};
-                if (cutensorInitTensorDescriptor(&threadContext.cuTensorHandle().get(), &in_desc, 2, extents,
+                if (cutensorInitTensorDescriptor(&probe_handle.get(), &in_desc, 2, extents,
                                                  in_strides, CUDA_R_32F, CUTENSOR_OP_IDENTITY) !=
                     CUTENSOR_STATUS_SUCCESS) {
                     break;
                 }
-                if (cutensorInitTensorDescriptor(&threadContext.cuTensorHandle().get(), &out_desc, 2, extents,
+                if (cutensorInitTensorDescriptor(&probe_handle.get(), &out_desc, 2, extents,
                                                  out_strides, CUDA_R_32F, CUTENSOR_OP_IDENTITY) !=
                     CUTENSOR_STATUS_SUCCESS) {
                     break;
                 }
                 const float one = 1.0f;
-                if (cutensorPermutation(&threadContext.cuTensorHandle().get(), &one, src, &in_desc, modes, dst,
+                if (cutensorPermutation(&probe_handle.get(), &one, src, &in_desc, modes, dst,
                                         &out_desc, modes, CUDA_R_32F, probe_stream) != CUTENSOR_STATUS_SUCCESS) {
                     break;
                 }
