@@ -11,25 +11,29 @@
 #   schedule.interval: "weekly"
 #   groups: one `<eco>-security` (applies-to: security-updates) + one
 #           `<eco>-version` (applies-to: version-updates), both patterns ["*"]
-#   labels: "dependencies" + the ecosystem label
+#   labels: "dependencies" + the ecosystem label IF it exists in the repo
 #   commit-message.prefix: "deps(<eco>)"
 #
 # PER-BLOCK DIFFERENCES — the only values that legitimately vary:
-#   ecosystem | location           | day     | PR limit | label
-#   pip       | /modules/**/*      | monday  | 10       | python
-#   npm       | /modules/**/*      | monday  | 10       | javascript
-#   gomod     | /modules/ollama_openvino | monday | 10  | go
-#   gradle    | /modules/**/*      | tuesday | 10       | java
-#   docker    | /modules/**/*      | tuesday | 5        | docker
-#   actions   | /                  | tuesday | 5        | github-actions
+#   ecosystem | day     | PR limit | extra label
+#   pip       | monday  | 10       | python
+#   npm       | monday  | 10       | javascript
+#   gomod     | monday  | 10       | (none)
+#   gradle    | tuesday | 10       | (none)
+#   docker    | tuesday | 5        | (none)
+#   actions   | tuesday | 5        | (none)
 #
 # Notes:
-# - `/modules/**/*` globstar matches manifests at any depth under modules/.
+# - `directories` lists concrete manifest paths (Dependabot does not glob these
+#   into real jobs reliably); add the directory here when a new module ships a
+#   manifest for that ecosystem.
 # - `applies-to: security-updates` requires "Dependabot security updates"
 #   (+ Dependency graph + alerts) enabled in repo settings; the file alone
 #   does not enable security updates.
-# - Only the `dependencies` label is auto-created; ecosystem labels must exist
-#   in the repo or Dependabot ignores them.
+# - Only labels that already exist in the repo are applied; Dependabot silently
+#   ignores unknown labels. Currently only `dependencies`, `python` and
+#   `javascript` exist, so the gomod/gradle/docker/actions blocks carry just
+#   `dependencies`. Add the ecosystem label to a block once it is created.
 # - Security updates ignore `open-pull-requests-limit`.
 
 version: 2
@@ -38,7 +42,16 @@ updates:
   # pip — requirements*.txt and setup.py
   - package-ecosystem: "pip"
     directories:
-      - "/modules/**/*"
+      - "/modules/3d/CDPN"
+      - "/modules/3d/pointPillars"
+      - "/modules/custom_operations/tests"
+      - "/modules/genai_optimizations"
+      - "/modules/nvidia_plugin/tests/functional/shared_tests_instances/single_layer_tests/generator"
+      - "/modules/nvidia_plugin/utils/shape-extractor"
+      - "/modules/nvidia_plugin/wheel"
+      - "/modules/openvino_bevfusion"
+      - "/modules/openvino_training_kit"
+      - "/modules/token_merging"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -61,7 +74,9 @@ updates:
   # npm — package.json lockfiles
   - package-ecosystem: "npm"
     directories:
-      - "/modules/**/*"
+      - "/modules/ollama_openvino/macapp"
+      - "/modules/openvino-langchain"
+      - "/modules/openvino-langchain/sample"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -90,7 +105,6 @@ updates:
     open-pull-requests-limit: 10
     labels:
       - "dependencies"
-      - "go"
     commit-message:
       prefix: "deps(gomod)"
     groups:
@@ -106,14 +120,18 @@ updates:
   # gradle — build.gradle and version catalogs (Java/Kotlin)
   - package-ecosystem: "gradle"
     directories:
-      - "/modules/**/*"
+      - "/modules/android_demos/coco_detection_android_demo"
+      - "/modules/android_demos/coco_detection_android_demo/app"
+      - "/modules/java_api"
+      - "/modules/java_api/samples/face_detection_java_sample"
+      - "/modules/java_api/samples/face_detection_kotlin_sample"
+      - "/modules/java_api/samples/hello_query_device"
     schedule:
       interval: "weekly"
       day: "tuesday"
     open-pull-requests-limit: 10
     labels:
       - "dependencies"
-      - "java"
     commit-message:
       prefix: "deps(gradle)"
     groups:
@@ -129,14 +147,15 @@ updates:
   # docker — Dockerfile base images
   - package-ecosystem: "docker"
     directories:
-      - "/modules/**/*"
+      - "/modules/3d/pointPillars/devops"
+      - "/modules/nvidia_plugin"
+      - "/modules/ollama_openvino"
     schedule:
       interval: "weekly"
       day: "tuesday"
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
-      - "docker"
     commit-message:
       prefix: "deps(docker)"
     groups:
@@ -158,7 +177,6 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
-      - "github-actions"
     commit-message:
       prefix: "deps(actions)"
     groups:
