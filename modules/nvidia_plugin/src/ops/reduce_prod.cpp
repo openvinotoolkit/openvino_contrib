@@ -23,6 +23,16 @@ ReduceProdIntOp::ReduceProdIntOp(const CreationContext& context,
       num_elements_{ov::shape_size(node.get_input_shape(0))} {
     OPENVINO_ASSERT(node.get_input_element_type(0) == ov::element::i32,
                     "ReduceProdIntOp only supports i32, got: ", node.get_input_element_type(0));
+    // The single-block kernel reduces ALL input elements into output[0] and ignores
+    // the axes input, so it is only correct for a full reduction producing a single
+    // element, and only for up to one block (1024 elements). Fail loudly rather than
+    // silently corrupt if a graph ever feeds a partial-axis or larger reduction.
+    OPENVINO_ASSERT(ov::shape_size(node.get_output_shape(0)) == 1,
+                    "ReduceProdIntOp supports only full-axis reduction to a scalar; output shape: ",
+                    node.get_output_shape(0));
+    OPENVINO_ASSERT(num_elements_ <= 1024,
+                    "ReduceProdIntOp supports at most 1024 elements, got: ",
+                    num_elements_);
 }
 
 void ReduceProdIntOp::Execute(const InferenceRequestContext& context,

@@ -27,7 +27,10 @@ public:
     CudaGraphCompatibility GetCudaGraphCompatibilityImpl() const override;
 
 private:
-    static bool isCuTensorPermutationFunctional(const ThreadContext& threadContext);
+    // Probed once per process (self-contained: own cuTENSOR handle + stream), run
+    // from the constructor so its synchronizing calls never execute during a
+    // CUDA-graph capture. Execute() only reads the cached result.
+    static bool isCuTensorPermutationFunctional();
 
     void runPermuteFallback(const InferenceRequestContext& context,
                             const void* src,

@@ -238,12 +238,16 @@ private:
     // Set by SubGraph::initExecuteSequence() based on buffer lifespan analysis.
     std::vector<BufferID> release_ids_;
 
-    // Set when createCachedOperation() discovers this op's output shape stays
-    // dynamic even with concrete input shapes, i.e. it depends on input VALUES
-    // (e.g. Broadcast/Reshape target shape). Subsequent Execute() calls then
-    // fold those values into the cache key. mutable: updated lazily during the
-    // const Execute() path.
-    mutable bool has_dynamic_output_ = false;
+    // True when this op's output shape stays dynamic even with concrete input
+    // shapes, i.e. it depends on input VALUES (e.g. Broadcast/Reshape target
+    // shape). When set, Execute() folds those values into the cache key. Computed
+    // once at construction (single-threaded) via computeHasDynamicOutput() so the
+    // first Execute is already value-sensitive -- never mutated afterwards, so the
+    // shared instance is safe to read concurrently from multiple request threads.
+    bool has_dynamic_output_ = false;
+
+    // Probe, at construction, whether the output shape is value-dependent.
+    bool computeHasDynamicOutput() const;
 };
 
 }  // namespace nvidia_gpu
