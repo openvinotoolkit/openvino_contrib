@@ -1,45 +1,9 @@
 # Copyright (C) 2018-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-# Dependabot config for openvino_contrib.
-#
-# Dependabot has no shared-defaults/inheritance and rejects YAML anchors
-# (`YAML aliases are not supported`, dependabot/dependabot-core#1582), so every
-# `updates` block below repeats the same shape. To keep that controllable:
-#
-# SHARED SETTINGS — keep identical across ALL blocks; change here, then mirror:
-#   schedule.interval: "weekly"
-#   groups: one `<eco>-security` (applies-to: security-updates) + one
-#           `<eco>-version` (applies-to: version-updates), both patterns ["*"]
-#   labels: "dependencies" + the ecosystem label IF it exists in the repo
-#   commit-message.prefix: "deps(<eco>)"
-#
-# PER-BLOCK DIFFERENCES — the only values that legitimately vary:
-#   ecosystem | day     | PR limit | extra label
-#   pip       | monday  | 10       | python
-#   npm       | monday  | 10       | javascript
-#   gomod     | monday  | 10       | (none)
-#   gradle    | tuesday | 10       | (none)
-#   docker    | tuesday | 5        | (none)
-#   actions   | tuesday | 5        | (none)
-#
-# Notes:
-# - `directories` lists concrete manifest paths (Dependabot does not glob these
-#   into real jobs reliably); add the directory here when a new module ships a
-#   manifest for that ecosystem.
-# - `applies-to: security-updates` requires "Dependabot security updates"
-#   (+ Dependency graph + alerts) enabled in repo settings; the file alone
-#   does not enable security updates.
-# - Only labels that already exist in the repo are applied; Dependabot silently
-#   ignores unknown labels. Currently only `dependencies`, `python` and
-#   `javascript` exist, so the gomod/gradle/docker/actions blocks carry just
-#   `dependencies`. Add the ecosystem label to a block once it is created.
-# - Security updates ignore `open-pull-requests-limit`.
-
 version: 2
 
 updates:
-  # pip — requirements*.txt and setup.py
   - package-ecosystem: "pip"
     directories:
       - "/modules/3d/CDPN"
@@ -71,7 +35,6 @@ updates:
         patterns:
           - "*"
 
-  # npm — package.json lockfiles
   - package-ecosystem: "npm"
     directories:
       - "/modules/ollama_openvino/macapp"
@@ -96,7 +59,6 @@ updates:
         patterns:
           - "*"
 
-  # gomod — ollama_openvino
   - package-ecosystem: "gomod"
     directory: "/modules/ollama_openvino"
     schedule:
@@ -117,7 +79,6 @@ updates:
         patterns:
           - "*"
 
-  # gradle — build.gradle and version catalogs (Java/Kotlin)
   - package-ecosystem: "gradle"
     directories:
       - "/modules/android_demos/coco_detection_android_demo"
@@ -144,7 +105,6 @@ updates:
         patterns:
           - "*"
 
-  # docker — Dockerfile base images
   - package-ecosystem: "docker"
     directories:
       - "/modules/3d/pointPillars/devops"
@@ -168,7 +128,6 @@ updates:
         patterns:
           - "*"
 
-  # github-actions — workflows under .github/workflows
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
