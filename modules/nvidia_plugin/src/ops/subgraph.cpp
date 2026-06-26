@@ -108,8 +108,6 @@ void SubGraph::initExecuteSequence(bool isStableParams, bool isStableResults) {
         if (dynamic_cast<NopOp*>(operation.get())) {
             continue;
         }
-        operation->SetWorkbufferIds(
-            opBuffersExtractor.processWorkbufferRequest(node_idx, operation->GetWorkBufferRequest()));
         if (InitNeeded == operation->SetWorkbufferIds(opBuffersExtractor.processWorkbufferRequest(
                               node_idx, operation->GetWorkBufferRequest()))) {
             init_sequence.push_back(operation);

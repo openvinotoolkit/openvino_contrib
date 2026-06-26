@@ -41,11 +41,11 @@ void AssignOp::Execute(const InferenceRequestContext& context,
     if (is_dynamic_) {
         auto& dynBufCtx = const_cast<InferenceRequestContext&>(context).getDynamicBufferContext();
         auto input_buf_id = input_ids_[0].GetBuffer().GetId();
-        if (dynBufCtx.hasShape(input_buf_id)) {
-            shape = dynBufCtx.getShape(input_buf_id);
-        } else {
-            shape = static_input_shape_;
-        }
+        OPENVINO_ASSERT(dynBufCtx.hasShape(input_buf_id),
+                        "Assign: runtime input shape for variable '",
+                        variable_id_,
+                        "' is not available in the dynamic buffer context");
+        shape = dynBufCtx.getShape(input_buf_id);
     } else {
         shape = static_input_shape_;
     }
