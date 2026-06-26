@@ -50,8 +50,16 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
       config_(std::move(cfg)),
       cuda_stream_executor_(std::move(wait_executor)),
       loaded_from_cache_(loaded_from_cache),
+      // CUDA Graphs are incompatible with dynamic shapes. More importantly,
+      // CudaGraphTopologyRunner splits the model into several SubGraphs, each
+      // with its own OperationBuffersExtractor numbering BufferIDs from zero,
+      // while the per-request DynamicBufferContext/ShapeContext is shared across
+      // all SubGraphs — so for dynamic models the BufferID spaces collide and
+      // operations read buffers registered by a different SubGraph. Dynamic
+      // models therefore always use EagerTopologyRunner (single SubGraph,
+      // single consistent BufferID space).
       use_cuda_graph_{get_property(ov::nvidia_gpu::use_cuda_graph.name()).as<bool>() &&
-                      !get_property(ov::enable_profiling.name()).as<bool>()},
+                      !get_property(ov::enable_profiling.name()).as<bool>() && !model->is_dynamic()},
       number_of_cuda_graphs_{0} {
     try {
         compile_model(model);
