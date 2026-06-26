@@ -18,8 +18,15 @@ namespace nvidia_gpu {
  * @brief GPU-resident implementation of ov::IVariableState.
  *
  * State buffer lives on the CUDA device to avoid H2D/D2H copies during inference.
- * ReadValue/Assign ops access it via device_buffer() (fast D2D path).
- * get_state()/set_state() copy to/from host (slow path, for user API only).
+ * ReadValue/Assign ops access it via device_buffer() (fast D2D path) on the
+ * per-request stream. get_state()/set_state()/reset() copy to/from host (slow
+ * path, for the user API only).
+ *
+ * Thread-safety: every access to the mutable fields (device_buffer_,
+ * current_shape_, capacity_bytes_, is_reset_) is guarded by mutex_, including the
+ * fast-path accessors. The slow-path host copies run on the synchronizing default
+ * stream, which is ordered against the (blocking) per-request streams, so a
+ * set_state/reset cannot tear an in-flight D2D copy on the device side.
  */
 class CudaVariableState : public ov::IVariableState {
 public:
@@ -40,10 +47,12 @@ public:
                 current_shape_[i] = data_shape_[i].is_static() ? data_shape_[i].get_length() : 0;
             }
         }
-        auto byte_size = element_type_.size() * ov::shape_size(current_shape_);
+        // The shape the state returns to on reset() (empty KV-cache for dynamic vars).
+        initial_shape_ = current_shape_;
+        auto byte_size = logical_byte_size();
         if (byte_size > 0) {
             device_buffer_ = CUDA::DefaultStream::stream().malloc(byte_size);
-            current_byte_size_ = byte_size;
+            capacity_bytes_ = byte_size;
             CUDA::DefaultStream::stream().memset(device_buffer_, 0, byte_size);
         }
         // Initialize m_state with a host tensor matching current shape
@@ -74,30 +83,50 @@ public:
     ov::SoPtr<ov::ITensor> get_state() const override {
         std::lock_guard<std::mutex> lock(mutex_);
         auto tensor_ptr = ov::make_tensor(element_type_, current_shape_);
-        if (current_byte_size_ > 0 && device_buffer_.get()) {
+        auto byte_size = logical_byte_size();
+        if (byte_size > 0 && device_buffer_.get()) {
             CUDA::DefaultStream::stream().download(
                 tensor_ptr->data(),
                 CUDA::DevicePointer<const void*>{device_buffer_.get()},
-                current_byte_size_);
+                byte_size);
         }
         return ov::SoPtr<ov::ITensor>{tensor_ptr, nullptr};
     }
 
     void reset() override {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (current_byte_size_ > 0 && device_buffer_.get()) {
-            CUDA::DefaultStream::stream().memset(device_buffer_, 0, current_byte_size_);
+        // Return to the initial (post-reset) shape — e.g. an empty KV-cache —
+        // so get_state()/ReadValue observe the correct size, not the grown one.
+        current_shape_ = initial_shape_;
+        if (capacity_bytes_ > 0 && device_buffer_.get()) {
+            CUDA::DefaultStream::stream().memset(device_buffer_, 0, capacity_bytes_);
         }
         is_reset_ = true;
     }
 
     // --- Fast path for ReadValue/Assign (GPU-to-GPU, no host involvement) ---
+    // These accessors are mutex-guarded: ReadValue/Assign read them on the
+    // inference thread while the user-facing set_state/reset/update_device_state
+    // may mutate the same fields from another thread. shape() returns BY VALUE so
+    // the caller never reads current_shape_'s storage after the lock is released.
 
-    void* device_buffer_ptr() const { return device_buffer_.get(); }
-    std::size_t device_buffer_byte_size() const { return current_byte_size_; }
-    const ov::Shape& shape() const { return current_shape_; }
-    ov::element::Type element_type() const { return element_type_; }
-    bool is_reset_state() const { return is_reset_; }
+    void* device_buffer_ptr() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return device_buffer_.get();
+    }
+    std::size_t device_buffer_byte_size() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return logical_byte_size();
+    }
+    ov::Shape shape() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return current_shape_;
+    }
+    ov::element::Type element_type() const { return element_type_; }  // immutable after construction
+    bool is_reset_state() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return is_reset_;
+    }
 
     /**
      * @brief Update state from a device pointer (D2D copy). Called by AssignOp.
@@ -123,25 +152,32 @@ public:
                            CUDA::DevicePointer<void*> dst,
                            std::size_t dst_byte_size) const {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (current_byte_size_ > 0 && device_buffer_.get()) {
-            auto copy_size = std::min(dst_byte_size, current_byte_size_);
+        auto byte_size = logical_byte_size();
+        if (byte_size > 0 && device_buffer_.get()) {
+            auto copy_size = std::min(dst_byte_size, byte_size);
             stream.transfer(dst, CUDA::DevicePointer<const void*>{device_buffer_.get()}, copy_size);
         }
     }
 
 private:
+    // Logical size of the state as currently shaped (distinct from the allocation
+    // capacity, which only ever grows). All copies use this so a shrunk shape never
+    // over-reads the buffer.
+    std::size_t logical_byte_size() const { return element_type_.size() * ov::shape_size(current_shape_); }
+
     void ensure_device_buffer(std::size_t required_bytes) {
-        if (required_bytes > current_byte_size_ || !device_buffer_.get()) {
+        if (required_bytes > capacity_bytes_ || !device_buffer_.get()) {
             device_buffer_ = CUDA::DefaultStream::stream().malloc(required_bytes);
-            current_byte_size_ = required_bytes;
+            capacity_bytes_ = required_bytes;
         }
     }
 
     mutable std::mutex mutex_;
     ov::PartialShape data_shape_;
     ov::element::Type element_type_;
+    ov::Shape initial_shape_;  // shape to restore on reset()
     ov::Shape current_shape_;
-    std::size_t current_byte_size_ = 0;
+    std::size_t capacity_bytes_ = 0;  // allocated device buffer size (high-water mark)
     CUDA::DefaultAllocation device_buffer_{nullptr};
     bool is_reset_ = true;
 };
