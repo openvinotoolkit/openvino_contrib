@@ -358,16 +358,22 @@ void DynamicOperation::executeReadValue(const ov::op::util::ReadValueBase& readV
     }
 
     auto elem_type = readValueNode.get_output_element_type(0);
-    size_t byte_size = elem_type.size() * std::max(ov::shape_size(shape), size_t{1});
+    // Logical byte size (0 for an empty state, e.g. an initial KV-cache with a
+    // zero-length sequence). Only the allocation is bumped to 1 byte to avoid a
+    // zero-size malloc; the copy/memset must use the real size so an empty init
+    // tensor is never read past its end.
+    size_t byte_size = elem_type.size() * ov::shape_size(shape);
     auto alloc = stream.malloc(std::max(byte_size, size_t{1}));
 
     if (has_init) {
-        BufferID initBufId = input_ids_[0].GetBuffer().GetId();
-        auto dynBuf = dynBufCtx.getDynamicBuffer(initBufId);
-        const void* src = dynBuf ? dynBuf->get() : inputTensors[0].get();
-        stream.transfer(CUDA::DevicePointer<void*>{alloc.get()},
-                        CUDA::DevicePointer<const void*>{src}, byte_size);
-    } else {
+        if (byte_size > 0) {
+            BufferID initBufId = input_ids_[0].GetBuffer().GetId();
+            auto dynBuf = dynBufCtx.getDynamicBuffer(initBufId);
+            const void* src = dynBuf ? dynBuf->get() : inputTensors[0].get();
+            stream.transfer(CUDA::DevicePointer<void*>{alloc.get()},
+                            CUDA::DevicePointer<const void*>{src}, byte_size);
+        }
+    } else if (byte_size > 0) {
         stream.memset(alloc, 0, byte_size);
     }
 

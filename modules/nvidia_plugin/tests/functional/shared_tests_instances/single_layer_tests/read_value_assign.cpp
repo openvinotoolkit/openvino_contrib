@@ -120,4 +120,21 @@ INSTANTIATE_TEST_SUITE_P(smoke_ReadValueAssign_Static_i32,
                                             ::testing::Values(ov::element::i32)),
                          ReadValueAssignNVIDIATest::getTestCaseName);
 
+// Dynamic shape: exercises the dynamic ReadValue/Assign path (DynamicOperation).
+INSTANTIATE_TEST_SUITE_P(smoke_ReadValueAssign_Dynamic_f32,
+                         ReadValueAssignNVIDIATest,
+                         ::testing::Combine(::testing::Values(InputShape{{-1, 4}, {ov::Shape{3, 4}}}),
+                                            ::testing::Values(ov::element::f32)),
+                         ReadValueAssignNVIDIATest::getTestCaseName);
+
+// Empty initial state (a zero-length leading dimension, as for an initial KV-cache).
+// On the first inference the state is reset, so executeReadValue takes the
+// init/zero path with a logical byte size of 0; it must not read past the (empty)
+// init tensor. Without the fix this copies elem_size bytes from a zero-size buffer.
+INSTANTIATE_TEST_SUITE_P(smoke_ReadValueAssign_DynamicEmptyState_f32,
+                         ReadValueAssignNVIDIATest,
+                         ::testing::Combine(::testing::Values(InputShape{{-1, 4}, {ov::Shape{0, 4}}}),
+                                            ::testing::Values(ov::element::f32)),
+                         ReadValueAssignNVIDIATest::getTestCaseName);
+
 }  // namespace

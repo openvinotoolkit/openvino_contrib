@@ -41,12 +41,12 @@ void ShapeOfOp::Execute(const InferenceRequestContext& context,
     if (is_dynamic_) {
         auto& dynBufCtx = const_cast<InferenceRequestContext&>(context).getDynamicBufferContext();
         auto input_buf_id = input_ids_[0].GetBuffer().GetId();
-        if (dynBufCtx.hasShape(input_buf_id)) {
-            input_shape = dynBufCtx.getShape(input_buf_id);
-        } else {
-            // Fallback: static input shape if available
-            input_shape = static_input_shape_;
-        }
+        // static_input_shape_ is only populated for static inputs, so it must not be
+        // used as a fallback here: the runtime shape must have been registered by the
+        // producing op. Fail loudly instead of emitting a wrong rank-0 result.
+        OPENVINO_ASSERT(dynBufCtx.hasShape(input_buf_id),
+                        "ShapeOf: runtime input shape is not available in the dynamic buffer context");
+        input_shape = dynBufCtx.getShape(input_buf_id);
     } else {
         input_shape = static_input_shape_;
     }

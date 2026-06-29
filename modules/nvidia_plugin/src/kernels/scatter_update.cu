@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2026 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -35,6 +35,12 @@ static inline __global__ void scatter_update_kernel(const size_t num_columns,
     for (size_t idx = 0; idx < indices_size; ++idx) {
         IndexType axis_coord = indices[idx];
         if (axis_coord < 0) axis_coord += static_cast<IndexType>(axis_dim);
+        // Skip out-of-range indices rather than writing past the output buffer.
+        // ScatterUpdate indices are expected to be valid; a malformed index must
+        // not corrupt device memory.
+        if (axis_coord < 0 || static_cast<size_t>(axis_coord) >= axis_dim) {
+            continue;
+        }
         const size_t out = (outer * axis_dim + static_cast<size_t>(axis_coord)) * inner_size + inner;
         output[out] = updates[(outer * indices_size + idx) * inner_size + inner];
     }
