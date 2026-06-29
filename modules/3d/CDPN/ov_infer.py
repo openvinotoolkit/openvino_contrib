@@ -43,7 +43,7 @@ Usage:
 
     # Standalone test (E2E model with extension):
     python ov_infer.py --model checkpoints/cdpn_stage3_e2e.xml \
-        --extension ov_plugins/build/cdpn_cpu/cdpn_cpu_extension.so \
+        --extension ov_plugins/build/cdpn_cpu_extension.so \
         --dataset_dir dataset/lm_full --gpu
 """
 
