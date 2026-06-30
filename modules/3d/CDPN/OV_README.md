@@ -15,6 +15,7 @@ cd cdpn_repo
 git checkout 625f9a8
 patch -p1 < ../cdpn_changes.patch
 grep -v -E '^\s*(#|$)' ../copy_files_to_cdpn_repo.txt | xargs -I {} sh -c 'mkdir -p "$(dirname "./{}")" && cp "../{}" "./{}"'
+pip install --force-reinstall -r ov_requirements.txt
 ```
 -----------------------
 
