@@ -3,27 +3,16 @@
 
 
 #!/usr/bin/env bash
-# run_flashocc_ov_ws.sh — Run FlashOCC E2E with workspace-built OpenVINO 2026.3
+# run_flashocc_ov_ws.sh — Run FlashOCC E2E with pip-installed OpenVINO 2026+
 #
-# Optimizations active (deepaks2/openvino @ gpu-flashocc-fixes):
-#   OV GPU plugin (C++) fixes:
-#     • [GPU] permute_tile_8x8_4x4 for [0,2,1,3] order (35x faster than ref kernel)
-#     • [GPU] activation_opt kernel for Softplus + F16 + dynamic batch
-#     • [GPU] Fix Softplus F16 numerical stability
-#     • [GPU] Enable bfyx_to_bfyx_f16 conv kernel for dynamic/multi-batch models
-#     • [GPU] select_preferred_formats: prefer clDNN for ≤4-channel convolutions
-#             → eliminates image_encoder conv1 layout reorder (-2.34ms / frame)
-#   E2E pipeline optimizations:
-#     • bev_trunk f16out model (eliminates 2×0.7ms f16→f32 output reorders)
-#     • Fused bev_trunk+ArgMax model (bev_trunk_argmax_only.xml):
-#         eliminates separate ArgMax infer() call = -4.7ms pybind11 overhead
-#     • Async encoder inference + parallel BEV geom computation (~0.5ms/frame)
-#     • Single OV Core shared across all models
-#     • NaN debug disabled; PERF_COUNT disabled
+# Setup workflow:
+#   1. bash setup.sh --prepare-models --model-variant m0 --model-dir /path/to/split_f16out
+#      (Generates OpenVINO IR models in split mode)
+#   2. bash setup.sh --run-test --model-dir /path/to/split_f16out
+#      (Creates venv, installs OpenVINO from pip, builds bev_pool, runs E2E benchmark)
 #
-# Performance (Intel Xe3 Pantherlake iGPU, 80 samples):
-#   Baseline:    42.4ms / 23.6 fps
-#   Optimized:   30.2ms / 33.1 fps   (+40.3% throughput)
+# Or combine in one step:
+#   bash setup.sh --prepare-models --run-test --model-variant m0
 #
 # Usage:
 #   bash run_flashocc_ov_ws.sh [--num-samples N] [--ov-device GPU|CPU]
@@ -31,19 +20,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENV="${SCRIPT_DIR}/venv_ov2026_ws"
 
 # ── Load paths written by setup.sh ───────────────────────────────────────────
 SETUP_ENV="${SCRIPT_DIR}/setup.env"
+FLASHOCC_VENV="${SCRIPT_DIR}/venv_flashocc_ws"
 if [[ -f "$SETUP_ENV" ]]; then
   # shellcheck source=/dev/null
   source "$SETUP_ENV"
-else
-  # Fallback: legacy absolute paths (for existing installations)
-  OV_RELEASE_DIR="${OV_RELEASE_DIR:-}"
-  OV_BEV_SO="${OV_BEV_SO:-}"
-  FLASHOCC_MODEL_DIR="${FLASHOCC_MODEL_DIR:-}"
 fi
+
+VENV="${FLASHOCC_VENV}"
 
 # ── Defaults (can be overridden via CLI args) ─────────────────────────────────
 MODEL_DIR="${FLASHOCC_MODEL_DIR:-${SCRIPT_DIR}/work_dirs/flashocc-r50-m0/openvino/split_f16out}"
@@ -52,7 +38,7 @@ RUN_DURATION=0
 OV_DEVICE="GPU"
 OV_BEVPOOL_DEVICE="GPU"
 WARMUP_FRAMES=5
-OV_EXT_SO="${OV_BEV_SO:-${SCRIPT_DIR}/openvino_extensions/bev_pool/build_ws/libopenvino_bevpool_extension.so}"
+OV_EXT_SO="${FLASHOCC_BEV_SO:-${SCRIPT_DIR}/openvino_extensions/bev_pool/build_ws/libopenvino_bevpool_extension.so}"
 OV_GPU_CONFIG="${SCRIPT_DIR}/openvino_extensions/bev_pool/bev_pool_gpu_panterlake.xml"
 
 usage() {

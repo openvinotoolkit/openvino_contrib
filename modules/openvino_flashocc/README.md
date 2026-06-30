@@ -12,6 +12,28 @@ This module provides:
 - Workspace setup and benchmark runner scripts ([setup.sh](./setup.sh), [run_flashocc_ov_ws.sh](./run_flashocc_ov_ws.sh))
 - Custom OpenVINO extensions for BEV pool and related kernels under [openvino_extensions](./openvino_extensions)
 
+## Quick Setup
+
+Complete setup from scratch (model export → venv → OpenVINO pip install → bev_pool build → benchmark):
+
+```bash
+bash setup.sh --prepare-models --run-test --model-variant m0 --model-dir "$(pwd)/split_f16out" --jobs "$(nproc)"
+```
+
+This takes **~5–10 minutes** and produces:
+- `venv_flashocc_ws/` with pip-installed OpenVINO ≥2024.0
+- `split_f16out/` with converted F16 IR models
+- `openvino_extensions/bev_pool/build_ws/libopenvino_bevpool_extension.so` (C++ extension)
+- `setup.env` with paths to reuse later
+
+Then run inference anytime:
+
+```bash
+bash run_flashocc_ov_ws.sh --num-samples 80
+```
+
+For full details and alternative workflows, see [README_OV.md](./README_OV.md).
+
 ## Running inference
 
 The pipeline uses a `SampleProvider` interface to decouple data loading from inference.
@@ -89,5 +111,6 @@ exact array shapes and dtypes every provider must return.
 
 ## Notes
 
-- The BEV pool extension (`.so`) must be compiled against the same OpenVINO build used for inference.
+- OpenVINO is installed via pip (`openvino>=2024.0`). The `bev_pool` extension is compiled against the pip-installed OpenVINO using its CMake config discovered at setup time.
 - This module focuses on optimized OpenVINO deployment; model conversion is handled separately via `convert_to_openvino.py`.
+- The setup workflow exports models to OpenVINO F16 IR format for GPU inference; see [README_OV.md](./README_OV.md) for troubleshooting and advanced flags.
