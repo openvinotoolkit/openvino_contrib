@@ -1,0 +1,42 @@
+{{define "title"}}{{.Namespace}} · Ollama Registry{{end}}
+{{define "content"}}
+<div class="crumbs"><a href="/">Models</a> / {{.Namespace}}</div>
+<h1 class="title">{{.Namespace}}</h1>
+<div class="subtitle">{{len .Models}} model{{if ne (len .Models) 1}}s{{end}} published to <code class="mono">{{.Host}}/{{.Namespace}}</code></div>
+
+{{if .Models}}
+<div class="card-list">
+  {{range .Models}}
+  <div class="row">
+    <div>
+      <div class="name"><a href="/{{$.Namespace}}/{{.Name}}">{{$.Namespace}}/{{.Name}}</a></div>
+      <div class="meta">
+        {{.TagCount}} tag{{if ne .TagCount 1}}s{{end}}
+        {{if .LatestTag}} · latest <code class="mono">:{{.LatestTag}}</code>{{end}}
+        {{if not .UpdatedAt.IsZero}} · updated {{since .UpdatedAt}}{{end}}
+      </div>
+    </div>
+    <div class="right">{{humanSize .TotalSize}}</div>
+  </div>
+  {{end}}
+</div>
+{{else}}
+  {{if .IsOwner}}
+  <section class="box">
+    <h3>Get started</h3>
+    <p class="subtitle" style="margin-top:0">Push your first model to this namespace:</p>
+    <pre class="command"># 1. Copy a local model to your registry namespace
+ollama cp &lt;local-model&gt;:&lt;tag&gt; {{.Host}}/{{.Namespace}}/&lt;model&gt;:&lt;tag&gt;
+
+# 2. Push it to the registry
+ollama push --insecure {{.Host}}/{{.Namespace}}/&lt;model&gt;:&lt;tag&gt;</pre>
+    <p class="subtitle">Example:</p>
+    <pre class="command">ollama cp qwen3.5_4b_ov:v1 {{.Host}}/{{.Namespace}}/qwen3.5_4b_ov:v1
+ollama push --insecure {{.Host}}/{{.Namespace}}/qwen3.5_4b_ov:v1</pre>
+  </section>
+  {{else}}
+  <div class="empty">No public models under this namespace.</div>
+  {{end}}
+{{end}}
+
+{{end}}

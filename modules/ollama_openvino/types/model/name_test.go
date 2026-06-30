@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -32,12 +33,13 @@ func TestParseNameParts(t *testing.T) {
 		{
 			in: "scheme://host:port/namespace/model:tag",
 			want: Name{
-				Host:      "host:port",
-				Namespace: "namespace",
-				Model:     "model",
-				Tag:       "tag",
+				Host:           "host:port",
+				Namespace:      "namespace",
+				Model:          "model",
+				Tag:            "tag",
+				ProtocolScheme: "scheme",
 			},
-			wantFilepath: filepath.Join("host:port", "namespace", "model", "tag"),
+			wantFilepath: filepath.Join(escapeHostForFS("host:port"), "namespace", "model", "tag"),
 		},
 		{
 			in: "host/namespace/model:tag",
@@ -57,7 +59,7 @@ func TestParseNameParts(t *testing.T) {
 				Model:     "model",
 				Tag:       "tag",
 			},
-			wantFilepath: filepath.Join("host:port", "namespace", "model", "tag"),
+			wantFilepath: filepath.Join(escapeHostForFS("host:port"), "namespace", "model", "tag"),
 		},
 		{
 			in: "host/namespace/model",
@@ -75,7 +77,7 @@ func TestParseNameParts(t *testing.T) {
 				Namespace: "namespace",
 				Model:     "model",
 			},
-			wantFilepath: filepath.Join("host:port", "namespace", "model", "latest"),
+			wantFilepath: filepath.Join(escapeHostForFS("host:port"), "namespace", "model", "latest"),
 		},
 		{
 			in: "namespace/model",
@@ -266,15 +268,15 @@ func TestFilepathAllocs(t *testing.T) {
 
 func TestParseNameFromFilepath(t *testing.T) {
 	cases := map[string]Name{
-		filepath.Join("host", "namespace", "model", "tag"):      {Host: "host", Namespace: "namespace", Model: "model", Tag: "tag"},
-		filepath.Join("host:port", "namespace", "model", "tag"): {Host: "host:port", Namespace: "namespace", Model: "model", Tag: "tag"},
-		filepath.Join("namespace", "model", "tag"):              {},
-		filepath.Join("model", "tag"):                           {},
-		"model":                                                 {},
-		filepath.Join("..", "..", "model", "tag"):               {},
-		filepath.Join("", "namespace", ".", "tag"):              {},
-		filepath.Join(".", ".", ".", "."):                       {},
-		filepath.Join("/", "path", "to", "random", "file"):      {},
+		filepath.Join("host", "namespace", "model", "tag"):                          {Host: "host", Namespace: "namespace", Model: "model", Tag: "tag"},
+		filepath.Join(escapeHostForFS("host:port"), "namespace", "model", "tag"):    {Host: "host:port", Namespace: "namespace", Model: "model", Tag: "tag"},
+		filepath.Join("namespace", "model", "tag"):                                  {},
+		filepath.Join("model", "tag"):                                               {},
+		"model":                                                                     {},
+		filepath.Join("..", "..", "model", "tag"):                                   {},
+		filepath.Join("", "namespace", ".", "tag"):                                  {},
+		filepath.Join(".", ".", ".", "."):                                           {},
+		filepath.Join("/", "path", "to", "random", "file"):                          {},
 	}
 
 	for in, want := range cases {
@@ -288,7 +290,34 @@ func TestParseNameFromFilepath(t *testing.T) {
 	}
 }
 
+// TestFilepathRoundTripPortHost verifies that a Name with a "host:port" host
+// survives a Filepath() / ParseNameFromFilepath() round-trip, which is the
+// path used by ollama push/pull when the local manifest is staged on disk.
+func TestFilepathRoundTripPortHost(t *testing.T) {
+	for _, host := range []string{"127.0.0.1:5000", "registry.local:8443", "plain-host"} {
+		want := Name{Host: host, Namespace: "ns", Model: "m", Tag: "v1"}
+		fp := want.Filepath()
+
+		// On Windows the host segment must not contain a raw colon, otherwise
+		// os.Open / os.MkdirAll fails with "filename, directory name, or
+		// volume label syntax is incorrect".
+		first := strings.SplitN(fp, string(filepath.Separator), 2)[0]
+		if runtime.GOOS == "windows" && strings.Contains(first, ":") {
+			t.Fatalf("Filepath() must escape colon on Windows, got %q", fp)
+		}
+
+		got := ParseNameFromFilepath(fp)
+		if got != want {
+			t.Errorf("round-trip for %q: got %+v want %+v (path %q)", host, got, want, fp)
+		}
+	}
+}
+
 func TestDisplayShortest(t *testing.T) {
+	// Explicitly clear OLLAMA_REGISTRY so the test inherits the upstream
+	// behavior even when the developer's shell has it set.
+	t.Setenv("OLLAMA_REGISTRY", "")
+
 	cases := map[string]string{
 		"registry.ollama.ai/library/model:latest": "model:latest",
 		"registry.ollama.ai/library/model:tag":    "model:tag",
@@ -304,6 +333,80 @@ func TestDisplayShortest(t *testing.T) {
 				t.Errorf("parseName(%q).DisplayShortest() = %q; want %q", in, got, want)
 			}
 		})
+	}
+}
+
+// TestDisplayShortestHonoursOllamaRegistryEnv verifies that DisplayShortest
+// hides the host of any registry listed in OLLAMA_REGISTRY, alongside the
+// built-in implicit registry.ollama.ai.
+func TestDisplayShortestHonoursOllamaRegistryEnv(t *testing.T) {
+	t.Setenv("OLLAMA_REGISTRY", "127.0.0.1:5000")
+
+	cases := map[string]string{
+		"127.0.0.1:5000/zhaohb/qwen3-4b-ov:v1":    "zhaohb/qwen3-4b-ov:v1",
+		"127.0.0.1:5000/library/llama3:latest":    "llama3:latest",
+		"registry.ollama.ai/library/llama3:latest": "llama3:latest",
+		"other.example.com/ns/model:tag":          "other.example.com/ns/model:tag",
+	}
+
+	for in, want := range cases {
+		t.Run(in, func(t *testing.T) {
+			got := ParseNameBare(in).DisplayShortest()
+			if got != want {
+				t.Errorf("DisplayShortest(%q) with OLLAMA_REGISTRY=127.0.0.1:5000 = %q; want %q", in, got, want)
+			}
+		})
+	}
+}
+
+// TestDisplayShortestSupportsMultipleImplicitHosts verifies that semicolon
+// separated entries in OLLAMA_REGISTRY are each hidden, while unrelated
+// hosts still render with their full prefix.
+func TestDisplayShortestSupportsMultipleImplicitHosts(t *testing.T) {
+	t.Setenv("OLLAMA_REGISTRY", "127.0.0.1:5000;hub.lan:5000")
+
+	cases := map[string]string{
+		"127.0.0.1:5000/zhaohb/qwen3:v1": "zhaohb/qwen3:v1",
+		"hub.lan:5000/zhaohb/qwen3:v1":   "zhaohb/qwen3:v1",
+		"other.example.com/ns/m:t":       "other.example.com/ns/m:t",
+	}
+
+	for in, want := range cases {
+		t.Run(in, func(t *testing.T) {
+			got := ParseNameBare(in).DisplayShortest()
+			if got != want {
+				t.Errorf("DisplayShortest(%q) with multi-host env = %q; want %q", in, got, want)
+			}
+		})
+	}
+}
+
+// TestDefaultNameHonoursOllamaRegistryEnv verifies that DefaultName falls
+// back to the first OLLAMA_REGISTRY entry when one is set, so that
+// `ollama run qwen3:latest` resolves against the self-hosted registry
+// instead of registry.ollama.ai.
+func TestDefaultNameHonoursOllamaRegistryEnv(t *testing.T) {
+	t.Setenv("OLLAMA_REGISTRY", "127.0.0.1:5000;hub.lan:5000")
+	if got := DefaultName().Host; got != "127.0.0.1:5000" {
+		t.Errorf("DefaultName().Host = %q; want %q", got, "127.0.0.1:5000")
+	}
+
+	t.Setenv("OLLAMA_REGISTRY", "")
+	if got := DefaultName().Host; got != "registry.ollama.ai" {
+		t.Errorf("DefaultName().Host without env = %q; want %q", got, "registry.ollama.ai")
+	}
+}
+
+// TestDisplayShortestUnchangedWithoutEnv guards against regressing the
+// upstream behavior when OLLAMA_REGISTRY is not set: a non-ollama.ai host
+// must still render its full prefix.
+func TestDisplayShortestUnchangedWithoutEnv(t *testing.T) {
+	t.Setenv("OLLAMA_REGISTRY", "")
+
+	got := ParseNameBare("127.0.0.1:5000/zhaohb/qwen3:v1").DisplayShortest()
+	want := "127.0.0.1:5000/zhaohb/qwen3:v1"
+	if got != want {
+		t.Errorf("DisplayShortest() without env = %q; want %q", got, want)
 	}
 }
 

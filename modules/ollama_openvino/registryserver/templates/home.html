@@ -1,0 +1,35 @@
+{{define "title"}}Ollama Registry · Models{{end}}
+{{define "content"}}
+<h1 class="title">Models</h1>
+<div class="subtitle">Browse models served by this self-hosted Ollama registry.</div>
+
+<div class="meta-row">
+  <span><strong>{{.Stats.Namespaces}}</strong> namespaces</span>
+  <span class="sep">·</span>
+  <span><strong>{{.Stats.Models}}</strong> models</span>
+  <span class="sep">·</span>
+  <span><strong>{{.Stats.Tags}}</strong> tags</span>
+  <span class="sep">·</span>
+  <span><strong>{{humanSize .Stats.TotalSize}}</strong> on disk</span>
+</div>
+
+{{if .Namespaces}}
+<div class="card-list">
+  {{range .Namespaces}}
+  <div class="row">
+    <div class="avatar">{{slice .Name 0 1}}</div>
+    <div>
+      <div class="name"><a href="/{{.Name}}">{{.Name}}</a></div>
+      <div class="meta">{{.ModelCount}} model{{if ne .ModelCount 1}}s{{end}}</div>
+    </div>
+    <div class="right">{{humanSize .TotalSize}}</div>
+  </div>
+  {{end}}
+</div>
+{{else}}
+<div class="empty">
+  <div style="font-size:18px;font-weight:600;margin-bottom:8px;">No models yet</div>
+  <div>Push something with <code class="mono">ollama push {{.Host}}/&lt;namespace&gt;/&lt;model&gt;:&lt;tag&gt;</code></div>
+</div>
+{{end}}
+{{end}}
