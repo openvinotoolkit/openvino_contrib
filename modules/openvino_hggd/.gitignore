@@ -1,0 +1,31 @@
+# OpenVINO exported models
+openvino_models/
+
+# Inference outputs
+output/
+*.npy
+
+# Logs
+*.log
+
+# Compiled extensions
+*.so
+
+# Generated visualizations
+viz_*.png
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
