@@ -717,6 +717,28 @@ Let's take [deepseek-ai/DeepSeek-R1-Distill-Qwen-7B](https://hf-mirror.com/deeps
       ```
 
 
+### Offline installation
+
+If you need to use this plugin in an offline environment, prepare the required Python dependencies on a machine with internet access.
+
+1. Download required Python packages on an online machine:
+
+```shell
+pip download modelscope huggingface_hub -d packages
+```
+
+2. Transfer the packages directory to the offline machine.
+
+3. Install dependencies offline:
+
+```shell
+pip install --no-index --find-links=packages modelscope huggingface_hub
+```
+
+4. Download the required OpenVINO models on the online machine using
+ModelScope or HuggingFace, and copy the model directory to the offline machine.
+
+
 2. Package OpenVINO IR into a tar.gz file
     ```bash
     tar -zcvf DeepSeek-R1-Distill-Qwen-7B-int4-ov.tar.gz DeepSeek-R1-Distill-Qwen-7B-int4-ov
