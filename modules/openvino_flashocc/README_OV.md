@@ -240,7 +240,7 @@ FlashOCC/
 │       ├── bev_pool_op.cpp / .hpp
 │       ├── ov_extension.cpp
 │       ├── CMakeLists.txt
-│       ├── bev_pool_gpu_panterlake.xml   # GPU kernel config for Pantherlake iGPU
+│       ├── bev_pool_gpu.xml               # GPU kernel config (Arrow Lake + Panther Lake)
 │       ├── build_ws/                     # CMake build artifacts (git-ignored)
 │       └── *.cl                          # OpenCL kernels
 ├── venv_flashocc_ws/                     # Python 3.10/3.11 venv for inference (pip OpenVINO + deps)
@@ -288,6 +288,6 @@ Camera frames (6×)
 ## Notes
 
 - The bev_pool extension (`.so`) must be compiled against the same OpenVINO build used for inference.
-- The `bev_pool_gpu_panterlake.xml` config is tuned for Intel Xe3 Pantherlake iGPU tensor shapes.
+- The `bev_pool_gpu.xml` config is the active shared profile validated for both Arrow Lake and Panther Lake iGPU.
 - `setup.env` is written by `setup.sh` and sourced by `run_flashocc_ov_ws.sh` — do not delete it.
 - Model `.bin/.xml` files are gitignored. They must be obtained separately.

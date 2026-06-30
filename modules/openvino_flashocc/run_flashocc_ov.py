@@ -47,8 +47,7 @@ def _ov_prec(s: str | None):
     return s  # passthrough for None or 'auto'
 
 
-_DEFAULT_OV_GPU_CONFIG_XML = (_REPO_ROOT / 'openvino_extensions' / 'gpu_custom_layers.xml').resolve()
-_PANTERLAKE_OV_GPU_CONFIG_XML = (_REPO_ROOT / 'openvino_extensions' / 'bev_pool' / 'bev_pool_gpu_panterlake.xml').resolve()
+_DEFAULT_OV_GPU_CONFIG_XML = (_REPO_ROOT / 'openvino_extensions' / 'bev_pool' / 'bev_pool_gpu.xml').resolve()
 _OV_CACHE_DIR = (_REPO_ROOT / 'debug_output' / 'ov_cache').resolve()
 
 
@@ -70,22 +69,6 @@ def _select_bevpool_gpu_config(core: ov.Core, device: str, gpu_config_xml: str |
         return gpu_config_xml
 
     cfg_path = Path(gpu_config_xml).resolve()
-    if cfg_path != _DEFAULT_OV_GPU_CONFIG_XML or not _PANTERLAKE_OV_GPU_CONFIG_XML.exists():
-        return str(cfg_path)
-
-    try:
-        gpu_device_id = str(core.get_property('GPU', 'GPU_DEVICE_ID')).lower()
-        full_name = str(core.get_property('GPU', 'FULL_DEVICE_NAME'))
-    except Exception as exc:
-        if verbose:
-            print(f'  [BEVPoolOVSO] Could not query GPU device properties: {exc}')
-        return str(cfg_path)
-
-    if gpu_device_id == '0xb08f':
-        if verbose:
-            print(f'  [BEVPoolOVSO] Auto-selecting Panther Lake GPU config for {full_name}')
-        return str(_PANTERLAKE_OV_GPU_CONFIG_XML)
-
     return str(cfg_path)
 
 try:
@@ -1321,7 +1304,7 @@ def main():
                         default=str((_REPO_ROOT / 'openvino_extensions' / 'bev_pool' / 'build' / 'libopenvino_bevpool_extension.so').resolve()),
                         help='Path to BEV pool extension .so')
     parser.add_argument('--ov-gpu-config-xml',
-                        default=str((_REPO_ROOT / 'openvino_extensions' / 'gpu_custom_layers.xml').resolve()),
+                        default=str((_REPO_ROOT / 'openvino_extensions' / 'bev_pool' / 'bev_pool_gpu.xml').resolve()),
                         help='GPU custom layers xml for BEV pool extension')
     # ── Run control ──────────────────────────────────────────────────────────
     parser.add_argument('--num-samples', type=int, default=10,
