@@ -1,0 +1,4 @@
+interface:
+  display_name: "GFX Plugin Testing"
+  short_description: "Choose and run the right GFX plugin tests"
+  default_prompt: "Use $gfx-plugin-testing to pick validation for this GFX plugin change."
