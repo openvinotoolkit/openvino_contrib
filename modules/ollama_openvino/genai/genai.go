@@ -23,6 +23,11 @@ typedef int (*callback_function)(const char*, void*);
 
 extern int goCallbackBridge(char* input, void* ptr);
 
+// Compatibility macros using numeric values (same in both versions)
+#define OV_GENAI_STREAMING_STATUS_RUNNING_COMPAT 0  // Continue to run inference
+#define OV_GENAI_STREAMING_STATUS_STOP_COMPAT 1     // Stop generation, keep history
+#define OV_GENAI_STREAMING_STATUS_CANCEL_COMPAT 2   // Stop and drop last prompt
+
 static ov_status_e ov_genai_llm_pipeline_create_npu_output_2048(const char* models_path,
 																  const char* device,
                                                                   ov_genai_llm_pipeline** pipe) {
@@ -411,10 +416,10 @@ func goCallbackBridge(args *C.char, gen_result unsafe.Pointer) C.int {
 		// fmt.Printf("%s", goStr)
 		// os.Stdout.Sync()
 		FlushPending((*Sequence)(result))
-		return C.OV_GENAI_STREAMMING_STATUS_RUNNING
+		return C.int(C.OV_GENAI_STREAMING_STATUS_RUNNING_COMPAT)
 	} else {
 		fmt.Println("Callback executed with NULL message!")
-		return C.OV_GENAI_STREAMMING_STATUS_STOP
+		return C.int(C.OV_GENAI_STREAMING_STATUS_STOP_COMPAT)
 	}
 }
 
