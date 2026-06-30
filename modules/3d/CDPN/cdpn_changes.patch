@@ -1,3 +1,5 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
 --- /tmp/cdpn_diff_work/cdpn_repo/.gitignore	2026-06-29 04:59:45.384116198 +0000
 +++ CDPN/.gitignore	2026-06-11 08:15:00.277754244 +0000
 @@ -127,9 +127,10 @@

@@ -1,3 +1,6 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 # CDPN Dependencies
 torch==2.10.0
 torchvision==0.25.0 --index-url https://download.pytorch.org/whl/xpu
