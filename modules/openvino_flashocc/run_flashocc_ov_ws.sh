@@ -39,7 +39,7 @@ OV_DEVICE="GPU"
 OV_BEVPOOL_DEVICE="GPU"
 WARMUP_FRAMES=5
 OV_EXT_SO="${FLASHOCC_BEV_SO:-${SCRIPT_DIR}/openvino_extensions/bev_pool/build_ws/libopenvino_bevpool_extension.so}"
-OV_GPU_CONFIG="${SCRIPT_DIR}/openvino_extensions/bev_pool/bev_pool_gpu_panterlake.xml"
+OV_GPU_CONFIG="${SCRIPT_DIR}/openvino_extensions/bev_pool/bev_pool_gpu.xml"
 
 usage() {
   cat <<HELP

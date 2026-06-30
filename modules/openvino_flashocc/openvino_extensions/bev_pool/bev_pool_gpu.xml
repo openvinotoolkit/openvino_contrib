@@ -2,12 +2,18 @@
 SPDX-License-Identifier: Apache-2.0 -->
 
 <!--
-  OpenVINO Custom GPU Kernel Configuration for BEVPool Operations
+    OpenVINO Custom GPU Kernel Configuration for BEVPool Operations
+    (validated for Arrow Lake and Panther Lake iGPU)
 
-  Three CustomLayer types:
-    1. BEVPool:        fused softmax + scatter (float CAS atomics) — fallback
-    2. BEVPoolScatter: int32 atomic scatter (pre-computed softmax) — fast path
-    3. BEVPoolConvert: int32 fixed-point → float32 conversion
+    IMPORTANT kernel constraints:
+    - BEVPoolScatter and BEVPoolV2 use c = get_local_id(0) directly for channel index.
+        Therefore local workgroup size MUST equal CHANNELS.
+    - BEVPoolBinSort kernel has __attribute__((reqd_work_group_size(1024,1,1))).
+        Therefore local/global MUST be 1024.
+
+    This file targets FlashOCC m0 tensors:
+        depth: [6, 44, 16, 44]
+        feat : [6, 64, 16, 44]
 -->
 
 <!-- ═══ BEVPool: fused softmax + scatter (backward-compatible) ═══ -->
@@ -19,9 +25,9 @@ SPDX-License-Identifier: Apache-2.0 -->
         <Define name="NZ"         type="int" param="nz"         default="1"/>
         <Define name="NUM_CAMS"   type="int" param="num_cams"   default="6"/>
         <Define name="DEPTH_BINS" type="int" param="depth_bins" default="118"/>
-        <Define name="CHANNELS"   type="int" param="channels"   default="80"/>
-        <Define name="FEAT_H"     type="int" param="feat_h"     default="32"/>
-        <Define name="FEAT_W"     type="int" param="feat_w"     default="88"/>
+        <Define name="CHANNELS"   type="int" param="channels"   default="64"/>
+        <Define name="FEAT_H"     type="int" param="feat_h"     default="16"/>
+        <Define name="FEAT_W"     type="int" param="feat_w"     default="44"/>
     </Kernel>
     <Buffers>
         <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
@@ -42,9 +48,9 @@ SPDX-License-Identifier: Apache-2.0 -->
         <Define name="NZ"         type="int" param="nz"         default="1"/>
         <Define name="NUM_CAMS"   type="int" param="num_cams"   default="6"/>
         <Define name="DEPTH_BINS" type="int" param="depth_bins" default="118"/>
-        <Define name="CHANNELS"   type="int" param="channels"   default="80"/>
-        <Define name="FEAT_H"     type="int" param="feat_h"     default="32"/>
-        <Define name="FEAT_W"     type="int" param="feat_w"     default="88"/>
+        <Define name="CHANNELS"   type="int" param="channels"   default="64"/>
+        <Define name="FEAT_H"     type="int" param="feat_h"     default="16"/>
+        <Define name="FEAT_W"     type="int" param="feat_w"     default="44"/>
     </Kernel>
     <Buffers>
         <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
@@ -53,13 +59,12 @@ SPDX-License-Identifier: Apache-2.0 -->
         <Tensor arg-index="3" type="output" port-index="0" format="BFYX"/>
     </Buffers>
     <CompilerOptions options="-cl-mad-enable -cl-fast-relaxed-math"/>
-    <!--
-      Per-pixel work sizing: one work-group per pixel (cam, h, w).
-      total_pixels = NUM_CAMS * FEAT_H * FEAT_W = 6 * 32 * 88 = 16,896
-      local = CHANNELS = 80 (one WI per output channel)
-      global = 16896 * 80 = 1,351,680
-    -->
-    <WorkSizes global="1351680,1,1" local="80,1,1"/>
+        <!--
+            local MUST equal CHANNELS for this kernel implementation.
+            total_pixels = 6 * 16 * 44 = 4,224
+            global = total_pixels * CHANNELS = 4,224 * 64 = 270,336
+        -->
+        <WorkSizes global="270336,1,1" local="64,1,1"/>
 </CustomLayer>
 
 <!-- ═══ BEVPoolConvert: int32 → float32 conversion ═══ -->
@@ -72,10 +77,10 @@ SPDX-License-Identifier: Apache-2.0 -->
         <Tensor arg-index="1" type="output" port-index="0" format="BFYX"/>
     </Buffers>
     <CompilerOptions options="-cl-mad-enable"/>
-    <!--
-      Work sizing: one work-item per output element.
-      Output is [1, 80, 360, 360] = 10,368,000 elements.
-    -->
+        <!--
+            Work sizing: one work-item per output element.
+            Output is [1, 64, 360, 360] = 8,294,400 elements.
+        -->
     <WorkSizes dim="output" global="B*F*Y*X,1,1" local=""/>
 </CustomLayer>
 
@@ -85,10 +90,10 @@ SPDX-License-Identifier: Apache-2.0 -->
         <Source filename="bev_pool_v2.cl"/>
         <Define name="NX"        type="int" param="nx"        default="360"/>
         <Define name="NY"        type="int" param="ny"        default="360"/>
-        <Define name="CHANNELS"  type="int" param="channels"  default="80"/>
-        <Define name="FEAT_HW"   type="int" param="feat_hw"   default="2816"/>
-        <Define name="DEPTH_HW"  type="int" param="depth_hw"  default="332288"/>
-        <Define name="TOTAL_PTS" type="int" param="total_pts" default="1993728"/>
+        <Define name="CHANNELS"  type="int" param="channels"  default="64"/>
+        <Define name="FEAT_HW"   type="int" param="feat_hw"   default="704"/>
+        <Define name="DEPTH_HW"  type="int" param="depth_hw"  default="83072"/>
+        <Define name="TOTAL_PTS" type="int" param="total_pts" default="498432"/>
     </Kernel>
     <Buffers>
         <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
@@ -97,7 +102,11 @@ SPDX-License-Identifier: Apache-2.0 -->
         <Tensor arg-index="3" type="output" port-index="0" format="BFYX"/>
     </Buffers>
     <CompilerOptions options="-cl-mad-enable -cl-fast-relaxed-math"/>
-    <WorkSizes global="10368000,1,1" local="80,1,1"/>
+        <!--
+            local MUST equal CHANNELS for this kernel implementation.
+            global = output size = 1 * 64 * 360 * 360 = 8,294,400
+        -->
+        <WorkSizes global="8294400,1,1" local="64,1,1"/>
 </CustomLayer>
 
 <!-- ═══ BEVPoolBinSort: single-WG counting sort of geometry ═══ -->
@@ -106,7 +115,7 @@ SPDX-License-Identifier: Apache-2.0 -->
         <Source filename="bev_pool_binsort.cl"/>
         <Define name="NX"        type="int" param="nx"        default="360"/>
         <Define name="NY"        type="int" param="ny"        default="360"/>
-        <Define name="TOTAL_PTS" type="int" param="total_pts" default="1993728"/>
+        <Define name="TOTAL_PTS" type="int" param="total_pts" default="498432"/>
         <Define name="X_MIN"     type="float" param="x_min"     default="-54.0"/>
         <Define name="Y_MIN"     type="float" param="y_min"     default="-54.0"/>
         <Define name="X_STEP"    type="float" param="x_step"    default="0.3"/>
@@ -117,5 +126,8 @@ SPDX-License-Identifier: Apache-2.0 -->
         <Tensor arg-index="1" type="output" port-index="0" format="BFYX"/>
     </Buffers>
     <CompilerOptions options="-cl-mad-enable"/>
-    <WorkSizes global="1024,1,1" local="1024,1,1"/>
+        <!--
+            Kernel is compiled with reqd_work_group_size(1024,1,1), so this must be exactly 1024.
+        -->
+        <WorkSizes global="1024,1,1" local="1024,1,1"/>
 </CustomLayer>
