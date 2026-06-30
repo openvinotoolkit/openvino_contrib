@@ -1,7 +1,9 @@
 package cpu
 
-// #cgo CFLAGS: -O3 -Wno-implicit-function-declaration
-// #cgo CXXFLAGS: -std=c++17
+// #cgo !windows CFLAGS: -O3 -Wno-implicit-function-declaration
+// #cgo windows CFLAGS: -O2
+// #cgo !windows CXXFLAGS: -std=c++17
+// #cgo windows CXXFLAGS: -std=c++17
 // #cgo CPPFLAGS: -I${SRCDIR}/amx -I${SRCDIR}/llamafile -I${SRCDIR}/.. -I${SRCDIR}/../../include
 // #cgo CPPFLAGS: -DGGML_USE_LLAMAFILE
 // #cgo linux CPPFLAGS: -D_GNU_SOURCE
