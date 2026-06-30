@@ -32,7 +32,7 @@ public:
                  Outputs outputTensors,
                  const Workbuffers&) const override;
 
-    CudaGraphCompatibility GetCudaGraphCompatibility() const override;
+    CudaGraphCompatibility GetCudaGraphCompatibilityImpl() const override;
 
 private:
     static Config config();

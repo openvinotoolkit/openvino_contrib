@@ -326,7 +326,7 @@ void FusedConvolutionCuDnnBE::Execute(const InferenceRequestContext& context,
     throwIfError(::cudnnBackendExecute(context.getThreadContext().dnnHandle().get(), plan->get(), variantPack->get()));
 }
 
-CudaGraphCompatibility FusedConvolutionCuDnnBE::GetCudaGraphCompatibility() const {
+CudaGraphCompatibility FusedConvolutionCuDnnBE::GetCudaGraphCompatibilityImpl() const {
     return CudaGraphCompatibility::NONE;
 }
 

@@ -42,7 +42,7 @@ void ResultOp::Execute(const InferenceRequestContext& context,
     context.getThreadContext().stream().download(tensor->data(), inputs[0], tensor->get_byte_size());
 }
 
-CudaGraphCompatibility ResultOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility ResultOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 std::optional<std::size_t> ResultOp::GetOutputTensorSubIndex(const ov::Output<ov::Node>& node) {
     const auto& opRegistry = OperationRegistry::getInstance();

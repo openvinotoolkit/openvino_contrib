@@ -13,6 +13,8 @@
 #include <openvino/op/parameter.hpp>
 #include <openvino/op/result.hpp>
 #include <openvino/op/tensor_iterator.hpp>
+#include <openvino/op/util/assign_base.hpp>
+#include <openvino/op/util/read_value_base.hpp>
 
 #include <cuda_dynamic_operation.hpp>
 
@@ -106,8 +108,8 @@ void SubGraph::initExecuteSequence(bool isStableParams, bool isStableResults) {
         if (dynamic_cast<NopOp*>(operation.get())) {
             continue;
         }
-        if (InitNeeded == operation->SetWorkbufferIds(
-                              opBuffersExtractor.processWorkbufferRequest(node_idx, operation->GetWorkBufferRequest()))) {
+        if (InitNeeded == operation->SetWorkbufferIds(opBuffersExtractor.processWorkbufferRequest(
+                              node_idx, operation->GetWorkBufferRequest()))) {
             init_sequence.push_back(operation);
         }
         if (isParam) {
@@ -212,7 +214,7 @@ void SubGraph::Execute(const InferenceRequestContext& context, Inputs, Outputs, 
     executionDelegator.execute_sequence(this, memoryManager, mutableBuffer, context);
 }
 
-CudaGraphCompatibility SubGraph::GetCudaGraphCompatibility() const {
+CudaGraphCompatibility SubGraph::GetCudaGraphCompatibilityImpl() const {
     if (!is_compatibility_analyzed_) {
         graph_compatibility_ = CudaGraphCompatibility::FULL;
         for (const auto& op : exec_sequence_) {

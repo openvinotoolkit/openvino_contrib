@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include <queue>
+#include <unordered_set>
 #include <utility>
 
 #include "cuda_operation_base.hpp"
@@ -22,6 +24,33 @@ OperationBase::OperationBase(const CreationContext& /*context*/,
         runtime_precision_ = node.get_input_element_type(0);
     } else if (node.get_output_size() > 0) {
         runtime_precision_ = node.get_output_element_type(0);
+    }
+
+    // Check if this node or any of its ancestors have dynamic shapes.
+    // A static node whose data transitively depends on a dynamic node
+    // (e.g., ShapeOf → Gather → Concat → Broadcast shape chain) is
+    // incompatible with CUDA graphs because the dynamic ancestor is wrapped
+    // in DynamicOperation which writes to DynamicBufferContext with new
+    // addresses each inference — CUDA graphs read stale static addresses.
+    has_dynamic_buffer_ = node.is_dynamic();
+    if (!has_dynamic_buffer_) {
+        std::unordered_set<const ov::Node*> visited;
+        std::queue<const ov::Node*> to_visit;
+        for (size_t i = 0; i < node.get_input_size(); ++i) {
+            to_visit.push(node.get_input_node_ptr(i));
+        }
+        while (!to_visit.empty()) {
+            const auto* current = to_visit.front();
+            to_visit.pop();
+            if (!visited.insert(current).second) continue;
+            if (current->is_dynamic()) {
+                has_dynamic_buffer_ = true;
+                break;
+            }
+            for (size_t i = 0; i < current->get_input_size(); ++i) {
+                to_visit.push(current->get_input_node_ptr(i));
+            }
+        }
     }
 }
 

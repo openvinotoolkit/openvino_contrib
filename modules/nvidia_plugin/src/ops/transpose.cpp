@@ -4,7 +4,13 @@
 
 #include "transpose.hpp"
 
+#include "kernels/permute_fallback.hpp"
+
 #include <fmt/format.h>
+
+#include <cstdio>
+#include <mutex>
+#include <cstdlib>
 
 #include <algorithm>
 #include <cuda/tensor.hpp>
@@ -71,7 +77,11 @@ TransposeOp::TransposeOp(const CreationContext& context,
         throw_ov_exception(fmt::format("TransposeOp: unsupported permutationElementsType_: {}",
                                      ov::element::Type{permutationElementsType_}.get_type_name()));
     }
-    inputExtents_.size();
+    // Probe cuTENSOR functionality at construction time (outside any CUDA-graph
+    // capture). std::call_once makes the actual probe run once globally; Execute()
+    // then only reads the cached result, so the probe's synchronizing calls can
+    // never invalidate a stream capture during the first inference.
+    isCuTensorPermutationFunctional();
 }
 
 void TransposeOp::Execute(const InferenceRequestContext& context,
@@ -85,21 +95,31 @@ void TransposeOp::Execute(const InferenceRequestContext& context,
     const std::vector<int> outputMode = permutation(context, inputTensors);
     auto& threadContext = context.getThreadContext();
 
-    cutensorInitTensorDescriptor(&threadContext.cuTensorHandle().get(),
+    // cuTENSOR does not check the result of its internal kernel launches: on a
+    // GPU for which the linked cuTENSOR build has no kernel image (e.g.
+    // cuTENSOR 1.x on Ada), cutensorPermutation returns SUCCESS while the
+    // output stays unwritten. Probe actual functionality once per process and
+    // route Transpose through the built-in fallback kernel if it is broken.
+    if (!isCuTensorPermutationFunctional()) {
+        runPermuteFallback(context, inputTensors[0].get(), outputTensors[0].get(), outputMode);
+        return;
+    }
+
+    throwIfError(cutensorInitTensorDescriptor(&threadContext.cuTensorHandle().get(),
                                  &inputDesc,
                                  dimsNumber_,
                                  inputExtents_.data(),
                                  inputStrides_.data(),
                                  inputElementsType_,
-                                 CUTENSOR_OP_IDENTITY);
+                                 CUTENSOR_OP_IDENTITY));
 
-    cutensorInitTensorDescriptor(&threadContext.cuTensorHandle().get(),
+    throwIfError(cutensorInitTensorDescriptor(&threadContext.cuTensorHandle().get(),
                                  &outputDesc,
                                  dimsNumber_,
                                  outputExtents_.data(),
                                  outputStrides_.data(),
                                  inputElementsType_,
-                                 CUTENSOR_OP_IDENTITY);
+                                 CUTENSOR_OP_IDENTITY));
 
     throwIfError(cutensorPermutation(&threadContext.cuTensorHandle().get(),
                                      &CUDA::NumericConst<CUDA::constants::one>(inputElementsType_),
@@ -111,9 +131,144 @@ void TransposeOp::Execute(const InferenceRequestContext& context,
                                      outputMode.data(),
                                      inputElementsType_,
                                      context.getThreadContext().stream().get()));
+
 }
 
-CudaGraphCompatibility TransposeOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+bool TransposeOp::isCuTensorPermutationFunctional() {
+    static std::once_flag probe_once;
+    static bool functional = false;
+    std::call_once(probe_once, [] {
+        functional = []() -> bool {
+            // Self-contained probe (own cuTENSOR handle + stream) so it can run at
+            // construction time, outside any CUDA-graph capture: the synchronizing
+            // cudaMalloc/cudaStreamSynchronize/cudaFree below would invalidate a
+            // ThreadLocal-mode capture if this first ran during inference.
+            CUDA::CuTensorHandle probe_handle;
+            cudaStream_t probe_stream = nullptr;
+            if (cudaStreamCreateWithFlags(&probe_stream, cudaStreamNonBlocking) != cudaSuccess) {
+                return false;
+            }
+            float* buf = nullptr;
+            bool ok = false;
+            const float host_src[4] = {1.0f, 2.0f, 3.0f, 4.0f};
+            float host_dst[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+            do {
+                if (cudaMalloc(&buf, 8 * sizeof(float)) != cudaSuccess) {
+                    break;
+                }
+                float* src = buf;
+                float* dst = buf + 4;
+                if (cudaMemcpyAsync(src, host_src, sizeof(host_src), cudaMemcpyHostToDevice, probe_stream) !=
+                    cudaSuccess) {
+                    break;
+                }
+                if (cudaMemsetAsync(dst, 0, 4 * sizeof(float), probe_stream) != cudaSuccess) {
+                    break;
+                }
+                const int64_t extents[2] = {2, 2};
+                const int64_t in_strides[2] = {2, 1};
+                const int64_t out_strides[2] = {1, 2};  // output laid out transposed
+                const int modes[2] = {0, 1};
+                cutensorTensorDescriptor_t in_desc{}, out_desc{};
+                if (cutensorInitTensorDescriptor(&probe_handle.get(), &in_desc, 2, extents,
+                                                 in_strides, CUDA_R_32F, CUTENSOR_OP_IDENTITY) !=
+                    CUTENSOR_STATUS_SUCCESS) {
+                    break;
+                }
+                if (cutensorInitTensorDescriptor(&probe_handle.get(), &out_desc, 2, extents,
+                                                 out_strides, CUDA_R_32F, CUTENSOR_OP_IDENTITY) !=
+                    CUTENSOR_STATUS_SUCCESS) {
+                    break;
+                }
+                const float one = 1.0f;
+                if (cutensorPermutation(&probe_handle.get(), &one, src, &in_desc, modes, dst,
+                                        &out_desc, modes, CUDA_R_32F, probe_stream) != CUTENSOR_STATUS_SUCCESS) {
+                    break;
+                }
+                if (cudaMemcpyAsync(host_dst, dst, sizeof(host_dst), cudaMemcpyDeviceToHost, probe_stream) !=
+                    cudaSuccess) {
+                    break;
+                }
+                if (cudaStreamSynchronize(probe_stream) != cudaSuccess) {
+                    break;
+                }
+                (void)cudaGetLastError();  // clear any launch error swallowed by cuTENSOR
+                // dst is the transposed layout of src: expect {1,3,2,4} element order
+                ok = host_dst[0] == 1.0f && host_dst[1] == 3.0f && host_dst[2] == 2.0f && host_dst[3] == 4.0f;
+            } while (false);
+            if (buf) {
+                (void)cudaFree(buf);
+            }
+            (void)cudaStreamDestroy(probe_stream);
+            if (!ok) {
+                fprintf(stderr,
+                        "[NVIDIA plugin] cuTENSOR permutation is not functional on this GPU "
+                        "(no kernel image for this architecture?); Transpose will use the built-in "
+                        "fallback permutation kernel.\n");
+            }
+            return ok;
+        }();
+    });
+    return functional;
+}
+
+void TransposeOp::runPermuteFallback(const InferenceRequestContext& context,
+                                     const void* src,
+                                     void* dst,
+                                     const std::vector<int>& outputMode) const {
+    OPENVINO_ASSERT(dimsNumber_ <= kernel::PermuteFallbackParams::kMaxRank,
+                    "Transpose fallback supports up to ",
+                    kernel::PermuteFallbackParams::kMaxRank,
+                    " dims, got ",
+                    dimsNumber_,
+                    "; node: ",
+                    GetName());
+    static std::once_flag warn_once;
+    std::call_once(warn_once, [] {
+        fprintf(stderr,
+                "[NVIDIA plugin] cuTENSOR permutation kernels are unavailable on this GPU; "
+                "using the built-in fallback permutation kernel for Transpose.\n");
+    });
+    kernel::PermuteFallbackParams params{};
+    params.rank = static_cast<int>(dimsNumber_);
+    params.num_elements = 1;
+    for (size_t k = 0; k < dimsNumber_; ++k) {
+        params.out_extents[k] = outputExtents_[k];
+        params.out_strides[k] = outputStrides_[k];
+        params.in_strides_permuted[k] = inputStrides_[outputMode[k]];
+        params.num_elements *= static_cast<size_t>(outputExtents_[k]);
+    }
+    size_t elem_size = 0;
+    switch (inputElementsType_) {
+        case CUDA_R_8I:
+        case CUDA_R_8U:
+            elem_size = 1;
+            break;
+        case CUDA_R_16F:
+#if CUDART_VERSION >= 11000
+        case CUDA_R_16BF:
+#endif
+        case CUDA_R_16I:
+        case CUDA_R_16U:
+            elem_size = 2;
+            break;
+        case CUDA_R_32F:
+        case CUDA_R_32I:
+        case CUDA_R_32U:
+            elem_size = 4;
+            break;
+        case CUDA_R_64F:
+        case CUDA_R_64I:
+        case CUDA_R_64U:
+            elem_size = 8;
+            break;
+        default:
+            throw_ov_exception(fmt::format("Transpose fallback: unsupported element type {}", toString(inputElementsType_)));
+    }
+    kernel::permute_fallback(context.getThreadContext().stream().get(), params, elem_size, src, dst);
+}
+
+CudaGraphCompatibility TransposeOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 std::vector<std::int64_t> TransposeOp::extractInputExtents(const ov::Node& node) {
     std::vector<std::int64_t> result;
