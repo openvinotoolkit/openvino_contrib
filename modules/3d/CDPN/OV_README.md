@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Note
 
 Run the following commands to setup the CDPN repo with the required changes for OpenVINO inference.
@@ -9,7 +14,7 @@ git clone https://github.com/LZGMatrix/CDPN_ICCV2019_ZhigangLi cdpn_repo
 cd cdpn_repo
 git checkout 625f9a8
 patch -p1 < ../cdpn_changes.patch
-cat ../copy_files_to_cdpn_repo.txt | xargs -I {} sh -c 'mkdir -p "$(dirname "./{}")" && cp "../{}" "./{}"'
+grep -v -E '^\s*(#|$)' ../copy_files_to_cdpn_repo.txt | xargs -I {} sh -c 'mkdir -p "$(dirname "./{}")" && cp "../{}" "./{}"'
 ```
 -----------------------
 
