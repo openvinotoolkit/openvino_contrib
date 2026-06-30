@@ -1,0 +1,24 @@
+license-check: true
+vulnerability-check: true
+comment-summary-in-pr: never
+fail-on-severity: low
+
+fail-on-scopes:
+  - runtime
+  - development
+  - unknown
+
+allow-licenses:
+  - Apache-2.0
+  - MIT
+  - BSD-2-Clause
+  - BSD-3-Clause
+  - ISC
+  - Zlib
+  - 0BSD
+  - CC0-1.0
+  - Python-2.0
+  - PSF-2.0
+
+# Add dependency-specific exceptions only after legal/maintainer review.
+allow-dependencies-licenses: []
