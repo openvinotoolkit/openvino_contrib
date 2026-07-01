@@ -192,6 +192,14 @@ private:
                        Inputs inputTensors,
                        DynamicBufferContext& dynBufCtx) const;
 
+    // PagedAttentionExtension: writes new K/V into a per-request persistent device
+    // cache and computes paged attention. Handled here (not via the generic cached
+    // path) so it can key the persistent cache by the real cache-input BufferIDs.
+    void executePagedAttention(const InferenceRequestContext& context,
+                               const CUDA::Stream& stream,
+                               Inputs inputTensors,
+                               DynamicBufferContext& dynBufCtx) const;
+
     // The prepared state of the cached path: the cached static operation, the
     // resolved input pointers, and the freshly allocated output buffers. Built
     // by prepareCachedOperationContext(), then consumed by executeCachedOperation()
