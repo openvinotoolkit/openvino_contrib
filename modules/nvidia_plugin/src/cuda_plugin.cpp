@@ -3,7 +3,10 @@
 //
 #include <fmt/format.h>
 
+#include <algorithm>
+
 #include "cuda/props.hpp"
+#include "cuda/runtime.hpp"
 #include "cuda_compiled_model.hpp"
 #include "cuda_infer_request.hpp"
 #include "cuda_itt.hpp"
@@ -16,7 +19,10 @@
 #include "openvino/runtime/properties.hpp"
 #include "openvino/runtime/shared_buffer.hpp"
 #include "openvino/runtime/threading/executor_manager.hpp"
+#include "openvino/op/paged_attention.hpp"
+#include "openvino/pass/manager.hpp"
 #include "transformations/rt_info/fused_names_attribute.hpp"
+#include "transformer/nvidia_convert_pagedattn_inputs.hpp"
 
 using namespace ov::nvidia_gpu;
 
@@ -69,7 +75,33 @@ std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(const std::shared_ptr<
 
     // Create stream executor for given device
     auto wait_executor = get_stream_executor(full_config);
-    auto compiled_model = std::make_shared<CompiledModel>(model->clone(),
+
+    auto cloned = model->clone();
+    // When the model was rewritten by GenAI's SDPAToPagedAttention (continuous
+    // batching), the paged KV-cache Parameters (key_cache.N/value_cache.N) are
+    // dynamic rank-4 with dynamic element type. Specialize them here, BEFORE the
+    // CompiledModel captures its I/O ports, so those ports are statically typed and
+    // GenAI can allocate/size the cache. This is the single source of the cache
+    // precision so the exposed I/O matches the internally compiled model.
+    {
+        const auto ops = cloned->get_ordered_ops();
+        const bool has_paged_attention =
+            std::any_of(ops.begin(), ops.end(), [](const std::shared_ptr<ov::Node>& n) {
+                return ov::is_type<ov::op::PagedAttentionExtension>(n);
+            });
+        if (has_paged_attention) {
+            auto cache_precision = full_config.get_inference_precision();
+            if (cache_precision == ov::element::dynamic ||
+                (cache_precision == ov::element::f16 && !isHalfSupported(device))) {
+                cache_precision = ov::element::f32;
+            }
+            ov::pass::Manager pa_manager;
+            pa_manager.register_pass<ov::nvidia_gpu::pass::ConvertPagedAttnInputs>(cache_precision);
+            pa_manager.run_passes(cloned);
+        }
+    }
+
+    auto compiled_model = std::make_shared<CompiledModel>(std::move(cloned),
                                                           full_config,
                                                           wait_executor,
                                                           shared_from_this(),
