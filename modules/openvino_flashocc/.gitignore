@@ -1,19 +1,43 @@
-# Copyright (C) 2018-2026 Intel Corporation
-# SPDX-License-Identifier: Apache-2.0
-
-__pycache__/
-build
+/ckpts/
+*.o
 *.so
+*.pyc
+work_dirs/*
+projects/mmdet3d_plugin.egg-info/
+projects/flashocc_plugin.egg-info/
+ckpt
+projects/build
+mmdetection3d
+*debug.py
+launch.json
+ckpts
+mmdeploy
+mmdeploy_study
+data/
+*old*
+build-old
+ppl.cv
+.vscode
+*.npz
+
+vis/
+*.jpg
+*.png
+# OV inference build artifacts
 *.log
 *.bak
 *.opt
-*venv*
+.conda/
 ov_build/
-venv_ov2026_ws/
-venv_ov2026/
-venv/
 setup.env
 run_results/
 checkpoints/
 debug_output/
 openvino_extensions/bev_pool/build*/
+
+# Third-party projects materialized by setup.sh
+projects/
+projects/
+.cache/
+projects/
+!projects/.gitkeep

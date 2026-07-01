@@ -10,7 +10,7 @@ Exports the FlashOCC model to ONNX with a custom FlashOCCBEVPoolV2 op,
 then compiles it with OpenVINO for CPU (or GPU) inference.
 
 Usage:
-    source venv_ov2026_ws/bin/activate
+    conda activate /path/to/openvino_flashocc/.conda/convert
     cd <FlashOCC_root>
     python convert_to_openvino.py
 

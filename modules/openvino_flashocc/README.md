@@ -14,14 +14,14 @@ This module provides:
 
 ## Quick Setup
 
-Complete setup from scratch (model export → venv → OpenVINO pip install → bev_pool build → benchmark):
+Complete setup from scratch (model export → Conda env → OpenVINO pip install → bev_pool build → benchmark):
 
 ```bash
 bash setup.sh --prepare-models --run-test --model-variant m0 --model-dir "$(pwd)/split_f16out" --jobs "$(nproc)"
 ```
 
 This takes **~5–10 minutes** and produces:
-- `venv_flashocc_ws/` with pip-installed OpenVINO ≥2024.0
+- `.conda/flashocc_ws/` with pip-installed OpenVINO ≥2024.0
 - `split_f16out/` with converted F16 IR models
 - `openvino_extensions/bev_pool/build_ws/libopenvino_bevpool_extension.so` (C++ extension)
 - `setup.env` with paths to reuse later

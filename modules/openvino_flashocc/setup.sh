@@ -4,10 +4,10 @@
 # setup.sh — FlashOCC OpenVINO 2026.3 environment setup
 #
 # What this script does:
-#   1.  Checks for Python 3.10+ and required dependencies
+#   1.  Checks for Conda and required dependencies
 #   2.  Prepares model IRs (first-time setup only)
-#   3.  Creates venv_flashocc_ws with Python 3.10 or 3.11
-#   4.  Installs OpenVINO from pip + requirements.txt into the venv
+#   3.  Creates Conda environments with Python 3.10
+#   4.  Installs OpenVINO from pip + requirements.txt into the runtime Conda env
 #   5.  Builds the bev_pool OpenVINO C++ extension
 #   6.  Writes setup.env  (sourced by run_flashocc_ov_ws.sh)
 #   7.  Optionally runs the benchmark  (--run-test)
@@ -32,7 +32,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ── Defaults ─────────────────────────────────────────────────────────────────
-VENV_DIR="${SCRIPT_DIR}/venv_flashocc_ws"
+RUNTIME_CONDA_ENV_DIR="${SCRIPT_DIR}/.conda/flashocc_ws"
+CONVERSION_CONDA_ENV_DIR="${SCRIPT_DIR}/.conda/convert"
+CONDA_PYTHON_VERSION="3.10"
 JOBS=$(nproc)
 
 MODEL_DIR=""
@@ -40,7 +42,6 @@ MODEL_VARIANT="m0"
 PREPARE_MODELS=0
 NUM_SAMPLES=80
 RUN_TEST=0
-CONVERT_VENV_DIR="${SCRIPT_DIR}/venv_convert"
 MMDET3D_REPO="https://github.com/open-mmlab/mmdetection3d.git"
 MMDET3D_DIR="${SCRIPT_DIR}/mmdetection3d"
 MMDET3D_BRANCH="v1.0.0rc4"
@@ -58,6 +59,33 @@ info()  { echo -e "${CYAN}[setup] $*${NC}"; }
 ok()    { echo -e "${GREEN}[setup] ✓ $*${NC}"; }
 warn()  { echo -e "${YELLOW}[setup] ⚠ $*${NC}"; }
 die()   { echo -e "${RED}[setup] ✗ $*${NC}" >&2; exit 1; }
+
+find_conda() {
+  if [[ -n "${CONDA_EXE:-}" ]]; then
+    return 0
+  fi
+
+  CONDA_EXE="$(command -v conda 2>/dev/null || true)"
+  [[ -n "${CONDA_EXE}" ]] || die "conda not found. Install Miniconda/Mambaforge and ensure 'conda' is on PATH."
+}
+
+ensure_conda_env() {
+  local env_dir="$1"
+  local python_version="$2"
+  local label="$3"
+
+  find_conda
+  if [[ -x "${env_dir}/bin/python" && -x "${env_dir}/bin/pip" ]]; then
+    info "  Using existing ${label} Conda environment at ${env_dir}"
+  else
+    info "  Creating ${label} Conda environment at ${env_dir} (Python ${python_version})"
+    mkdir -p "$(dirname "${env_dir}")"
+    "${CONDA_EXE}" create -y -q -p "${env_dir}" "python=${python_version}" pip
+  fi
+
+  [[ -x "${env_dir}/bin/python" ]] || die "${label} Conda environment is missing python at ${env_dir}/bin/python"
+  [[ -x "${env_dir}/bin/pip" ]] || die "${label} Conda environment is missing pip at ${env_dir}/bin/pip"
+}
 
 run_quiet_step() {
   local step_name="$1"
@@ -180,33 +208,14 @@ prepare_models_if_needed() {
     git clone --depth 1 --branch "${MMDET3D_BRANCH}" "${MMDET3D_REPO}" "${MMDET3D_DIR}"
   fi
 
-  local PYTHON310
-  PYTHON310=$(command -v python3.10 2>/dev/null || true)
-  [[ -n "$PYTHON310" ]] || die "python3.10 not found. Install with: sudo apt install python3.10 python3.10-venv"
+  # Python 3.10: use the OpenVINO conversion env pin documented for this repo.
+  local CONV_NUMBA_VER="0.59.1"
+  local CONV_NETWORKX_SPEC="networkx>=2.8,<3"
+  info "  Using Conda Python ${CONDA_PYTHON_VERSION} for conversion (numba ${CONV_NUMBA_VER}, ${CONV_NETWORKX_SPEC})"
+  ensure_conda_env "${CONVERSION_CONDA_ENV_DIR}" "${CONDA_PYTHON_VERSION}" "conversion"
 
-  # Try Python 3.9 for conversion venv (numba 0.53.0 needs Python < 3.10)
-  # Fall back to Python 3.10 with newer numba if 3.9 unavailable
-  PYTHON39=$(command -v python3.9 2>/dev/null || true)
-  CONV_PYTHON="${PYTHON39:-$PYTHON310}"
-  CONV_NUMBA_VER="0.53.0"
-  CONV_NETWORKX_SPEC="networkx>=2.2,<2.3"
-  
-  if [[ "$CONV_PYTHON" == "$PYTHON310" ]]; then
-    # Python 3.10: use the OpenVINO conversion env pin documented for this repo.
-    CONV_NUMBA_VER="0.59.1"
-    CONV_NETWORKX_SPEC="networkx>=2.8,<3"
-    info "  Using Python 3.10 for conversion (numba ${CONV_NUMBA_VER}, ${CONV_NETWORKX_SPEC})"
-  else
-    info "  Using Python 3.9 for conversion (numba 0.53.0)"
-  fi
-
-  local CONV_PY="${CONVERT_VENV_DIR}/bin/python"
-  local CONV_PIP="${CONVERT_VENV_DIR}/bin/pip"
-
-  if [[ ! -d "${CONVERT_VENV_DIR}" ]]; then
-    info "  Creating conversion venv at ${CONVERT_VENV_DIR}"
-    "$CONV_PYTHON" -m venv "${CONVERT_VENV_DIR}"
-  fi
+  local CONV_PY="${CONVERSION_CONDA_ENV_DIR}/bin/python"
+  local CONV_PIP="${CONVERSION_CONDA_ENV_DIR}/bin/pip"
 
   info "  Installing conversion dependencies (CPU-only PyTorch stack) …"
   # Keep setuptools in a range where pkg_resources is present for legacy setup.py builds.
@@ -214,23 +223,23 @@ prepare_models_if_needed() {
   "$CONV_PIP" install gdown -q
   "$CONV_PIP" install "torch==1.13.1+cpu" "torchvision==0.14.1+cpu" --index-url https://download.pytorch.org/whl/cpu -q
   # mmdet imports mmcv.ops (mmcv._ext), so conversion needs mmcv-full.
-  # Disable build isolation to reuse venv torch/setuptools if a source build is needed.
+  # Disable build isolation to reuse Conda env torch/setuptools if a source build is needed.
   "$CONV_PIP" install --no-build-isolation "mmcv-full==1.6.0" -q
   "$CONV_PIP" install "mmdet==2.28.2" "mmsegmentation==0.30.0" -q
-    # Install mmdet3d with corrected dependency versions
-    # Using --no-deps to skip problematic pinned deps, then install all required core deps explicitly
-    "$CONV_PIP" install --no-build-isolation --no-deps "mmdet3d==1.0.0rc4" -q
-    "$CONV_PIP" install \
-      "numba==${CONV_NUMBA_VER}" \
-      "${CONV_NETWORKX_SPEC}" \
-      "numpy>=1.23.5" \
-      "plyfile" \
-      "scikit-image" \
-      "tensorboard" \
-      "trimesh>=2.35.39,<2.35.40" \
-      -q
+  # Install mmdet3d with corrected dependency versions. Use --no-deps to skip
+  # problematic pins, then install required core deps explicitly.
+  "$CONV_PIP" install --no-build-isolation --no-deps "mmdet3d==1.0.0rc4" -q
+  "$CONV_PIP" install \
+    "numba==${CONV_NUMBA_VER}" \
+    "${CONV_NETWORKX_SPEC}" \
+    "numpy>=1.23.5" \
+    "plyfile" \
+    "scikit-image" \
+    "tensorboard" \
+    "trimesh>=2.35.39,<2.35.40" \
+    -q
   # Patch mmdet3d to skip optional dataset SDK imports (not needed for conversion)
-  CONVERT_SITE_ROOT="${CONVERT_VENV_DIR}" "${CONVERT_VENV_DIR}/bin/python" - <<'PY_PATCH'
+  CONVERT_SITE_ROOT="${CONVERSION_CONDA_ENV_DIR}" "$CONV_PY" - <<'PY_PATCH'
 import glob
 import os
 import pathlib
@@ -335,15 +344,10 @@ esac
 # ── Step 0: Pre-flight checks ─────────────────────────────────────────────────
 info "Step 0: Checking prerequisites …"
 
-# Check for Python 3.10 or 3.11 (for runtime venv)
-PYTHON310=$(command -v python3.10 2>/dev/null || true)
-PYTHON311=$(command -v python3.11 2>/dev/null || true)
-VENV_PYTHON="${PYTHON310:-${PYTHON311}}"
-[[ -n "$VENV_PYTHON" ]] || die "python3.10 or python3.11 not found. Install with: sudo apt install python3.10 python3.10-venv"
-
+find_conda
 command -v git &>/dev/null   || die "git not found"
 
-ok "Prerequisites OK  ($($VENV_PYTHON --version))"
+ok "Prerequisites OK  ($("${CONDA_EXE}" --version))"
 
 # ── Step A0: Sync third-party FlashOCC projects ──────────────────────────────
 sync_thirdparty_flashocc_projects
@@ -359,33 +363,29 @@ else
 fi
 
 # Allow conversion/export-only workflow to complete cleanly without requiring
-# runtime venv and dependencies.
+# runtime Conda environment and dependencies.
 if [[ $RUN_TEST -eq 0 ]]; then
-  ok "Prepare-models-only flow complete (runtime venv setup skipped)"
+  ok "Prepare-models-only flow complete (runtime Conda environment setup skipped)"
   exit 0
 fi
 
-# ── Step 1: Create Python venv ───────────────────────────────────────────────
-info "Step 1: Setting up virtual environment …"
-if [[ -d "${VENV_DIR}" ]]; then
-  warn "Venv already exists at ${VENV_DIR} — reinstalling packages"
-else
-  "${VENV_PYTHON}" -m venv "${VENV_DIR}"
-fi
+# ── Step 1: Create runtime Conda environment ─────────────────────────────────
+info "Step 1: Setting up runtime Conda environment …"
+ensure_conda_env "${RUNTIME_CONDA_ENV_DIR}" "${CONDA_PYTHON_VERSION}" "runtime"
 
-VENV_PY="${VENV_DIR}/bin/python3"
-VENV_PIP="${VENV_DIR}/bin/pip"
+RUNTIME_PY="${RUNTIME_CONDA_ENV_DIR}/bin/python"
+RUNTIME_PIP="${RUNTIME_CONDA_ENV_DIR}/bin/pip"
 
-"$VENV_PIP" install --upgrade pip setuptools wheel -q
+"$RUNTIME_PIP" install --upgrade pip setuptools wheel -q
 
 # ── Step 2: Install OpenVINO from pip ────────────────────────────────────────
 info "Step 2: Installing OpenVINO from pip …"
-"$VENV_PIP" install "openvino>=2024.0" -q
-ok "OV installed: $("$VENV_PY" -c 'import openvino; print(openvino.__version__)')"
+"$RUNTIME_PIP" install "openvino>=2024.0" -q
+ok "OV installed: $("$RUNTIME_PY" -c 'import openvino; print(openvino.__version__)')"
 
 # ── Step 3: Install requirements.txt ─────────────────────────────────────────
 info "Step 3: Installing requirements.txt …"
-"$VENV_PIP" install -r "${SCRIPT_DIR}/requirements.txt" -q
+"$RUNTIME_PIP" install -r "${SCRIPT_DIR}/requirements.txt" -q
 ok "Dependencies installed"
 
 # ── Step 4: Build bev_pool OpenVINO extension ─────────────────────────────────
@@ -394,7 +394,7 @@ BEV_SRC="${SCRIPT_DIR}/openvino_extensions/bev_pool"
 BEV_BUILD_DIR="${SCRIPT_DIR}/openvino_extensions/bev_pool/build_ws"
 
 # Find OpenVINO cmake config from pip installation
-OV_CMAKE_DIR="$("$VENV_PY" -c "import openvino; import os; print(os.path.dirname(openvino.__file__))" 2>/dev/null || echo "")"
+OV_CMAKE_DIR="$("$RUNTIME_PY" -c "import openvino; import os; print(os.path.dirname(openvino.__file__))" 2>/dev/null || echo "")"
 [[ -n "$OV_CMAKE_DIR" ]] || die "Failed to locate OpenVINO installation directory"
 OV_CMAKE_DIR="${OV_CMAKE_DIR}/../openvino_cmake"
 
@@ -417,7 +417,7 @@ run_quiet_step "Configuring bev_pool extension" "${SCRIPT_DIR}/ov_build/logs/bev
   -G "${BUILD_TOOL}" \
   -DCMAKE_BUILD_TYPE=Release \
   -DOpenVINO_DIR="${OV_CMAKE_DIR}" \
-  -DPython3_EXECUTABLE="${VENV_PY}"
+  -DPython3_EXECUTABLE="${RUNTIME_PY}"
 
 run_quiet_step "Building bev_pool extension" "${SCRIPT_DIR}/ov_build/logs/bevpool_build.log" \
   "$CMAKE" --build "$BEV_BUILD_DIR" -j "${JOBS}"
@@ -430,7 +430,7 @@ ok "bev_pool extension built: ${BEV_SO}"
 info "Step 5: Writing setup.env …"
 cat > "${SCRIPT_DIR}/setup.env" <<EOF
 # Auto-generated by setup.sh — do not edit manually
-FLASHOCC_VENV="${VENV_DIR}"
+FLASHOCC_CONDA_ENV="${RUNTIME_CONDA_ENV_DIR}"
 FLASHOCC_MODEL_DIR="${MODEL_DIR}"
 FLASHOCC_BEV_SO="${BEV_SO}"
 EOF
@@ -442,8 +442,8 @@ echo -e "${GREEN}═════════════════════
 echo -e "${GREEN}  Setup complete!${NC}"
 echo -e "${GREEN}══════════════════════════════════════════════════════════${NC}"
 echo ""
-echo "  OV version   : $("$VENV_PY" -c 'import openvino; print(openvino.__version__)')"
-echo "  venv         : ${VENV_DIR}"
+echo "  OV version   : $("$RUNTIME_PY" -c 'import openvino; print(openvino.__version__)')"
+echo "  conda env    : ${RUNTIME_CONDA_ENV_DIR}"
 echo "  model dir    : ${MODEL_DIR}"
 echo "  bev_pool ext : ${BEV_SO}"
 echo ""
