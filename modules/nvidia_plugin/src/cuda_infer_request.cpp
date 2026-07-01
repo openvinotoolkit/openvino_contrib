@@ -177,6 +177,9 @@ void CudaInferRequest::start_pipeline(const ThreadContext& threadContext) {
         if (!variable_context_.empty()) {
             inferRequestContext.setVariableContext(variable_context_);
         }
+        // Always provide the paged-attention cache store; PagedAttention execution
+        // lazily allocates per-cache device buffers into it (persists across infers).
+        inferRequestContext.setPagedAttentionContext(paged_attention_context_);
         topology_runner.UpdateContext(inferRequestContext, memory);
         topology_runner.Run(inferRequestContext, memory);
         executionDelegator_->stop_stage(PerfStages::StartPipeline);
