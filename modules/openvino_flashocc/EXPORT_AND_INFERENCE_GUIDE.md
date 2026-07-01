@@ -14,18 +14,16 @@ Optimized end-to-end inference for **FlashOCC** (3D occupancy prediction) uses
 
 | Tool | Version |
 |---|---|
-| Python | 3.12 (runtime venv) + 3.10 (OV wheel build) |
+| Conda | Miniconda/Mambaforge or Anaconda |
 | CMake | ≥ 3.16 |
 | Ninja | any (recommended) |
 | OpenCL runtime | Intel NEO driver |
 | GCC/Clang | C++17 |
 
-> **Note:** Python 3.10 is required alongside Python 3.12. The OpenVINO wheel is built against Python 3.10 (which has `distutils`); Python 3.12 removed `distutils` and cannot build the wheel.
+> **Note:** `setup.sh` creates Python 3.10 Conda envs under `.conda/`, so the host only needs Conda instead of multiple system Python installs.
 
 ```bash
-sudo apt install python3.12 python3.12-venv python3.12-dev \
-                 python3.10 python3.10-venv \
-                 cmake ninja-build build-essential
+sudo apt install cmake ninja-build build-essential git
 ```
 
 ## OpenVINO IR Models
@@ -51,7 +49,7 @@ cd <openvino_contrib>/modules/openvino_flashocc
 
 ### 2. Run setup
 
-`setup.sh` handles everything: clones + builds OpenVINO, creates the venv,
+`setup.sh` handles everything: clones + builds OpenVINO, creates the Conda env,
 installs all dependencies, builds the bev_pool extension.
 
 **First-time setup** (auto-downloads checkpoint and generates IR models):
@@ -112,7 +110,7 @@ python run_flashocc_ov.py \
 openvino_flashocc/
 ├── run_flashocc_ov.py                    # E2E inference script (all OV optimizations)
 ├── run_flashocc_ov_ws.sh                 # Benchmark runner (reads setup.env)
-├── setup.sh                              # Full setup: clone OV, build, create venv
+├── setup.sh                              # Full setup: clone OV, build, create Conda env
 ├── setup.env                             # Auto-generated paths (written by setup.sh)
 ├── requirements.txt                      # Python deps for this module
 ├── openvino_extensions/
@@ -126,7 +124,7 @@ openvino_flashocc/
 │   └── openvino/                         # Cloned + built deepaks2/openvino
 │       ├── build/                        # CMake build dir
 │       └── bin/intel64/Release/          # GPU plugin .so
-├── venv_ov2026_ws/                       # Python 3.10 venv (OV 2026.3 + deps; ABI matches built wheel)
+├── .conda/flashocc_ws/                   # Python 3.10 Conda env (OV 2026.3 + deps)
 └── work_dirs/flashocc-r50-m0/openvino/
     └── split_f16out/                     # IR models (gitignored — provide externally)
 ```

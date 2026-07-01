@@ -9,7 +9,7 @@
 #   1. bash setup.sh --prepare-models --model-variant m0 --model-dir /path/to/split_f16out
 #      (Generates OpenVINO IR models in split mode)
 #   2. bash setup.sh --run-test --model-dir /path/to/split_f16out
-#      (Creates venv, installs OpenVINO from pip, builds bev_pool, runs E2E benchmark)
+#      (Creates Conda env, installs OpenVINO from pip, builds bev_pool, runs E2E benchmark)
 #
 # Or combine in one step:
 #   bash setup.sh --prepare-models --run-test --model-variant m0
@@ -23,13 +23,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ── Load paths written by setup.sh ───────────────────────────────────────────
 SETUP_ENV="${SCRIPT_DIR}/setup.env"
-FLASHOCC_VENV="${SCRIPT_DIR}/venv_flashocc_ws"
+FLASHOCC_CONDA_ENV="${SCRIPT_DIR}/.conda/flashocc_ws"
 if [[ -f "$SETUP_ENV" ]]; then
   # shellcheck source=/dev/null
   source "$SETUP_ENV"
 fi
 
-VENV="${FLASHOCC_VENV}"
+RUNTIME_ENV="${FLASHOCC_CONDA_ENV}"
+RUNTIME_PY="${RUNTIME_ENV}/bin/python"
 
 # ── Defaults (can be overridden via CLI args) ─────────────────────────────────
 MODEL_DIR="${FLASHOCC_MODEL_DIR:-${SCRIPT_DIR}/work_dirs/flashocc-r50-m0/openvino/split_f16out}"
@@ -64,16 +65,16 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# ── Validate venv ─────────────────────────────────────────────────────────────
-[[ -f "${VENV}/bin/python3" ]] || {
-  echo "ERROR: venv not found at ${VENV}"
+# ── Validate Conda env ───────────────────────────────────────────────────────
+[[ -x "${RUNTIME_PY}" ]] || {
+  echo "ERROR: Conda env not found at ${RUNTIME_ENV}"
   echo "  Run setup first:  bash setup.sh --model-dir /path/to/split_f16out ..."
   exit 1
 }
 
-# Locate OV libs (from venv install) and GPU plugin (from build release dir)
+# Locate OV libs (from Conda env install) and GPU plugin (from build release dir)
 OV_LIBS_DIR=""
-for py_lib in "${VENV}/lib/python"*; do
+for py_lib in "${RUNTIME_ENV}/lib/python"*; do
   [[ -d "$py_lib" ]] || continue
   candidate="${py_lib}/site-packages/openvino/libs"
   if [[ -d "$candidate" ]]; then
@@ -83,11 +84,11 @@ for py_lib in "${VENV}/lib/python"*; do
 done
 
 [[ -n "$OV_LIBS_DIR" ]] || {
-  echo "ERROR: OV libs not found in venv site-packages (expected openvino/libs). Re-run setup.sh."
+  echo "ERROR: OV libs not found in Conda env site-packages (expected openvino/libs). Re-run setup.sh."
   exit 1
 }
 
-# Build LD_LIBRARY_PATH: venv OV libs first, then release dir (GPU plugin) if known
+# Build LD_LIBRARY_PATH: Conda env OV libs first, then release dir (GPU plugin) if known
 LD_PATH="${OV_LIBS_DIR}"
 if [[ -n "${OV_RELEASE_DIR:-}" && -d "${OV_RELEASE_DIR}" ]]; then
   LD_PATH="${LD_PATH}:${OV_RELEASE_DIR}"
@@ -96,7 +97,7 @@ export LD_LIBRARY_PATH="${LD_PATH}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 # ── Print run summary ─────────────────────────────────────────────────────────
 echo "=== FlashOCC OpenVINO 2026.3 (gpu-flashocc-fixes) ==="
-OV_VER=$("${VENV}/bin/python3" -c 'import openvino; print(openvino.__version__)' 2>/dev/null || echo "unknown")
+OV_VER=$("${RUNTIME_PY}" -c 'import openvino; print(openvino.__version__)' 2>/dev/null || echo "unknown")
 echo "  OV version  : ${OV_VER}"
 echo "  Device      : ${OV_DEVICE} / BEVpool: ${OV_BEVPOOL_DEVICE}"
 echo "  Model dir   : ${MODEL_DIR}"
@@ -112,7 +113,7 @@ EXT_ARGS=()
 
 # ── Run ───────────────────────────────────────────────────────────────────────
 cd "${SCRIPT_DIR}"
-exec "${VENV}/bin/python3" run_flashocc_ov.py \
+exec "${RUNTIME_PY}" run_flashocc_ov.py \
   --model-dir         "$MODEL_DIR" \
   --num-samples       "$NUM_SAMPLES" \
   --ov-device         "$OV_DEVICE" \
