@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 set -euo pipefail
 
 # Run OpenVINO ISM evaluation on BOP LM-O (10 images) with setup checks.

@@ -54,8 +54,8 @@ cleanup() { rm -rf "$TMP_DIR"; }
 trap cleanup EXIT
 
 echo "[INFO] Cloning original SAM-6D ($ORIG_REPO_COMMIT) ..."
-git clone --quiet "$ORIG_REPO_URL" "$TMP_DIR/SAM-6D"
-git -C "$TMP_DIR/SAM-6D" checkout --quiet "$ORIG_REPO_COMMIT"
+git -c core.autocrlf=false clone --quiet "$ORIG_REPO_URL" "$TMP_DIR/SAM-6D"
+git -C "$TMP_DIR/SAM-6D" -c core.autocrlf=false checkout --quiet "$ORIG_REPO_COMMIT"
 
 ORIG_CODE_DIR="$TMP_DIR/SAM-6D/SAM-6D"
 if [ ! -d "$ORIG_CODE_DIR" ]; then
@@ -85,15 +85,63 @@ ORIG_REPO_ROOT="$TMP_DIR/SAM-6D"
 # --- 3. Apply patches --------------------------------------------------------
 apply_patch() {
     local patch_file="$1"
+    local prepared_patch="$patch_file"
+    local tmp_patch=""
+    local patch_targets
+
+    # License comments may be prepended to patch files for CI checks.
+    # git apply expects the diff stream to start at the patch header, so
+    # strip any leading comment preamble before applying.
+    if head -n 1 "$patch_file" | grep -q '^# '; then
+        tmp_patch="$(mktemp)"
+        awk '
+            BEGIN { in_diff = 0 }
+            {
+                if (!in_diff) {
+                    if ($0 ~ /^--- / || $0 ~ /^diff --git /) {
+                        in_diff = 1
+                        print
+                    }
+                    next
+                }
+                print
+            }
+        ' "$patch_file" > "$tmp_patch"
+        prepared_patch="$tmp_patch"
+    fi
+
+    # Normalize CRLF -> LF on files touched by this patch to avoid
+    # "different line endings" hunk failures on environments with autocrlf.
+    patch_targets="$(awk '
+        /^\+\+\+ / {
+            path = $2
+            if (path == "/dev/null") next
+            sub(/^b\//, "", path)
+            print path
+        }
+    ' "$prepared_patch" | sort -u)"
+
+    if [ -n "$patch_targets" ]; then
+        while IFS= read -r rel_path; do
+            [ -z "$rel_path" ] && continue
+            if [ -f "$CODE_DIR/$rel_path" ]; then
+                sed -i 's/\r$//' "$CODE_DIR/$rel_path"
+            fi
+        done <<< "$patch_targets"
+    fi
+
     echo "[INFO] Applying $(basename "$patch_file") ..."
-    if git -C "$CODE_DIR" apply -p1 "$patch_file" 2>/dev/null; then
+    if git -C "$CODE_DIR" apply -p1 "$prepared_patch" 2>/dev/null; then
+        [ -n "$tmp_patch" ] && rm -f "$tmp_patch"
         return 0
     fi
     # Fallback to GNU patch if git apply is unavailable/unhappy.
     if command -v patch >/dev/null 2>&1; then
-        patch -p1 -d "$CODE_DIR" < "$patch_file"
+        patch -p1 -d "$CODE_DIR" < "$prepared_patch"
+        [ -n "$tmp_patch" ] && rm -f "$tmp_patch"
         return 0
     fi
+    [ -n "$tmp_patch" ] && rm -f "$tmp_patch"
     echo "[ERROR] Failed to apply $patch_file"
     exit 1
 }

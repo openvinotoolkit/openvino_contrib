@@ -2,4 +2,5 @@
 # SPDX-License-Identifier: Apache-2.0
 
 checkpoints/
+model_save/
 __pycache__/

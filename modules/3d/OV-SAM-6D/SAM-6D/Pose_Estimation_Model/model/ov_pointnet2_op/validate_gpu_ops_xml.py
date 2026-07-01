@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Validate pem_gpu_ops.xml has format='any' on multi-port inputs to avoid reorder naming collisions."""
 import xml.etree.ElementTree as ET
 import sys
