@@ -46,6 +46,9 @@
 #include "transformations/op_conversions/scaled_dot_product_attention_decomposition.hpp"
 #include "transformations/op_conversions/convert_convertlike.hpp"
 #include "transformations/op_conversions/convert_slice_to_strided_slice.hpp"
+#include "openvino/op/paged_attention.hpp"
+
+#include <algorithm>
 
 using namespace ov::nvidia_gpu;
 
@@ -148,9 +151,20 @@ void GraphTransformer::transform(const CUDA::Device& device,
                 return is_sequence_primitive_supported(node);
             });
 
-    // Decompose ScaledDotProductAttention into elementary operations (MatMul, Softmax, etc.)
-    // that are already supported by the plugin
-    pass_manager.register_pass<ov::pass::ScaledDotProductAttentionDecomposition>();
+    // When GenAI's continuous-batching path has already rewritten the model via
+    // SDPAToPagedAttention it contains PagedAttentionExtension ops (no SDPA left), so
+    // skip SDPA decomposition. The paged KV-cache Parameters are specialized in
+    // Plugin::compile_model (before the compiled model captures its I/O ports).
+    const auto ordered_ops = model->get_ordered_ops();
+    const bool has_paged_attention =
+        std::any_of(ordered_ops.begin(), ordered_ops.end(), [](const std::shared_ptr<ov::Node>& n) {
+            return ov::is_type<ov::op::PagedAttentionExtension>(n);
+        });
+    if (!has_paged_attention) {
+        // Decompose ScaledDotProductAttention into elementary operations (MatMul, Softmax, etc.)
+        // that are already supported by the plugin
+        pass_manager.register_pass<ov::pass::ScaledDotProductAttentionDecomposition>();
+    }
     // Convert ops produced by SDPA decomposition to supported equivalents
     pass_manager.register_pass<ov::pass::ConvertConvertLike>();
     pass_manager.register_pass<ov::pass::SliceToStridedSlice>(true);
