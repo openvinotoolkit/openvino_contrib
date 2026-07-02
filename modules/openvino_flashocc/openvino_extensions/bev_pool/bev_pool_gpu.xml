@@ -1,0 +1,133 @@
+<!-- Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0 -->
+
+<!--
+    OpenVINO Custom GPU Kernel Configuration for BEVPool Operations
+    (validated for Arrow Lake and Panther Lake iGPU)
+
+    IMPORTANT kernel constraints:
+    - BEVPoolScatter and BEVPoolV2 use c = get_local_id(0) directly for channel index.
+        Therefore local workgroup size MUST equal CHANNELS.
+    - BEVPoolBinSort kernel has __attribute__((reqd_work_group_size(1024,1,1))).
+        Therefore local/global MUST be 1024.
+
+    This file targets FlashOCC m0 tensors:
+        depth: [6, 44, 16, 44]
+        feat : [6, 64, 16, 44]
+-->
+
+<!-- ═══ BEVPool: fused softmax + scatter (backward-compatible) ═══ -->
+<CustomLayer name="BEVPool" type="SimpleGPU" version="1">
+    <Kernel entry="bevpool_fused">
+        <Source filename="bev_pool_gpu.cl"/>
+        <Define name="NX"         type="int" param="nx"         default="360"/>
+        <Define name="NY"         type="int" param="ny"         default="360"/>
+        <Define name="NZ"         type="int" param="nz"         default="1"/>
+        <Define name="NUM_CAMS"   type="int" param="num_cams"   default="6"/>
+        <Define name="DEPTH_BINS" type="int" param="depth_bins" default="118"/>
+        <Define name="CHANNELS"   type="int" param="channels"   default="64"/>
+        <Define name="FEAT_H"     type="int" param="feat_h"     default="16"/>
+        <Define name="FEAT_W"     type="int" param="feat_w"     default="44"/>
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
+        <Tensor arg-index="1" type="input"  port-index="1" format="BFYX"/>
+        <Tensor arg-index="2" type="input"  port-index="2" format="BFYX"/>
+        <Tensor arg-index="3" type="output" port-index="0" format="BFYX"/>
+    </Buffers>
+    <CompilerOptions options="-cl-mad-enable -cl-fast-relaxed-math -cl-no-signed-zeros"/>
+    <WorkSizes dim="input" global="B*F*Y*X,1,1" local=""/>
+</CustomLayer>
+
+<!-- ═══ BEVPoolScatter: int32 native atomic scatter (fast path) ═══ -->
+<CustomLayer name="BEVPoolScatter" type="SimpleGPU" version="1">
+    <Kernel entry="bevpool_scatter">
+        <Source filename="bev_pool_scatter.cl"/>
+        <Define name="NX"         type="int" param="nx"         default="360"/>
+        <Define name="NY"         type="int" param="ny"         default="360"/>
+        <Define name="NZ"         type="int" param="nz"         default="1"/>
+        <Define name="NUM_CAMS"   type="int" param="num_cams"   default="6"/>
+        <Define name="DEPTH_BINS" type="int" param="depth_bins" default="118"/>
+        <Define name="CHANNELS"   type="int" param="channels"   default="64"/>
+        <Define name="FEAT_H"     type="int" param="feat_h"     default="16"/>
+        <Define name="FEAT_W"     type="int" param="feat_w"     default="44"/>
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
+        <Tensor arg-index="1" type="input"  port-index="1" format="BFYX"/>
+        <Tensor arg-index="2" type="input"  port-index="2" format="BFYX"/>
+        <Tensor arg-index="3" type="output" port-index="0" format="BFYX"/>
+    </Buffers>
+    <CompilerOptions options="-cl-mad-enable -cl-fast-relaxed-math"/>
+        <!--
+            local MUST equal CHANNELS for this kernel implementation.
+            total_pixels = 6 * 16 * 44 = 4,224
+            global = total_pixels * CHANNELS = 4,224 * 64 = 270,336
+        -->
+        <WorkSizes global="270336,1,1" local="64,1,1"/>
+</CustomLayer>
+
+<!-- ═══ BEVPoolConvert: int32 → float32 conversion ═══ -->
+<CustomLayer name="BEVPoolConvert" type="SimpleGPU" version="1">
+    <Kernel entry="bevpool_convert">
+        <Source filename="bev_pool_convert.cl"/>
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
+        <Tensor arg-index="1" type="output" port-index="0" format="BFYX"/>
+    </Buffers>
+    <CompilerOptions options="-cl-mad-enable"/>
+        <!--
+            Work sizing: one work-item per output element.
+            Output is [1, 64, 360, 360] = 8,294,400 elements.
+        -->
+    <WorkSizes dim="output" global="B*F*Y*X,1,1" local=""/>
+</CustomLayer>
+
+<!-- ═══ BEVPoolV2: pre-sorted interval-based scatter (no atomics) ═══ -->
+<CustomLayer name="BEVPoolV2" type="SimpleGPU" version="1">
+    <Kernel entry="bevpool_v2">
+        <Source filename="bev_pool_v2.cl"/>
+        <Define name="NX"        type="int" param="nx"        default="360"/>
+        <Define name="NY"        type="int" param="ny"        default="360"/>
+        <Define name="CHANNELS"  type="int" param="channels"  default="64"/>
+        <Define name="FEAT_HW"   type="int" param="feat_hw"   default="704"/>
+        <Define name="DEPTH_HW"  type="int" param="depth_hw"  default="83072"/>
+        <Define name="TOTAL_PTS" type="int" param="total_pts" default="498432"/>
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
+        <Tensor arg-index="1" type="input"  port-index="1" format="BFYX"/>
+        <Tensor arg-index="2" type="input"  port-index="2" format="BFYX"/>
+        <Tensor arg-index="3" type="output" port-index="0" format="BFYX"/>
+    </Buffers>
+    <CompilerOptions options="-cl-mad-enable -cl-fast-relaxed-math"/>
+        <!--
+            local MUST equal CHANNELS for this kernel implementation.
+            global = output size = 1 * 64 * 360 * 360 = 8,294,400
+        -->
+        <WorkSizes global="8294400,1,1" local="64,1,1"/>
+</CustomLayer>
+
+<!-- ═══ BEVPoolBinSort: single-WG counting sort of geometry ═══ -->
+<CustomLayer name="BEVPoolBinSort" type="SimpleGPU" version="1">
+    <Kernel entry="bevpool_binsort">
+        <Source filename="bev_pool_binsort.cl"/>
+        <Define name="NX"        type="int" param="nx"        default="360"/>
+        <Define name="NY"        type="int" param="ny"        default="360"/>
+        <Define name="TOTAL_PTS" type="int" param="total_pts" default="498432"/>
+        <Define name="X_MIN"     type="float" param="x_min"     default="-54.0"/>
+        <Define name="Y_MIN"     type="float" param="y_min"     default="-54.0"/>
+        <Define name="X_STEP"    type="float" param="x_step"    default="0.3"/>
+        <Define name="Y_STEP"    type="float" param="y_step"    default="0.3"/>
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
+        <Tensor arg-index="1" type="output" port-index="0" format="BFYX"/>
+    </Buffers>
+    <CompilerOptions options="-cl-mad-enable"/>
+        <!--
+            Kernel is compiled with reqd_work_group_size(1024,1,1), so this must be exactly 1024.
+        -->
+        <WorkSizes global="1024,1,1" local="1024,1,1"/>
+</CustomLayer>
