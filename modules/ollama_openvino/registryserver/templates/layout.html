@@ -1,0 +1,180 @@
+{{define "layout"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{block "title" .}}Ollama Registry{{end}}</title>
+<style>
+  :root {
+    --fg: #111;
+    --fg-muted: #555;
+    --fg-faint: #888;
+    --bg: #fff;
+    --bg-soft: #fafafa;
+    --bg-card: #fff;
+    --border: #eaeaea;
+    --border-strong: #d4d4d4;
+    --link: #111;
+    --accent: #1a73e8;
+    --code-bg: #f6f6f6;
+    --pre-bg: #0d0d0d;
+    --pre-fg: #f3f3f3;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto,
+                 "Helvetica Neue", Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+  }
+  a { color: var(--link); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .container { max-width: 980px; margin: 0 auto; padding: 0 24px; }
+  header.site {
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    position: sticky; top: 0; z-index: 10;
+  }
+  header.site .inner {
+    display: flex; align-items: center; gap: 16px;
+    height: 56px;
+  }
+  header.site .brand {
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 600; font-size: 16px; color: var(--fg);
+  }
+  header.site .brand svg { width: 22px; height: 22px; }
+  header.site .badge {
+    font-size: 11px; padding: 2px 8px;
+    background: var(--bg-soft); border: 1px solid var(--border);
+    border-radius: 999px; color: var(--fg-muted);
+    font-weight: 500;
+  }
+  header.site nav { margin-left: auto; display: flex; gap: 18px; font-size: 14px; color: var(--fg-muted); }
+  header.site nav a { color: var(--fg-muted); }
+  main { padding: 32px 0 80px; }
+  .crumbs { color: var(--fg-faint); font-size: 14px; margin-bottom: 8px; }
+  .crumbs a { color: var(--fg-faint); }
+  .crumbs a:hover { color: var(--fg); }
+  h1.title { margin: 0 0 4px; font-size: 28px; font-weight: 600; letter-spacing: -0.01em; }
+  .subtitle { color: var(--fg-muted); margin-bottom: 28px; }
+  .meta-row {
+    display: flex; flex-wrap: wrap; gap: 18px;
+    color: var(--fg-muted); font-size: 14px; margin-bottom: 28px;
+  }
+  .meta-row .sep { color: var(--border-strong); }
+  .empty {
+    border: 1px dashed var(--border-strong); border-radius: 8px;
+    padding: 48px 24px; text-align: center;
+    color: var(--fg-muted);
+  }
+  .card-list { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--border); }
+  .card-list .row {
+    display: flex; align-items: center; gap: 16px;
+    padding: 18px 4px; border-bottom: 1px solid var(--border);
+  }
+  .card-list .row .name { font-weight: 600; font-size: 16px; }
+  .card-list .row .name a { color: var(--fg); }
+  .card-list .row .meta { color: var(--fg-muted); font-size: 13px; margin-top: 2px; }
+  .card-list .row .right { margin-left: auto; color: var(--fg-faint); font-size: 13px; text-align: right; white-space: nowrap; }
+  .avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: linear-gradient(135deg, #222 0%, #555 100%);
+    color: #fff; font-size: 14px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .tag-pill {
+    display: inline-block; padding: 2px 8px; font-size: 12px;
+    background: var(--bg-soft); border: 1px solid var(--border); border-radius: 999px;
+    color: var(--fg-muted); margin-right: 6px;
+  }
+  pre.command {
+    background: var(--pre-bg); color: var(--pre-fg);
+    padding: 14px 16px; border-radius: 8px;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px; line-height: 1.6; overflow-x: auto;
+    margin: 0 0 12px;
+  }
+  pre.command::before { content: "$ "; opacity: 0.4; }
+  code.mono {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12.5px; background: var(--code-bg); padding: 1px 6px; border-radius: 4px;
+    color: var(--fg);
+  }
+  .layers-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  .layers-table th, .layers-table td {
+    text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border);
+    font-size: 13.5px; vertical-align: top;
+  }
+  .layers-table th { font-weight: 600; color: var(--fg-muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .layers-table tr:last-child td { border-bottom: none; }
+  .layers-table .digest { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; color: var(--fg-muted); }
+  .layers-table .size { color: var(--fg-muted); white-space: nowrap; }
+  .layers-table .preview {
+    background: var(--code-bg); color: var(--fg);
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px; padding: 6px 8px; border-radius: 4px; margin-top: 4px;
+    white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto;
+  }
+  .mt-badge {
+    display: inline-block; font-size: 11.5px; padding: 1px 8px; border-radius: 4px;
+    background: var(--code-bg); color: var(--fg); font-family: ui-monospace, Menlo, Consolas, monospace;
+  }
+  .mt-badge.openvino { background: #eaf2ff; color: #1a3a8a; }
+  section.box {
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 20px 24px; margin-bottom: 24px; background: var(--bg-card);
+  }
+  section.box h3 { margin: 0 0 12px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-muted); font-weight: 600; }
+  .stat-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 18px;
+  }
+  .stat .label { font-size: 12px; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat .value { font-size: 20px; font-weight: 600; margin-top: 4px; }
+  footer.site {
+    border-top: 1px solid var(--border);
+    color: var(--fg-faint); font-size: 12.5px;
+    padding: 18px 0; text-align: center;
+  }
+</style>
+</head>
+<body>
+<header class="site">
+  <div class="container inner">
+    <a class="brand" href="/">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2c-3 0-5 2-5 5 0 1.5.5 2.5 1 3-1 1-2 2.5-2 5 0 4 3 7 6 7s6-3 6-7c0-2.5-1-4-2-5 .5-.5 1-1.5 1-3 0-3-2-5-5-5z"></path>
+        <circle cx="9.5" cy="9.5" r="0.5" fill="currentColor"></circle>
+        <circle cx="14.5" cy="9.5" r="0.5" fill="currentColor"></circle>
+      </svg>
+      Ollama Registry
+    </a>
+    <span class="badge">self-hosted</span>
+    <nav>
+      <a href="/">Models</a>
+      {{if .Login}}
+        {{if .IsAdmin}}<a href="/admin">Admin</a>{{end}}
+        <a href="/{{.Login}}">@{{.Login}}</a>
+        <form method="POST" action="/auth/logout" style="display:inline;margin:0"><button type="submit" style="background:none;border:none;color:var(--fg-muted);font:inherit;cursor:pointer;padding:0">Sign out</button></form>
+      {{else}}
+        <a href="/auth/login">Sign in</a>
+        {{if .CanSignup}}<a href="/auth/register">Register</a>{{end}}
+      {{end}}
+    </nav>
+  </div>
+</header>
+<main>
+  <div class="container">
+    {{block "content" .}}{{end}}
+  </div>
+</main>
+<footer class="site">
+  <div class="container">{{.Generated}} · OpenVINO-aware Ollama registry</div>
+</footer>
+</body>
+</html>{{end}}

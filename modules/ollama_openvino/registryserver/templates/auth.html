@@ -1,0 +1,46 @@
+{{define "title"}}{{if eq .Mode "register"}}Register{{else}}Sign in{{end}} · Ollama Registry{{end}}
+{{define "content"}}
+<div style="max-width:380px;margin:40px auto">
+  <h1 class="title">{{if eq .Mode "register"}}Create an account{{else}}Sign in{{end}}</h1>
+  <p class="subtitle" style="margin-top:0">
+    {{if eq .Mode "register"}}
+      Your username becomes your namespace — you'll push models to
+      <code class="mono">{{.Host}}/&lt;username&gt;/…</code>.
+    {{else}}
+      Sign in to push models and manage your private models.
+    {{end}}
+  </p>
+
+  {{if .Error}}
+  <div class="box" style="border-color:#f3c2c2;background:#fdeaea;color:#b3261e;padding:10px 14px">
+    {{.Error}}
+  </div>
+  {{end}}
+
+  <form method="POST" action="{{if eq .Mode "register"}}/auth/register{{else}}/auth/login{{end}}" class="box">
+    <label style="display:block;margin-bottom:12px">
+      <div class="subtitle" style="margin:0 0 4px">Username</div>
+      <input name="username" autocomplete="username" autofocus required
+             style="width:100%;padding:8px 10px;border:1px solid var(--border-strong);border-radius:6px;font-size:15px">
+    </label>
+    <label style="display:block;margin-bottom:16px">
+      <div class="subtitle" style="margin:0 0 4px">Password{{if eq .Mode "register"}} <span class="mono">(min 8 chars)</span>{{end}}</div>
+      <input name="password" type="password"
+             autocomplete="{{if eq .Mode "register"}}new-password{{else}}current-password{{end}}" required
+             style="width:100%;padding:8px 10px;border:1px solid var(--border-strong);border-radius:6px;font-size:15px">
+    </label>
+    <button type="submit"
+            style="width:100%;padding:10px;border:0;border-radius:6px;background:var(--accent);color:#fff;font-size:15px;cursor:pointer">
+      {{if eq .Mode "register"}}Create account{{else}}Sign in{{end}}
+    </button>
+  </form>
+
+  <p class="subtitle" style="text-align:center">
+    {{if eq .Mode "register"}}
+      Already have an account? <a href="/auth/login">Sign in</a>
+    {{else}}
+      {{if .CanSignup}}New here? <a href="/auth/register">Create an account</a>{{end}}
+    {{end}}
+  </p>
+</div>
+{{end}}

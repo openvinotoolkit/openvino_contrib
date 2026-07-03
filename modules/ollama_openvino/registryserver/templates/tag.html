@@ -1,0 +1,64 @@
+{{define "title"}}{{.Info.Namespace}}/{{.Info.Model}}:{{.Info.Tag}} · Ollama Registry{{end}}
+{{define "content"}}
+<div class="crumbs">
+  <a href="/">Models</a> /
+  <a href="/{{.Info.Namespace}}">{{.Info.Namespace}}</a> /
+  <a href="/{{.Info.Namespace}}/{{.Info.Model}}">{{.Info.Model}}</a> /
+  {{.Info.Tag}}
+</div>
+<h1 class="title">{{.Info.Namespace}}/{{.Info.Model}}:{{.Info.Tag}}</h1>
+<div class="subtitle">{{humanSize .Info.Size}} · {{.Info.LayerCount}} layer{{if ne .Info.LayerCount 1}}s{{end}} · updated {{since .Info.UpdatedAt}}</div>
+
+<section class="box">
+  <h3>Use this model</h3>
+  <pre class="command">ollama pull --insecure {{.Host}}/{{.Info.Namespace}}/{{.Info.Model}}:{{.Info.Tag}}</pre>
+  <pre class="command">ollama run --insecure {{.Host}}/{{.Info.Namespace}}/{{.Info.Model}}:{{.Info.Tag}}</pre>
+</section>
+
+<section class="box">
+  <h3>Overview</h3>
+  <div class="stat-grid">
+    <div class="stat"><div class="label">Total size</div><div class="value">{{humanSize .Info.Size}}</div></div>
+    <div class="stat"><div class="label">Layers</div><div class="value">{{.Info.LayerCount}}</div></div>
+    {{if .Backend}}<div class="stat"><div class="label">Backend</div><div class="value">{{.Backend}}</div></div>{{end}}
+    {{if .ModelType}}<div class="stat"><div class="label">Model type</div><div class="value">{{.ModelType}}</div></div>{{end}}
+    {{if .Device}}<div class="stat"><div class="label">Infer device</div><div class="value">{{.Device}}</div></div>{{end}}
+  </div>
+  {{if .Params}}
+  <div style="margin-top:18px;">
+    <div class="label" style="font-size:12px;color:var(--fg-muted);text-transform:uppercase;letter-spacing:0.05em;">Params</div>
+    <div class="preview" style="margin-top:6px;">{{.Params}}</div>
+  </div>
+  {{end}}
+</section>
+
+<section class="box">
+  <h3>Manifest</h3>
+  <div class="meta-row" style="margin:0 0 12px;">
+    <span><strong>Digest</strong> <code class="mono">{{.Info.Digest}}</code></span>
+  </div>
+  {{if .Info.Config.Digest}}
+  <div style="margin-bottom:12px;">
+    <span class="label" style="color:var(--fg-muted);font-size:12px;text-transform:uppercase;letter-spacing:0.05em;">Config</span>
+    <div style="margin-top:4px;"><code class="mono">{{.Info.Config.MediaType}}</code> · <span class="digest" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--fg-muted);">{{.Info.Config.Digest}}</span> · {{humanSize .Info.Config.Size}}</div>
+  </div>
+  {{end}}
+  <table class="layers-table">
+    <thead>
+      <tr><th>Media type</th><th>Digest</th><th>Size</th></tr>
+    </thead>
+    <tbody>
+      {{range .Info.Layers}}
+      <tr>
+        <td>
+          <span class="mt-badge{{if isOpenVINOMedia .MediaType}} openvino{{end}}">{{.MediaType}}</span>
+          {{if .Preview}}<div class="preview">{{.Preview}}</div>{{end}}
+        </td>
+        <td class="digest">{{.Digest}}{{if .From}}<div style="color:var(--fg-faint);font-size:11px;margin-top:2px;">from {{.From}}</div>{{end}}</td>
+        <td class="size">{{humanSize .Size}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</section>
+{{end}}
