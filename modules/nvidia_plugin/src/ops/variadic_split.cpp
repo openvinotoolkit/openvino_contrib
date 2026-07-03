@@ -101,7 +101,7 @@ VariadicSplitOp::VariadicSplitOp(const CreationContext& context,
     const std::vector<int64_t> split_lengths = getSplitLengths(split_lengths_node);
 
     buildAxisHelpers(split_lengths, orig_axis_size);
-    buildSplitIndexHelper(split_lengths, orig_axis_size);
+    buildSplitIndexHelper(orig_axis_size);
 
     const size_t axis_split_step_size =
         std::accumulate(data_shape.begin() + axis + 1, data_shape.end(), 1, std::multiplies<size_t>());
@@ -143,13 +143,16 @@ void VariadicSplitOp::buildAxisHelpers(const std::vector<int64_t>& split_lengths
     }
 }
 
-void VariadicSplitOp::buildSplitIndexHelper(const std::vector<int64_t>& split_lengths, const size_t orig_axis_size) {
+void VariadicSplitOp::buildSplitIndexHelper(const size_t orig_axis_size) {
+    // Use the resolved per-output sizes (axis_sizes_), not the raw split_lengths:
+    // a "-1" (remaining) entry in split_lengths would decrease the running offset
+    // and then index split_lengths out of bounds (e.g. GPT-2's [768, 768, -1]).
     int64_t split_idx = 0;
-    int64_t prev_total_split_size = split_lengths[0];
+    int64_t prev_total_split_size = static_cast<int64_t>(axis_sizes_[0]);
     split_idx_.reserve(orig_axis_size);
-    for (int i = 0; i < orig_axis_size; ++i) {
-        if (i >= prev_total_split_size) {
-            prev_total_split_size += split_lengths[++split_idx];
+    for (size_t i = 0; i < orig_axis_size; ++i) {
+        if (static_cast<int64_t>(i) >= prev_total_split_size) {
+            prev_total_split_size += static_cast<int64_t>(axis_sizes_[++split_idx]);
         }
         split_idx_.push_back(split_idx);
     }

@@ -46,7 +46,9 @@ SplitOp::SplitOp(const CreationContext& context,
     const auto element_type = input_element_type;
 
     auto& data_shape = splitOp->get_input_shape(0);
-    const int64_t axis = *axisNode->get_data_ptr<int64_t>();
+    // cast_vector handles any integer axis element type (e.g. GPT-2 emits an i32
+    // axis); get_data_ptr<int64_t> would over-read a narrower constant.
+    const int64_t axis = axisNode->cast_vector<int64_t>().at(0);
     OPENVINO_ASSERT(axis >= 0 && axis < data_shape.size(), "Node name: ", GetName());
     OPENVINO_ASSERT(data_shape[axis] % num_splits_ == 0, "Node name: ", GetName());
     const size_t split_step_size =
