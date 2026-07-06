@@ -14,9 +14,6 @@
 #
 # Usage:
 #   bash setup.sh \
-#       [--flashocc-ref <commit|tag|branch>] \
-#       [--flashocc-patch-dir /path/to/patches] \
-#       [--no-sync-thirdparty-projects] \
 #       [--num-samples 80] \
 #       [--jobs 16] \
 #       [--model-dir /path/to/split_f16out] \
@@ -33,7 +30,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ── Defaults ─────────────────────────────────────────────────────────────────
 RUNTIME_CONDA_ENV_DIR="${SCRIPT_DIR}/.conda/flashocc_ws"
-CONVERSION_CONDA_ENV_DIR="${SCRIPT_DIR}/.conda/convert"
 CONDA_PYTHON_VERSION="3.10"
 JOBS=$(nproc)
 
@@ -42,16 +38,6 @@ MODEL_VARIANT="m0"
 PREPARE_MODELS=0
 NUM_SAMPLES=80
 RUN_TEST=0
-MMDET3D_REPO="https://github.com/open-mmlab/mmdetection3d.git"
-MMDET3D_DIR="${SCRIPT_DIR}/mmdetection3d"
-MMDET3D_BRANCH="v1.0.0rc4"
-
-FLASHOCC_REPO="https://github.com/Yzichen/FlashOCC.git"
-FLASHOCC_REF="master"
-FLASHOCC_CACHE_DIR="${SCRIPT_DIR}/.cache/flashocc-upstream"
-FLASHOCC_PATCH_DIR="${SCRIPT_DIR}/patches/flashocc"
-FLASHOCC_PROJECTS_DIR="${SCRIPT_DIR}/projects"
-SYNC_THIRDPARTY_PROJECTS=1
 
 # ── Colour helpers ────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
@@ -101,86 +87,6 @@ run_quiet_step() {
   fi
 }
 
-sync_thirdparty_flashocc_projects() {
-  if [[ ${SYNC_THIRDPARTY_PROJECTS} -eq 0 ]]; then
-    info "Step A0: Skipping third-party FlashOCC sync (--no-sync-thirdparty-projects)"
-    return 0
-  fi
-
-  command -v git &>/dev/null || die "git not found (required for third-party sync)"
-
-  info "Step A0: Syncing third-party FlashOCC projects from ${FLASHOCC_REPO}@${FLASHOCC_REF} …"
-  mkdir -p "$(dirname "${FLASHOCC_CACHE_DIR}")"
-
-  if [[ -d "${FLASHOCC_CACHE_DIR}/.git" ]]; then
-    run_quiet_step "Fetching FlashOCC upstream" "${SCRIPT_DIR}/ov_build/logs/flashocc_fetch.log" \
-      git -C "${FLASHOCC_CACHE_DIR}" fetch --prune --tags origin
-  else
-    rm -rf "${FLASHOCC_CACHE_DIR}"
-    run_quiet_step "Cloning FlashOCC upstream" "${SCRIPT_DIR}/ov_build/logs/flashocc_clone.log" \
-      git clone --filter=blob:none "${FLASHOCC_REPO}" "${FLASHOCC_CACHE_DIR}"
-  fi
-
-  run_quiet_step "Resolving FlashOCC ref" "${SCRIPT_DIR}/ov_build/logs/flashocc_checkout.log" \
-    git -C "${FLASHOCC_CACHE_DIR}" checkout --force "${FLASHOCC_REF}"
-  run_quiet_step "Updating FlashOCC to ref" "${SCRIPT_DIR}/ov_build/logs/flashocc_reset.log" \
-    git -C "${FLASHOCC_CACHE_DIR}" reset --hard "${FLASHOCC_REF}"
-
-  local resolved_ref
-  resolved_ref="$(git -C "${FLASHOCC_CACHE_DIR}" rev-parse HEAD)"
-  [[ -d "${FLASHOCC_CACHE_DIR}/projects" ]] || die "Upstream FlashOCC ref ${resolved_ref} does not contain projects/"
-
-  local staging
-  staging="$(mktemp -d)"
-  trap 'rm -rf "${staging}"' RETURN
-
-  mkdir -p "${staging}/projects"
-  cp -a "${FLASHOCC_CACHE_DIR}/projects/." "${staging}/projects/"
-
-  git -C "${staging}" init -q
-  git -C "${staging}" add projects
-  git -C "${staging}" commit -q -m "base upstream projects" || true
-
-  if [[ -d "${FLASHOCC_PATCH_DIR}" ]]; then
-    mapfile -t patch_files < <(find "${FLASHOCC_PATCH_DIR}" -maxdepth 1 -type f -name '*.patch' | sort)
-    if [[ ${#patch_files[@]} -gt 0 ]]; then
-      info "  Applying ${#patch_files[@]} local patch(es) from ${FLASHOCC_PATCH_DIR}"
-      for patch_file in "${patch_files[@]}"; do
-        if git -C "${staging}" apply --check "${patch_file}"; then
-          git -C "${staging}" apply "${patch_file}"
-          continue
-        fi
-
-        # Fallback for patches created relative to projects/ root.
-        if git -C "${staging}" apply --check --directory=projects "${patch_file}"; then
-          git -C "${staging}" apply --directory=projects "${patch_file}"
-          continue
-        fi
-
-        die "Failed to apply patch ${patch_file} to upstream FlashOCC projects"
-      done
-    else
-      warn "Patch directory exists but contains no *.patch files: ${FLASHOCC_PATCH_DIR}"
-    fi
-  else
-    warn "No patch directory found at ${FLASHOCC_PATCH_DIR}; using pure upstream projects/"
-  fi
-
-  rm -rf "${FLASHOCC_PROJECTS_DIR}"
-  mkdir -p "${FLASHOCC_PROJECTS_DIR}"
-  cp -a "${staging}/projects/." "${FLASHOCC_PROJECTS_DIR}/"
-
-  cat > "${FLASHOCC_PROJECTS_DIR}/.upstream-source" <<EOF
-repo=${FLASHOCC_REPO}
-ref=${FLASHOCC_REF}
-resolved_commit=${resolved_ref}
-patch_dir=${FLASHOCC_PATCH_DIR}
-generated_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-EOF
-
-  ok "Third-party projects synced from ${resolved_ref}"
-}
-
 usage() {
   sed -n '/^# Usage:/,/^# ===/p' "$0" | head -20
   exit 0
@@ -201,82 +107,25 @@ prepare_models_if_needed() {
     return 0
   fi
 
-  info "Step A: Preparing model IRs (first-time setup path) …"
+  info "Step A: Preparing model IRs (standalone, no mmdet required) …"
 
-  if [[ ! -d "${MMDET3D_DIR}/configs/_base_" ]]; then
-    info "  Cloning mmdetection3d config dependency (${MMDET3D_BRANCH}) …"
-    git clone --depth 1 --branch "${MMDET3D_BRANCH}" "${MMDET3D_REPO}" "${MMDET3D_DIR}"
+  # ── Conversion venv (Python 3 + CPU torch + openvino + onnx; no mmdet) ──────
+  local CONV_VENV="${SCRIPT_DIR}/.venv_convert"
+  if [[ ! -x "${CONV_VENV}/bin/python" ]]; then
+    info "  Creating standalone conversion venv at ${CONV_VENV} …"
+    python3 -m venv "${CONV_VENV}"
   fi
 
-  # Python 3.10: use the OpenVINO conversion env pin documented for this repo.
-  local CONV_NUMBA_VER="0.59.1"
-  local CONV_NETWORKX_SPEC="networkx>=2.8,<3"
-  info "  Using Conda Python ${CONDA_PYTHON_VERSION} for conversion (numba ${CONV_NUMBA_VER}, ${CONV_NETWORKX_SPEC})"
-  ensure_conda_env "${CONVERSION_CONDA_ENV_DIR}" "${CONDA_PYTHON_VERSION}" "conversion"
+  local CONV_PY="${CONV_VENV}/bin/python"
+  local CONV_PIP="${CONV_VENV}/bin/pip"
 
-  local CONV_PY="${CONVERSION_CONDA_ENV_DIR}/bin/python"
-  local CONV_PIP="${CONVERSION_CONDA_ENV_DIR}/bin/pip"
-
-  info "  Installing conversion dependencies (CPU-only PyTorch stack) …"
-  # Keep setuptools in a range where pkg_resources is present for legacy setup.py builds.
-  "$CONV_PIP" install --upgrade pip "setuptools<81" wheel -q
+  info "  Installing standalone conversion dependencies (CPU-only PyTorch, no mmdet) …"
+  "$CONV_PIP" install --upgrade pip wheel -q
   "$CONV_PIP" install gdown -q
-  "$CONV_PIP" install "torch==1.13.1+cpu" "torchvision==0.14.1+cpu" --index-url https://download.pytorch.org/whl/cpu -q
-  # mmdet imports mmcv.ops (mmcv._ext), so conversion needs mmcv-full.
-  # Disable build isolation to reuse Conda env torch/setuptools if a source build is needed.
-  "$CONV_PIP" install --no-build-isolation "mmcv-full==1.6.0" -q
-  "$CONV_PIP" install "mmdet==2.28.2" "mmsegmentation==0.30.0" -q
-  # Install mmdet3d with corrected dependency versions. Use --no-deps to skip
-  # problematic pins, then install required core deps explicitly.
-  "$CONV_PIP" install --no-build-isolation --no-deps "mmdet3d==1.0.0rc4" -q
-  "$CONV_PIP" install \
-    "numba==${CONV_NUMBA_VER}" \
-    "${CONV_NETWORKX_SPEC}" \
-    "numpy>=1.23.5" \
-    "plyfile" \
-    "scikit-image" \
-    "tensorboard" \
-    "trimesh>=2.35.39,<2.35.40" \
-    -q
-  # Patch mmdet3d to skip optional dataset SDK imports (not needed for conversion)
-  CONVERT_SITE_ROOT="${CONVERSION_CONDA_ENV_DIR}" "$CONV_PY" - <<'PY_PATCH'
-import glob
-import os
-import pathlib
-import sys
-
-site_packages = glob.glob(os.path.join(os.environ['CONVERT_SITE_ROOT'], 'lib', 'python*', 'site-packages'))
-if not site_packages:
-    print('⚠ site-packages not found, skipping mmdet3d patch')
-    sys.exit(0)
-
-root = pathlib.Path(site_packages[0]) / 'mmdet3d'
-patches = {
-    root / 'core' / 'evaluation' / '__init__.py': [
-        ('from .lyft_eval import lyft_eval\n', '# from .lyft_eval import lyft_eval  # Optional: requires lyft_dataset_sdk\n'),
-        ('from .nuscenes_eval import nuscenes_eval\n', '# from .nuscenes_eval import nuscenes_eval  # Optional: requires nuscenes-devkit\n'),
-        ("    'kitti_eval_coco_style', 'kitti_eval', 'indoor_eval', 'lyft_eval',\n", "    'kitti_eval_coco_style', 'kitti_eval', 'indoor_eval',\n"),
-    ],
-    root / 'datasets' / '__init__.py': [
-        ('from .lyft_dataset import LyftDataset\n', '# from .lyft_dataset import LyftDataset  # Optional: requires lyft_dataset_sdk\n'),
-        ('from .nuscenes_dataset import NuScenesDataset\n', '# from .nuscenes_dataset import NuScenesDataset  # Optional: requires nuscenes-devkit\n'),
-        ('from .nuscenes_mono_dataset import NuScenesMonoDataset\n', '# from .nuscenes_mono_dataset import NuScenesMonoDataset  # Optional: requires nuscenes-devkit\n'),
-        ("    'build_dataset', 'NuScenesDataset', 'NuScenesMonoDataset', 'LyftDataset',\n", "    'build_dataset',\n"),
-    ],
-}
-
-for path, replacements in patches.items():
-    if not path.exists():
-        continue
-    content = path.read_text()
-    updated = content
-    for old, new in replacements:
-        updated = updated.replace(old, new)
-    path.write_text(updated)
-
-print('✓ Patched mmdet3d to skip optional dataset SDK imports')
-PY_PATCH
-  "$CONV_PIP" install "opencv-python<4.10" "openvino>=2024.0" onnx -q
+  # CPU-only torch is sufficient for ONNX export; pin to wheels currently
+  # published on the PyTorch CPU index so fresh machines resolve consistently.
+  "$CONV_PIP" install "torch==2.6.0+cpu" "torchvision==0.21.0+cpu" --index-url https://download.pytorch.org/whl/cpu -q
+  "$CONV_PIP" install "openvino>=2024.0" "onnx>=1.14" "numpy>=1.23.5" "opencv-python-headless>=4.8" -q
 
   mkdir -p "${SCRIPT_DIR}/checkpoints"
   local CKPT_PATH=""
@@ -303,8 +152,7 @@ PY_PATCH
   info "  Exporting split OpenVINO models to ${target_dir} …"
   (
     cd "${SCRIPT_DIR}"
-    export PYTHONPATH="${SCRIPT_DIR}:${SCRIPT_DIR}/projects:${PYTHONPATH:-}"
-    export FLASHOCC_CONVERSION_SAFE_IMPORTS=1
+    export PYTHONPATH="${SCRIPT_DIR}:${PYTHONPATH:-}"
     "$CONV_PY" "${SCRIPT_DIR}/convert_to_openvino.py" \
       --model-variant "${MODEL_VARIANT}" \
       --export-mode split \
@@ -318,9 +166,6 @@ PY_PATCH
 # ── Argument parsing ──────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --flashocc-ref)      FLASHOCC_REF="$2"; shift 2 ;;
-    --flashocc-patch-dir) FLASHOCC_PATCH_DIR="$2"; shift 2 ;;
-    --no-sync-thirdparty-projects) SYNC_THIRDPARTY_PROJECTS=0; shift ;;
     --model-dir)         MODEL_DIR="$2";    shift 2 ;;
     --model-variant)     MODEL_VARIANT="$2"; shift 2 ;;
     --prepare-models)    PREPARE_MODELS=1;   shift ;;
@@ -348,9 +193,6 @@ find_conda
 command -v git &>/dev/null   || die "git not found"
 
 ok "Prerequisites OK  ($("${CONDA_EXE}" --version))"
-
-# ── Step A0: Sync third-party FlashOCC projects ──────────────────────────────
-sync_thirdparty_flashocc_projects
 
 # ── Step A: Use existing models or auto-generate them ───────────────────────
 if [[ -d "$MODEL_DIR" ]] && have_required_ir_files "$MODEL_DIR" && [[ $PREPARE_MODELS -eq 0 ]]; then

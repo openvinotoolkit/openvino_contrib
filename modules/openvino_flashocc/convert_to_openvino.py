@@ -10,8 +10,8 @@ Exports the FlashOCC model to ONNX with a custom FlashOCCBEVPoolV2 op,
 then compiles it with OpenVINO for CPU (or GPU) inference.
 
 Usage:
-    conda activate /path/to/openvino_flashocc/.conda/convert
-    cd <FlashOCC_root>
+    source .venv/bin/activate   # or any env with torch + openvino
+    cd <openvino_flashocc root>
     python convert_to_openvino.py
 
 Prerequisites:
@@ -32,30 +32,31 @@ import os
 import warnings
 import argparse
 
+# Keep PyTorch on CPU; OpenVINO selects the GPU separately.
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
+
 import torch
-import torch.nn as nn
 
 # Ensure project root is importable
 sys.path.insert(0, os.getcwd())
 
-# Register FlashOCC custom modules (BEVDetOCC, heads, ops, etc.)
-import mmdet3d_plugin
+from flashocc import build_flashocc_model, load_config
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 MODEL_VARIANTS = {
     "m0": {
-        "config": "projects/configs/flashocc/flashocc-r50-M0.py",
+        "config": "flashocc/configs/flashocc-r50-M0.py",
         "checkpoint": "checkpoints/flashocc-r50.pth",
         "output_dir": "work_dirs/flashocc-r50-m0/openvino",
     },
     "m1": {
-        "config": "projects/configs/flashocc/flashocc-r50.py",
+        "config": "flashocc/configs/flashocc-r50.py",
         "checkpoint": "checkpoints/flashocc-r50-m1.pth",
         "output_dir": "work_dirs/flashocc-r50-m1/openvino",
     },
 }
 
-DEFAULT_VARIANT = "m1"
+DEFAULT_VARIANT = "m0"
 DEVICE = 'CPU'   # OpenVINO target device
 
 parser = argparse.ArgumentParser(description="FlashOCC ONNX/OpenVINO converter")
@@ -63,10 +64,6 @@ parser.add_argument("--model-variant", type=str, default=DEFAULT_VARIANT, choice
                     help="Model variant: m0 uses flashocc-r50-M0.py + flashocc-r50.pth, m1 uses flashocc-r50.py + flashocc-r50-m1.pth")
 parser.add_argument("--device", type=str, default=DEVICE,
                     help='OpenVINO device (e.g. CPU, GPU, AUTO:GPU,CPU, HETERO:GPU,CPU)')
-parser.add_argument("--onnx-fallback", action="store_true",
-                    help="Use ONNX-native BEV pooling fallback (GPU-friendly, no custom op)")
-parser.add_argument("--gpu-native-bevpool", action="store_true",
-                    help="Use FlashOCCBEVPoolV2 custom op on GPU with custom OpenCL kernel config")
 parser.add_argument("--benchmark-bev-head-only", action="store_true",
                     help="Measure PyTorch FPS for BEV encoder + occupancy head only (excludes image backbone)")
 parser.add_argument("--bev-head-runs", type=int, default=50,
@@ -75,7 +72,7 @@ parser.add_argument("--benchmark-backbone-only", action="store_true",
                     help="Measure PyTorch FPS for image backbone+neck only (excludes view-transform/BEV/occ head)")
 parser.add_argument("--backbone-runs", type=int, default=50,
                     help="Number of timed runs for image backbone+neck benchmark")
-parser.add_argument("--export-mode", type=str, default="single", choices=["single", "split", "both"],
+parser.add_argument("--export-mode", type=str, default="split", choices=["single", "split", "both"],
                     help="Export mode: single=full pipeline only, split=component models only, both=export both")
 parser.add_argument("--split-out-dir", type=str, default="split_f16out",
                     help="Output directory for split IR models (F16 compressed, ready for setup.sh). "
@@ -99,30 +96,24 @@ do_full_export = args.export_mode in ("single", "both")
 do_split_export = args.export_mode in ("split", "both")
 
 DEVICE = args.device
-is_gpu_target = 'GPU' in DEVICE.upper()
-if is_gpu_target and not args.onnx_fallback and not args.gpu_native_bevpool:
-    print("  ⚠ GPU device selected: enabling ONNX fallback because custom FlashOCCBEVPoolV2 is not supported by Intel GPU plugin")
-    args.onnx_fallback = True
-
-if args.onnx_fallback:
-    os.environ["FLASHOCC_ONNX_FALLBACK"] = "1"
-else:
-    os.environ.setdefault("FLASHOCC_ONNX_FALLBACK", "0")
+is_gpu_target = "GPU" in DEVICE.upper()
 
 
 # ── 1. Load model ──────────────────────────────────────────────────────────────
 print("[1/4] Loading model...")
-from mmcv import Config
-from mmdet3d.models import build_model
-import mmcv
-
-cfg   = Config.fromfile(CONFIG_FILE)
-cfg.model.pretrained = None
-model = build_model(cfg.model, test_cfg=cfg.get('test_cfg'))
+cfg = load_config(CONFIG_FILE)
+model_cfg = cfg["model"]
+model_cfg["img_backbone"]["pretrained"] = None
+model = build_flashocc_model(model_cfg, test_cfg=cfg.get("test_cfg"))
 checkpoint = torch.load(CHECKPOINT_FILE, map_location='cpu')
 state_dict = checkpoint.get('state_dict', checkpoint)
-model.load_state_dict(state_dict, strict=False)
+missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
 model.eval()
+
+if missing_keys:
+    print(f"    Missing checkpoint keys: {len(missing_keys)}")
+if unexpected_keys:
+    print(f"    Unexpected checkpoint keys: {len(unexpected_keys)}")
 
 # Disable gradient checkpointing — CheckpointFunction is not ONNX-exportable
 for m in model.modules():
@@ -482,69 +473,23 @@ if not do_full_export:
     print("  Skipping full pipeline compile/benchmark because export-mode=split")
     sys.exit(0)
 
-# Custom extension is required whenever ONNX contains flashocc::FlashOCCBEVPoolV2
-need_custom_extension = not args.onnx_fallback
 import openvino as ov
-
-if need_custom_extension:
-    ext_candidates = [
-        os.path.join(os.getcwd(), 'openvino_extensions', 'bev_pool', 'build_ws', 'libopenvino_bevpool_extension.so'),
-        os.path.join(os.getcwd(), 'openvino_extensions', 'bev_pool', 'build', 'libopenvino_bevpool_extension.so'),
-    ]
-    ext_so = next((p for p in ext_candidates if os.path.exists(p)), None)
-
-    if not ext_so:
-        print("  ✗ FlashOCC extension .so not built yet.")
-        print("    Build it with:")
-        print("      cd openvino_extensions/bev_pool")
-        print("      cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j")
-        print("      # or, when using setup.sh")
-        print("      cmake -B build_ws -DCMAKE_BUILD_TYPE=Release && cmake --build build_ws -j")
-        sys.exit(1)
-
-    core = ov.Core()
-    core.add_extension(ext_so)
-    print(f"  ✓ Loaded FlashOCC extension: {ext_so}")
-else:
-    core = ov.Core()
-    print("  Using ONNX fallback mode (no custom extension required)")
+core = ov.Core()
+print("  Using ONNX fallback mode (no custom extension required)")
 
 try:
     ov_model = core.read_model(ONNX_FILE)
 
-    # FlashOCCBEVPoolV2 now outputs 4D [B,C,Y,X] (Z=1 folded in).
-    # Remove the Squeeze(axis=2) node that immediately follows it in the ONNX
-    # graph, since there is no longer a Z dimension to squeeze.
-    if need_custom_extension:
-        for node in ov_model.get_ops():
-            if node.get_type_name() == 'FlashOCCBEVPoolV2':
-                bevpool_out = node.output(0)
-                for consumer_input in list(bevpool_out.get_target_inputs()):
-                    squeeze_node = consumer_input.get_node()
-                    if squeeze_node.get_type_name() == 'Squeeze':
-                        sq_out = squeeze_node.output(0)
-                        for sq_consumer in list(sq_out.get_target_inputs()):
-                            sq_consumer.replace_source_output(bevpool_out)
-                        print("  ✓ Removed Squeeze(axis=2) following FlashOCCBEVPoolV2 (Z=1 folded into op output)")
-                break
-
-    # Use CPU when the custom op is present: HETERO:GPU,CPU crashes (SIGSEGV)
-    # when the GPU plugin tries to dispatch FlashOCCBEVPoolV2 to CPU fallback.
     compile_target = DEVICE
-    if need_custom_extension and 'GPU' in DEVICE.upper():
-        compile_target = 'CPU'
-        print(f"  Custom op requires CPU evaluate(); compiling on CPU (encoder+bev_pool+trunk)")
     compile_cfg = {'PERFORMANCE_HINT': 'LATENCY'}
     if 'GPU' in DEVICE.upper():
         compile_cfg['INFERENCE_PRECISION_HINT'] = 'f32'
     compiled = core.compile_model(ov_model, compile_target, compile_cfg)
     print("  ✓ Model compiled on", DEVICE)
 
-    # Save IR generated with/without extension for downstream inference scripts.
     ov.save_model(ov_model, IR_XML_FILE)
     print(f"  ✓ IR saved: {IR_XML_FILE}")
 
-    # Benchmark
     import numpy as np, time
     request = compiled.create_infer_request()
     dummy_imgs = np.random.randn(1, 6, 3, 256, 704).astype(np.float32)
@@ -558,15 +503,8 @@ try:
         request.infer({'imgs': dummy_imgs})
     elapsed = (time.time() - t0) / N_RUNS
 
-    if args.gpu_native_bevpool:
-        print(f"\n  OpenVINO {DEVICE} + FlashOCCBEVPoolV2(.so) average latency: {elapsed*1000:.1f} ms  ({1/elapsed:.2f} FPS)")
-    else:
-        print(f"\n  OpenVINO {DEVICE} average latency: {elapsed*1000:.1f} ms  ({1/elapsed:.2f} FPS)")
+    print(f"\n  OpenVINO {DEVICE} average latency: {elapsed*1000:.1f} ms  ({1/elapsed:.2f} FPS)")
 
 except Exception as e:
     print(f"  ✗ OpenVINO compile failed: {e}")
-    if need_custom_extension:
-        print("  Make sure the FlashOCC extension is built and loadable.")
-    else:
-        print("  GPU fallback graph compile failed.")
     raise
