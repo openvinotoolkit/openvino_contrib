@@ -72,19 +72,45 @@ done
   exit 1
 }
 
-# Locate OV libs (from Conda env install) and GPU plugin (from build release dir)
-OV_LIBS_DIR=""
-for py_lib in "${RUNTIME_ENV}/lib/python"*; do
-  [[ -d "$py_lib" ]] || continue
-  candidate="${py_lib}/site-packages/openvino/libs"
-  if [[ -d "$candidate" ]]; then
-    OV_LIBS_DIR="$candidate"
-    break
-  fi
-done
+# Locate OV libs (from runtime Python install) and GPU plugin (from build release dir)
+OV_LIBS_DIR="$(${RUNTIME_PY} - <<'PY'
+import os
+import pathlib
+import openvino
+
+ov_dir = pathlib.Path(openvino.__file__).resolve().parent
+candidates = [
+    ov_dir / "libs",                 # common wheel layout
+    ov_dir.parent / "libs",          # alternate layout
+    ov_dir.parent / "openvino.libs", # some repackaged wheels
+]
+
+for p in candidates:
+    if p.is_dir():
+        print(str(p))
+        break
+PY
+)"
+
+# Fallback scan in case Python-level discovery changes in future builds.
+if [[ -z "$OV_LIBS_DIR" ]]; then
+  for py_lib in "${RUNTIME_ENV}/lib/python"*; do
+    [[ -d "$py_lib" ]] || continue
+    for candidate in \
+      "${py_lib}/site-packages/openvino/libs" \
+      "${py_lib}/site-packages/libs" \
+      "${py_lib}/site-packages/openvino.libs"; do
+      if [[ -d "$candidate" ]]; then
+        OV_LIBS_DIR="$candidate"
+        break 2
+      fi
+    done
+  done
+fi
 
 [[ -n "$OV_LIBS_DIR" ]] || {
-  echo "ERROR: OV libs not found in Conda env site-packages (expected openvino/libs). Re-run setup.sh."
+  echo "ERROR: OpenVINO libs directory not found for runtime env ${RUNTIME_ENV}."
+  echo "  Re-run setup, then verify with: ${RUNTIME_PY} -c 'import openvino, pathlib; print(pathlib.Path(openvino.__file__).resolve())'"
   exit 1
 }
 
