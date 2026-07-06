@@ -25,11 +25,8 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 _REPO_ROOT = Path(__file__).resolve().parent
-_PROJECTS_DIR = _REPO_ROOT / "projects"
-for _p in (_REPO_ROOT, _PROJECTS_DIR):
-    _ps = str(_p)
-    if _ps not in sys.path:
-        sys.path.insert(0, _ps)
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 import numpy as np
 import openvino as ov
