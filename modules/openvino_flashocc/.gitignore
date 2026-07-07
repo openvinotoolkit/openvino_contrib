@@ -14,3 +14,4 @@ debug_output/
 .cache/
 openvino_extensions/bev_pool/build*/
 .venv_convert/
+split_f16out/
