@@ -1,3 +1,7 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+# Reimplementation of FlashOCC under Apache-2.0-compatible terms.
+
 import torch
 import torch.nn as nn
 
