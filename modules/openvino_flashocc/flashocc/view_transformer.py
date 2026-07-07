@@ -2,8 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Reimplementation of FlashOCC under Apache-2.0-compatible terms.
 
-import os
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

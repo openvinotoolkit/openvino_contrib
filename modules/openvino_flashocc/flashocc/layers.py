@@ -2,8 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Reimplementation of FlashOCC under Apache-2.0-compatible terms.
 
-import functools
-
 import torch.nn as nn
 
 
@@ -138,7 +136,3 @@ class ConvModule(nn.Module):
         if self.activate is not None:
             x = self.activate(x)
         return x
-
-
-def no_checkpoint(function, *args, **kwargs):
-    return function(*args, **kwargs)
