@@ -5,6 +5,13 @@ SPDX-License-Identifier: Apache-2.0 -->
 
 OpenVINO-enabled FlashOCC workflow for 3D occupancy prediction.
 
+## Upstream Attribution
+
+This standalone implementation is based on concepts and architecture from the original FlashOCC project.
+Thanks to the FlashOCC authors and contributors:
+
+- Upstream project: https://github.com/Yzichen/FlashOCC
+
 This module provides:
 
 - Model export from PyTorch to OpenVINO IR via [convert_to_openvino.py](./convert_to_openvino.py)
