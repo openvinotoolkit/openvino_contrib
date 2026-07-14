@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 #include "interpolate_nearest.hpp"
@@ -158,7 +158,7 @@ void InterpolateNearestOp::Execute(const InferenceRequestContext& context,
                     dst);
 }
 
-CudaGraphCompatibility InterpolateNearestOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility InterpolateNearestOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 template <typename T>
 static auto size_in_bytes(const std::vector<T>& v) noexcept {

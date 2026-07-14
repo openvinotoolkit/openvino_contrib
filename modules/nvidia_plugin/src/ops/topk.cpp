@@ -1,4 +1,4 @@
-// Copyright (C) 2022-2023 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -172,7 +172,7 @@ void TopKOp::Execute(const InferenceRequestContext& context,
                static_cast<const void*>(kernel_param.get()));
 }
 
-CudaGraphCompatibility TopKOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility TopKOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 void TopKOp::InitSharedImmutableWorkbuffers(const Buffers& buffers) {
     OPENVINO_ASSERT(buffers.size() == 1, "Node name: ", GetName());

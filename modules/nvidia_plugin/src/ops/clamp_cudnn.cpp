@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 #include "clamp_cudnn.hpp"
@@ -96,7 +96,7 @@ void ClampCuDnnOp::Execute(const InferenceRequestContext& context,
                                                     outputTensors[0].get());
 }
 
-CudaGraphCompatibility ClampCuDnnOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility ClampCuDnnOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 void ClampCuDnnOp::InitSharedImmutableWorkbuffers(const Buffers& buffers) {
     switch (data_type_) {

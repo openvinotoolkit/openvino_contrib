@@ -1,4 +1,4 @@
-// Copyright (C) 2022-2023 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -84,7 +84,7 @@ void FusedConvolutionCuDnnDecomposed::Execute(const InferenceRequestContext& con
     }
 }
 
-CudaGraphCompatibility FusedConvolutionCuDnnDecomposed::GetCudaGraphCompatibility() const {
+CudaGraphCompatibility FusedConvolutionCuDnnDecomposed::GetCudaGraphCompatibilityImpl() const {
     return CudaGraphCompatibility::FULL;
 }
 

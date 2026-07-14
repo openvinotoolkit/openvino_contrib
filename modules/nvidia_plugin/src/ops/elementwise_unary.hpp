@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -46,7 +46,7 @@ public:
         (*kernel_)(stream.get(), inputTensors[0].get(), outputTensors[0].get());
     }
 
-    CudaGraphCompatibility GetCudaGraphCompatibility() const override { return CudaGraphCompatibility::FULL; }
+    CudaGraphCompatibility GetCudaGraphCompatibilityImpl() const override { return CudaGraphCompatibility::FULL; }
 
 private:
     std::optional<Kernel> kernel_;

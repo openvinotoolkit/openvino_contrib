@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 #include "cudnn_tensor_op_base.hpp"
@@ -166,7 +166,7 @@ void CuDnnTensorOpBase::Execute(const InferenceRequestContext& context,
                                                     outputTensors[0].get());
 }
 
-CudaGraphCompatibility CuDnnTensorOpBase::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility CuDnnTensorOpBase::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 CuDnnTensorOpBase::IoParams::IoParams(const ov::Node& node, const Type& io_type, int index)
     : type_(convertDataType<cudnnDataType_t>(io_type == Type::INPUT ? node.get_input_element_type(index)

@@ -1,4 +1,4 @@
-// Copyright (C) 2022-2023 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -45,7 +45,7 @@ FakeQuantizeOp::FakeQuantizeOp(const CreationContext &context,
         convertDataType<ov::nvidia_gpu::kernel::Type_t>(element_type), output_size, max_threads_per_block, levels};
 }
 
-CudaGraphCompatibility FakeQuantizeOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility FakeQuantizeOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 void FakeQuantizeOp::Execute(const InferenceRequestContext &context,
                              Inputs inputTensors,

@@ -1,3 +1,6 @@
+// Copyright (C) 2018-2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 rootProject.name = 'openvino'
 
 if (build_java_samples.toBoolean()) {

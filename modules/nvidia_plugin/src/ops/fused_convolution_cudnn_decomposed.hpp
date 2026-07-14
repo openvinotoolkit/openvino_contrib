@@ -1,4 +1,4 @@
-// Copyright (C) 2022-2023 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -37,7 +37,7 @@ public:
                  Outputs outputTensors,
                  const Workbuffers&) const override;
 
-    CudaGraphCompatibility GetCudaGraphCompatibility() const override;
+    CudaGraphCompatibility GetCudaGraphCompatibilityImpl() const override;
     void InitSharedImmutableWorkbuffers(const IOperationExec::Buffers&) override {}
     WorkbufferRequest GetWorkBufferRequest() const override;
 

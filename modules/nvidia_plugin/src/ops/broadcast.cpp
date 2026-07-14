@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 #include "broadcast.hpp"
@@ -65,7 +65,7 @@ void BroadcastOp::Execute(const InferenceRequestContext& context,
     (*kernel_)(stream, inputs[0].get(), broadcast_params_->mapper(workbuffers.immutable_buffers), outputs[0].get());
 }
 
-CudaGraphCompatibility BroadcastOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility BroadcastOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 WorkbufferRequest BroadcastOp::GetWorkBufferRequest() const { return {immutable_buffer_sizes_, {}}; }
 

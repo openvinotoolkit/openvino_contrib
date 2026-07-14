@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -58,7 +58,7 @@ void ReduceOp::Execute(const InferenceRequestContext& context,
                                                         outputTensors[0]);
 }
 
-CudaGraphCompatibility ReduceOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility ReduceOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 }  // namespace nvidia_gpu
 }  // namespace ov

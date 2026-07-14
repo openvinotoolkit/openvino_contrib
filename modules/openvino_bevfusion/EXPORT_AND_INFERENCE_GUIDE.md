@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # BEVFusion Export and Inference Guide
 
 This guide explains how to export BEVFusion models to OpenVINO and run inference with OpenCL acceleration on Intel GPUs.

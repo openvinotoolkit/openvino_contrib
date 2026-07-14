@@ -1,4 +1,4 @@
-// Copyright (C) 2022-2023 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 #include "interpolate_cubic.hpp"
@@ -68,7 +68,7 @@ void InterpolateCubicOp::Execute(const InferenceRequestContext& context,
     (*interpolate_)(context.getThreadContext().stream().get(), inputs[0].get(), outputs[0].get());
 }
 
-CudaGraphCompatibility InterpolateCubicOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility InterpolateCubicOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 WorkbufferRequest InterpolateCubicOp::GetWorkBufferRequest() const {
     return {interpolate_->immutableWorkbufferSizes(), {}};

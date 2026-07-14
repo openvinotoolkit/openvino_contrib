@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -99,7 +99,7 @@ void MvnOp::Execute(const InferenceRequestContext& context,
                        {tensor_desc_, outputTensors[0]});
 }
 
-CudaGraphCompatibility MvnOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility MvnOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 void MvnOp::Context::reduceMean(ConstTensor input, Tensor output) {
     context.getThreadContext().dnnHandle().reduceTensor(op.reduce_mean_desc_,

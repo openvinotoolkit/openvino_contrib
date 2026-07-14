@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -59,7 +59,7 @@ void ActivationForwardCuDnnOpBase::Execute(const InferenceRequestContext& contex
                                                              outputTensors[0].get());
 }
 
-CudaGraphCompatibility ActivationForwardCuDnnOpBase::GetCudaGraphCompatibility() const {
+CudaGraphCompatibility ActivationForwardCuDnnOpBase::GetCudaGraphCompatibilityImpl() const {
     return CudaGraphCompatibility::FULL;
 }
 
