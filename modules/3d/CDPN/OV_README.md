@@ -5,18 +5,26 @@ SPDX-License-Identifier: Apache-2.0
 
 # Note
 
-Run the following commands to setup the CDPN repo with the required changes for OpenVINO inference.
+Run the setup script from this directory to prepare the `cdpn_repo` for OpenVINO inference:
 
+```bash
+bash setup.sh
+```
+
+It clones the upstream CDPN repo (pinned to commit `625f9a8`), applies `cdpn_changes.patch`, and copies the OpenVINO-specific files from `copy_files_to_cdpn_repo.txt`.
+<details>
+<summary>Manual steps (equivalent to setup.sh)</summary>
 
 ```bash
 # in openvino_contrib/modules/3d/CDPN/
 git clone https://github.com/LZGMatrix/CDPN_ICCV2019_ZhigangLi cdpn_repo
 cd cdpn_repo
 git checkout 625f9a8
-patch -p1 < ../cdpn_changes.patch
-grep -v -E '^\s*(#|$)' ../copy_files_to_cdpn_repo.txt | xargs -I {} sh -c 'mkdir -p "$(dirname "./{}")" && cp "../{}" "./{}"'
-pip install --force-reinstall -r ov_requirements.txt
+patch -p1 --forward < ../cdpn_changes.patch  # strip the top-level a/ and b/ prefixes from the diff paths
+grep -v -E '^[[:space:]]*(#|$)' ../copy_files_to_cdpn_repo.txt | while IFS= read -r f; do mkdir -p "$(dirname "./$f")" && cp "../$f" "./$f"; done
+python -m pip install --upgrade -r ov_requirements.txt
 ```
+</details>
 -----------------------
 
 <details>

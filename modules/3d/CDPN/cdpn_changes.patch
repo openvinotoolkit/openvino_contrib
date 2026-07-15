@@ -1,7 +1,7 @@
 # Copyright (C) 2018-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
---- /tmp/cdpn_diff_work/cdpn_repo/.gitignore	2026-06-29 04:59:45.384116198 +0000
-+++ CDPN/.gitignore	2026-06-11 08:15:00.277754244 +0000
+--- a/.gitignore	2026-06-29 04:59:45.384116198 +0000
++++ b/.gitignore	2026-07-15 08:15:00.277754244 +0000
 @@ -127,9 +127,10 @@
  # Pyre type checker
  .pyre/
@@ -14,8 +14,8 @@
  dataset_cache
  dataset_preparation
 +checkpoints
---- /tmp/cdpn_diff_work/cdpn_repo/lib/config.py	2026-06-29 04:59:45.390789913 +0000
-+++ CDPN/lib/config.py	2026-06-19 06:28:26.972079297 +0000
+--- a/lib/config.py	2026-06-29 04:59:45.390789913 +0000
++++ b/lib/config.py	2026-07-15 06:28:26.972079297 +0000
 @@ -144,8 +144,7 @@
  def update_config_from_file(_config, config_file, check_necessity=True):
      config = copy.deepcopy(_config)
@@ -35,8 +35,8 @@
          config_file = config.pytorch.cfg
          config = update_config_from_file(config, config_file, check_necessity=False) # update arguments from config file
          # complement config regarding dataset
---- /tmp/cdpn_diff_work/cdpn_repo/lib/model.py	2026-06-29 04:59:45.390997169 +0000
-+++ CDPN/lib/model.py	2026-06-11 08:15:00.278175170 +0000
+--- a/lib/model.py	2026-06-29 04:59:45.390997169 +0000
++++ b/lib/model.py	2026-07-15 08:15:00.278175170 +0000
 @@ -3,7 +3,15 @@
  import torch
  import torch.nn as nn
@@ -54,8 +54,8 @@
  import os, sys
  
  cur_dir = os.path.dirname(os.path.abspath(__file__))
---- /tmp/cdpn_diff_work/cdpn_repo/lib/models/resnet_trans_head.py	2026-06-29 04:59:45.391059785 +0000
-+++ CDPN/lib/models/resnet_trans_head.py	2026-06-11 08:15:00.278175170 +0000
+--- a/lib/models/resnet_trans_head.py	2026-06-29 04:59:45.391059785 +0000
++++ b/lib/models/resnet_trans_head.py	2026-07-15 08:15:00.278175170 +0000
 @@ -45,14 +45,14 @@
              with torch.no_grad():
                  for i, l in enumerate(self.features):
