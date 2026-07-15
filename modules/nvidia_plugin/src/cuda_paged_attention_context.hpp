@@ -29,14 +29,17 @@ class PagedAttentionContext {
 public:
     /// Returns a device buffer of at least `bytes` for the cache identified by `id`,
     /// allocating (and zero-initializing) it on first use or reallocating on growth.
-    void* get_or_allocate(BufferID id, std::size_t bytes) {
+    /// The zero-init runs on the caller's per-request `stream` (never the default
+    /// stream), so it neither serializes concurrent requests device-wide nor races
+    /// the paged-attention kernels that run on that same stream.
+    void* get_or_allocate(BufferID id, std::size_t bytes, const CUDA::Stream& stream) {
         auto it = caches_.find(id);
         if (it == caches_.end() || it->second.bytes < bytes) {
             Entry e;
             e.bytes = bytes;
             e.alloc = CUDA::DefaultStream::stream().malloc(std::max(bytes, std::size_t{1}));
             if (bytes > 0) {
-                CUDA::DefaultStream::stream().memset(e.alloc, 0, bytes);
+                stream.memset(CUDA::DevicePointer<void*>{e.alloc.get()}, 0, bytes);
             }
             it = caches_.insert_or_assign(id, std::move(e)).first;
         }

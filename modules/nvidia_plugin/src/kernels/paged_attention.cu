@@ -161,6 +161,9 @@ void reshape_and_cache(cudaStream_t stream, Type_t elem_type, const void* key, c
     if (head_size > kMaxPerLane * 32 || v_head_size > kMaxPerLane * 32) {
         throw_ov_exception("PagedAttention: head_size/v_head_size must be <= 256");
     }
+    // Clear any stale sticky error left by earlier launches so the post-launch
+    // check below reports only THIS kernel's launch status.
+    (void)cudaGetLastError();
     switch (elem_type) {
         case Type_t::f32:
             launch_reshape_and_cache<float>(stream, key, value, key_cache, value_cache, slot_mapping, num_tokens,
@@ -174,7 +177,7 @@ void reshape_and_cache(cudaStream_t stream, Type_t elem_type, const void* key, c
             throw_ov_exception(fmt::format("PagedAttention reshape_and_cache: unsupported element type {}",
                                            static_cast<int>(elem_type)));
     }
-    throwIfError(cudaPeekAtLastError());
+    throwIfError(cudaGetLastError());
 }
 
 void paged_attention(cudaStream_t stream, Type_t elem_type, const void* query, const void* key_cache,
@@ -188,6 +191,8 @@ void paged_attention(cudaStream_t stream, Type_t elem_type, const void* query, c
     if (params.num_kv_heads <= 0 || params.num_heads % params.num_kv_heads != 0) {
         throw_ov_exception("PagedAttention: num_heads must be a multiple of num_kv_heads");
     }
+    // Clear any stale sticky error left by earlier launches (see reshape_and_cache).
+    (void)cudaGetLastError();
     switch (elem_type) {
         case Type_t::f32:
             launch_paged_attention<float>(stream, query, key_cache, value_cache, block_indices, block_indices_begins,
@@ -203,7 +208,7 @@ void paged_attention(cudaStream_t stream, Type_t elem_type, const void* query, c
             throw_ov_exception(
                 fmt::format("PagedAttention: unsupported element type {}", static_cast<int>(elem_type)));
     }
-    throwIfError(cudaPeekAtLastError());
+    throwIfError(cudaGetLastError());
 }
 
 }  // namespace kernel
