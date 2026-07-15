@@ -14,7 +14,7 @@ UPSTREAM_URL="https://github.com/LZGMatrix/CDPN_ICCV2019_ZhigangLi"
 UPSTREAM_COMMIT="625f9a8"
 PATCH="$HERE/cdpn_changes.patch"
 COPY_LIST="$HERE/copy_files_to_cdpn_repo.txt"
-REQUIREMENTS="$HERE/ov_requirements.txt"
+REQUIREMENTS="$HERE/requirements.txt"
 
 cd "$HERE"
 
@@ -44,5 +44,11 @@ grep -v -E '^[[:space:]]*(#|$)' "$COPY_LIST" | while IFS= read -r f; do
   cp "$HERE/$f" "$REPO_DIR/$f"
 done
 
-# 5. Install Python requirements.
+# 5. Install torch/torchvision from the XPU wheel index.
+python -m pip install --upgrade \
+  torch==2.10.0 \
+  torchvision==0.25.0 \
+  --index-url https://download.pytorch.org/whl/xpu
+
+# 6. Install the remaining Python requirements.
 python -m pip install --upgrade -r "$REQUIREMENTS"
