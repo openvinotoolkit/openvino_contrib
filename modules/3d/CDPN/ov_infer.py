@@ -43,7 +43,7 @@ Usage:
 
     # Standalone test (E2E model with extension):
     python ov_infer.py --model checkpoints/cdpn_stage3_e2e.xml \
-        --extension ov_plugins/build/cdpn_cpu_extension.so \
+        --extension ov_plugins/build/cdpn_extension.so \
         --dataset_dir dataset/lm_full --gpu
 """
 
@@ -83,7 +83,7 @@ class CdpnOVInference:
     camera_matrix : np.ndarray or None
         3x3 camera intrinsics. Defaults to LINEMOD K.
     extension_path : str or None
-        Path to the CDPN extension .so (e.g. cdpn_cpu_extension.so).
+        Path to the CDPN extension .so (e.g. cdpn_extension.so).
         Required for E2E models.
     inference_precision : str
         GPU inference precision hint: 'f32', 'f16', or 'none'. Ignored on CPU.
