@@ -507,8 +507,8 @@ void DynamicOperation::executePagedAttention(const InferenceRequestContext& cont
     // Persistent device caches, sized from the (uploaded) cache Parameter shapes.
     const std::size_t kc_bytes = ov::shape_size(inputShape(3)) * elem_type.size();
     const std::size_t vc_bytes = ov::shape_size(inputShape(4)) * elem_type.size();
-    void* key_cache = paCtx.get_or_allocate(input_ids_[3].GetBuffer().GetId(), kc_bytes);
-    void* value_cache = paCtx.get_or_allocate(input_ids_[4].GetBuffer().GetId(), vc_bytes);
+    void* key_cache = paCtx.get_or_allocate(input_ids_[3].GetBuffer().GetId(), kc_bytes, stream);
+    void* value_cache = paCtx.get_or_allocate(input_ids_[4].GetBuffer().GetId(), vc_bytes, stream);
 
     // Upload slot_mapping / row_to_subseq.
     const std::size_t idx_bytes = static_cast<std::size_t>(num_tokens) * sizeof(int32_t);
