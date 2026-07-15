@@ -2,8 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # CDPN Dependencies
-torch==2.10.0
-torchvision==0.25.0 --index-url https://download.pytorch.org/whl/xpu
 numpy==1.26.4
 opencv-python==4.11.0.86
 scipy==1.17.1

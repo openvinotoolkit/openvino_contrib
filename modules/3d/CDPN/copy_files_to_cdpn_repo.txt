@@ -15,4 +15,4 @@ ov_plugins/cdpn_gpu/src/kernel_selector/cl_kernels/cdpn_preprocess_gpu.cl
 ov_plugins/CMakeLists.txt
 xpu_infer.py
 OV_README.md
-ov_requirements.txt
+requirements.txt
