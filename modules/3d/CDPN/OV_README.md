@@ -4,7 +4,20 @@ SPDX-License-Identifier: Apache-2.0
 -->
 
 # Note
+_This work depends on [CDPN_ICCV2019_ZhigangLi](https://github.com/LZGMatrix/CDPN_ICCV2019_ZhigangLi) (commit 625f9a8)._
 
+Can be cited as:
+
+```bibtex
+@inproceedings{li2019cdpn,
+  title={CDPN: Coordinates-based disentangled pose network for real-time rgb-based 6-dof object pose estimation},
+  author={Li, Zhigang and Wang, Gu and Ji, Xiangyang},
+  booktitle={Proceedings of the IEEE/CVF international conference on computer vision},
+  pages={7678--7687},
+  year={2019}
+}
+```
+-----------------------
 Run the setup script from this directory to prepare the `cdpn_repo` for OpenVINO inference:
 
 ```bash
