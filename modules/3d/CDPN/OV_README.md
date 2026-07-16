@@ -35,6 +35,7 @@ cd cdpn_repo
 git checkout 625f9a8
 patch -p1 --forward < ../cdpn_changes.patch  # strip the top-level a/ and b/ prefixes from the diff paths
 grep -v -E '^[[:space:]]*(#|$)' ../copy_files_to_cdpn_repo.txt | while IFS= read -r f; do mkdir -p "$(dirname "./$f")" && cp "../$f" "./$f"; done
+python -m pip install --upgrade torch==2.10.0 torchvision==0.25.0 --index-url https://download.pytorch.org/whl/xpu
 python -m pip install --upgrade -r requirements.txt
 ```
 </details>
