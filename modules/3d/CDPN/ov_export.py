@@ -1685,17 +1685,17 @@ if __name__ == '__main__':
     parser.add_argument('--verify', action='store_true',
                         help='Numerical verification after export')
     parser.add_argument('--extnn', action='store_true',
-                        help='Also export EXTNN model with pre/post processing without PnP')
+                        help='Export EXTNN model with pre/post processing without PnP')
     parser.add_argument('--e2e', action='store_true',
-                        help='Also export E2E model with custom extension ops with PnP')
+                        help='Export E2E model with custom extension ops with PnP')
     parser.add_argument('--fp16_nn', action='store_true',
-                        help='Also export NN mixed FP16 IR')
+                        help='Export NN mixed FP16 IR')
     parser.add_argument('--fp16_extnn', action='store_true',
-                        help='Also export EXTNN mixed FP16 IR (auto-enables the EXTNN export)')
+                        help='Export EXTNN mixed FP16 IR')
     parser.add_argument('--fp16_e2e', action='store_true',
-                        help='Also export E2E mixed FP16 IR (auto-enables the E2E export)')
+                        help='Export E2E mixed FP16 IR')
     parser.add_argument('--int8_nn', action='store_true',
-                        help='Also export NN INT8 IR via NNCF PTQ')
+                        help='Export NN INT8 IR via NNCF PTQ')
     parser.add_argument('--dataset_dir', type=str, default=None,
                         help='Dataset dir used by config and NNCF calibration')
     parser.add_argument('--int8_subset_size', type=int, default=300,
