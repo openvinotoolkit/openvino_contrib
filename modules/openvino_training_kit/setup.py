@@ -31,7 +31,7 @@ setup(
             "intel_extension_for_pytorch>=2.1.0"  # For CPU (Linux/Windows)
         ],
         "ipex-xpu": [
-            "torch==2.7.0",
+            "torch==2.13.0",
             "torchvision==0.22.0", 
             "torchaudio==2.7.0",
             "intel-extension-for-pytorch==2.7.10+xpu"  # For XPU (Windows Intel GPU)
