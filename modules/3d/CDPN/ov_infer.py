@@ -25,8 +25,6 @@ The EXTNN model (cdpn_stage3_extnn.xml/bin) contains:
 
 The E2E model (cdpn_stage3_e2e.xml/bin) additionally contains:
   - CdpnPreprocess   - image crop + resize + normalise (fused custom op)
-  - CdpnCoordDenorm  - coordinate denormalisation (custom op)
-  - CdpnTransDecode  - translation head decoding (custom op)
   - CdpnPnpSolve     - DLT PnP + RANSAC (custom op)
   - Pose composition - [R|T] concat via standard opset
   Full CPU or full GPU execution - zero host-side compute in the E2E path.
@@ -160,6 +158,7 @@ class CdpnOVInference:
 
         self.compiled = self.core.compile_model(self.model, device, config)
 
+        # One reusable request per instance; not thread-safe, use one instance per thread.
         self._infer_request = self.compiled.create_infer_request()
 
         # Detect model type by checking output names
@@ -740,8 +739,14 @@ def main():
             raise RuntimeError('--int8_nn expects a NN model, detected {}'.format(
                 infer.model_type))
 
-        if infer.int8_quantization_points <= 0:
-            raise RuntimeError('--int8_nn expects an INT8 model with quantization points')
+        # An INT8 NN-only export carries a fixed number of INT8 quantization
+        # points. The model matches only when its count equals that number.
+        EXPECTED_INT8_QUANTIZATION_POINTS = 57
+        if infer.int8_quantization_points != EXPECTED_INT8_QUANTIZATION_POINTS:
+            raise RuntimeError(
+                '--int8_nn expects an INT8 model with {} quantization points, '
+                'found {}. The model does not match the expected INT8 export.'.format(
+                    EXPECTED_INT8_QUANTIZATION_POINTS, infer.int8_quantization_points))
 
         print('INT8 NN accuracy check: {} INT8 quantization points'.format(
             infer.int8_quantization_points))
