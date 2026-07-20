@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 #include "pad.hpp"
@@ -58,7 +58,7 @@ void PadOp::Execute(const InferenceRequestContext& context,
             inputTensors[InputIndex::kPadValue].get());
 }
 
-CudaGraphCompatibility PadOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility PadOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 WorkbufferRequest PadOp::GetWorkBufferRequest() const {
     auto rank = src_shape_.size();

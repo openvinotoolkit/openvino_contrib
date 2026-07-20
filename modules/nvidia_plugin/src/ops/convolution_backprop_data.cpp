@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -43,7 +43,7 @@ void ConvBackpropDataOp<T>::Execute(const InferenceRequestContext& context,
 }
 
 template <typename T>
-CudaGraphCompatibility ConvBackpropDataOp<T>::GetCudaGraphCompatibility() const {
+CudaGraphCompatibility ConvBackpropDataOp<T>::GetCudaGraphCompatibilityImpl() const {
     return CudaGraphCompatibility::FULL;
 }
 

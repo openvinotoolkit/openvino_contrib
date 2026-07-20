@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+
 
 # [OpenVINO™ Toolkit](https://01.org/openvinotoolkit) - NVIDIA GPU plugin
 
@@ -9,7 +14,7 @@ OpenVINO™ NVIDIA GPU plugin is supported and validated on the following platfo
 
 OS                     | GPU                   | Driver               |
 ---------------------- | --------------------- |--------------------- |
-Ubuntu* 20.04 (64-bit) | NVIDIA Quadro RTX 4000| 520.61.05            |
+Ubuntu* 22.04 (64-bit) | NVIDIA Quadro RTX 4000| 520.61.05            |
 
 ## Distribution
 OpenVINO™ NVIDIA GPU plugin is not included into Intel® Distribution of OpenVINO™. To use the plugin, it should be built from source code.

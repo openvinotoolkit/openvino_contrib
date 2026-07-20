@@ -1,4 +1,4 @@
-// Copyright (C) 2022-2023 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 #include "scatter_nd_update.hpp"
@@ -99,7 +99,7 @@ void ScatterNDUpdateOp::Execute(const InferenceRequestContext& context,
                outputs[0].get());
 }
 
-CudaGraphCompatibility ScatterNDUpdateOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility ScatterNDUpdateOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 template <typename T>
 static auto size_in_bytes(const std::vector<T>& v) noexcept {

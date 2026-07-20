@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 #include "logical_not.hpp"
@@ -36,7 +36,7 @@ void LogicalNotOp::Execute(const InferenceRequestContext& context,
     throwIfError(cudaPeekAtLastError());
 }
 
-CudaGraphCompatibility LogicalNotOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility LogicalNotOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 OPERATION_REGISTER(LogicalNotOp, LogicalNot);
 
