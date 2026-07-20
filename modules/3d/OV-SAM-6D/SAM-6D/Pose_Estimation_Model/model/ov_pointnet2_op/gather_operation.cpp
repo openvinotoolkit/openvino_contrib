@@ -1,5 +1,7 @@
 // Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
+// Portions of this file are adapted from the MIT-licensed PointNet2 kernels
+// by Erik Wijmans and Charles R. Qi. See third-party-programs.txt.
 
 #include "gather_operation.hpp"
 #include <cmath>

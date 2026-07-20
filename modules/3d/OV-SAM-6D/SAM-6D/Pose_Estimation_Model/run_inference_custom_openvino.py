@@ -10,18 +10,19 @@ import random
 
 import numpy as np
 import cv2
-import heapq
-from PIL import Image
 
 import torch
 from openvino import Core
 import openvino as ov
 
-from utils.data_utils import load_im, get_bbox, get_point_cloud_from_depth, get_resize_rgb_choose
-from utils.draw_utils import draw_detections
-
-import pycocotools.mask as cocomask
 import trimesh
+from common_infer_utils import (
+    _get_template as shared_get_template,
+    get_templates as shared_get_templates,
+    get_test_data as shared_get_test_data,
+    load_yaml_config,
+    visualize as shared_visualize,
+)
 
 from eval_utils import evaluate_and_print_ar, load_symmetries
 
@@ -202,7 +203,7 @@ def get_parser():
     parser.add_argument("--topk_ism_score", type=int, default=3)
     parser.add_argument("--gt_path", type=str, default=default_gt_path)
     parser.add_argument("--models_info_path", type=str, default=default_models_info_path)
-    parser.add_argument("--seed", type=int, default=None,
+    parser.add_argument("--seed", type=int, default=1,
                         help="RNG seed for deterministic template/model/observed point sampling "
                              "(default: rd_seed from config)")
     parser.add_argument("--skip_vsd", action="store_true")
@@ -211,19 +212,7 @@ def get_parser():
 
 def init():
     args = get_parser()
-    import yaml
-    with open(args.config, 'r') as f:
-        config_data = yaml.safe_load(f)
-
-    class Config:
-        def __init__(self, data):
-            for key, value in data.items():
-                if isinstance(value, dict):
-                    setattr(self, key, Config(value))
-                else:
-                    setattr(self, key, value)
-
-    cfg = Config(config_data)
+    cfg = load_yaml_config(args.config)
     cfg.device = args.device
     cfg.precision = args.precision
     cfg.output_dir = args.output_dir
@@ -243,158 +232,30 @@ def init():
 
 
 def visualize(rgb, pred_rot, pred_trans, model_points, K, save_path):
-    img = draw_detections(rgb, pred_rot, pred_trans, model_points, K, color=(255, 0, 0))
-    img = Image.fromarray(np.uint8(img))
-    img.save(save_path)
-    prediction = Image.open(save_path)
-    rgb = Image.fromarray(np.uint8(rgb))
-    img = np.array(img)
-    concat = Image.new('RGB', (img.shape[1] + prediction.size[0], img.shape[0]))
-    concat.paste(rgb, (0, 0))
-    concat.paste(prediction, (img.shape[1], 0))
-    return concat
+    return shared_visualize(rgb, pred_rot, pred_trans, model_points, K, save_path)
 
 
 def _get_template_np(path, cfg, tem_index=1):
-    rgb_path = os.path.join(path, 'rgb_' + str(tem_index) + '.png')
-    mask_path = os.path.join(path, 'mask_' + str(tem_index) + '.png')
-    xyz_path = os.path.join(path, 'xyz_' + str(tem_index) + '.npy')
-
-    rgb = cv2.imread(rgb_path, cv2.IMREAD_UNCHANGED).astype(np.uint8)
-    xyz = np.load(xyz_path).astype(np.float32) / 1000.0
-    mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE).astype(np.uint8) == 255
-
-    rows = np.any(mask, axis=1)
-    cols = np.any(mask, axis=0)
-    y1, y2 = np.where(rows)[0][[0, -1]]
-    x1, x2 = np.where(cols)[0][[0, -1]]
-    mask = mask[y1:y2, x1:x2]
-
-    rgb = rgb[:, :, ::-1][y1:y2, x1:x2, :]
-    if cfg.rgb_mask_flag:
-        rgb = rgb * (mask[:, :, None] > 0).astype(np.uint8)
-
-    rgb = cv2.resize(rgb, (cfg.img_size, cfg.img_size), interpolation=cv2.INTER_LINEAR)
-    rgb = rgb.astype(np.float32) / 255.0
-    rgb = (rgb - np.array([0.485, 0.456, 0.406])) / np.array([0.229, 0.224, 0.225])
-    rgb = rgb.transpose(2, 0, 1)
-
-    xyz = xyz[y1:y2, x1:x2, :].reshape((-1, 3))
-    choose = (mask > 0).astype(np.float32).flatten().nonzero()[0]
-    if len(choose) <= cfg.n_sample_template_point:
-        choose_idx = np.random.choice(np.arange(len(choose)), cfg.n_sample_template_point)
-    else:
-        choose_idx = np.random.choice(np.arange(len(choose)), cfg.n_sample_template_point, replace=False)
-    choose = choose[choose_idx]
-    xyz = xyz[choose, :]
-
-    h, w = y2 - y1, x2 - x1
-    scale_h, scale_w = cfg.img_size / h, cfg.img_size / w
-    choose_y = (choose // w).astype(np.float32) * scale_h
-    choose_x = (choose % w).astype(np.float32) * scale_w
-    rgb_choose = (choose_y * cfg.img_size + choose_x).astype(np.int32)
-
-    return rgb, rgb_choose, xyz
+    return shared_get_template(path, cfg, device=None, tem_index=tem_index, backend="numpy")
 
 
 def get_templates_np(path, cfg):
-    n_template_view = cfg.n_template_view
-    all_tem, all_tem_choose, all_tem_pts = [], [], []
-    total_nView = 42
-    for v in range(n_template_view):
-        i = int(total_nView / n_template_view * v)
-        tem, tem_choose, tem_pts = _get_template_np(path, cfg, i)
-        all_tem.append(tem)                          # (3, H, W)
-        all_tem_choose.append(tem_choose)            # (n_sample_point,)
-        all_tem_pts.append(np.expand_dims(tem_pts, axis=0))  # (1, n_sample_point, 3)
-    return all_tem, all_tem_pts, all_tem_choose
+    return shared_get_templates(path, cfg, backend="numpy")
 
 
 def get_test_data_np(rgb_path, depth_path, cam_path, cad_path, seg_path, det_score_thresh, cfg, topk):
-    dets = []
-    with open(seg_path) as f:
-        dets_ = json.load(f)
-    if dets_:
-        top_k_dets = heapq.nlargest(topk, dets_, key=lambda det: det['score'])
-        for det in top_k_dets:
-            if det['score'] > det_score_thresh:
-                dets.append(det)
-    del dets_
-
-    cam_info = json.load(open(cam_path))
-    K = np.array(cam_info['cam_K']).reshape(3, 3)
-
-    whole_image = load_im(rgb_path).astype(np.uint8)
-    if len(whole_image.shape) == 2:
-        whole_image = np.concatenate([whole_image[:, :, None]] * 3, axis=2)
-    whole_depth = load_im(depth_path).astype(np.float32) * cam_info['depth_scale'] / 1000.0
-    whole_pts = get_point_cloud_from_depth(whole_depth, K)
-
-    mesh = trimesh.load_mesh(cad_path)
-    model_points = mesh.sample(cfg.n_sample_model_point).astype(np.float32) / 1000.0
-    radius = np.max(np.linalg.norm(model_points, axis=1))
-
-    all_rgb, all_cloud, all_rgb_choose, all_score, all_dets = [], [], [], [], []
-    for inst in dets:
-        seg = inst['segmentation']
-        score = inst['score']
-        h, w = seg['size']
-        try:
-            rle = cocomask.frPyObjects(seg, h, w)
-        except:
-            rle = seg
-        mask = cocomask.decode(rle)
-        mask = np.logical_and(mask > 0, whole_depth > 0)
-        if np.sum(mask) > 32:
-            bbox = get_bbox(mask)
-            y1, y2, x1, x2 = bbox
-        else:
-            continue
-        mask = mask[y1:y2, x1:x2]
-        choose = mask.astype(np.float32).flatten().nonzero()[0]
-
-        cloud = whole_pts.copy()[y1:y2, x1:x2, :].reshape(-1, 3)[choose, :]
-        center = np.mean(cloud, axis=0)
-        tmp_cloud = cloud - center[None, :]
-        flag = np.linalg.norm(tmp_cloud, axis=1) < radius * 1.2
-        if np.sum(flag) < 4:
-            continue
-        choose = choose[flag]
-        cloud = cloud[flag]
-
-        n_obs = cfg.n_sample_observed_point
-        n_pts = len(choose)
-        if n_pts == 0:
-            continue
-        choose_idx = np.linspace(0, n_pts - 1, n_obs).astype(np.int64)
-        choose = choose[choose_idx]
-        cloud = cloud[choose_idx]
-
-        rgb = whole_image.copy()[y1:y2, x1:x2, :][:, :, ::-1]
-        if cfg.rgb_mask_flag:
-            rgb = rgb * (mask[:, :, None] > 0).astype(np.uint8)
-        rgb = cv2.resize(rgb, (cfg.img_size, cfg.img_size), interpolation=cv2.INTER_LINEAR)
-        rgb = rgb.astype(np.float32) / 255.0
-        rgb = (rgb - np.array([0.485, 0.456, 0.406])) / np.array([0.229, 0.224, 0.225])
-        rgb = rgb.transpose(2, 0, 1)
-        rgb_choose = get_resize_rgb_choose(choose, [y1, y2, x1, x2], cfg.img_size)
-
-        all_rgb.append(rgb.astype(np.float32))
-        all_cloud.append(cloud.astype(np.float32))
-        all_rgb_choose.append(rgb_choose.astype(np.int32))
-        all_score.append(score)
-        all_dets.append(inst)
-
-    ret_dict = {
-        'pts': np.stack(all_cloud),
-        'rgb': np.stack(all_rgb),
-        'rgb_choose': np.stack(all_rgb_choose),
-        'score': np.array(all_score, dtype=np.float32),
-    }
-    ninstance = ret_dict['pts'].shape[0]
-    ret_dict['model'] = np.repeat(model_points[np.newaxis, :, :], ninstance, axis=0)
-    ret_dict['K'] = np.repeat(K[np.newaxis, :, :], ninstance, axis=0)
-    return ret_dict, whole_image, whole_pts.reshape(-1, 3), model_points, all_dets
+    return shared_get_test_data(
+        rgb_path,
+        depth_path,
+        cam_path,
+        cad_path,
+        seg_path,
+        det_score_thresh,
+        cfg,
+        backend="numpy",
+        topk=topk,
+        observed_index_mode="linspace",
+    )
 
 
 # ============================================================================

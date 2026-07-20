@@ -17,6 +17,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from eval_utils import compute_mssd, compute_mspd, load_symmetries
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(BASE_DIR, "provider"))
@@ -133,44 +134,16 @@ def to_numpy(x):
     return np.asarray(x)
 
 
-def project_points(K: np.ndarray, pts_mm: np.ndarray) -> np.ndarray:
-    z = np.clip(pts_mm[:, 2], 1e-6, None)
-    x = pts_mm[:, 0] / z
-    y = pts_mm[:, 1] / z
-    u = K[0, 0] * x + K[0, 2]
-    v = K[1, 1] * y + K[1, 2]
-    return np.stack([u, v], axis=1)
-
-
-def transform_points(R_flat: np.ndarray, t_mm: np.ndarray, pts_mm: np.ndarray) -> np.ndarray:
-    R = R_flat.reshape(3, 3)
-    return (R @ pts_mm.T).T + t_mm.reshape(1, 3)
-
-
-def compute_pose_errors(
-    R_pred_flat: np.ndarray,
+def compute_vsd_surrogate(
+    R_pred: np.ndarray,
     t_pred_mm: np.ndarray,
-    R_gt_flat: np.ndarray,
+    R_gt: np.ndarray,
     t_gt_mm: np.ndarray,
     pts_mm: np.ndarray,
-    K: np.ndarray,
-) -> Tuple[float, float, float]:
-    pred_pts = transform_points(R_pred_flat, t_pred_mm, pts_mm)
-    gt_pts = transform_points(R_gt_flat, t_gt_mm, pts_mm)
-
-    # Approximate MSSD: max surface distance without symmetry handling.
-    mssd_mm = float(np.linalg.norm(pred_pts - gt_pts, axis=1).max())
-
-    pred_uv = project_points(K, pred_pts)
-    gt_uv = project_points(K, gt_pts)
-
-    # Approximate MSPD: max projection distance without symmetry handling.
-    mspd_px = float(np.linalg.norm(pred_uv - gt_uv, axis=1).max())
-
-    # Approximate VSD surrogate: mean absolute depth disagreement on model correspondences.
-    vsd_mm = float(np.mean(np.abs(pred_pts[:, 2] - gt_pts[:, 2])))
-
-    return mssd_mm, mspd_px, vsd_mm
+) -> float:
+    pred_pts = (R_pred @ pts_mm.T).T + t_pred_mm.reshape(1, 3)
+    gt_pts = (R_gt @ pts_mm.T).T + t_gt_mm.reshape(1, 3)
+    return float(np.mean(np.abs(pred_pts[:, 2] - gt_pts[:, 2])))
 
 
 def ar_from_thresholds(value: float, thresholds: List[float]) -> float:
@@ -222,6 +195,34 @@ def build_gt_cache(test_root: str) -> Dict[str, Dict[str, List[dict]]]:
     return cache
 
 
+def load_models_info(test_root: str) -> dict | None:
+    candidates = [
+        osp.join(test_root, "models", "models_info.json"),
+        osp.join(test_root, "models_eval", "models_info.json"),
+        osp.join(test_root, "models_cad", "models_info.json"),
+    ]
+    for path in candidates:
+        if osp.isfile(path):
+            with open(path, "r") as f:
+                return json.load(f)
+    return None
+
+
+def build_symmetry_cache(obj_ids: List[int], models_info: dict | None) -> Dict[int, List[dict]]:
+    identity = [{"R": np.eye(3), "t": np.zeros(3)}]
+    if models_info is None:
+        return {int(obj_id): identity for obj_id in obj_ids}
+
+    cache: Dict[int, List[dict]] = {}
+    for obj_id in obj_ids:
+        obj_id_int = int(obj_id)
+        if str(obj_id_int) in models_info:
+            cache[obj_id_int] = load_symmetries(models_info, obj_id_int)
+        else:
+            cache[obj_id_int] = identity
+    return cache
+
+
 def _name_of_output(k):
     if hasattr(k, "get_any_name"):
         try:
@@ -241,6 +242,13 @@ def _pick_outputs(infer_result, prefer_names: List[str], fallback_index: int):
     if fallback_index < len(values):
         return values[fallback_index]
     raise RuntimeError(f"Unable to fetch output index={fallback_index} from OpenVINO result")
+
+
+def _squeeze_bfyx(arr):
+    arr = np.asarray(arr)
+    if arr.ndim == 4 and arr.shape[-1] == 1:
+        arr = arr.squeeze(-1)
+    return arr
 
 
 def init_openvino_models(args):
@@ -296,22 +304,25 @@ def compute_template_features_ov(dataset, ov_fe_compiled):
         for i in range(n_template_view):
             tem_rgb, tem_choose, tem_pts = dataset._get_template(obj, i)
             all_tem.append(np.expand_dims(to_numpy(tem_rgb), axis=0).astype(np.float32))
-            all_tem_choose.append(np.expand_dims(to_numpy(tem_choose), axis=0).astype(np.int32))
+            all_tem_choose.append(to_numpy(tem_choose).astype(np.int64))
             all_tem_pts.append(np.expand_dims(to_numpy(tem_pts), axis=0).astype(np.float32))
 
-        tem_rgb = np.concatenate(all_tem, axis=1)
+        tem_rgb = np.concatenate(all_tem, axis=0)
         tem_pts = np.concatenate(all_tem_pts, axis=1)
-        tem_choose = np.concatenate(all_tem_choose, axis=1)
+        tem_choose = np.stack(all_tem_choose, axis=0)
 
-        fe_results = ov_fe_compiled(
-            {
-                "rgb_input": tem_rgb,
-                "pts_input": tem_pts,
-                "choose_input": tem_choose,
-            }
-        )
-        dense_po = _pick_outputs(fe_results, ["dense_po", "pts", "po"], 0)
-        dense_fo = _pick_outputs(fe_results, ["dense_fo", "feat", "fo"], 1)
+        feature_inputs = {
+            "rgb_input": tem_rgb,
+            "pts_input": tem_pts,
+            "choose_input": tem_choose,
+        }
+
+        # Use an isolated InferRequest to avoid default-request tensor shape
+        # mismatch on GPU BFYX-padded custom-op outputs.
+        fe_req = ov_fe_compiled.create_infer_request()
+        fe_results = fe_req.infer(feature_inputs)
+        dense_po = _squeeze_bfyx(_pick_outputs(fe_results, ["dense_po", "pts", "po"], 0))
+        dense_fo = _squeeze_bfyx(_pick_outputs(fe_results, ["dense_fo", "feat", "fo"], 1))
         dense_po_all.append(np.asarray(dense_po, dtype=np.float32))
         dense_fo_all.append(np.asarray(dense_fo, dtype=np.float32))
 
@@ -349,31 +360,6 @@ def main():
     ov_fe_compiled, ov_pem_compiled = init_openvino_models(args)
     print(f"OpenVINO init time: {time.time() - t0:.2f}s")
 
-    # Monkey-patch load_objs to filter out non-directory entries (e.g. .tar.gz
-    # files that may sit alongside obj_XXXXXX template folders).
-    import utils.bop_object_utils as _bop_obj_utils
-    _orig_load_objs = _bop_obj_utils.load_objs
-
-    def _load_objs_filtered(model_path='models', template_path='render_imgs',
-                            sample_num=512, n_template_view=0, show_progressbar=True):
-        # Temporarily move non-dir entries out of the glob's reach by filtering
-        # inside a wrapper that replaces the glob pattern.
-        import glob as _glob
-        _orig_glob = _glob.glob
-
-        def _dir_only_glob(pattern, *a, **kw):
-            results = _orig_glob(pattern, *a, **kw)
-            return [p for p in results if os.path.isdir(p)]
-
-        _glob.glob = _dir_only_glob
-        try:
-            return _orig_load_objs(model_path, template_path, sample_num,
-                                   n_template_view, show_progressbar)
-        finally:
-            _glob.glob = _orig_glob
-
-    _bop_obj_utils.load_objs = _load_objs_filtered
-
     dataset_module = importlib.import_module(cfg.test_dataset.name)
     dataset = dataset_module.BOPTestset(cfg.test_dataset, args.dataset, detection_path)
 
@@ -393,6 +379,8 @@ def main():
 
     test_root = osp.join(cfg.test_dataset.data_dir, args.dataset)
     gt_cache = build_gt_cache(test_root)
+    models_info = load_models_info(test_root)
+    sym_cache = build_symmetry_cache(list(dataset.obj_idxs.keys()), models_info)
     has_gt = len(gt_cache) > 0
     print(f"GT available: {has_gt}")
 
@@ -492,17 +480,21 @@ def main():
                     diameter_mm = float(dataset.objects[obj_idx].diameter * 1000.0)
                     model_pts_mm = dataset.objects[obj_idx].model_points * 1000.0
 
+                    syms = sym_cache.get(obj_id, [{"R": np.eye(3), "t": np.zeros(3)}])
+                    R_pred = pred_Rs[k].reshape(3, 3).astype(np.float64)
+                    t_pred = pred_Ts[k].reshape(3).astype(np.float64)
+
                     cand = []
                     for gi, gt in enumerate(gt_list):
                         if gi in used_gt:
                             continue
                         if int(gt["obj_id"]) != obj_id:
                             continue
-                        R_gt = np.array(gt["cam_R_m2c"], dtype=np.float64)
-                        t_gt = np.array(gt["cam_t_m2c"], dtype=np.float64)
-                        mssd_mm, mspd_px, vsd_mm = compute_pose_errors(
-                            pred_Rs[k], pred_Ts[k], R_gt, t_gt, model_pts_mm, K
-                        )
+                        R_gt = np.array(gt["cam_R_m2c"], dtype=np.float64).reshape(3, 3)
+                        t_gt = np.array(gt["cam_t_m2c"], dtype=np.float64).reshape(3)
+                        mssd_mm = compute_mssd(R_pred, t_pred, R_gt, t_gt, model_pts_mm, syms)
+                        mspd_px = compute_mspd(R_pred, t_pred, R_gt, t_gt, model_pts_mm, K, syms)
+                        vsd_mm = compute_vsd_surrogate(R_pred, t_pred, R_gt, t_gt, model_pts_mm)
                         cand.append((mssd_mm, gi, mspd_px, vsd_mm))
 
                     if len(cand) == 0:
@@ -575,8 +567,8 @@ def main():
         "detection_path": detection_path,
         "gt_available": has_gt,
         "metric_note": {
-            "MSSD": "Approximate MSSD without symmetry handling",
-            "MSPD": "Approximate MSPD without symmetry handling",
+            "MSSD": "Symmetry-aware MSSD via eval_utils.compute_mssd",
+            "MSPD": "Symmetry-aware MSPD via eval_utils.compute_mspd",
             "VSD": "Approximate VSD surrogate from mean depth disagreement",
         },
         "thresholds": {

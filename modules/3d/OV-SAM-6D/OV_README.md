@@ -46,7 +46,7 @@ This guide explains how to set up and run the OpenVINO-based SAM-6D pipeline on 
 # 1. Create and Activate Conda Environment
 
 ```bash
-cd JiehongLin-SAM-6D
+cd openvino_contrib/modules/3d/OV-SAM-6D/SAM-6D 
 cd SAM-6D
 
 conda env create -f ov_environment_u24.yaml
@@ -224,11 +224,7 @@ cd build
 Run CMake:
 
 ```bash
-cmake \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_CXX_FLAGS="-fPIC" \
-    -DOpenVINO_DIR=$(python3 -c "from openvino.utils import get_cmake_path; print(get_cmake_path(), end='')") \
-    ../
+cmake ../
 ```
 
 Build the project:

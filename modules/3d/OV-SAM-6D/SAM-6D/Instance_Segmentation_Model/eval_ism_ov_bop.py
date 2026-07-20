@@ -676,9 +676,23 @@ def main():
     n_images = len(image_records)
 
     models_dir = os.path.join(args.bop_dir, "models")
-    templates_root = args.templates_root or os.path.join(
-        args.bop_dir, "eval_output"
-    )
+    if args.templates_root:
+        templates_root = args.templates_root
+    else:
+        # Try eval_output first, then fall back to BOP-Templates
+        eval_output_path = os.path.join(args.bop_dir, "eval_output")
+        dataset_name_for_templates = _dataset_name_from_bop_dir(args.bop_dir)
+        bop_templates_path = os.path.join(
+            os.path.dirname(os.path.dirname(args.bop_dir)), 
+            f"BOP-Templates", 
+            dataset_name_for_templates
+        )
+        if os.path.isdir(eval_output_path):
+            templates_root = eval_output_path
+        elif os.path.isdir(bop_templates_path):
+            templates_root = bop_templates_path
+        else:
+            templates_root = eval_output_path  # Use default path for error reporting
 
     device_tag = args.ov_device.lower()
     seg_tag = args.segmentor_model
@@ -827,9 +841,21 @@ def main():
         all_pc_list = []
 
         for obj_id in target_obj_ids:
-            template_dir = os.path.join(
+            # Try with /templates suffix first, then without
+            template_dir_with_suffix = os.path.join(
                 templates_root, f"obj_{obj_id:06d}", "templates"
             )
+            template_dir_without_suffix = os.path.join(
+                templates_root, f"obj_{obj_id:06d}"
+            )
+            
+            if os.path.isdir(template_dir_with_suffix):
+                template_dir = template_dir_with_suffix
+            elif os.path.isdir(template_dir_without_suffix):
+                template_dir = template_dir_without_suffix
+            else:
+                template_dir = template_dir_with_suffix  # For error reporting
+            
             cad_path = os.path.join(models_dir, f"obj_{obj_id:06d}.ply")
 
             if not os.path.isdir(template_dir):

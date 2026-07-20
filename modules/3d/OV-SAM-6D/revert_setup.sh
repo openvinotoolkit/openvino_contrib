@@ -36,6 +36,8 @@ ov_environment_u24.yaml
 patches/ism.patch
 patches/pem.patch
 Pose_Estimation_Model/eval_utils.py
+Pose_Estimation_Model/common_infer_utils.py
+Pose_Estimation_Model/run_pos.sh
 Pose_Estimation_Model/.gitattributes
 Pose_Estimation_Model/model/ov_pointnet2_op/ball_query.cl
 Pose_Estimation_Model/model/ov_pointnet2_op/ball_query.cpp
@@ -66,6 +68,7 @@ Pose_Estimation_Model/pem_model_convert_ov_ir.py
 Pose_Estimation_Model/run_inference_custom_openvino.py
 Pose_Estimation_Model/run_inference_custom_pytorch.py
 Pose_Estimation_Model/test_bop_subset_eval_ov.py
+README.md
 setup_env.sh
 EOF
 )"
@@ -85,8 +88,24 @@ done < <(cd "$CODE_DIR" && find . -type f | sed 's|^\./||')
 rm -f "$MARKER"
 find "$CODE_DIR" -depth -type d -empty -delete 2>/dev/null || true
 
-# Remove the restored original repo-root files (README.md and pics/).
-rm -f "$SCRIPT_DIR/README.md"
+# Reset module-root README.md to base state (attribution only)
+cat > "$SCRIPT_DIR/README.md" <<'EOF'
+<!--
+Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+
+# OV-SAM-6D
+
+This directory is an OpenVINO port of [SAM-6D](https://github.com/JiehongLin/SAM-6D) based on commit `1c2543b`.
+The original SAM-6D source files are **not** committed here; they are fetched and patched by `setup_from_original.sh`.
+
+For OpenVINO-specific setup and usage details, see [OV_README.md](OV_README.md).
+
+---
+EOF
+
+# Remove restored original pics/
 rm -rf "$SCRIPT_DIR/pics"
 
 remaining="$(find "$CODE_DIR" -type f | wc -l)"

@@ -29,6 +29,9 @@ dependencies:
    - pytorch-lightning
    - pycocotools
    - distinctipy
+  # Licensing notes:
+  # - segment-anything and DINOv2 are Apache-2.0 components.
+  # - FastSAM support uses ultralytics/YOLO code under AGPL-3.0 terms.
    - git+https://github.com/facebookresearch/segment-anything.git  # SAM
    - ultralytics==8.0.135  # FastSAM
    # PEM

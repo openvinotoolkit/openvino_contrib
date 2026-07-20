@@ -37,42 +37,19 @@ bool CustomSVDv::visit_attributes(ov::AttributeVisitor& visitor) {
 }
 //! [op:visit_attributes]
 
-// Helper function to ensure proper SVD signs (similar to PyTorch)
-void ensure_svd_v_signs(Eigen::MatrixXf& U, Eigen::VectorXf& S, Eigen::MatrixXf& V) {
-    // Ensure singular values are non-negative and sorted in descending order
-    for (int i = 0; i < S.size(); ++i) {
-        if (S(i) < 0) {
-	    std::cout << "\n we got hiy S(i) < 0";
-            S(i) = -S(i);
-            U.col(i) = -V.col(i);
+// JacobiSVD already returns non-negative singular values in descending order.
+// Canonicalize the paired singular vectors so U/V use a deterministic sign
+// convention across backends while preserving A = U * S * V^T.
+static void ensure_svd_signs(Eigen::MatrixXf& U, Eigen::MatrixXf& V) {
+    const int cols = std::min(U.cols(), V.cols());
+    for (int i = 0; i < cols; ++i) {
+        Eigen::Index max_abs_row = 0;
+        U.col(i).cwiseAbs().maxCoeff(&max_abs_row);
+        if (U(max_abs_row, i) < 0.0f) {
+            U.col(i) = -U.col(i);
+            V.col(i) = -V.col(i);
         }
     }
-    
-    // Sort singular values in descending order
-    std::vector<std::pair<float, int>> s_indices;
-    for (int i = 0; i < S.size(); ++i) {
-        s_indices.push_back({S(i), i});
-    }
-    std::sort(s_indices.begin(), s_indices.end(), 
-              [](const std::pair<float, int>& a, const std::pair<float, int>& b) {
-                  return a.first > b.first;
-              });
-    
-    // Reorder U, S, V according to sorted singular values
-    Eigen::MatrixXf U_new = U;
-    Eigen::MatrixXf V_new = V;
-    Eigen::VectorXf S_new = S;
-    
-    for (int i = 0; i < S.size(); ++i) {
-        int old_idx = s_indices[i].second;
-        S_new(i) = s_indices[i].first;
-        U_new.col(i) = U.col(old_idx);
-        V_new.col(i) = V.col(old_idx);
-    }
-    
-    U = U_new;
-    S = S_new;
-    V = V_new;
 }
 
 //! [op:evaluate]
@@ -104,11 +81,10 @@ bool CustomSVDv::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inp
         
         // Get SVD results
         Eigen::MatrixXf U = svd.matrixU();
-        Eigen::VectorXf S = svd.singularValues();
         Eigen::MatrixXf V = svd.matrixV();
         
-        // Ensure proper signs and ordering (similar to PyTorch)
-        ensure_svd_v_signs(U, S, V);
+        // Keep U/V sign choices deterministic for the downstream rotation path.
+        ensure_svd_signs(U, V);
         
         Eigen::Map<Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>(v_data + b * v_mat_size, n, n) = V;
     }

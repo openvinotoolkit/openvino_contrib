@@ -12,6 +12,10 @@ DATASET="${DATASET:-lmo}"
 CONDA_ENV="${CONDA_ENV:-ov_sam6d}"
 OV_DEVICE="${OV_DEVICE:-GPU}"
 OV_SAM_DEVICE="${OV_SAM_DEVICE:-GPU}"
+SEGMENTOR_MODEL="${SEGMENTOR_MODEL:-fastsam}"
+# LMO test split in Data/BOP/lmo/test/000002 currently has 200 images.
+# Keep MAX_IMAGES <= 200 to evaluate the full available split.
+MAX_IMAGES="${MAX_IMAGES:-10}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 DATASET_DIR="$DATA_ROOT/$DATASET"
@@ -57,7 +61,7 @@ main() {
 
   repair_nested_layout_if_needed
 
-  # Validate required LM-O layout used by run_inference_ov_10.py
+  # Validate required BOP layout used by eval_ism_ov_bop.py
   [[ -d "$DATASET_DIR/models" ]] || die "Missing $DATASET_DIR/models. Extract the lmo_models.zip in Data/BOP/lmo/."
   [[ -d "$DATASET_DIR/test" ]] || die "Missing $DATASET_DIR/test"
   [[ -d "$DATASET_DIR/train_pbr" ]] || die "Missing $DATASET_DIR/train_pbr. Extract the lmo_train.zip and rename the train dir to train_pbr in Data/BOP/lmo/."
@@ -83,6 +87,8 @@ main() {
   log "Starting OpenVINO ISM run"
   log "Dataset: $DATASET"
   log "Conda env: $CONDA_ENV"
+  log "Segmentor model: $SEGMENTOR_MODEL"
+  log "Max images: $MAX_IMAGES"
   log "OV_DEVICE=$OV_DEVICE OV_SAM_DEVICE=$OV_SAM_DEVICE"
   log "Log file: $run_log"
 
@@ -93,7 +99,13 @@ main() {
   OV_SAM_DEVICE="$OV_SAM_DEVICE" \
   PYTHONUNBUFFERED=1 \
   conda run --no-capture-output -n "$CONDA_ENV" \
-    "$PYTHON_BIN" run_inference_ov_10.py dataset_name="$DATASET" \
+    "$PYTHON_BIN" eval_ism_ov_bop.py \
+    --bop_dir "$DATASET_DIR" \
+    --ov_model_dir "$OV_MODEL_DIR" \
+    --ov_device "$OV_DEVICE" \
+    --segmentor_model "$SEGMENTOR_MODEL" \
+    --max_images "$MAX_IMAGES" \
+    --batch_size 4 \
     >"$run_log" 2>&1 &
   local pid=$!
 
@@ -107,8 +119,89 @@ main() {
     exit $rc
   fi
 
+  local results_dir
+  results_dir="$DATASET_DIR/bop/ism_ov_${OV_DEVICE,,}_${SEGMENTOR_MODEL}_results"
+  local merged_json
+  merged_json="$results_dir/result_${DATASET}_${MAX_IMAGES}imgs.json"
+  local merged_meta_json
+  merged_meta_json="$results_dir/result_${DATASET}_${MAX_IMAGES}imgs.meta.json"
+  local compat_json
+  compat_json="$SCRIPT_DIR/log/sam_ov/result_${DATASET}_${MAX_IMAGES}imgs.json"
+  local compat_meta_json
+  compat_meta_json="$SCRIPT_DIR/log/sam_ov/result_${DATASET}_${MAX_IMAGES}imgs.meta.json"
+
+  log "Merging ISM NPZ detections into JSON"
+  RESULTS_DIR="$results_dir" \
+  MERGED_JSON="$merged_json" \
+  MERGED_META_JSON="$merged_meta_json" \
+  COMPAT_JSON="$compat_json" \
+  COMPAT_META_JSON="$compat_meta_json" \
+  DATASET="$DATASET" \
+  OV_DEVICE="$OV_DEVICE" \
+  SEGMENTOR_MODEL="$SEGMENTOR_MODEL" \
+  MAX_IMAGES="$MAX_IMAGES" \
+  conda run --no-capture-output -n "$CONDA_ENV" \
+  "$PYTHON_BIN" - <<'PY'
+import glob
+import json
+import os
+from model.utils import convert_npz_to_json
+
+results_dir = os.environ["RESULTS_DIR"]
+merged_json = os.environ["MERGED_JSON"]
+merged_meta_json = os.environ["MERGED_META_JSON"]
+compat_json = os.environ["COMPAT_JSON"]
+compat_meta_json = os.environ["COMPAT_META_JSON"]
+dataset = os.environ["DATASET"]
+ov_device = os.environ["OV_DEVICE"]
+segmentor_model = os.environ["SEGMENTOR_MODEL"]
+max_images = int(os.environ["MAX_IMAGES"])
+
+npz_paths = sorted(glob.glob(os.path.join(results_dir, "*_detection_ism.npz")))
+if not npz_paths:
+    raise SystemExit(f"No *_detection_ism.npz files found under {results_dir}")
+
+all_dets = []
+for i in range(len(npz_paths)):
+    all_dets.extend(convert_npz_to_json(i, npz_paths))
+
+image_keys = {
+  (int(det["scene_id"]), int(det["image_id"]))
+  for det in all_dets
+}
+
+meta = {
+  "dataset": dataset,
+  "ov_device": ov_device,
+  "segmentor_model": segmentor_model,
+  "max_images_requested": max_images,
+  "n_detection_images": len(image_keys),
+  "n_detections": len(all_dets),
+}
+
+os.makedirs(os.path.dirname(merged_json), exist_ok=True)
+with open(merged_json, "w") as f:
+    json.dump(all_dets, f)
+with open(merged_meta_json, "w") as f:
+  json.dump(meta, f, indent=2)
+
+os.makedirs(os.path.dirname(compat_json), exist_ok=True)
+with open(compat_json, "w") as f:
+    json.dump(all_dets, f)
+with open(compat_meta_json, "w") as f:
+  json.dump(meta, f, indent=2)
+
+print(f"[run_ism] Wrote {len(all_dets)} detections to {merged_json}")
+print(f"[run_ism] Wrote metadata to {merged_meta_json}")
+print(f"[run_ism] Wrote compatibility copy to {compat_json}")
+print(f"[run_ism] Wrote compatibility metadata to {compat_meta_json}")
+PY
+
   log "Run completed successfully"
-  log "Results JSON: log/sam_ov/evaluation_results/results_${DATASET}_10imgs.json"
+  log "Results dir: $results_dir"
+  log "Summary JSON: $results_dir/summary.json"
+  log "Detections JSON: $merged_json"
+  log "Detections metadata: $merged_meta_json"
 }
 
 main "$@"

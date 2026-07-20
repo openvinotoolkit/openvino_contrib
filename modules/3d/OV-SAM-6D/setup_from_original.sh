@@ -79,7 +79,13 @@ cp -r $NOCLOBBER "$ORIG_CODE_DIR/." "$CODE_DIR/"
 # Also restore the original repo-root README.md and pics/ (they live one level
 # above the code dir in the upstream repo). These are not committed here.
 ORIG_REPO_ROOT="$TMP_DIR/SAM-6D"
-[ -f "$ORIG_REPO_ROOT/README.md" ] && cp $NOCLOBBER "$ORIG_REPO_ROOT/README.md" "$SCRIPT_DIR/README.md"
+
+# Append original repo files to the attribution-prefixed README
+if [ -f "$ORIG_REPO_ROOT/README.md" ]; then
+    cat "$ORIG_REPO_ROOT/README.md" >> "$SCRIPT_DIR/README.md"
+fi
+
+# Copy original pics (no overwrite)
 [ -d "$ORIG_REPO_ROOT/pics" ] && cp -r $NOCLOBBER "$ORIG_REPO_ROOT/pics" "$SCRIPT_DIR/"
 
 # --- 3. Apply patches --------------------------------------------------------

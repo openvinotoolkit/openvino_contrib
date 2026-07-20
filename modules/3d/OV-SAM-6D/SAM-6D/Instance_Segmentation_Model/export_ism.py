@@ -60,9 +60,13 @@ def _block_xformers():
             raise ImportError("xformers blocked by export_ism.py")
 
     class _XFormersFinder(importlib.abc.MetaPathFinder):
-        def find_module(self, fullname, path=None):
+        def find_spec(self, fullname, path=None, target=None):
             if fullname == "xformers" or fullname.startswith("xformers."):
-                return _XFormersBlocker()
+                return importlib.util.spec_from_loader(
+                    fullname,
+                    _XFormersBlocker(),
+                    origin="blocked-by-export_ism.py",
+                )
             return None
 
     sys.meta_path.insert(0, _XFormersFinder())
@@ -126,10 +130,16 @@ def build_dinov2(checkpoint_dir: str,
     arch = descriptor_map[model_name]
     ckpt = os.path.join(checkpoint_dir, f"{model_name}_pretrain.pth")
 
+    if not os.path.isfile(ckpt):
+        raise FileNotFoundError(
+            f"DINOv2 checkpoint not found: {ckpt}. "
+            f"Please download checkpoints into {checkpoint_dir}."
+        )
+
     print(f"[export] Loading DINOv2 ({model_name}, arch={arch}) from {ckpt}")
 
     model = _make_dinov2_model(arch_name=arch, pretrained=False)
-    state = torch.load(ckpt, map_location="cpu")
+    state = torch.load(ckpt, map_location="cpu", weights_only=True)
     model.load_state_dict(state, strict=True)
     model.eval()
 
@@ -365,6 +375,72 @@ def export_dinov2(dinov2_model, output_dir, compress_fp16=False,
 #  Extended export: bake pre/post-processing custom ops into IR
 # ===================================================================
 
+
+def _load_or_export_base_ir(base_xml, step0_tag, step1_tag, export_base_fn):
+    if not os.path.isfile(base_xml):
+        print(f'[{step0_tag}] Step 0: Exporting base IR {base_xml}')
+        export_base_fn()
+    print(f'[{step1_tag}] Step 1: Loading base IR {base_xml}')
+    return ov.Core().read_model(base_xml)
+
+
+def _print_model_io(ext_model):
+    for i, inp in enumerate(ext_model.inputs):
+        print(f'  Input {i}: names={inp.get_names()}, '
+              f'shape={inp.get_partial_shape()}, type={inp.get_element_type()}')
+    for i, out in enumerate(ext_model.outputs):
+        print(f'  Output {i}: names={out.get_names()}, '
+              f'shape={out.get_partial_shape()}')
+
+
+def _save_ext_model(ext_model, xml_path, compress_fp16, tag):
+    ov.save_model(ext_model, xml_path, compress_to_fp16=compress_fp16)
+    size_mb = os.path.getsize(xml_path.replace('.xml', '.bin')) / 1e6
+    mode_tag = 'FP16' if compress_fp16 else 'FP32'
+    print(f'[{tag}] {mode_tag} IR: {xml_path} ({size_mb:.1f} MB)')
+
+
+def _build_sam_decoder_logits_postprocess(
+    low_res_masks_node,
+    im_h,
+    im_w,
+    image_size,
+):
+    """Build shared SAM decoder postprocess: upsample->crop->upsample."""
+    max_hw = max(im_h, im_w)
+    scale = float(image_size) / float(max_hw)
+    input_h = int(im_h * scale + 0.5)
+    input_w = int(im_w * scale + 0.5)
+
+    target_1024 = opset.constant(np.array([image_size, image_size], dtype=np.int64))
+    axes_hw = opset.constant(np.array([2, 3], dtype=np.int64))
+    upsampled = opset.interpolate(
+        low_res_masks_node, target_1024,
+        mode='linear_onnx',
+        shape_calculation_mode='sizes',
+        coordinate_transformation_mode='half_pixel',
+        axes=axes_hw,
+    )
+
+    begin_crop = opset.constant(np.array([0, 0, 0, 0], dtype=np.int64))
+    end_crop = opset.constant(np.array([0, 0, input_h, input_w], dtype=np.int64))
+    cropped = opset.strided_slice(
+        upsampled, begin_crop, end_crop,
+        opset.constant(np.array([1, 1, 1, 1], dtype=np.int64)),
+        begin_mask=[1, 1, 0, 0],
+        end_mask=[1, 1, 0, 0],
+    )
+
+    target_orig = opset.constant(np.array([im_h, im_w], dtype=np.int64))
+    logits_node = opset.interpolate(
+        cropped, target_orig,
+        mode='linear_onnx',
+        shape_calculation_mode='sizes',
+        coordinate_transformation_mode='half_pixel',
+        axes=axes_hw,
+    )
+    return logits_node
+
 def export_sam_encoder_ext(sam, output_dir, compress_fp16=False,
                            verify=False,
                            im_h=480, im_w=640, image_size=1024):
@@ -380,11 +456,16 @@ def export_sam_encoder_ext(sam, output_dir, compress_fp16=False,
 
     # --- Step 1: Get NN body (reuse base IR if available) ---
     base_xml = os.path.join(output_dir, 'sam_image_encoder.xml')
-    if not os.path.isfile(base_xml):
-        print(f'[export:sam_enc_ext] Step 0: Exporting base IR {base_xml}')
-        export_sam_image_encoder(sam, output_dir, compress_fp16=compress_fp16)
-    print(f'[export:sam_enc_ext] Step 1: Loading base IR {base_xml}')
-    nn_model = ov.Core().read_model(base_xml)
+    nn_model = _load_or_export_base_ir(
+        base_xml,
+        step0_tag='export:sam_enc_ext',
+        step1_tag='export:sam_enc_ext',
+        export_base_fn=lambda: export_sam_image_encoder(
+            sam,
+            output_dir,
+            compress_fp16=compress_fp16,
+        ),
+    )
 
     # --- Step 2: Build extended graph (standard OV ops only) ---
     print('[export:sam_enc_ext] Step 2: Building extended graph ...')
@@ -465,19 +546,11 @@ def export_sam_encoder_ext(sam, output_dir, compress_fp16=False,
     ext_model.outputs[1].tensor.set_names({'input_size'})
     ext_model.inputs[0].tensor.set_names({'image'})
 
-    for i, inp in enumerate(ext_model.inputs):
-        print(f'  Input {i}: names={inp.get_names()}, '
-              f'shape={inp.get_partial_shape()}, type={inp.get_element_type()}')
-    for i, out in enumerate(ext_model.outputs):
-        print(f'  Output {i}: names={out.get_names()}, '
-              f'shape={out.get_partial_shape()}')
+    _print_model_io(ext_model)
 
     # --- Step 4: Save ---
     xml_path = os.path.join(output_dir, 'sam_image_encoder_ext.xml')
-    ov.save_model(ext_model, xml_path, compress_to_fp16=compress_fp16)
-    size_mb = os.path.getsize(xml_path.replace('.xml', '.bin')) / 1e6
-    tag = 'FP16' if compress_fp16 else 'FP32'
-    print(f'[export:sam_enc_ext] {tag} IR: {xml_path} ({size_mb:.1f} MB)')
+    _save_ext_model(ext_model, xml_path, compress_fp16, 'export:sam_enc_ext')
 
     # --- Step 5: Verification ---
     if verify:
@@ -510,21 +583,18 @@ def export_sam_decoder_ext(sam, output_dir, compress_fp16=False,
 
     os.makedirs(output_dir, exist_ok=True)
 
-    # Compute fixed postprocess dimensions
-    _max_hw = max(im_h, im_w)
-    _scale = float(image_size) / float(_max_hw)
-    input_h = int(im_h * _scale + 0.5)
-    input_w = int(im_w * _scale + 0.5)
-    orig_h = im_h
-    orig_w = im_w
-
     # --- Step 1: Get NN body (reuse base IR if available) ---
     base_xml = os.path.join(output_dir, 'sam_mask_decoder.xml')
-    if not os.path.isfile(base_xml):
-        print(f'[export:sam_dec_ext] Step 0: Exporting base IR {base_xml}')
-        export_sam_mask_decoder(sam, output_dir, compress_fp16=compress_fp16)
-    print(f'[export:sam_dec_ext] Step 1: Loading base IR {base_xml}')
-    nn_model = ov.Core().read_model(base_xml)
+    nn_model = _load_or_export_base_ir(
+        base_xml,
+        step0_tag='export:sam_dec_ext',
+        step1_tag='export:sam_dec_ext',
+        export_base_fn=lambda: export_sam_mask_decoder(
+            sam,
+            output_dir,
+            compress_fp16=compress_fp16,
+        ),
+    )
 
     # --- Step 2: Build extended graph ---
     print('[export:sam_dec_ext] Step 2: Building extended graph ...')
@@ -534,37 +604,11 @@ def export_sam_decoder_ext(sam, output_dir, compress_fp16=False,
     low_res_masks_node = nn_results[0].input(0).get_source_output()
     iou_preds_node = nn_results[1].input(0).get_source_output()
 
-    # ---- Standard OV ops for postprocessing ----
-    # Step A: Interpolate 256->1024 (bilinear, align_corners=False)
-    target_1024 = opset.constant(np.array([image_size, image_size], dtype=np.int64))
-    axes_hw = opset.constant(np.array([2, 3], dtype=np.int64))
-    upsampled = opset.interpolate(
-        low_res_masks_node, target_1024,
-        mode='linear_onnx',
-        shape_calculation_mode='sizes',
-        coordinate_transformation_mode='half_pixel',
-        axes=axes_hw,
-    )
-
-    # Step B: Crop to [input_h, input_w]  (StridedSlice along H,W dims)
-    begin_crop = opset.constant(np.array([0, 0, 0, 0], dtype=np.int64))
-    end_crop = opset.constant(
-        np.array([0, 0, input_h, input_w], dtype=np.int64))
-    cropped = opset.strided_slice(
-        upsampled, begin_crop, end_crop,
-        opset.constant(np.array([1, 1, 1, 1], dtype=np.int64)),
-        begin_mask=[1, 1, 0, 0],   # pass-through for B and C
-        end_mask=[1, 1, 0, 0],
-    )
-
-    # Step C: Interpolate to original size
-    target_orig = opset.constant(np.array([orig_h, orig_w], dtype=np.int64))
-    logits_node = opset.interpolate(
-        cropped, target_orig,
-        mode='linear_onnx',
-        shape_calculation_mode='sizes',
-        coordinate_transformation_mode='half_pixel',
-        axes=axes_hw,
+    logits_node = _build_sam_decoder_logits_postprocess(
+        low_res_masks_node,
+        im_h=im_h,
+        im_w=im_w,
+        image_size=image_size,
     )
 
     # Step D: Threshold -> masks
@@ -589,19 +633,11 @@ def export_sam_decoder_ext(sam, output_dir, compress_fp16=False,
     ext_model.outputs[1].tensor.set_names({'iou_predictions'})
     ext_model.outputs[2].tensor.set_names({'logits'})
 
-    for i, inp in enumerate(ext_model.inputs):
-        print(f'  Input {i}: names={inp.get_names()}, '
-              f'shape={inp.get_partial_shape()}, type={inp.get_element_type()}')
-    for i, out in enumerate(ext_model.outputs):
-        print(f'  Output {i}: names={out.get_names()}, '
-              f'shape={out.get_partial_shape()}')
+    _print_model_io(ext_model)
 
     # --- Step 4: Save ---
     xml_path = os.path.join(output_dir, 'sam_mask_decoder_ext.xml')
-    ov.save_model(ext_model, xml_path, compress_to_fp16=compress_fp16)
-    size_mb = os.path.getsize(xml_path.replace('.xml', '.bin')) / 1e6
-    tag = 'FP16' if compress_fp16 else 'FP32'
-    print(f'[export:sam_dec_ext] {tag} IR: {xml_path} ({size_mb:.1f} MB)')
+    _save_ext_model(ext_model, xml_path, compress_fp16, 'export:sam_dec_ext')
 
     # --- Step 5: Verification ---
     if verify:
@@ -642,21 +678,18 @@ def export_sam_decoder_ext_v2(sam, output_dir, compress_fp16=False,
 
     os.makedirs(output_dir, exist_ok=True)
 
-    # Compute fixed postprocess dimensions
-    _max_hw = max(im_h, im_w)
-    _scale = float(image_size) / float(_max_hw)
-    input_h = int(im_h * _scale + 0.5)
-    input_w = int(im_w * _scale + 0.5)
-    orig_h = im_h
-    orig_w = im_w
-
     # --- Step 1: Get NN body (reuse base IR if available) ---
     base_xml = os.path.join(output_dir, 'sam_mask_decoder.xml')
-    if not os.path.isfile(base_xml):
-        print(f'[export:sam_dec_ext_v2] Step 0: Exporting base IR {base_xml}')
-        export_sam_mask_decoder(sam, output_dir, compress_fp16=compress_fp16)
-    print(f'[export:sam_dec_ext_v2] Step 1: Loading base IR {base_xml}')
-    nn_model = ov.Core().read_model(base_xml)
+    nn_model = _load_or_export_base_ir(
+        base_xml,
+        step0_tag='export:sam_dec_ext_v2',
+        step1_tag='export:sam_dec_ext_v2',
+        export_base_fn=lambda: export_sam_mask_decoder(
+            sam,
+            output_dir,
+            compress_fp16=compress_fp16,
+        ),
+    )
 
     # --- Step 2: Build extended graph ---
     print('[export:sam_dec_ext_v2] Step 2: Building extended graph ...')
@@ -665,35 +698,11 @@ def export_sam_decoder_ext_v2(sam, output_dir, compress_fp16=False,
     low_res_masks_node = nn_results[0].input(0).get_source_output()
     iou_preds_node = nn_results[1].input(0).get_source_output()
 
-    # ---- A: Interpolate 256->1024 ----
-    target_1024 = opset.constant(np.array([image_size, image_size], dtype=np.int64))
-    axes_hw = opset.constant(np.array([2, 3], dtype=np.int64))
-    upsampled = opset.interpolate(
-        low_res_masks_node, target_1024,
-        mode='linear_onnx',
-        shape_calculation_mode='sizes',
-        coordinate_transformation_mode='half_pixel',
-        axes=axes_hw,
-    )
-
-    # ---- B: Crop to [input_h, input_w] ----
-    begin_crop = opset.constant(np.array([0, 0, 0, 0], dtype=np.int64))
-    end_crop = opset.constant(np.array([0, 0, input_h, input_w], dtype=np.int64))
-    cropped = opset.strided_slice(
-        upsampled, begin_crop, end_crop,
-        opset.constant(np.array([1, 1, 1, 1], dtype=np.int64)),
-        begin_mask=[1, 1, 0, 0],
-        end_mask=[1, 1, 0, 0],
-    )
-
-    # ---- C: Interpolate to original size ----
-    target_orig = opset.constant(np.array([orig_h, orig_w], dtype=np.int64))
-    logits_node = opset.interpolate(
-        cropped, target_orig,
-        mode='linear_onnx',
-        shape_calculation_mode='sizes',
-        coordinate_transformation_mode='half_pixel',
-        axes=axes_hw,
+    logits_node = _build_sam_decoder_logits_postprocess(
+        low_res_masks_node,
+        im_h=im_h,
+        im_w=im_w,
+        image_size=image_size,
     )  # [B, 3, orig_h, orig_w]
 
     # ---- D: Binary masks ----
@@ -732,7 +741,7 @@ def export_sam_decoder_ext_v2(sam, output_dir, compress_fp16=False,
 
     # height coords: in_height * arange(H)
     h_range = opset.constant(
-        np.arange(orig_h, dtype=np.float32).reshape(1, 1, -1))  # [1, 1, H]
+        np.arange(im_h, dtype=np.float32).reshape(1, 1, -1))  # [1, 1, H]
     in_height_coords = opset.multiply(in_height, h_range)  # [B, 3, H]
 
     # bottom_edges = max(in_height_coords, dim=-1) -> [B, 3]
@@ -740,7 +749,7 @@ def export_sam_decoder_ext_v2(sam, output_dir, compress_fp16=False,
     bottom_edges = opset.reduce_max(in_height_coords, h_axis, keep_dims=False)
 
     # top_edges: add H where mask row is empty, then take min
-    h_const = opset.constant(np.float32(float(orig_h)))
+    h_const = opset.constant(np.float32(float(im_h)))
     ones_const = opset.constant(np.float32(1.0))
     not_in_height = opset.subtract(ones_const, in_height)  # [B, 3, H]
     in_height_coords_top = opset.add(
@@ -755,7 +764,7 @@ def export_sam_decoder_ext_v2(sam, output_dir, compress_fp16=False,
 
     # width coords: in_width * arange(W)
     w_range = opset.constant(
-        np.arange(orig_w, dtype=np.float32).reshape(1, 1, -1))  # [1, 1, W]
+        np.arange(im_w, dtype=np.float32).reshape(1, 1, -1))  # [1, 1, W]
     in_width_coords = opset.multiply(in_width, w_range)  # [B, 3, W]
 
     # right_edges = max(in_width_coords, dim=-1)
@@ -764,7 +773,7 @@ def export_sam_decoder_ext_v2(sam, output_dir, compress_fp16=False,
                                    keep_dims=False)  # [B, 3]
 
     # left_edges: add W where mask col is empty, then take min
-    w_const = opset.constant(np.float32(float(orig_w)))
+    w_const = opset.constant(np.float32(float(im_w)))
     not_in_width = opset.subtract(ones_const, in_width)  # [B, 3, W]
     in_width_coords_left = opset.add(
         in_width_coords,
@@ -808,19 +817,11 @@ def export_sam_decoder_ext_v2(sam, output_dir, compress_fp16=False,
     ext_model.outputs[2].tensor.set_names({'stability_scores'})
     ext_model.outputs[3].tensor.set_names({'boxes'})
 
-    for i, inp in enumerate(ext_model.inputs):
-        print(f'  Input {i}: names={inp.get_names()}, '
-              f'shape={inp.get_partial_shape()}, type={inp.get_element_type()}')
-    for i, out in enumerate(ext_model.outputs):
-        print(f'  Output {i}: names={out.get_names()}, '
-              f'shape={out.get_partial_shape()}')
+    _print_model_io(ext_model)
 
     # --- Step 4: Save ---
     xml_path = os.path.join(output_dir, 'sam_mask_decoder_ext_v2.xml')
-    ov.save_model(ext_model, xml_path, compress_to_fp16=compress_fp16)
-    size_mb = os.path.getsize(xml_path.replace('.xml', '.bin')) / 1e6
-    tag = 'FP16' if compress_fp16 else 'FP32'
-    print(f'[export:sam_dec_ext_v2] {tag} IR: {xml_path} ({size_mb:.1f} MB)')
+    _save_ext_model(ext_model, xml_path, compress_fp16, 'export:sam_dec_ext_v2')
 
     if verify:
         core = ov.Core()
@@ -942,7 +943,7 @@ def export_dinov2_ext(dinov2_model, output_dir, compress_fp16=False,
         N = 2
         dummy_images = np.random.randn(N, 3, 224, 224).astype(np.float32)
         dummy_masks = np.random.rand(N, 1, 224, 224).astype(np.float32)
-        result = compiled({'images': dummy_images, 'proposal_masks': dummy_masks})
+        result = compiled([dummy_images, dummy_masks])
         print(f'  cls_token: {result[0].shape}, '
               f'patch_features: {result[1].shape}')
 
@@ -1150,7 +1151,8 @@ def main():
             verify=args.verify)
 
     del sam
-    torch.cuda.empty_cache() if torch.cuda.is_available() else None
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     # --- DINOv2 ---
     if export_all or args.only in ("dinov2", "dinov2_ext"):

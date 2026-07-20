@@ -791,8 +791,7 @@ class OVCustomDINOv2:
         masks: torch.Tensor,
         boxes: torch.Tensor,
     ) -> torch.Tensor:
-        masks.unsqueeze_(1)
-        processed = self.rgb_proposal_processor(masks, boxes).squeeze_()
+        processed = self.rgb_proposal_processor(masks.unsqueeze(1), boxes).squeeze(1)
         return processed
 
     # ---- feature extraction methods ----
@@ -1125,8 +1124,7 @@ class OVCustomDINOv2Ext:
     def process_masks_proposals(
         self, masks: torch.Tensor, boxes: torch.Tensor
     ) -> torch.Tensor:
-        masks.unsqueeze_(1)
-        processed = self.rgb_proposal_processor(masks, boxes).squeeze_()
+        processed = self.rgb_proposal_processor(masks.unsqueeze(1), boxes).squeeze(1)
 
         return processed
 
@@ -1146,7 +1144,8 @@ class OVCustomDINOv2Ext:
             crop_h, crop_w = mask_crop.shape[-2:]
             scale = max(target_h, target_w) / max(crop_h, crop_w)
             rgb_crop = F.interpolate(
-                rgb_crop.unsqueeze(0), scale_factor=scale)[0]
+                rgb_crop.unsqueeze(0), scale_factor=scale,
+                mode="bilinear", align_corners=False)[0]
             mask_crop = F.interpolate(
                 mask_crop.unsqueeze(0), scale_factor=scale,
                 mode="nearest")[0]
@@ -1164,7 +1163,8 @@ class OVCustomDINOv2Ext:
             if rgb_crop.shape[-1] != target_w or rgb_crop.shape[-2] != target_h:
                 final_scale = target_h / rgb_crop.shape[1]
                 rgb_crop = F.interpolate(
-                    rgb_crop.unsqueeze(0), scale_factor=final_scale)[0]
+                    rgb_crop.unsqueeze(0), scale_factor=final_scale,
+                    mode="bilinear", align_corners=False)[0]
                 mask_crop = F.interpolate(
                     mask_crop.unsqueeze(0), scale_factor=final_scale,
                     mode="nearest")[0]
@@ -1377,30 +1377,17 @@ class OVFastSAM:
 #  init_model_ov
 # ===================================================================
 
-def init_model_ov(
-    ov_model_dir: str,
-    ov_device: str = "CPU",
-    segmentor_model_name: str = "sam",
-    stability_score_thresh: float = 0.85,
-    points_per_side: int = 32,
-    points_per_batch: int | None = None,
-    chunk_size: int | None = None,
-    precision: str = "fp16",
-):
-    """Load OV IR models and construct the full ISM pipeline.
 
-    Returns 5-tuple:
-        (model, cfg, device, selected_poses, proposal_processor)
-    """
+def _load_ism_hydra_cfg(
+    segmentor_model_name: str,
+    stability_score_thresh: float,
+    points_per_batch: int | None,
+    chunk_size: int | None,
+    unsupported_segmentor_msg: str,
+):
     from hydra import initialize, compose
     from hydra.core.global_hydra import GlobalHydra
-    from hydra.utils import instantiate
-    from utils.poses.pose_utils import (
-        get_obj_poses_from_template_level,
-        load_index_level_in_level2,
-    )
 
-    # -- Load Hydra config (needed for scoring parameters) ----------
     GlobalHydra.instance().clear()
     with initialize(version_base=None, config_path="configs"):
         cfg = compose(config_name="run_inference.yaml")
@@ -1417,12 +1404,103 @@ def init_model_ov(
         with initialize(version_base=None, config_path="configs/model"):
             cfg.model = compose(config_name="ISM_fastsam.yaml")
     else:
-        raise ValueError(
-            f"OV export currently supports segmentor_model='sam' or 'fastsam', "
-            f"got {segmentor_model_name!r}"
-        )
+        raise ValueError(unsupported_segmentor_msg)
+
     if chunk_size is not None:
         cfg.model.descriptor_model.chunk_size = int(chunk_size)
+
+    return cfg
+
+
+def _make_ov_compiler(core, ov_model_dir: str, ov_device: str, precision: str):
+    def _compile(xml_path: str, model_ir=None):
+        if model_ir is None:
+            model_ir = core.read_model(xml_path)
+
+        if ov_device.upper().startswith("GPU"):
+            name = os.path.basename(xml_path)
+            if precision == "fp32":
+                prec = "f32"
+            else:
+                prec = "f32" if "sam_mask_decoder" in name else "f16"
+            config = {
+                "PERFORMANCE_HINT": "LATENCY",
+                "NUM_STREAMS": "1",
+                "INFERENCE_PRECISION_HINT": prec,
+            }
+            if precision == "fp32":
+                config["EXECUTION_MODE_HINT"] = "ACCURACY"
+            cache_dir = os.path.join(ov_model_dir, ".ov_gpu_cache")
+            os.makedirs(cache_dir, exist_ok=True)
+            config["CACHE_DIR"] = cache_dir
+        else:
+            config = {}
+
+        print(
+            f"Compiling Model: {xml_path}, "
+            f"Precision: {config.get('INFERENCE_PRECISION_HINT', 'default')}, "
+            f"Device: {ov_device}"
+        )
+        return core.compile_model(model_ir, ov_device, config)
+
+    return _compile
+
+
+def _build_ism_model_container(cfg, ov_mask_generator, ov_dinov2):
+    from hydra.utils import instantiate
+    from model.detector import Instance_Segmentation_Model
+
+    return Instance_Segmentation_Model(
+        segmentor_model=ov_mask_generator,
+        descriptor_model=ov_dinov2,
+        onboarding_config=cfg.model.onboarding_config,
+        matching_config=instantiate(cfg.model.matching_config),
+        post_processing_config=cfg.model.post_processing_config,
+        log_interval=cfg.model.log_interval,
+        log_dir=cfg.model.log_dir,
+        visible_thred=cfg.model.visible_thred,
+        pointcloud_sample_num=cfg.model.pointcloud_sample_num,
+    )
+
+
+def _build_selected_poses(torch_device):
+    from utils.poses.pose_utils import (
+        get_obj_poses_from_template_level,
+        load_index_level_in_level2,
+    )
+
+    template_poses = get_obj_poses_from_template_level(
+        level=2, pose_distribution="all"
+    )
+    template_poses[:, :3, 3] *= 0.4
+    poses = torch.tensor(template_poses).to(torch.float32).to(torch_device)
+    return poses[load_index_level_in_level2(0, "all"), :, :]
+
+def init_model_ov(
+    ov_model_dir: str,
+    ov_device: str = "CPU",
+    segmentor_model_name: str = "sam",
+    stability_score_thresh: float = 0.85,
+    points_per_side: int = 32,
+    points_per_batch: int | None = None,
+    chunk_size: int | None = None,
+    precision: str = "fp16",
+):
+    """Load OV IR models and construct the full ISM pipeline.
+
+    Returns 5-tuple:
+        (model, cfg, device, selected_poses, proposal_processor)
+    """
+    cfg = _load_ism_hydra_cfg(
+        segmentor_model_name=segmentor_model_name,
+        stability_score_thresh=stability_score_thresh,
+        points_per_batch=points_per_batch,
+        chunk_size=chunk_size,
+        unsupported_segmentor_msg=(
+            "OV export currently supports segmentor_model='sam' or 'fastsam', "
+            f"got {segmentor_model_name!r}"
+        ),
+    )
 
     # -- Compile OV models ------------------------------------------
     core = ov.Core()
@@ -1431,34 +1509,7 @@ def init_model_ov(
         f"Compiling OV models from {ov_model_dir} on device={ov_device}"
     )
 
-    def _compile(core, xml_path, device):
-        model_ir = core.read_model(xml_path)
-        if device.upper().startswith("GPU"):
-            _name = os.path.basename(xml_path)
-            if precision == "fp32":
-                # Force all models to FP32 for maximum accuracy
-                _prec = "f32"
-            else:
-                _prec = (
-                    "f32" if "sam_mask_decoder" in _name
-                    else "f16"
-                )
-            config = {"PERFORMANCE_HINT": "LATENCY",
-                      "NUM_STREAMS": "1",
-                      "INFERENCE_PRECISION_HINT": _prec}
-            if precision == "fp32":
-                config["EXECUTION_MODE_HINT"] = "ACCURACY"
-            _cache_dir = os.path.join(ov_model_dir, ".ov_gpu_cache")
-            os.makedirs(_cache_dir, exist_ok=True)
-            config["CACHE_DIR"] = _cache_dir
-        else:
-            config = {}
-
-        print(f"Compiling Model: {xml_path}, "
-              f"Precision: {config.get('INFERENCE_PRECISION_HINT', 'default')}, "
-              f"Device: {device}")
-
-        return core.compile_model(model_ir, device, config)
+    _compile = _make_ov_compiler(core, ov_model_dir, ov_device, precision)
 
     if segmentor_model_name == "sam":
         sam_encoder_xml = os.path.join(ov_model_dir, "sam_image_encoder.xml")
@@ -1467,21 +1518,21 @@ def init_model_ov(
             if not os.path.isfile(p):
                 raise FileNotFoundError(
                     f"OV IR not found: {p}  (run export_ism.py first)")
-        encoder_compiled = _compile(core, sam_encoder_xml, ov_device)
-        decoder_compiled = _compile(core, sam_decoder_xml, ov_device)
+        encoder_compiled = _compile(sam_encoder_xml)
+        decoder_compiled = _compile(sam_decoder_xml)
     else:  # fastsam
         fastsam_xml = os.path.join(ov_model_dir, "fastsam_x_dynamic.xml")
         if not os.path.isfile(fastsam_xml):
             raise FileNotFoundError(
                 f"OV IR not found: {fastsam_xml}  "
                 f"(run export_ism.py --only fastsam first)")
-        fastsam_compiled = _compile(core, fastsam_xml, ov_device)
+        fastsam_compiled = _compile(fastsam_xml)
 
     dinov2_xml = os.path.join(ov_model_dir, "dinov2_vitl14.xml")
     if not os.path.isfile(dinov2_xml):
         raise FileNotFoundError(
             f"OV IR not found: {dinov2_xml}  (run export_ism.py first)")
-    dinov2_compiled = _compile(core, dinov2_xml, ov_device)
+    dinov2_compiled = _compile(dinov2_xml)
 
     # Build OV mask generator
     if segmentor_model_name == "sam":
@@ -1528,30 +1579,13 @@ def init_model_ov(
     )
 
     # Build the Instance_Segmentation_Model container
-    from model.detector import Instance_Segmentation_Model
-
-    model = Instance_Segmentation_Model(
-        segmentor_model=ov_mask_generator,
-        descriptor_model=ov_dinov2,
-        onboarding_config=cfg.model.onboarding_config,
-        matching_config=instantiate(cfg.model.matching_config),
-        post_processing_config=cfg.model.post_processing_config,
-        log_interval=cfg.model.log_interval,
-        log_dir=cfg.model.log_dir,
-        visible_thred=cfg.model.visible_thred,
-        pointcloud_sample_num=cfg.model.pointcloud_sample_num,
-    )
+    model = _build_ism_model_container(cfg, ov_mask_generator, ov_dinov2)
 
     # Torch device for pre/post-processing tensors
     torch_device = torch.device("cpu")
 
     # -- Pre-compute template pose table ----------------------------
-    template_poses = get_obj_poses_from_template_level(
-        level=2, pose_distribution="all"
-    )
-    template_poses[:, :3, 3] *= 0.4
-    poses = torch.tensor(template_poses).to(torch.float32).to(torch_device)
-    selected_poses = poses[load_index_level_in_level2(0, "all"), :, :]
+    selected_poses = _build_selected_poses(torch_device)
 
     proposal_processor = CropResizePad(224)
 
@@ -1575,62 +1609,19 @@ def init_model_ov_ext(
 
     Uses *_ext.xml models.
     """
-    from hydra import initialize, compose
-    from hydra.core.global_hydra import GlobalHydra
-    from hydra.utils import instantiate
-    from utils.poses.pose_utils import (
-        get_obj_poses_from_template_level,
-        load_index_level_in_level2,
+    cfg = _load_ism_hydra_cfg(
+        segmentor_model_name=segmentor_model_name,
+        stability_score_thresh=stability_score_thresh,
+        points_per_batch=points_per_batch,
+        chunk_size=chunk_size,
+        unsupported_segmentor_msg=(
+            "Only segmentor_model='sam' or 'fastsam' supported, "
+            f"got {segmentor_model_name!r}"
+        ),
     )
 
-    # Load Hydra config
-    GlobalHydra.instance().clear()
-    with initialize(version_base=None, config_path="configs"):
-        cfg = compose(config_name="run_inference.yaml")
-
-    if segmentor_model_name == "sam":
-        GlobalHydra.instance().clear()
-        with initialize(version_base=None, config_path="configs/model"):
-            cfg.model = compose(config_name="ISM_sam.yaml")
-        cfg.model.segmentor_model.stability_score_thresh = stability_score_thresh
-        if points_per_batch is not None:
-            cfg.model.segmentor_model.points_per_batch = int(points_per_batch)
-    elif segmentor_model_name == "fastsam":
-        GlobalHydra.instance().clear()
-        with initialize(version_base=None, config_path="configs/model"):
-            cfg.model = compose(config_name="ISM_fastsam.yaml")
-    else:
-        raise ValueError(f"Only segmentor_model='sam' or 'fastsam' supported, got {segmentor_model_name!r}")
-    if chunk_size is not None:
-        cfg.model.descriptor_model.chunk_size = int(chunk_size)
-
     core = ov.Core()
-
-    def _compile(core, xml_path, device, model_ir=None):
-        if model_ir is None:
-            model_ir = core.read_model(xml_path)
-
-        if device.upper().startswith("GPU"):
-            if precision == "fp32":
-                _prec = "f32"
-            else:
-                _prec = "f16"
-            config = {"PERFORMANCE_HINT": "LATENCY",
-                      "NUM_STREAMS": "1",
-                      "INFERENCE_PRECISION_HINT": _prec}
-            if precision == "fp32":
-                config["EXECUTION_MODE_HINT"] = "ACCURACY"
-            _cache_dir = os.path.join(ov_model_dir, ".ov_gpu_cache")
-            os.makedirs(_cache_dir, exist_ok=True)
-            config["CACHE_DIR"] = _cache_dir
-        else:
-            config = {}
-
-        print(f"Compiling Model: {xml_path}, "
-              f"Precision: {config.get('INFERENCE_PRECISION_HINT', 'default')}, "
-              f"Device: {device}")
-
-        return core.compile_model(model_ir, device, config)
+    _compile = _make_ov_compiler(core, ov_model_dir, ov_device, precision)
 
     # Compile extended OV models
     print(f"Compiling extended OV models from {ov_model_dir} on {ov_device}")
@@ -1653,7 +1644,7 @@ def init_model_ov_ext(
                     f"Extended OV IR not found: {p}  "
                     f"(run export_ism.py --ext first)")
 
-        encoder_compiled = _compile(core, sam_encoder_xml, ov_device)
+        encoder_compiled = _compile(sam_encoder_xml)
 
         _ppb = int(cfg.model.segmentor_model.points_per_batch)
         _dec_ir = core.read_model(sam_decoder_xml)
@@ -1670,21 +1661,21 @@ def init_model_ov_ext(
             _static_shapes[_inp.any_name] = _shape
         _dec_ir.reshape(_static_shapes)
         print(f"Decoder static shapes={_static_shapes} (reshaped for GPU performance)")
-        decoder_compiled = _compile(core, sam_decoder_xml, ov_device, model_ir=_dec_ir)
+        decoder_compiled = _compile(sam_decoder_xml, model_ir=_dec_ir)
     else:  # fastsam
         fastsam_xml = os.path.join(ov_model_dir, "fastsam_x_dynamic.xml")
         if not os.path.isfile(fastsam_xml):
             raise FileNotFoundError(
                 f"OV IR not found: {fastsam_xml}  "
                 f"(run export_ism.py --only fastsam first)")
-        fastsam_compiled = _compile(core, fastsam_xml, ov_device)
+        fastsam_compiled = _compile(fastsam_xml)
 
     dinov2_xml = os.path.join(ov_model_dir, "dinov2_vitl14_ext.xml")
     if not os.path.isfile(dinov2_xml):
         raise FileNotFoundError(
             f"Extended OV IR not found: {dinov2_xml}  "
             f"(run export_ism.py --ext first)")
-    dinov2_compiled = _compile(core, dinov2_xml, ov_device)
+    dinov2_compiled = _compile(dinov2_xml)
 
     # Build mask generator
     if segmentor_model_name == "sam":
@@ -1729,27 +1720,11 @@ def init_model_ov_ext(
     )
 
     # Build Instance_Segmentation_Model container
-    from model.detector import Instance_Segmentation_Model
-
-    model = Instance_Segmentation_Model(
-        segmentor_model=ov_mask_generator,
-        descriptor_model=ov_dinov2,
-        onboarding_config=cfg.model.onboarding_config,
-        matching_config=instantiate(cfg.model.matching_config),
-        post_processing_config=cfg.model.post_processing_config,
-        log_interval=cfg.model.log_interval,
-        log_dir=cfg.model.log_dir,
-        visible_thred=cfg.model.visible_thred,
-        pointcloud_sample_num=cfg.model.pointcloud_sample_num,
-    )
+    model = _build_ism_model_container(cfg, ov_mask_generator, ov_dinov2)
 
     torch_device = torch.device("cpu")
 
-    template_poses = get_obj_poses_from_template_level(
-        level=2, pose_distribution="all")
-    template_poses[:, :3, 3] *= 0.4
-    poses = torch.tensor(template_poses).to(torch.float32).to(torch_device)
-    selected_poses = poses[load_index_level_in_level2(0, "all"), :, :]
+    selected_poses = _build_selected_poses(torch_device)
 
     proposal_processor = CropResizePad(224)
 

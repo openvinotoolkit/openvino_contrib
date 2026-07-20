@@ -189,7 +189,6 @@ def compute_vsd(R_est, t_est, R_gt, t_gt, depth_test, K, renderer,
 
     visib_gt = (dist_gt > 0) & ((dist_test == 0) | (dist_test >= dist_gt - delta))
     visib_est = (dist_est > 0) & ((dist_test == 0) | (dist_test >= dist_est - delta))
-    visib_est = visib_est | (visib_gt & (dist_est > 0))
 
     visib_union = visib_gt | visib_est
     visib_inter = visib_gt & visib_est

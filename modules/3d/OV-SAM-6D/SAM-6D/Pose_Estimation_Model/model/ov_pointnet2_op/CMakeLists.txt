@@ -1,8 +1,12 @@
 # Copyright (C) 2018-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
+cmake_minimum_required(VERSION 3.16)
+
+project(openvino_operation_extension LANGUAGES CXX)
+
 # [cmake:extension]
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 
 set(TARGET_NAME "openvino_operation_extension")
 
