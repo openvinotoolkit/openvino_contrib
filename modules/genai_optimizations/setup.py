@@ -6,24 +6,24 @@ from setuptools import setup, find_packages
 
 EXTRAS_REQUIRE = {
     "benchmarks": [
-        "datasets==2.14.7",
+        "datasets==5.0.0",
         "rouge==1.0.1",
         "scikit-learn>=1.7",
         "fuzzywuzzy",
-        "bitsandbytes==0.47.0",
+        "bitsandbytes==0.49.2",
         "protobuf",
-        "sentencepiece==0.2.1",
+        "sentencepiece==0.2.2",
         "latex2sympy2",
         "word2number",
     ],
 }
 
 INSTALL_REQUIRES = [
-    "torch==2.8.0",
-    "torchvision==0.23.0",
+    "torch==2.13.0",
+    "torchvision==0.28.0",
     "transformers>=4.48.0",
-    "accelerate==1.9.0",
-    "wheel==0.45.1",
+    "accelerate==1.14.0",
+    "wheel==0.47.0",
     "git+https://github.com/mit-han-lab/Block-Sparse-Attention.git", # Install with limited build threads to avoid OOM (MAX_JOBS=4)
 ]
 

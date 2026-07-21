@@ -1,6 +1,6 @@
 # Copyright (C) 2018-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-beautifulsoup4==4.9.3
-lxml==4.9.1
-jinja2==3.1.5
+beautifulsoup4==4.15.0
+lxml==6.1.1
+jinja2==3.1.6
