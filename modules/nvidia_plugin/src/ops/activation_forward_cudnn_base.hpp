@@ -31,7 +31,7 @@ public:
                  Outputs outputTensors,
                  const Workbuffers&) const override;
 
-    CudaGraphCompatibility GetCudaGraphCompatibility() const override;
+    CudaGraphCompatibility GetCudaGraphCompatibilityImpl() const override;
 
 protected:
     std::unique_ptr<CUDA::DnnActivationDescriptor> op_desc_;

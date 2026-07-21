@@ -247,6 +247,11 @@ private:
     static bool IsResultNode(const ov::Node& node);
 
     /**
+     * Checks whether the given node is an Assign (Sink) node
+     */
+    static bool IsAssignNode(const ov::Node& node);
+
+    /**
      * Checks whether the given node is a constant node
      */
     static bool IsConstantNode(const ov::Node& node);
