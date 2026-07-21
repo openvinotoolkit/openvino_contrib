@@ -1,0 +1,307 @@
+{
+  "preamble": "OpenVINO Contrib Third Party Programs File\n\nThis file contains the list of third party software (\"third party programs\")\ncontained in the Intel software and their required notices and/or license\nterms. This third party software, even if included with the distribution of\nthe Intel software, may be governed by separate license terms, including\nwithout limitation, third party license terms, other Intel software license\nterms, and open source software license terms. These separate license terms\ngovern your use of the third party programs as set forth in the\n\"third-party-programs.txt\" or other similarly-named text file.\n\nThird party programs and their corresponding required notices and/or license\nterms are listed below.",
+  "separator": "-------------------------------------------------------------",
+  "licenses": [
+    {
+      "name": "opencv",
+      "spdx": "Apache-2.0",
+      "url": "https://github.com/opencv/opencv/blob/master/LICENSE"
+    },
+    {
+      "name": "opencv-python",
+      "spdx": "MIT",
+      "url": "https://github.com/opencv/opencv-python/blob/4.x/LICENSE.txt"
+    },
+    {
+      "name": "OpenJDK",
+      "spdx": "GPL-2.0-with-classpath-exception",
+      "url": "https://github.com/openjdk/jdk/blob/master/LICENSE"
+    },
+    {
+      "name": "Sphinx",
+      "spdx": "BSD-2-Clause",
+      "url": "https://github.com/sphinx-doc/sphinx/blob/master/LICENSE.rst"
+    },
+    {
+      "name": "ru-gpts",
+      "spdx": "Apache-2.0",
+      "url": "https://github.com/ai-forever/ru-gpts/blob/master/LICENSE"
+    },
+    {
+      "name": "pytorch",
+      "spdx": "BSD-3-Clause",
+      "url": "https://github.com/pytorch/pytorch/blob/main/LICENSE"
+    },
+    {
+      "name": "seqeval",
+      "spdx": "MIT",
+      "url": "https://github.com/chakki-works/seqeval/blob/master/LICENSE"
+    },
+    {
+      "name": "librosa",
+      "spdx": "ISC",
+      "url": "https://github.com/librosa/librosa/blob/main/LICENSE.md"
+    },
+    {
+      "name": "libsndfile1",
+      "spdx": "LGPL-2.1-or-later",
+      "url": "https://github.com/libsndfile/libsndfile/blob/master/COPYING"
+    },
+    {
+      "name": "pysoundfile",
+      "spdx": "BSD-3-Clause",
+      "url": "https://github.com/bastibe/python-soundfile/blob/master/LICENSE"
+    },
+    {
+      "name": "Pytorch audio",
+      "spdx": "BSD-2-Clause",
+      "url": "https://github.com/pytorch/audio/blob/main/LICENSE"
+    },
+    {
+      "name": "tensorflow",
+      "spdx": "Apache-2.0",
+      "url": "https://github.com/tensorflow/tensorflow/blob/master/LICENSE"
+    },
+    {
+      "name": "NetworkX",
+      "spdx": "BSD-3-Clause",
+      "url": "https://github.com/networkx/networkx/blob/main/LICENSE.txt"
+    },
+    {
+      "name": "JUnit",
+      "spdx": "EPL-2.0",
+      "url": "https://github.com/junit-team/junit4/blob/main/LICENSE-junit.txt"
+    },
+    {
+      "name": "google-java-format",
+      "spdx": "Apache-2.0",
+      "url": "https://github.com/google/google-java-format/blob/master/LICENSE"
+    },
+    {
+      "name": "Detectron2",
+      "spdx": "Apache-2.0",
+      "url": "https://github.com/facebookresearch/detectron2/blob/main/LICENSE"
+    },
+    {
+      "name": "defusedxml",
+      "spdx": "PSF-2.0",
+      "url": "https://github.com/tiran/defusedxml/blob/main/LICENSE"
+    },
+    {
+      "name": "BrainMaGe",
+      "spdx": "BSD-3-Clause",
+      "url": "https://github.com/CBICA/BrainMaGe/blob/master/LICENSE"
+    },
+    {
+      "name": "transformers",
+      "spdx": "Apache-2.0",
+      "url": "https://github.com/huggingface/transformers/blob/main/LICENSE"
+    },
+    {
+      "name": "JavaHamcrest",
+      "spdx": "BSD-3-Clause",
+      "url": "https://github.com/hamcrest/JavaHamcrest/blob/master/LICENSE"
+    },
+    {
+      "name": "Software License Agreement for NVIDIA CUDA Toolkit",
+      "spdx": "LicenseRef-NVIDIA-CUDA-EULA",
+      "url": "https://docs.nvidia.com/cuda/eula/index.html",
+      "file": "nvidia-cuda-eula.txt"
+    },
+    {
+      "name": "RAFT",
+      "spdx": "BSD-3-Clause",
+      "url": "https://github.com/princeton-vl/RAFT/blob/master/LICENSE"
+    },
+    {
+      "name": "Open3D",
+      "spdx": "MIT",
+      "url": "https://github.com/isl-org/Open3D/blob/main/LICENSE"
+    },
+    {
+      "name": "direct",
+      "spdx": "Apache-2.0",
+      "url": "https://github.com/NKI-AI/direct/blob/main/LICENSE"
+    },
+    {
+      "name": "vscode-extension-samples",
+      "spdx": "MIT",
+      "url": "https://github.com/microsoft/vscode-extension-samples/blob/main/LICENSE"
+    },
+    {
+      "name": "langchainjs",
+      "spdx": "MIT",
+      "url": "https://github.com/langchain-ai/langchainjs/blob/main/LICENSE"
+    },
+    {
+      "name": "ESLint",
+      "spdx": "MIT",
+      "url": "https://github.com/eslint/eslint/blob/main/LICENSE"
+    },
+    {
+      "name": "jest",
+      "spdx": "MIT",
+      "url": "https://github.com/jestjs/jest/blob/main/LICENSE"
+    },
+    {
+      "name": "swc/jest",
+      "spdx": "MIT",
+      "url": "https://github.com/swc-project/swc/blob/main/LICENSE"
+    },
+    {
+      "name": "tsconfig/recommended",
+      "spdx": "MIT",
+      "url": "https://github.com/tsconfig/bases/blob/main/LICENSE.md"
+    },
+    {
+      "name": "DefinitelyTyped (@types/node)",
+      "spdx": "MIT",
+      "url": "https://github.com/DefinitelyTyped/DefinitelyTyped/blob/master/LICENSE"
+    },
+    {
+      "name": "dotenv",
+      "spdx": "BSD-2-Clause",
+      "url": "https://github.com/motdotla/dotenv/blob/master/LICENSE"
+    },
+    {
+      "name": "jiti",
+      "spdx": "MIT",
+      "url": "https://github.com/unjs/jiti/blob/main/LICENSE"
+    },
+    {
+      "name": "ts-jest",
+      "spdx": "MIT",
+      "url": "https://github.com/kulshekhar/ts-jest/blob/main/LICENSE.md"
+    },
+    {
+      "name": "TypeScript",
+      "spdx": "Apache-2.0",
+      "url": "https://github.com/microsoft/TypeScript/blob/main/LICENSE.txt"
+    },
+    {
+      "name": "typescript-eslint",
+      "spdx": "MIT",
+      "url": "https://github.com/typescript-eslint/typescript-eslint/blob/main/LICENSE"
+    },
+    {
+      "name": "intel_extension_for_pytorch",
+      "spdx": "Apache-2.0",
+      "url": "https://github.com/intel/intel-extension-for-pytorch/blob/main/LICENSE"
+    },
+    {
+      "name": "scikit-learn-intelex",
+      "spdx": "Apache-2.0",
+      "url": "https://github.com/uxlfoundation/scikit-learn-intelex/blob/main/LICENSE"
+    },
+    {
+      "name": "Neural Network Compression Framework (NNCF)",
+      "spdx": "Apache-2.0",
+      "url": "https://github.com/openvinotoolkit/nncf/blob/develop/LICENSE"
+    },
+    {
+      "name": "sklearn-onnx",
+      "spdx": "Apache-2.0",
+      "url": "https://github.com/onnx/sklearn-onnx/blob/main/LICENSE"
+    },
+    {
+      "name": "Joblib",
+      "spdx": "BSD-3-Clause",
+      "url": "https://github.com/joblib/joblib/blob/main/LICENSE.txt"
+    },
+    {
+      "name": "Numpy",
+      "spdx": "BSD-3-Clause",
+      "url": "https://github.com/numpy/numpy/blob/main/LICENSE.txt"
+    },
+    {
+      "name": "numba",
+      "spdx": "BSD-2-Clause",
+      "url": "https://github.com/numba/numba/blob/main/LICENSE"
+    },
+    {
+      "name": "setuptools",
+      "spdx": "MIT",
+      "url": "https://github.com/pypa/setuptools/blob/main/LICENSE"
+    },
+    {
+      "name": "tensorboard",
+      "spdx": "Apache-2.0",
+      "url": "https://github.com/tensorflow/tensorboard/blob/master/LICENSE"
+    },
+    {
+      "name": "tqdm",
+      "spdx": "MPL-2.0",
+      "url": "https://github.com/tqdm/tqdm/blob/master/LICENCE"
+    },
+    {
+      "name": "onnx",
+      "spdx": "Apache-2.0",
+      "url": "https://github.com/onnx/onnx/blob/main/LICENSE"
+    },
+    {
+      "name": "torch vision",
+      "spdx": "BSD-3-Clause",
+      "url": "https://github.com/pytorch/vision/blob/main/LICENSE"
+    },
+    {
+      "name": "scipy",
+      "spdx": "BSD-3-Clause",
+      "url": "https://github.com/scipy/scipy/blob/main/LICENSE.txt"
+    },
+    {
+      "name": "plyfile",
+      "spdx": "GPL-3.0-or-later",
+      "url": "https://github.com/dranjan/python-plyfile/blob/master/COPYING"
+    },
+    {
+      "name": "tensorboardX",
+      "spdx": "MIT",
+      "url": "https://github.com/lanpa/tensorboardX/blob/master/LICENSE"
+    },
+    {
+      "name": "progress",
+      "spdx": "ISC",
+      "url": "https://github.com/verigak/progress/blob/master/LICENSE"
+    },
+    {
+      "name": "termcolor",
+      "spdx": "MIT",
+      "url": "https://github.com/termcolor/termcolor/blob/main/COPYING.txt"
+    },
+    {
+      "name": "pyparsing",
+      "spdx": "MIT",
+      "url": "https://github.com/pyparsing/pyparsing/blob/master/LICENSE"
+    },
+    {
+      "name": "six",
+      "spdx": "MIT",
+      "url": "https://github.com/benjaminp/six/blob/master/LICENSE"
+    },
+    {
+      "name": "matplotlib",
+      "spdx": "LicenseRef-Matplotlib",
+      "url": "https://github.com/matplotlib/matplotlib/blob/main/LICENSE/LICENSE"
+    },
+    {
+      "name": "easydict",
+      "spdx": "LGPL-3.0-or-later",
+      "url": "https://github.com/makinacorpus/easydict/blob/master/LICENSE"
+    },
+    {
+      "name": "llama.cpp",
+      "spdx": "MIT",
+      "url": "https://github.com/ggerganov/llama.cpp/blob/master/LICENSE"
+    },
+    {
+      "name": "Microsoft GSL (Guidelines Support Library)",
+      "spdx": "MIT",
+      "url": "https://github.com/microsoft/GSL/blob/main/LICENSE"
+    },
+    {
+      "name": "fmt",
+      "spdx": "MIT",
+      "url": "https://github.com/fmtlib/fmt/blob/master/LICENSE"
+    }
+  ]
+}
