@@ -20,9 +20,13 @@ Get up and running with large language models.
 
 ### macOS
 
+Download the latest macOS executable:
+
 [Download](https://ollama.com/download/Ollama-darwin.zip)
 
 ### Windows
+
+Download the latest Windows installer:
 
 [Download](https://ollama.com/download/OllamaSetup.exe)
 
