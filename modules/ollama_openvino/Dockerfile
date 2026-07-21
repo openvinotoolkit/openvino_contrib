@@ -14,7 +14,7 @@ RUN sed -i -e 's/mirror.centos.org/vault.centos.org/g' -e 's/^#.*baseurl=http/ba
     && curl -s -L https://github.com/ccache/ccache/releases/download/v4.10.2/ccache-4.10.2-linux-x86_64.tar.xz | tar -Jx -C /usr/local/bin --strip-components 1
 ENV PATH=/opt/rh/devtoolset-10/root/usr/bin:/opt/rh/devtoolset-11/root/usr/bin:$PATH
 
-FROM --platform=linux/arm64 rockylinux:8 AS base-arm64
+FROM --platform=linux/arm64 rockylinux:9 AS base-arm64
 # install epel-release for ccache
 RUN yum install -y yum-utils epel-release \
     && yum install -y clang ccache \
@@ -111,7 +111,7 @@ FROM ${FLAVOR} AS archive
 COPY --from=cpu dist/lib/ollama /lib/ollama
 COPY --from=build /bin/ollama /bin/ollama
 
-FROM ubuntu:22.04
+FROM ubuntu:26.04
 RUN apt-get update \
     && apt-get install -y ca-certificates \
     && apt-get clean \
