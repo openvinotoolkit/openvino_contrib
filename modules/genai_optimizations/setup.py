@@ -19,7 +19,7 @@ EXTRAS_REQUIRE = {
 }
 
 INSTALL_REQUIRES = [
-    "torch==2.8.0",
+    "torch==2.13.0",
     "torchvision==0.23.0",
     "transformers>=4.48.0",
     "accelerate==1.9.0",
