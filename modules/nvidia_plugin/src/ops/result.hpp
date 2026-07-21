@@ -29,7 +29,7 @@ public:
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
-    CudaGraphCompatibility GetCudaGraphCompatibility() const override;
+    CudaGraphCompatibility GetCudaGraphCompatibilityImpl() const override;
 
     static std::vector<std::string> GetOutputTensorName(const ov::op::v0::Result& node);
 

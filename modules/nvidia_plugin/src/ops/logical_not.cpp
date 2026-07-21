@@ -36,7 +36,7 @@ void LogicalNotOp::Execute(const InferenceRequestContext& context,
     throwIfError(cudaPeekAtLastError());
 }
 
-CudaGraphCompatibility LogicalNotOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility LogicalNotOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 OPERATION_REGISTER(LogicalNotOp, LogicalNot);
 

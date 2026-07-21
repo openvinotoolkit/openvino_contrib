@@ -1,0 +1,149 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+version: 2
+
+updates:
+  - package-ecosystem: "pip"
+    directories:
+      - "/modules/3d/CDPN"
+      - "/modules/3d/pointPillars"
+      - "/modules/custom_operations/tests"
+      - "/modules/genai_optimizations"
+      - "/modules/nvidia_plugin/tests/functional/shared_tests_instances/single_layer_tests/generator"
+      - "/modules/nvidia_plugin/utils/shape-extractor"
+      - "/modules/nvidia_plugin/wheel"
+      - "/modules/openvino_bevfusion"
+      - "/modules/openvino_training_kit"
+      - "/modules/token_merging"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "deps(pip)"
+    groups:
+      pip-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      pip-version:
+        applies-to: version-updates
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directories:
+      - "/modules/ollama_openvino/macapp"
+      - "/modules/openvino-langchain"
+      - "/modules/openvino-langchain/sample"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "javascript"
+    commit-message:
+      prefix: "deps(npm)"
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      npm-version:
+        applies-to: version-updates
+        patterns:
+          - "*"
+
+  - package-ecosystem: "gomod"
+    directory: "/modules/ollama_openvino"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "deps(gomod)"
+    groups:
+      gomod-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      gomod-version:
+        applies-to: version-updates
+        patterns:
+          - "*"
+
+  - package-ecosystem: "gradle"
+    directories:
+      - "/modules/android_demos/coco_detection_android_demo"
+      - "/modules/android_demos/coco_detection_android_demo/app"
+      - "/modules/java_api"
+      - "/modules/java_api/samples/face_detection_java_sample"
+      - "/modules/java_api/samples/face_detection_kotlin_sample"
+      - "/modules/java_api/samples/hello_query_device"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "deps(gradle)"
+    groups:
+      gradle-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      gradle-version:
+        applies-to: version-updates
+        patterns:
+          - "*"
+
+  - package-ecosystem: "docker"
+    directories:
+      - "/modules/3d/pointPillars/devops"
+      - "/modules/nvidia_plugin"
+      - "/modules/ollama_openvino"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "deps(docker)"
+    groups:
+      docker-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      docker-version:
+        applies-to: version-updates
+        patterns:
+          - "*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "deps(actions)"
+    groups:
+      actions-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      actions-version:
+        applies-to: version-updates
+        patterns:
+          - "*"

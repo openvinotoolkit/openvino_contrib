@@ -28,14 +28,14 @@ public:
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
-    CudaGraphCompatibility GetCudaGraphCompatibility() const override;
+    CudaGraphCompatibility GetCudaGraphCompatibilityImpl() const override;
 
 private:
     enum { kOutputPtrsMWBIdx = 0, kNumberOfMWBIdx };
     enum { kSplitIdxIWBIdx = 0, kAxisSizesIWBIdx, kAxisOffsetSizesIWBIdx, kNumberOfIWIdx };
 
     void buildAxisHelpers(const std::vector<int64_t>& split_lengths, size_t orig_axis_size);
-    void buildSplitIndexHelper(const std::vector<int64_t>& split_lengths, size_t orig_axis_size);
+    void buildSplitIndexHelper(size_t orig_axis_size);
 
     void InitSharedImmutableWorkbuffers(const IOperationExec::Buffers& buffers) override;
     WorkbufferRequest GetWorkBufferRequest() const override;

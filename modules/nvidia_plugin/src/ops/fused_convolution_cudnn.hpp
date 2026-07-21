@@ -35,7 +35,7 @@ public:
                  Outputs outputTensors,
                  const Workbuffers&) const override;
 
-    CudaGraphCompatibility GetCudaGraphCompatibility() const override;
+    CudaGraphCompatibility GetCudaGraphCompatibilityImpl() const override;
     void InitSharedImmutableWorkbuffers(const IOperationExec::Buffers&) override {}
     WorkbufferRequest GetWorkBufferRequest() const override;
 
