@@ -40,6 +40,7 @@ type Sequence struct {
 	numKeep int
 
 	doneReason string
+	err        error
 
 	// Metrics
 	startProcessingTime time.Time
@@ -122,6 +123,7 @@ func (s *Sequence) GetSamplingParameters() *SamplingParams {
 // AppendPendingResponse 向 Sequence 的 pendingResponses 追加内容
 func (s *Sequence) AppendPendingResponse(response string) {
 	s.pendingResponses = append(s.pendingResponses, response)
+	s.numDecoded++
 }
 
 // CloseQuit 关闭 Sequence 的 quit 通道
@@ -137,6 +139,14 @@ func (s *Sequence) GetResponses() <-chan string {
 // GetDoneReason 返回 Sequence 的 doneReason 字段
 func (s *Sequence) GetDoneReason() string {
 	return s.doneReason
+}
+
+func (s *Sequence) SetError(err error) {
+	s.err = err
+}
+
+func (s *Sequence) GetError() error {
+	return s.err
 }
 
 // GetDoneReason 返回 Sequence 的 doneReason 字段
