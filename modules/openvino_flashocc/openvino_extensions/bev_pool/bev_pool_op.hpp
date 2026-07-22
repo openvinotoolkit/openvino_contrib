@@ -197,7 +197,7 @@ private:
  *   2: packed_sort      - [TOTAL_PTS*2 + NX*NY*2]  I32 (from BEVPoolBinSort)
  *
  * Outputs:
- *   0: bev              - [1, C, NX, NY]   FP32
+ *   0: bev              - [1, C, NY, NX]   FP32
  */
 class BEVPoolV2 : public ov::op::Op {
 public:

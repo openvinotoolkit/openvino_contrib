@@ -106,7 +106,7 @@ SPDX-License-Identifier: Apache-2.0 -->
             local MUST equal CHANNELS for this kernel implementation.
             global = output size = 1 * 64 * 360 * 360 = 8,294,400
         -->
-        <WorkSizes global="8294400,1,1" local="64,1,1"/>
+        <WorkSizes dim="output" global="B*F*Y*X,1,1" local="64,1,1"/>
 </CustomLayer>
 
 <!-- ═══ BEVPoolBinSort: single-WG counting sort of geometry ═══ -->

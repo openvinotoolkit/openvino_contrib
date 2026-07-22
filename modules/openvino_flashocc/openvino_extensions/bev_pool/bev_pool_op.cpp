@@ -418,7 +418,7 @@ BEVPoolV2::BEVPoolV2(
 
 void BEVPoolV2::validate_and_infer_types() {
     set_output_type(0, ov::element::f32,
-                    ov::PartialShape{1, m_channels, m_nx, m_ny});
+                    ov::PartialShape{1, m_channels, m_ny, m_nx});
 }
 
 std::shared_ptr<ov::Node> BEVPoolV2::clone_with_new_inputs(
@@ -458,13 +458,15 @@ bool BEVPoolV2::evaluate(ov::TensorVector& outputs,
     const int32_t* starts  = packed + 2 * total;
     const int32_t* lengths = packed + 2 * total + n_cells;
 
-    ov::Shape out_shape{1, size_t(C_ch), size_t(m_nx), size_t(m_ny)};
+    ov::Shape out_shape{1, size_t(C_ch), size_t(m_ny), size_t(m_nx)};
     outputs[0].set_shape(out_shape);
     float* out = outputs[0].data<float>();
 
     for (int cell = 0; cell < n_cells; ++cell) {
         int s = starts[cell];
         int l = lengths[cell];
+        int ix = cell / static_cast<int>(m_ny);
+        int iy = cell % static_cast<int>(m_ny);
         for (int c = 0; c < C_ch; ++c) {
             float sum = 0.0f;
             for (int i = 0; i < l; ++i) {
@@ -474,7 +476,10 @@ bool BEVPoolV2::evaluate(ov::TensorVector& outputs,
                 int feat_base = cam * C_ch * HW + hw;
                 sum += dp[pidx] * cf[feat_base + c * HW];
             }
-            out[c * n_cells + cell] = sum;
+            // BinSort uses cell = ix * NY + iy, while the output contract is
+            // NCHW [1, C, NY, NX]. Keep the CPU reference aligned with the
+            // Python fallback and the GPU kernel.
+            out[c * n_cells + iy * static_cast<int>(m_nx) + ix] = sum;
         }
     }
     return true;
