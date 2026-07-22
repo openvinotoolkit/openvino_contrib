@@ -177,6 +177,13 @@ jobs:
         env:
           CUSTOM_OP_LIB: ${{ env.OPENVINO_REPO }}/bin/intel64/${{ env.CMAKE_BUILD_TYPE }}/libuser_ov_extensions.so
 
+      - name: Install requirements for FlashOCC tests
+        run: python3 -m pip install -r ${OPENVINO_CONTRIB_REPO}/modules/openvino_flashocc/tests/requirements.txt
+
+      - name: Build and test FlashOCC BEV pool extension
+        working-directory: ${{ env.OPENVINO_CONTRIB_REPO }}/modules/openvino_flashocc
+        run: python3 -m pytest -v tests/test_bevpool_smoke.py
+
       - name: Pack Artifacts
         run: |
           pushd ${INSTALL_DIR}
