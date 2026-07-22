@@ -1,6 +1,10 @@
 /*
  * Copyright (C) 2018-2026 Intel Corporation
  * SPDX-License-Identifier: Apache-2.0
+ * Adapted from OpenVINO BEVFusion module BEVPool sources
+ * (https://github.com/openvinotoolkit/openvino_contrib/tree/master/modules/openvino_bevfusion), Apache-2.0.
+ * BEV pooling algorithm adapted from BEVDet bev_pool_v2
+ * (https://github.com/HuangJunJie2017/BEVDet), Apache-2.0, Copyright (c) Phigent Robotics.
  */
 
 // BEVPool Operations for OpenVINO
