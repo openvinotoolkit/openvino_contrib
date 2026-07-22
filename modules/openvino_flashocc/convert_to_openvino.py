@@ -1,8 +1,7 @@
+#!/usr/bin/env python3
 # Copyright (C) 2018-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-
-#!/usr/bin/env python3
 """
 FlashOCC → ONNX → OpenVINO Conversion
 =======================================
@@ -150,28 +149,6 @@ if is_gpu_target and hasattr(model, 'img_view_transformer'):
         print("  ✓ Enabled accelerated precomputed BEV indices for GPU export")
 
 # ── Wrapper: logit-level forward ───────────────────────────────────────────────
-# class FlashOCCExportWrapper(nn.Module):
-#     """
-#     Exports FlashOCC to logits [B, 200, 200, 16, 18].
-#     The bev_pool_v2 op inside extract_feat appears as FlashOCCBEVPoolV2
-#     in the ONNX graph (via the symbolic in bev_pool.py).
-#     Camera parameters are typically fixed calibration and fold to constants;
-#     ranks/intervals derived from them are embedded as ONNX initializers.
-#     """
-#     def __init__(self, model):
-#         super().__init__()
-#         self.model = model
-
-#     def forward(self, imgs, sensor2egos, ego2globals, intrins,
-#                 post_rots, post_trans, bda):
-#         img_inputs = [imgs, sensor2egos, ego2globals, intrins,
-#                       post_rots, post_trans, bda]
-#         img_metas  = [[{'img_shape': (int(imgs.shape[3]),
-#                                       int(imgs.shape[4]), 3)}]]
-#         img_feats, _, _ = self.model.extract_feat(
-#             points=None, img_inputs=img_inputs, img_metas=img_metas[0])
-#         x = img_feats[0] if isinstance(img_feats, (list, tuple)) else img_feats
-#         return self.model.occ_head(x).contiguous()  # [B, 200, 200, 16, 18]
 class FlashOCCStaticWrapper(torch.nn.Module):
     def __init__(self, model, sensor2egos, ego2globals, intrins, post_rots, post_trans, bda):
         super().__init__()
@@ -228,7 +205,6 @@ class SplitBEVTrunkWrapper(torch.nn.Module):
         x = self.model.img_bev_encoder_neck(x)
         return self.model.occ_head(x)
 
-# wrapper = FlashOCCExportWrapper(model)
 wrapper = FlashOCCStaticWrapper(model, sensor2egos, ego2globals, intrins, post_rots, post_trans, bda)
 wrapper.eval()
 
