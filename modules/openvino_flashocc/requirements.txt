@@ -1,0 +1,9 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# FlashOCC OpenVINO inference — Python package requirements
+
+openvino>=2024.0
+numpy>=2.0.0
+onnx>=1.14.0
+opencv-python-headless>=4.8.0

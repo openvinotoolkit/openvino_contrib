@@ -1,0 +1,17 @@
+*.o
+*.so
+*.pyc
+work_dirs/
+*.log
+*.bak
+*.opt
+.conda/
+ov_build/
+setup.env
+run_results/
+checkpoints/
+debug_output/
+.cache/
+openvino_extensions/bev_pool/build*/
+.venv_convert/
+split_f16out/

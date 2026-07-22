@@ -1,0 +1,35 @@
+OpenVINO FlashOCC module third-party attribution notice
+
+This module includes adaptations of Apache-2.0 licensed code from the projects
+listed below. Their notices are retained here for attribution and compliance.
+
+The BEVPool OpenVINO extension is forked from the BEVPool implementation in the
+OpenVINO BEVFusion module:
+https://github.com/openvinotoolkit/openvino_contrib/tree/master/modules/openvino_bevfusion
+It includes a port of the BEVDet bev_pool_v2 algorithm attributed below.
+
+1. BEVDet
+   URL: https://github.com/HuangJunJie2017/BEVDet
+   License: Apache-2.0
+   Copyright: (c) OpenMMLab
+
+2. BEVDet bev_pool_v2 sources
+   URL: https://github.com/HuangJunJie2017/BEVDet
+   License: Apache-2.0
+   Copyright: (c) Phigent Robotics
+
+3. mmdetection
+   URL: https://github.com/open-mmlab/mmdetection
+   License: Apache-2.0
+   Copyright: (c) OpenMMLab
+
+4. mmdetection3d
+   URL: https://github.com/open-mmlab/mmdetection3d
+   License: Apache-2.0
+   Copyright: (c) OpenMMLab
+
+5. FlashOCC
+   URL: https://github.com/Yzichen/FlashOCC
+   License: Apache-2.0
+   Copyright: (c) Institute of Intelligent Control, Dalian University of
+   Technology
