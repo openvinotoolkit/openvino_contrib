@@ -210,7 +210,7 @@ class CdpnOVInference:
             'pose_trans'     : (3, 4) pose [R_pnp | T_trans]
             'R'              : (3, 3) rotation from PnP
             'T_pnp'          : (3,)   translation from PnP
-            'T_trans'        : (3,)   translation from trans head (EXTNN)
+            'T_trans'        : (3,)   translation from trans head
             'pred_coor'      : (3, 64, 64) denormalised coordinate maps
             'pred_conf'      : (64, 64) confidence map
             'num_corres'     : int, #correspondences sent to PnP
@@ -277,7 +277,7 @@ class CdpnOVInference:
 
 
     def _preprocess_batch(self, rgb_list, box_list):
-        """Preprocess a batch -> stacked numpy array."""
+        """Preprocess a batch."""
         inps, centers, scales, boxes = [], [], [], []
         for rgb, box in zip(rgb_list, box_list):
             inp, crop_center, crop_scale, box_arr = self._preprocess_single(rgb, box)
