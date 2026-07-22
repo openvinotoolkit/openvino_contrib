@@ -1,5 +1,7 @@
 # Copyright (C) 2018-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
+# Adapted from BEVDet detector architecture (https://github.com/HuangJunJie2017/BEVDet), Apache-2.0, Copyright (c) OpenMMLab.
+# Adapted from FlashOCC detector pipeline (https://github.com/Yzichen/FlashOCC), Apache-2.0, Copyright (c) Institute of Intelligent Control, Dalian University of Technology.
 
 import torch
 import torch.nn as nn

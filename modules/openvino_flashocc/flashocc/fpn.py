@@ -1,5 +1,6 @@
 # Copyright (C) 2018-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
+# Adapted from mmdetection FPN (https://github.com/open-mmlab/mmdetection), Apache-2.0, Copyright (c) OpenMMLab.
 
 import torch.nn as nn
 import torch.nn.functional as F
