@@ -87,7 +87,8 @@ public:
                    int64_t num_cams = 6, int64_t depth_bins = 118,
                    int64_t channels = 80, int64_t feat_h = 32, int64_t feat_w = 88,
                    float x_min = -54.0f, float y_min = -54.0f, float z_min = -10.0f,
-                   float x_step = 0.3f, float y_step = 0.3f, float z_step = 20.0f);
+                   float x_step = 0.3f, float y_step = 0.3f, float z_step = 20.0f,
+                   int64_t scale = 8192);
 
     void validate_and_infer_types() override;
     std::shared_ptr<ov::Node> clone_with_new_inputs(
@@ -104,6 +105,7 @@ private:
     int64_t m_feat_h{32}, m_feat_w{88};
     float m_x_min{-54.0f}, m_y_min{-54.0f}, m_z_min{-10.0f};
     float m_x_step{0.3f}, m_y_step{0.3f}, m_z_step{20.0f};
+    int64_t m_scale{8192};
 };
 
 
@@ -166,10 +168,10 @@ public:
     BEVPoolBinSort() = default;
 
     BEVPoolBinSort(const ov::Output<ov::Node>& geom,
-                   int64_t nx = 360, int64_t ny = 360,
-                   int64_t total_pts = 1993728,
-                   float x_min = -54.0f, float y_min = -54.0f,
-                   float x_step = 0.3f, float y_step = 0.3f);
+                   int64_t nx = 200, int64_t ny = 200,
+                   int64_t total_pts = 185856,
+                   float x_min = -40.0f, float y_min = -40.0f,
+                   float x_step = 0.4f, float y_step = 0.4f);
 
     void validate_and_infer_types() override;
     std::shared_ptr<ov::Node> clone_with_new_inputs(
@@ -181,10 +183,10 @@ public:
     bool has_evaluate() const override;
 
 private:
-    int64_t m_nx{360}, m_ny{360};
-    int64_t m_total_pts{1993728};
-    float m_x_min{-54.0f}, m_y_min{-54.0f};
-    float m_x_step{0.3f}, m_y_step{0.3f};
+    int64_t m_nx{200}, m_ny{200};
+    int64_t m_total_pts{185856};
+    float m_x_min{-40.0f}, m_y_min{-40.0f};
+    float m_x_step{0.4f}, m_y_step{0.4f};
 };
 
 
@@ -212,10 +214,10 @@ public:
     BEVPoolV2(const ov::Output<ov::Node>& depth_probs,
               const ov::Output<ov::Node>& context_feats,
               const ov::Output<ov::Node>& packed_sort,
-              int64_t nx = 360, int64_t ny = 360,
-              int64_t channels = 80, int64_t feat_hw = 2816,
-              int64_t depth_hw = 332288,
-              int64_t total_pts = 1993728);
+              int64_t nx = 200, int64_t ny = 200,
+              int64_t channels = 64, int64_t feat_hw = 704,
+              int64_t depth_hw = 30976,
+              int64_t total_pts = 185856);
 
     void validate_and_infer_types() override;
     std::shared_ptr<ov::Node> clone_with_new_inputs(
@@ -227,11 +229,11 @@ public:
     bool has_evaluate() const override;
 
 private:
-    int64_t m_nx{360}, m_ny{360};
-    int64_t m_channels{80};
-    int64_t m_feat_hw{2816};
-    int64_t m_depth_hw{332288};
-    int64_t m_total_pts{1993728};
+    int64_t m_nx{200}, m_ny{200};
+    int64_t m_channels{64};
+    int64_t m_feat_hw{704};
+    int64_t m_depth_hw{30976};
+    int64_t m_total_pts{185856};
 };
 
 }  // namespace BEVFusionExtension
