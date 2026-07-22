@@ -1,5 +1,6 @@
 # Copyright (C) 2018-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
+# Adapted from BEVDet custom ResNet components (https://github.com/HuangJunJie2017/BEVDet), Apache-2.0, Copyright (c) OpenMMLab.
 
 import torch
 import torch.nn as nn

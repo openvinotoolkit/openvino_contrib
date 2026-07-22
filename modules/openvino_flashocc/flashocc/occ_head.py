@@ -1,5 +1,7 @@
 # Copyright (C) 2018-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
+# Adapted from BEVDet/mmdetection3d occupancy head components (https://github.com/HuangJunJie2017/BEVDet, https://github.com/open-mmlab/mmdetection3d), Apache-2.0, Copyright (c) OpenMMLab.
+# Adapted from FlashOCC occupancy modeling components (https://github.com/Yzichen/FlashOCC), Apache-2.0, Copyright (c) Institute of Intelligent Control, Dalian University of Technology.
 
 import numpy as np
 import torch

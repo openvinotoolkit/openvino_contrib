@@ -1,5 +1,7 @@
 # Copyright (C) 2018-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
+# Adapted from BEVDet (https://github.com/HuangJunJie2017/BEVDet), Apache-2.0, Copyright (c) OpenMMLab.
+# Adapted from bev_pool_v2 sources in BEVDet (https://github.com/HuangJunJie2017/BEVDet), Apache-2.0, Copyright (c) Phigent Robotics.
 
 import torch
 import torch.nn as nn
