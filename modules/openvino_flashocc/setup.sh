@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
 # =============================================================================
 # setup.sh — FlashOCC OpenVINO 2026.3 environment setup
 #
