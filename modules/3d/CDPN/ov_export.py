@@ -250,10 +250,10 @@ def _rewire_nn_body(nn_model, tensor_out):
 
 def _make_verify_inputs():
     """Return a dict of canonical single-sample test inputs for composite models."""
-    np.random.seed(42)
+    rng = np.random.default_rng(seed=42)
 
     return {
-        'image':       np.random.randint(0, 255, (1, 480, 640, 3), dtype=np.uint8),
+        'image':       rng.integers(0, 255, (1, 480, 640, 3), dtype=np.uint8),
         'bbox':        np.array([[[[100.0, 80.0, 120.0, 150.0]]]], dtype=np.float32),
         'obj_extents': np.array([[[[0.05, 0.04, 0.06]]]], dtype=np.float32),
         'bbox_wh':     np.array([[[[120.0, 150.0]]]], dtype=np.float32),
@@ -262,7 +262,7 @@ def _make_verify_inputs():
 
 
 def _save_ir(model, output_dir, basename, tag):
-    """Save OV model as FP32 IR; print file size; return (xml_path, bin_path, size_mb)."""
+    """Save OV model as IR; print file size; return (xml_path, bin_path, size_mb)."""
     xml_path = os.path.join(output_dir, basename + '.xml')
     bin_path = os.path.join(output_dir, basename + '.bin')
 
@@ -287,6 +287,67 @@ def _print_model_io(model, tag):
             tag, i, out.get_names(), out.get_partial_shape()))
 
 
+_NN_HEAD_ENTRY_NAMES = {
+    'trans': 'cdpn/trans_head/entry',
+    'rot': 'cdpn/rot_head/entry',
+}
+
+
+def _name_nn_head_entries(model):
+    """Assign stable names to each NN head's entry Convolution.
+
+    Assumption: the coordinate and translation outputs split after a shared
+    backbone. The model outputs must retain the names 
+    translation and coord_maps.
+    """
+    output_results = {}
+    for output, result in zip(model.outputs, model.get_results()):
+        for name in output.get_names():
+            output_results[name] = result
+
+    branch_outputs = (
+        ('trans', 'translation'),
+        ('rot', 'coord_maps'),
+    )
+    missing = [name for _, name in branch_outputs
+               if name not in output_results]
+    if missing:
+        raise RuntimeError('Expected NN outputs: {}'.format(
+            ', '.join(missing)))
+
+    branch_names = {}
+    for tag, output_name in branch_outputs:
+        result = output_results[output_name]
+        stack = [result.input(0).get_source_output().get_node()]
+        names = set()
+        while stack:
+            op = stack.pop()
+            name = op.get_friendly_name()
+            if name in names:
+                continue
+            names.add(name)
+            stack.extend(inp.get_source_output().get_node()
+                         for inp in op.inputs())
+        branch_names[tag] = names
+
+    shared_names = set.intersection(*branch_names.values())
+    entries = {}
+    for tag, _ in branch_outputs:
+        candidates = [
+            op for op in model.get_ordered_ops()
+            if (op.get_friendly_name() in branch_names[tag] - shared_names
+                and op.get_type_name() in (
+                    'Convolution', 'ConvolutionBackpropData'))
+        ]
+        if not candidates:
+            raise RuntimeError('No {} head entry Convolution found'.format(
+                tag))
+        entries[tag] = candidates[0]
+
+    for tag, op in entries.items():
+        op.set_friendly_name(_NN_HEAD_ENTRY_NAMES[tag])
+
+
 def export_to_ov_ir(model, output_dir, basename='cdpn_stage3',
                     verify=False, batch_size=1):
     """
@@ -294,7 +355,7 @@ def export_to_ov_ir(model, output_dir, basename='cdpn_stage3',
 
     Parameters
     ----------
-    model : torch.nn.Module
+    model :
         The CDPN model in eval mode.
     output_dir : str
         Directory to write .xml/.bin files.
@@ -326,6 +387,7 @@ def export_to_ov_ir(model, output_dir, basename='cdpn_stage3',
     # Name the outputs for easier downstream usage
     ov_model.outputs[0].tensor.set_names({'coord_maps'})
     ov_model.outputs[1].tensor.set_names({'translation'})
+    _name_nn_head_entries(ov_model)
 
     # Confirm output shapes
     _print_model_io(ov_model, 'ov_export:nn')
@@ -381,10 +443,10 @@ def export_extnn_model(output_dir, basename='cdpn_stage3_extnn',
     Graph (N = dynamic batch):
       image[N,H,W,3] u8 + bbox[N,1,1,4] -> CdpnPreprocess
         -> tensor[N,3,256,256] + crop_meta[N,1,1,5]
-      tensor -> NN body -> coord_maps[N,4,64,64] + raw_trans[N,3]
+      tensor -> NN body -> coord_maps[N,4,64,64] + raw_trans[N,1,1,3]
       coord_maps + obj_extents[N,1,1,3] -> CdpnCoordDenorm -> combined[N,4,64,64]
       combined -> VariadicSplit -> denorm_coords[N,3,64,64] + confidence[N,1,64,64]
-      raw_trans + bbox_wh[N,1,1,2] + crop_meta + cam_K[N,1,1,4]
+      raw_trans + bbox_wh[N,1,1,2] + crop_meta[N,1,1,5] + cam_K[N,1,1,4]
         -> CdpnTransDecode -> translation[N,1,1,3]
 
     Outputs:
@@ -394,14 +456,22 @@ def export_extnn_model(output_dir, basename='cdpn_stage3_extnn',
     PnP stays in host code (ov_infer.py).
     Requires cdpn_extension.so at runtime (core.add_extension).
 
-    All shapes are 4D.
+    Parameters
+    ----------
+    output_dir : str
+        Directory to write .xml/.bin files.
+    basename : str
+        Base filename (default: cdpn_stage3_extnn).
+    extension_path : str or None
+        Path to cdpn_extension.so (needed for verification only).
+    verify : bool
+        If True, run shape verification after export.
+    nn_ov_model : ov.Model or None
+        Pre-converted NN body returned by export_to_ov_ir().
+        If None, the function raises RuntimeError.
     """
     os.makedirs(output_dir, exist_ok=True)
 
-    # CdpnPreprocess: graph-topology wrapper (export-time only).
-    # At inference time:
-    #   CPU → cdpn_extension.so provides evaluate() in C++
-    #   GPU → cdpn_custom_gpu_kernels.xml + .cl kernels
     CdpnPreprocess = _make_CdpnPreprocess()
 
     # Step 1: Get NN body
@@ -477,7 +547,7 @@ def export_extnn_model(output_dir, basename='cdpn_stage3_extnn',
     # Step 5: Verification
     if verify:
         if not extension_path or not os.path.isfile(extension_path):
-            print('[ov_export:e2e] WARNING: Skipping verify - '
+            print('[ov_export:extnn] WARNING: Skipping verify - '
                   'provide --extension /path/to/cdpn_extension.so')
         else:
             print()
@@ -506,23 +576,24 @@ def export_e2e_model(output_dir, basename='cdpn_stage3_e2e',
     The E2E model includes preprocessing, NN body, postprocessing,
     and PnP solve all within the OV graph via custom ops from ov_plugins/.
 
-    Graph:
-      image[H,W,3] u8 + bbox[4] -> CdpnPreprocess -> tensor[1,3,256,256] + crop_meta[5]
-      tensor -> NN body -> coord_maps[1,4,64,64] + raw_trans[1,3]
-      coord_maps + obj_extents -> CdpnCoordDenorm -> denorm_coords[3,64,64] + confidence[64,64]
-      raw_trans + bbox_wh + crop_meta + cam_K -> CdpnTransDecode -> translation[3]
-      denorm_coords + confidence + obj_ext + crop_meta + cam_K -> CdpnPnpSolve -> R[3,3] + T_pnp[3]
+    Graph (N = dynamic batch):
+      image[N,H,W,3] u8 + bbox[N,1,1,4] -> CdpnPreprocess
+        -> tensor[N,3,256,256] + crop_meta[N,1,1,5]
+      tensor -> NN body -> coord_maps[N,4,64,64] + raw_trans[N,1,1,3]
+      coord_maps + obj_extents[N,1,1,3] -> CdpnCoordDenorm -> denorm_coords[N,3,64,64] + confidence[N,1,64,64]
+      raw_trans + bbox_wh[N,1,1,2] + crop_meta[N,1,1,5] + cam_K[N,1,1,4]
+        -> CdpnTransDecode -> translation[N,1,1,3]
+      denorm_coords[N,3,64,64] + confidence[N,1,64,64] + obj_extents[N,1,1,3] + crop_meta[N,1,1,5] + cam_K[N,1,1,4]
+        -> CdpnPnpSolve -> R[N,1,3,3] + T_pnp[N,1,1,3] + num_corres[N,1,1,1] + pnp_success[N,1,1,1]
       Pose composition (standard opset): pose_rot = [R|T_pnp], pose_trans = [R|T_trans]
 
-    Outputs: pose_rot[3,4], pose_trans[3,4], denorm_coords, confidence,
-             num_corres, pnp_success
+    Outputs: pose_rot[N,3,4], pose_trans[N,3,4], denorm_coords[N,3,64,64],
+             confidence[N,64,64], num_corres[N,1], pnp_success[N,1]
 
     Requires the C++ extension .so from ov_plugins/build/ at runtime.
 
     Parameters
     ----------
-    model : torch.nn.Module
-        CDPN model in eval mode.
     output_dir : str
         Directory to write .xml/.bin files.
     basename : str
@@ -532,15 +603,15 @@ def export_e2e_model(output_dir, basename='cdpn_stage3_e2e',
     verify : bool
         If True, run verification (requires extension .so).
     nn_ov_model : ov.Model or None
-        Pre-converted NN body (reuse to avoid re-conversion).
+        Pre-converted NN body returned by export_to_ov_ir().
     """
     os.makedirs(output_dir, exist_ok=True)
 
     CdpnPreprocess = _make_CdpnPreprocess()
 
     class CdpnPnpSolve(ov.Op):
-        """denorm[3,64,64] + conf[64,64] + obj_ext[3] + crop_meta[5] + cam_K[4]
-            -> R[3,3] + T_pnp[3] + num_corres[1] + pnp_success[1]."""
+        """denorm[N,3,64,64] + conf[N,1,64,64] + obj_ext[N,1,1,3] + crop_meta[N,1,1,5] + cam_K[N,1,1,4]
+            -> R[N,1,3,3] + T_pnp[N,1,1,3] + num_corres[N,1,1,1] + pnp_success[N,1,1,1]."""
 
         def __init__(self, denorm_coords, confidence, obj_extents,
                         crop_meta, cam_K,
@@ -607,7 +678,7 @@ def export_e2e_model(output_dir, basename='cdpn_stage3_e2e',
     tensor_out = preprocess.output(0)     # [N, 3, 256, 256]
     crop_meta_out = preprocess.output(1)  # [N, 1, 1, 5]  (4D)
 
-    # Rewire NN body input; extract coord_maps and raw_trans_4d to receive CdpnPreprocess output
+    # Rewire NN body input to preprocess output and extract heads
     coord_maps_node, raw_trans_4d = _rewire_nn_body(nn_model, tensor_out)
 
     denorm_coords_4d, confidence_4d = _build_coord_denorm_subgraph(
@@ -712,27 +783,58 @@ def export_e2e_model(output_dir, basename='cdpn_stage3_e2e',
 def _find_nn_head_entry_map(model):
     """Return the entry Convolution of each NN head, keyed by head tag.
 
-    Maps each head ('trans', 'rot') to the Convolution whose output feeds
-    that head's first feature block, and raises if either is missing.
+    Uses stable names assigned during NN export. Without those names, it
+    derives each entry from the earliest feature op fed by a Convolution.
     """
     entry_names = {}
-    tags = (
-        ('trans', 'trans_head_net.features.1/'),
-        ('rot', 'rot_head_net.features.1/'),
+    for op in model.get_ordered_ops():
+        name = op.get_friendly_name()
+        for tag, entry_name in _NN_HEAD_ENTRY_NAMES.items():
+            if name == entry_name:
+                entry_names[tag] = name
+
+    if entry_names:
+        missing = [tag for tag in _NN_HEAD_ENTRY_NAMES
+                   if tag not in entry_names]
+        if missing:
+            raise RuntimeError('Expected NN head entry ops for {}, found {}'.format(
+                ', '.join(missing), entry_names))
+        return entry_names
+
+    candidates = dict((tag, []) for tag in _NN_HEAD_ENTRY_NAMES)
+    prefixes = (
+        ('trans', 'trans_head_net.features.'),
+        ('rot', 'rot_head_net.features.'),
     )
     for op in model.get_ordered_ops():
-        if op.get_type_name() not in ('Convolution', 'ConvolutionBackpropData'):
-            continue
-        consumers = []
-        for output in op.outputs():
-            consumers.extend(
-                target.get_node().get_friendly_name()
-                for target in output.get_target_inputs())
-        for tag, marker in tags:
-            if any(marker in name for name in consumers):
-                entry_names[tag] = op.get_friendly_name()
+        name = op.get_friendly_name()
+        for tag, prefix in prefixes:
+            if prefix not in name or '/fq_' in name:
+                continue
+            try:
+                feature_idx = int(name.split(prefix, 1)[1].split('/', 1)[0])
+            except (IndexError, ValueError):
+                continue
+            for inp in op.inputs():
+                source = inp.get_source_output().get_node()
+                if source.get_type_name() not in (
+                        'Convolution', 'ConvolutionBackpropData'):
+                    continue
+                candidates[tag].append(
+                    (feature_idx, source.get_friendly_name()))
 
-    missing = [tag for tag, _ in tags if tag not in entry_names]
+    for tag, matches in candidates.items():
+        if not matches:
+            continue
+        first_idx = min(idx for idx, _ in matches)
+        first_names = set(name for idx, name in matches if idx == first_idx)
+        if len(first_names) != 1:
+            raise RuntimeError('Ambiguous {} head entry ops: {}'.format(
+                tag, sorted(first_names)))
+        entry_names[tag] = first_names.pop()
+
+    missing = [tag for tag in _NN_HEAD_ENTRY_NAMES
+               if tag not in entry_names]
     if missing:
         raise RuntimeError('Expected NN head entry ops for {}, found {}'.format(
             ', '.join(missing), entry_names))
@@ -808,7 +910,6 @@ def _downstream_op_names(model, entry_names):
 
 
 def _is_float_output(output):
-    # Reports whether the output carries a floating-point element type.
     return output.get_element_type() in (ov.Type.f16, ov.Type.f32, ov.Type.bf16)
 
 
@@ -1099,8 +1200,8 @@ def _export_mixed_fp16_ir(model_path, output_dir, basename, tag, ir_label,
     fp16_island_names = set([rot_final_conv_name])
     fp16_island_constants = _constant_input_names(original, fp16_island_names)
 
-    # Plain NN follows the rot head to the model outputs; the composite
-    # variants stop at the final Add so the custom ops stay in FP32.
+    # Plain NN follows the rot head to the model outputs; the composite variants
+    # stop at the final Add.
     if use_ordered_region:
         rot_final_add_name = _find_single_consumer_name(
             original, rot_final_conv_name, consumer_type='Add')
@@ -1118,8 +1219,7 @@ def _export_mixed_fp16_ir(model_path, output_dir, basename, tag, ir_label,
         precise_names = precise_names | custom_precise_names
     precise_names = precise_names - fp16_island_names - fp16_island_constants
 
-    # Snapshot the FP32 constants feeding the precise region so it can be
-    # restored after the blanket FP16 conversion below.
+    # Snapshot the FP32 constants feeding the precise region.
     fp32_constants = {}
     for op in original.get_ordered_ops():
         if (op.get_friendly_name() in precise_names
@@ -1236,6 +1336,7 @@ def export_e2e_mixed_fp16_ir(model_path, output_dir,
         do_boundary_converts=True)
 
 
+# Hand-tuned precision policy over _nn_head_layer_groups keys.
 _NN_INT8_HEAD_GROUPS = (
     'trans_conv0', 'trans_conv1', 'trans_mlp0',
     'rot_conv1', 'rot_conv7',
@@ -1372,6 +1473,7 @@ def _nn_head_layer_groups(model):
     """
     groups = {}
 
+    # Groups are keyed by scan order; a same-count block reorder may silently remap them to different layers.
     for group_idx, bn_idx in enumerate(
             _nn_head_feature_bn_indices(model, 'trans_head_net')):
         groups['trans_conv{}'.format(group_idx)] = _nn_head_feature_group_names(
