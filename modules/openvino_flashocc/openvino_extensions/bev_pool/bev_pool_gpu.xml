@@ -51,6 +51,7 @@ SPDX-License-Identifier: Apache-2.0 -->
         <Define name="CHANNELS"   type="int" param="channels"   default="64"/>
         <Define name="FEAT_H"     type="int" param="feat_h"     default="16"/>
         <Define name="FEAT_W"     type="int" param="feat_w"     default="44"/>
+        <Define name="FP_SCALE"    type="int" param="scale"      default="8192"/>
     </Kernel>
     <Buffers>
         <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
@@ -71,6 +72,7 @@ SPDX-License-Identifier: Apache-2.0 -->
 <CustomLayer name="BEVPoolConvert" type="SimpleGPU" version="1">
     <Kernel entry="bevpool_convert">
         <Source filename="bev_pool_convert.cl"/>
+        <Define name="FP_SCALE" type="int" param="scale" default="8192"/>
     </Kernel>
     <Buffers>
         <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>

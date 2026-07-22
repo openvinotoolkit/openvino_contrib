@@ -168,13 +168,15 @@ BEVPoolScatter::BEVPoolScatter(
     int64_t num_cams, int64_t depth_bins,
     int64_t channels, int64_t feat_h, int64_t feat_w,
     float x_min, float y_min, float z_min,
-    float x_step, float y_step, float z_step)
+    float x_step, float y_step, float z_step,
+    int64_t scale)
     : Op({depth_probs, context_feats, geom}),
       m_nx(nx), m_ny(ny), m_nz(nz),
       m_num_cams(num_cams), m_depth_bins(depth_bins),
       m_channels(channels), m_feat_h(feat_h), m_feat_w(feat_w),
       m_x_min(x_min), m_y_min(y_min), m_z_min(z_min),
-      m_x_step(x_step), m_y_step(y_step), m_z_step(z_step)
+    m_x_step(x_step), m_y_step(y_step), m_z_step(z_step),
+    m_scale(scale)
 {
     constructor_validate_and_infer_types();
 }
@@ -194,7 +196,7 @@ std::shared_ptr<ov::Node> BEVPoolScatter::clone_with_new_inputs(
         m_nx, m_ny, m_nz,
         m_num_cams, m_depth_bins, m_channels, m_feat_h, m_feat_w,
         m_x_min, m_y_min, m_z_min,
-        m_x_step, m_y_step, m_z_step);
+        m_x_step, m_y_step, m_z_step, m_scale);
 }
 
 bool BEVPoolScatter::visit_attributes(ov::AttributeVisitor& visitor) {
@@ -212,6 +214,7 @@ bool BEVPoolScatter::visit_attributes(ov::AttributeVisitor& visitor) {
     visitor.on_attribute("x_step", m_x_step);
     visitor.on_attribute("y_step", m_y_step);
     visitor.on_attribute("z_step", m_z_step);
+    visitor.on_attribute("scale", m_scale);
     return true;
 }
 
@@ -230,8 +233,6 @@ bool BEVPoolScatter::evaluate(ov::TensorVector& outputs,
     int nx = m_nx, ny = m_ny, nz = m_nz;
     int nx_ny = nx * ny;
     int output_elems = C * nz * nx * ny;
-
-    constexpr int FP_SCALE = 8192;
 
     ov::Shape out_shape{1, size_t(C * nz), size_t(nx), size_t(ny)};
     outputs[0].set_shape(out_shape);
@@ -255,7 +256,7 @@ bool BEVPoolScatter::evaluate(ov::TensorVector& outputs,
 
         for (int c = 0; c < C; ++c) {
             float val = dw * cf[ctx_base + c * HW];
-            int ival = int(val * FP_SCALE);
+            int ival = int(val * m_scale);
             int oidx = (c * nz + iz) * nx_ny + ix * ny + iy;
             out[oidx] += ival;
         }

@@ -16,7 +16,9 @@
  * Work sizing: one work-item per element
  */
 
-#define FP_SCALE 8192  /* must match bevpool_scatter */
+#ifndef FP_SCALE
+#define FP_SCALE 8192  /* must match bevpool_scatter; overridden from the op attribute */
+#endif
 
 __kernel void bevpool_convert(
     __global const INPUT0_TYPE* input,   /* [1, C, NX, NY] int32 */

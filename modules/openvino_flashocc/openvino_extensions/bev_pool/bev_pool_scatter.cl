@@ -40,7 +40,9 @@
 #define Y_STEP   0.3f
 #define Z_STEP  20.0f
 
-#define FP_SCALE 8192  /* 2^13 fixed-point */
+#ifndef FP_SCALE
+#define FP_SCALE 8192  /* 2^13 fixed-point; overridden from the op attribute */
+#endif
 
 /* Depth bins with probability < threshold are skipped */
 #define DEPTH_THRESHOLD 0.005f

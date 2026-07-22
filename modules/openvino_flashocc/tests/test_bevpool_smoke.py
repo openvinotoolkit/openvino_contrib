@@ -26,8 +26,8 @@ DEPTH_BINS = 44
 FEAT_H = 16
 FEAT_W = 44
 CHANNELS = 64
-NX = 200
-NY = 200
+NX = 13
+NY = 17
 HW = FEAT_H * FEAT_W
 DEPTH_HW = DEPTH_BINS * HW
 TOTAL_POINTS = NUM_CAMS * DEPTH_HW
@@ -75,12 +75,54 @@ def _build_bevpool_model(path: Path) -> Path:
     bev = helper.make_tensor_value_info("bev", TensorProto.FLOAT, [1, CHANNELS, NY, NX])
     graph = helper.make_graph(
         [
-            helper.make_node("BEVPoolBinSort", ["geom"], ["packed"], domain="bevfusion"),
-            helper.make_node("BEVPoolV2", ["depth", "feat", "packed"], ["bev"], domain="bevfusion"),
+            helper.make_node(
+                "BEVPoolBinSort",
+                ["geom"],
+                ["packed"],
+                domain="bevfusion",
+                nx=NX,
+                ny=NY,
+                total_pts=TOTAL_POINTS,
+                x_min=-40.0,
+                y_min=-40.0,
+                x_step=0.4,
+                y_step=0.4,
+            ),
+            helper.make_node(
+                "BEVPoolV2",
+                ["depth", "feat", "packed"],
+                ["bev"],
+                domain="bevfusion",
+                nx=NX,
+                ny=NY,
+                channels=CHANNELS,
+                feat_hw=HW,
+                depth_hw=DEPTH_HW,
+                total_pts=TOTAL_POINTS,
+            ),
         ],
         "flashocc_bevpool_smoke",
         [depth, feat, geom],
         [bev],
+    )
+    model = helper.make_model(
+        graph,
+        opset_imports=[helper.make_operatorsetid("", 13), helper.make_operatorsetid("bevfusion", 1)],
+        producer_name="openvino-flashocc-smoke-test",
+    )
+    model.ir_version = 7
+    onnx.save(model, path)
+    return path
+
+
+def _build_convert_model(path: Path) -> Path:
+    bev_accum = helper.make_tensor_value_info("bev_accum", TensorProto.INT32, [1, 1, 2, 3])
+    bev_float = helper.make_tensor_value_info("bev_float", TensorProto.FLOAT, [1, 1, 2, 3])
+    graph = helper.make_graph(
+        [helper.make_node("BEVPoolConvert", ["bev_accum"], ["bev_float"], domain="bevfusion")],
+        "flashocc_bevpool_convert_smoke",
+        [bev_accum],
+        [bev_float],
     )
     model = helper.make_model(
         graph,
@@ -105,7 +147,7 @@ def _fixed_inputs() -> tuple[dict[str, np.ndarray], np.ndarray]:
         (0, 1, 0, 2, 7, 0.75),  # same feature and cell: exercises accumulation
         (1, 2, 5, 2, 7, 0.50),
         (2, 3, 9, 11, 3, 0.20),  # asymmetric cell catches X/Y layout regressions
-        (5, 43, HW - 1, 199, 198, 1.00),
+        (5, 43, HW - 1, NX - 1, NY - 2, 1.00),
     ]
     feature_values = {
         (0, 0): {0: 2.0, 3: -1.0},
@@ -162,4 +204,27 @@ def test_binsort_and_bevpool_v2_match_cpu_reference(
             rtol=1e-5,
             atol=atol,
             err_msg=f"BEVPoolBinSort + BEVPoolV2 mismatch on {device}",
+        )
+
+
+def test_bevpool_convert_default_scale_matches_reference(
+    bevpool_extension: Path, tmp_path: Path
+) -> None:
+    """Ensure attribute-less ONNX conversion uses scale 8192 on CPU and GPU."""
+    core = ov.Core()
+    core.add_extension(str(bevpool_extension))
+    model = core.read_model(str(_build_convert_model(tmp_path / "bevpool_convert_smoke.onnx")))
+    bev_accum = np.array([[[[-8192, -4096, 0], [4096, 8192, 16384]]]], dtype=np.int32)
+    expected = bev_accum.astype(np.float32) / 8192.0
+
+    for device in _test_devices(core):
+        config = {"CONFIG_FILE": str(GPU_CONFIG)} if device.upper().startswith("GPU") else {}
+        compiled = core.compile_model(model, device, config)
+        actual = compiled({"bev_accum": bev_accum})[compiled.output(0)]
+        np.testing.assert_allclose(
+            actual,
+            expected,
+            rtol=0.0,
+            atol=0.0,
+            err_msg=f"BEVPoolConvert default scale mismatch on {device}",
         )
