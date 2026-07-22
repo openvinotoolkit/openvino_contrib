@@ -5589,14 +5589,3 @@ easydict
   Library.
 
 -------------------------------------------------------------
-
-packaging
-
-Package metadata:
-- Name: packaging
-- Project URL: https://github.com/pypa/packaging
-- License: BSD-2-Clause OR Apache-2.0
-
-The packaging project is distributed under dual-license terms (BSD-2-Clause or Apache-2.0).
-
-
