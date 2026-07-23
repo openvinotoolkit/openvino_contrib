@@ -27,7 +27,7 @@ public:
     WorkbufferRequest GetWorkBufferRequest() const override;
     void InitSharedImmutableWorkbuffers(const Buffers& buffers) override;
 
-    CudaGraphCompatibility GetCudaGraphCompatibility() const override;
+    CudaGraphCompatibility GetCudaGraphCompatibilityImpl() const override;
 
 private:
     std::vector<WorkbufferRequest::size_in_bytes_t> immutable_buffer_sizes_;
