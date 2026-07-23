@@ -1,0 +1,174 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# Single source of truth for repository labels.
+# Synced by .github/workflows/labels.yml via crazy-max/ghaction-github-labeler.
+# Any label NOT listed here is deleted from the repository on sync.
+
+- name: "bug"
+  color: "#d73a4a"
+  description: "Something isn't working"
+
+# category: labels map to modules under modules/ (see .github/labeler.yml).
+# 'build' and 'CI' are path-based (cmake / infra) rather than module-based.
+
+- name: "category: 3D"
+  color: "#d3d3d3"
+  description: "3D models module (modules/3d)"
+
+- name: "category: android demos"
+  color: "#d3d3d3"
+  description: "OpenVINO Android demos (modules/android_demos)"
+
+- name: "category: BEVFusion"
+  color: "#d3d3d3"
+  description: "OpenVINO BEVFusion module (modules/openvino_bevfusion)"
+
+- name: "category: build"
+  color: "#d3d3d3"
+  description: "OpenVINO cmake script / infra"
+
+- name: "category: CI"
+  color: "#d3d3d3"
+  description: "OpenVINO public CI"
+
+- name: "category: custom operations"
+  color: "#d3d3d3"
+  description: "OpenVINO Runtime Extension with custom operations"
+
+- name: "category: GenAI optimizations"
+  color: "#d3d3d3"
+  description: "GenAI optimizations module (modules/genai_optimizations)"
+
+- name: "category: java API"
+  color: "#d3d3d3"
+  description: "OpenVINO Runtime Java API"
+
+- name: "category: LangChain"
+  color: "#d3d3d3"
+  description: "OpenVINO LangChain.js adapter (modules/openvino-langchain)"
+
+- name: "category: llama.cpp plugin"
+  color: "#d3d3d3"
+  description: "OpenVINO llama.cpp plugin (modules/llama_cpp_plugin)"
+
+- name: "category: NVIDIA plugin"
+  color: "#d3d3d3"
+  description: "OpenVINO NVIDIA plugin"
+
+- name: "category: Ollama"
+  color: "#d3d3d3"
+  description: "OpenVINO integration with Ollama (modules/ollama_openvino)"
+
+- name: "category: Token Merging"
+  color: "#d3d3d3"
+  description: "Token Merging for Stable Diffusion (modules/token_merging)"
+
+- name: "category: training kit"
+  color: "#d3d3d3"
+  description: "OpenVINO training kit (modules/openvino_training_kit)"
+
+- name: "dependencies"
+  color: "#0366d6"
+  description: "Pull requests that update a dependency file"
+
+- name: "do not merge"
+  color: "#b60205"
+
+- name: "documentation"
+  color: "#0075ca"
+  description: "Improvements or additions to documentation"
+
+- name: "duplicate"
+  color: "#cfd3d7"
+  description: "This issue or pull request already exists"
+
+- name: "enhancement"
+  color: "#a2eeef"
+  description: "New feature or request"
+
+- name: "feature"
+  color: "#5e35fe"
+
+- name: "go"
+  color: "#16e2e2"
+  description: "Pull requests that update go code"
+
+- name: "good first issue"
+  color: "#7057ff"
+  description: "Good for newcomers"
+
+- name: "help wanted"
+  color: "#008672"
+  description: "Extra attention is needed"
+
+- name: "invalid"
+  color: "#e4e669"
+  description: "This doesn't seem right"
+
+- name: "javascript"
+  color: "#168700"
+  description: "Pull requests that update javascript code"
+
+- name: "no_stale"
+  color: "#53c4f2"
+  description: "Exempt this pull request from the stale workflow"
+
+- name: "platform: android"
+  color: "#b0d0ff"
+  description: "OpenVINO on Android"
+
+- name: "platform: arm"
+  color: "#b0d0ff"
+  description: "OpenVINO Runtime on ARM / ARM64"
+
+- name: "platform: linux"
+  color: "#b0d0ff"
+  description: "OpenVINO Runtime on Linux platforms"
+
+- name: "platform: osx"
+  color: "#b0d0ff"
+  description: "OpenVINO Runtime on macOS"
+
+- name: "platform: other"
+  color: "#b0d0ff"
+
+- name: "platform: win32"
+  color: "#b0d0ff"
+  description: "OpenVINO Runtime on Windows platform"
+
+- name: "port to 2023.3"
+  color: "#da3c88"
+  description: "Need port from master to 2023.3 LTS"
+
+- name: "pr needs: docs"
+  color: "#e99695"
+
+- name: "pr needs: rebase"
+  color: "#e99695"
+
+- name: "pr needs: tests"
+  color: "#e99695"
+
+- name: "PSE"
+  color: "#dff87a"
+
+- name: "python"
+  color: "#2b67c6"
+  description: "Pull requests that update python code"
+
+- name: "question"
+  color: "#d876e3"
+  description: "Further information is requested"
+
+- name: "stale"
+  color: "#ededed"
+  description: "No activity for 2 weeks; will be closed in 7 days"
+
+- name: "support_request"
+  color: "#006b75"
+  description: "Support team"
+
+- name: "wontfix"
+  color: "#ffffff"
+  description: "This will not be worked on"

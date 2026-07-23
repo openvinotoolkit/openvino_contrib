@@ -1,0 +1,44 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+name: Require category label
+
+# Fail until a pull request carries at least one 'category:' label. The PR
+# labeler (.github/workflows/labeler.yml) assigns these automatically from the
+# changed paths; this gate makes sure a PR that matched none gets one manually.
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - labeled
+      - unlabeled
+
+permissions: read-all
+
+jobs:
+  require-category-label:
+    name: Require a category label
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    timeout-minutes: 5
+    steps:
+      - name: Check the pull request has a category label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          labels="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json labels --jq '.labels[].name')"
+          echo "Pull request labels:"
+          echo "${labels:-<none>}"
+          if echo "$labels" | grep -q '^category:'; then
+            echo "OK: pull request has a category label"
+          else
+            echo "::error::This pull request has no 'category:' label. Add the label" \
+                 "matching the changed module (see .github/labels.yml), or wait for" \
+                 "the PR labeler to assign one."
+            exit 1
+          fi
