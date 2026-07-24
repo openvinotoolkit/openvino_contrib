@@ -7,8 +7,8 @@
 # What this script does:
 #   1.  Checks for Conda and required dependencies
 #   2.  Prepares model IRs (first-time setup only)
-#   3.  Creates Conda environments with Python 3.10
-#   4.  Installs OpenVINO from pip + requirements.txt into the runtime Conda env
+#   3.  Creates a Conda environment with Python 3.10
+#   4.  Installs conversion/runtime dependencies into that Conda environment
 #   5.  Builds the bev_pool OpenVINO C++ extension
 #   6.  Writes setup.env  (sourced by run_flashocc_ov_ws.sh)
 #   7.  Optionally runs the benchmark  (--run-test)
@@ -19,6 +19,7 @@
 #       [--jobs 16] \
 #       [--model-dir /path/to/split_f16out] \
 #       [--model-variant m0|m1] \
+#       [--checkpoint /path/to/checkpoint.pth] \
 #       [--prepare-models]      # force regeneration even if models exist
 #       [--run-test]
 #
@@ -36,6 +37,7 @@ JOBS=$(nproc)
 
 MODEL_DIR=""
 MODEL_VARIANT="m0"
+CHECKPOINT_PATH=""
 PREPARE_MODELS=0
 NUM_SAMPLES=80
 RUN_TEST=0
@@ -110,45 +112,22 @@ prepare_models_if_needed() {
 
   info "Step A: Preparing model IRs (standalone, no mmdet required) …"
 
-  # ── Conversion venv (Python 3 + CPU torch + openvino + onnx; no mmdet) ──────
-  local CONV_VENV="${SCRIPT_DIR}/.venv_convert"
-  if [[ ! -x "${CONV_VENV}/bin/python" ]]; then
-    info "  Creating standalone conversion venv at ${CONV_VENV} …"
-    python3 -m venv "${CONV_VENV}"
-  fi
-
-  local CONV_PY="${CONV_VENV}/bin/python"
-  local CONV_PIP="${CONV_VENV}/bin/pip"
+  # Use the same Python 3.10 Conda environment for conversion and inference.
+  ensure_conda_env "${RUNTIME_CONDA_ENV_DIR}" "${CONDA_PYTHON_VERSION}" "FlashOCC"
+  local CONV_PY="${RUNTIME_CONDA_ENV_DIR}/bin/python"
+  local CONV_PIP="${RUNTIME_CONDA_ENV_DIR}/bin/pip"
 
   info "  Installing standalone conversion dependencies (CPU-only PyTorch, no mmdet) …"
   "$CONV_PIP" install --upgrade pip wheel -q
-  "$CONV_PIP" install gdown -q
   # CPU-only torch is sufficient for ONNX export; pin to wheels currently
   # published on the PyTorch CPU index so fresh machines resolve consistently.
   "$CONV_PIP" install "torch==2.6.0+cpu" "torchvision==0.21.0+cpu" --index-url https://download.pytorch.org/whl/cpu -q
   "$CONV_PIP" install "openvino>=2024.0" "onnx>=1.14" "numpy>=1.23.5" "opencv-python-headless>=4.8" -q
 
-  mkdir -p "${SCRIPT_DIR}/checkpoints"
-  local CKPT_PATH=""
-  case "${MODEL_VARIANT}" in
-    m0)
-      CKPT_PATH="${SCRIPT_DIR}/checkpoints/flashocc-r50.pth"
-      if [[ ! -f "${CKPT_PATH}" ]]; then
-        info "  Downloading M0 checkpoint …"
-        "$CONV_PY" -m gdown 14my3jdqiIv6VIrkozQ6-ruEcBOPVlWGJ -O "${CKPT_PATH}"
-      fi
-      ;;
-    m1)
-      CKPT_PATH="${SCRIPT_DIR}/checkpoints/flashocc-r50-m1.pth"
-      if [[ ! -f "${CKPT_PATH}" ]]; then
-        info "  Downloading M1 checkpoint …"
-        "$CONV_PY" -m gdown 1k9BzXB2nRyvXhqf7GQx3XNSej6Oq6I-B -O "${CKPT_PATH}"
-      fi
-      ;;
-    *)
-      die "Unsupported --model-variant: ${MODEL_VARIANT} (expected m0 or m1)"
-      ;;
-  esac
+  [[ -n "${CHECKPOINT_PATH}" ]] || die \
+    "Model conversion requires --checkpoint /path/to/checkpoint.pth. Obtain compatible weights from the original FlashOCC project or provide your own."
+  [[ -f "${CHECKPOINT_PATH}" ]] || die "Checkpoint not found: ${CHECKPOINT_PATH}"
+  CHECKPOINT_PATH="$(realpath "${CHECKPOINT_PATH}")"
 
   info "  Exporting split OpenVINO models to ${target_dir} …"
   (
@@ -156,6 +135,7 @@ prepare_models_if_needed() {
     export PYTHONPATH="${SCRIPT_DIR}:${PYTHONPATH:-}"
     "$CONV_PY" "${SCRIPT_DIR}/convert_to_openvino.py" \
       --model-variant "${MODEL_VARIANT}" \
+      --checkpoint "${CHECKPOINT_PATH}" \
       --export-mode split \
       --split-out-dir "${target_dir}"
   )
@@ -169,6 +149,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --model-dir)         MODEL_DIR="$2";    shift 2 ;;
     --model-variant)     MODEL_VARIANT="$2"; shift 2 ;;
+    --checkpoint)        CHECKPOINT_PATH="$2"; shift 2 ;;
     --prepare-models)    PREPARE_MODELS=1;   shift ;;
     --num-samples)       NUM_SAMPLES="$2";  shift 2 ;;
     --jobs)              JOBS="$2";         shift 2 ;;
@@ -205,16 +186,16 @@ else
   prepare_models_if_needed "$MODEL_DIR"
 fi
 
-# Allow conversion/export-only workflow to complete cleanly without requiring
-# runtime Conda environment and dependencies.
+# Allow conversion/export-only workflow to complete without installing the
+# inference-only dependencies or building the extension.
 if [[ $RUN_TEST -eq 0 ]]; then
-  ok "Prepare-models-only flow complete (runtime Conda environment setup skipped)"
+  ok "Prepare-models-only flow complete"
   exit 0
 fi
 
-# ── Step 1: Create runtime Conda environment ─────────────────────────────────
-info "Step 1: Setting up runtime Conda environment …"
-ensure_conda_env "${RUNTIME_CONDA_ENV_DIR}" "${CONDA_PYTHON_VERSION}" "runtime"
+# ── Step 1: Create or reuse the shared Conda environment ─────────────────────
+info "Step 1: Setting up shared conversion/runtime Conda environment …"
+ensure_conda_env "${RUNTIME_CONDA_ENV_DIR}" "${CONDA_PYTHON_VERSION}" "FlashOCC"
 
 RUNTIME_PY="${RUNTIME_CONDA_ENV_DIR}/bin/python"
 RUNTIME_PIP="${RUNTIME_CONDA_ENV_DIR}/bin/pip"

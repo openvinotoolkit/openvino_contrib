@@ -24,7 +24,11 @@ This module provides:
 Complete setup from scratch (model export → Conda env → OpenVINO pip install → bev_pool build → benchmark):
 
 ```bash
-bash setup.sh --prepare-models --run-test --model-variant m0 --model-dir "$(pwd)/split_f16out" --jobs "$(nproc)"
+bash setup.sh --prepare-models --run-test \
+    --model-variant m0 \
+    --checkpoint /path/to/your/checkpoint.pth \
+    --model-dir "$(pwd)/split_f16out" \
+    --jobs "$(nproc)"
 ```
 
 This takes **~5–10 minutes** and produces:

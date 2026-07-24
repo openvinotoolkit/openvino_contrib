@@ -61,6 +61,9 @@ DEVICE = 'CPU'   # OpenVINO target device
 parser = argparse.ArgumentParser(description="FlashOCC ONNX/OpenVINO converter")
 parser.add_argument("--model-variant", type=str, default=DEFAULT_VARIANT, choices=["m0", "m1"],
                     help="Model variant: m0 uses flashocc-r50-M0.py + flashocc-r50.pth, m1 uses flashocc-r50.py + flashocc-r50-m1.pth")
+parser.add_argument("--checkpoint", type=str, default=None,
+                help="Path to a compatible user-supplied PyTorch checkpoint. "
+                    "Defaults to the conventional path for the selected variant under checkpoints/.")
 parser.add_argument("--device", type=str, default=DEVICE,
                     help='OpenVINO device (e.g. CPU, GPU, AUTO:GPU,CPU, HETERO:GPU,CPU)')
 parser.add_argument("--benchmark-bev-head-only", action="store_true",
@@ -80,7 +83,7 @@ args = parser.parse_args()
 
 variant_cfg = MODEL_VARIANTS[args.model_variant]
 CONFIG_FILE = variant_cfg["config"]
-CHECKPOINT_FILE = variant_cfg["checkpoint"]
+CHECKPOINT_FILE = args.checkpoint or variant_cfg["checkpoint"]
 OUTPUT_DIR = variant_cfg["output_dir"]
 ONNX_FILE = os.path.join(OUTPUT_DIR, 'flashocc.onnx')
 IR_XML_FILE = os.path.join(OUTPUT_DIR, 'flashocc.xml')
@@ -90,6 +93,12 @@ print(f"  Model variant : {args.model_variant}")
 print(f"  Config        : {CONFIG_FILE}")
 print(f"  Checkpoint    : {CHECKPOINT_FILE}")
 print(f"  Output dir    : {OUTPUT_DIR}")
+
+if not os.path.isfile(CHECKPOINT_FILE):
+    parser.error(
+        f"checkpoint not found: {CHECKPOINT_FILE}. Supply a compatible checkpoint with --checkpoint; "
+        "see https://github.com/Yzichen/FlashOCC for the original project or use your own weights."
+    )
 
 do_full_export = args.export_mode in ("single", "both")
 do_split_export = args.export_mode in ("split", "both")

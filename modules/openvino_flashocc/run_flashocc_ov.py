@@ -407,8 +407,31 @@ class BEVPoolOVSO:
         out = _onnx_helper.make_tensor_value_info('bev', _ONNX_TENSOR_PROTO.FLOAT, [1, 64, 200, 200])
 
         nodes = [
-            _onnx_helper.make_node('BEVPoolBinSort', ['geom'], ['packed'], domain='bevfusion'),
-            _onnx_helper.make_node('BEVPoolV2', ['depth', 'feat', 'packed'], ['bev'], domain='bevfusion'),
+            _onnx_helper.make_node(
+                'BEVPoolBinSort',
+                ['geom'],
+                ['packed'],
+                domain='bevfusion',
+                nx=200,
+                ny=200,
+                total_pts=185856,
+                x_min=GRID_CONFIG['x'][0],
+                y_min=GRID_CONFIG['y'][0],
+                x_step=GRID_CONFIG['x'][2],
+                y_step=GRID_CONFIG['y'][2],
+            ),
+            _onnx_helper.make_node(
+                'BEVPoolV2',
+                ['depth', 'feat', 'packed'],
+                ['bev'],
+                domain='bevfusion',
+                nx=200,
+                ny=200,
+                channels=64,
+                feat_hw=FEAT_H * FEAT_W,
+                depth_hw=D * FEAT_H * FEAT_W,
+                total_pts=185856,
+            ),
         ]
 
         graph = _onnx_helper.make_graph(nodes, 'bevpool_split', [depth, feat, geom], [out])

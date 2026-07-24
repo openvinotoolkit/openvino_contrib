@@ -20,7 +20,7 @@ Optimized end-to-end inference for **FlashOCC** (3D occupancy prediction) uses
 | OpenCL runtime | Intel NEO driver |
 | GCC/Clang | C++17 |
 
-> **Note:** `setup.sh` creates Python 3.10 Conda envs under `.conda/`, so the host only needs Conda instead of multiple system Python installs.
+> **Note:** `setup.sh` creates one Python 3.10 Conda environment under `.conda/flashocc_ws` for model conversion and inference.
 
 ```bash
 sudo apt install cmake ninja-build build-essential git
@@ -49,15 +49,17 @@ cd <openvino_contrib>/modules/openvino_flashocc
 
 ### 2. Run setup
 
-`setup.sh` handles everything: clones + builds OpenVINO, creates the Conda env,
-installs all dependencies, builds the bev_pool extension.
+`setup.sh` creates a shared conversion/runtime Conda environment, installs
+OpenVINO and the required dependencies, and builds the bev_pool extension.
+When requested, it also converts a user-supplied checkpoint in that environment.
 
-**First-time setup** (auto-downloads checkpoint and generates IR models):
+**First-time setup** (uses a user-supplied checkpoint to generate IR models):
 
 ```bash
 bash setup.sh \
     --prepare-models \
     --model-variant m0 \
+     --checkpoint /path/to/your/checkpoint.pth \
     --jobs $(nproc)
 ```
 
@@ -73,11 +75,10 @@ Options:
 | Flag | Description |
 |---|---|
 | `--model-dir PATH` | Path to pre-built `split_f16out/` IR directory. If omitted, defaults to `./split_f16out` |
-| `--model-variant m0\|m1` | Which checkpoint to download (`m0`=ResNet50, `m1`=ResNet50-M1). Default: `m0` |
-| `--prepare-models` | Force model download + IR generation even if IR files already exist |
+| `--model-variant m0\|m1` | Architecture/configuration matching the checkpoint. Default: `m0` |
+| `--checkpoint PATH` | Compatible user-supplied PyTorch checkpoint used for conversion |
+| `--prepare-models` | Force IR generation even if IR files already exist |
 | `--jobs N` | Parallel build jobs (default: `nproc`) |
-| `--skip-ov-build` | Reuse existing `ov_build/` clone (skip clone + build) |
-| `--skip-bevpool-build` | Skip bev_pool extension build |
 | `--run-test` | Run E2E benchmark immediately after setup |
 | `--num-samples N` | Samples for `--run-test` (default: 80) |
 
@@ -110,7 +111,7 @@ python run_flashocc_ov.py \
 openvino_flashocc/
 ├── run_flashocc_ov.py                    # E2E inference script (all OV optimizations)
 ├── run_flashocc_ov_ws.sh                 # Benchmark runner (reads setup.env)
-├── setup.sh                              # Full setup: clone OV, build, create Conda env
+├── setup.sh                              # Model conversion and runtime environment setup
 ├── setup.env                             # Auto-generated paths (written by setup.sh)
 ├── requirements.txt                      # Python deps for this module
 ├── openvino_extensions/
@@ -120,13 +121,8 @@ openvino_flashocc/
 │       ├── CMakeLists.txt
 │       ├── bev_pool_gpu.xml               # GPU kernel config (Arrow Lake + Panther Lake)
 │       └── *.cl                          # OpenCL kernels
-├── ov_build/
-│   └── openvino/                         # Cloned + built deepaks2/openvino
-│       ├── build/                        # CMake build dir
-│       └── bin/intel64/Release/          # GPU plugin .so
 ├── .conda/flashocc_ws/                   # Python 3.10 Conda env (OV 2026.3 + deps)
-└── work_dirs/flashocc-r50-m0/openvino/
-    └── split_f16out/                     # IR models (gitignored — provide externally)
+└── split_f16out/                         # Generated or user-provided IR models
 ```
 
 ## Architecture Overview

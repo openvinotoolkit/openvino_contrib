@@ -17,7 +17,7 @@ Optimized end-to-end inference for **FlashOCC** (3D occupancy prediction) using
 | GCC/Clang | C++17 |
 | Git | any |
 
-Install required system packages and ensure `conda` is on `PATH`. `setup.sh` creates Python 3.10 Conda envs under `.conda/`, so no host Python version switching is required.
+Install required system packages and ensure `conda` is on `PATH`. `setup.sh` creates one Python 3.10 Conda environment under `.conda/flashocc_ws` for both model conversion and inference, so no host Python version switching is required.
 
 ```bash
 sudo apt install cmake build-essential git
@@ -39,16 +39,23 @@ split_f16out/
 `setup.sh` now supports both workflows:
 
 - If `--model-dir` already contains these files, setup uses them directly.
-- If files are missing, setup can auto-download checkpoint + convert for you.
+- If files are missing, setup converts a checkpoint explicitly supplied with `--checkpoint`.
+
+### Model weights and nuScenes terms
+
+This repository does not distribute or download model weights. Checkpoints from
+the original [FlashOCC project](https://github.com/Yzichen/FlashOCC) were trained using nuScenes. nuScenes data is governed by the [nuScenes Terms of Use](https://www.nuscenes.org/terms-of-use), including its non-commercial use restrictions. Those terms may also apply to checkpoints trained on nuScenes and OpenVINO IR files derived from them. Users must ensure that their use and redistribution of weights and derived IR files comply with the applicable terms.
+
+Use a compatible checkpoint obtained from the original project, subject to its terms, or bring your own checkpoint trained on data you are authorized to use.
 
 ## First-Time Setup (from scratch)
 
-If you do not yet have IR files, `setup.sh` can prepare them automatically.
+If you do not yet have IR files, `setup.sh` can prepare them from a user-supplied checkpoint.
 
 Requirements for auto-prepare path:
 
-- Conda on `PATH` (used for the conversion env)
-- internet access (to download checkpoint and Python packages)
+- Conda on `PATH`
+- a compatible FlashOCC checkpoint
 
 Then run setup with auto-prepare enabled:
 
@@ -56,15 +63,16 @@ Then run setup with auto-prepare enabled:
 bash setup.sh \
           --prepare-models \
           --model-variant m0 \
+          --checkpoint /path/to/your/checkpoint.pth \
           --model-dir $(pwd)/split_f16out \
           --jobs $(nproc)
 ```
 
 What `--prepare-models` does:
 
-- creates/uses `.conda/convert` (Conda Python 3.10)
+- creates/uses `.conda/flashocc_ws` (Conda Python 3.10)
 - installs CPU-only conversion dependencies
-- downloads the checkpoint (`m0` or `m1`)
+- uses the checkpoint provided with `--checkpoint`
 - runs `convert_to_openvino.py --export-mode split`
 - writes required IR files into `--model-dir`
 
@@ -77,6 +85,7 @@ bash setup.sh \
     --prepare-models \
     --run-test \
     --model-variant m0 \
+     --checkpoint /path/to/your/checkpoint.pth \
     --model-dir "$(pwd)/split_f16out" \
     --jobs "$(nproc)"
 ```
@@ -87,7 +96,9 @@ This exports models, creates the runtime Conda env with pip-installed OpenVINO, 
 
 **Step 1: Export models**
 ```bash
-bash setup.sh --prepare-models --model-variant m0 --model-dir "$(pwd)/split_f16out" --jobs "$(nproc)"
+bash setup.sh --prepare-models --model-variant m0 \
+     --checkpoint /path/to/your/checkpoint.pth \
+     --model-dir "$(pwd)/split_f16out" --jobs "$(nproc)"
 ```
 
 **Step 2: Create runtime and run benchmark**
@@ -144,6 +155,7 @@ bash setup.sh \
     --prepare-models \
     --run-test \
     --model-variant m0 \
+     --checkpoint /path/to/your/checkpoint.pth \
     --model-dir "$(pwd)/split_f16out" \
     --jobs "$(nproc)"
 ```
@@ -152,7 +164,9 @@ bash setup.sh \
 
 ```bash
 # Export models
-bash setup.sh --prepare-models --model-variant m0 --model-dir "$(pwd)/split_f16out"
+bash setup.sh --prepare-models --model-variant m0 \
+     --checkpoint /path/to/your/checkpoint.pth \
+     --model-dir "$(pwd)/split_f16out"
 
 # Create runtime environment
 bash setup.sh --run-test --model-dir "$(pwd)/split_f16out" --jobs "$(nproc)"
@@ -169,8 +183,9 @@ Options:
 | Flag | Description |
 |---|---|
 | `--model-dir PATH` | Path to IR model directory (default: `./split_f16out`) |
-| `--prepare-models` | Force model download+conversion (creates `.conda/convert`) |
-| `--model-variant m0\|m1` | Variant for auto-prepare: M0 (14M params) or M1 (larger) (default: `m0`) |
+| `--prepare-models` | Force conversion of the supplied checkpoint |
+| `--checkpoint PATH` | Compatible user-supplied PyTorch checkpoint used for conversion |
+| `--model-variant m0\|m1` | Architecture/configuration matching the checkpoint (default: `m0`) |
 | `--jobs N` | Parallel BEVPool extension build jobs (default: `nproc`) |
 | `--run-test` | Build Conda env + extension + run 80-frame benchmark |
 | `--num-samples N` | Frames for `--run-test` (default: 80) |
@@ -243,14 +258,13 @@ FlashOCC/
 │       ├── build_ws/                     # CMake build artifacts (git-ignored)
 │       └── *.cl                          # OpenCL kernels
 ├── .conda/
-│   ├── flashocc_ws/                      # Python 3.10 Conda env for inference (pip OpenVINO + deps)
-│   └── convert/                          # Python 3.10 Conda env for model conversion (created by --prepare-models)
+│   └── flashocc_ws/                      # Shared Python 3.10 conversion/inference environment
 ├── split_f16out/                         # IR models (gitignored — generated by --prepare-models)
 │   ├── image_encoder.xml / .bin
 │   ├── bev_trunk.xml / .bin
 │   └── bev_trunk_argmax_only.xml / .bin
-├── checkpoints/                          # Model weights (downloaded by --prepare-models)
-│   └── flashocc-r50.pth or flashocc-r50-m1.pth
+├── checkpoints/                          # Optional location for user-supplied model weights
+│   └── your-checkpoint.pth
 └── ov_build/                             # Build logs (git-ignored)
      └── logs/
 ```
