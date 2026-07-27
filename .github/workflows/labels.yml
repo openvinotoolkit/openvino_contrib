@@ -1,0 +1,65 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+name: Labels
+
+# Two related jobs that both operate on the label definition files:
+#   * sync  - pushes .github/labels.yml to the repository (on master only)
+#   * check - verifies category labels stay in sync with modules/ (on PRs)
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/labels.yml'
+      - '.github/workflows/labels.yml'
+  pull_request:
+    paths:
+      - 'modules/**'
+      - '.github/labels.yml'
+      - '.github/labeler.yml'
+      - '.github/CODEOWNERS'
+      - '.github/scripts/check_module_labels.py'
+      - '.github/scripts/check_codeowners.py'
+      - '.github/workflows/labels.yml'
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  sync:
+    name: Sync labels
+    # Only apply label changes from master (or a manual run), never from a PR.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+      - uses: crazy-max/ghaction-github-labeler@548a7c3603594ec17c819e1239f281a3b801ab4d # v6.0.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          yaml-file: .github/labels.yml
+          # labels.yml is the single source of truth: any label not listed there
+          # is deleted from the repository (and removed from all issues/PRs).
+          skip-delete: false
+
+  check:
+    name: Check module labels are in sync
+    # Validate on pull requests (and manual runs); no write access needed.
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+      - uses: actions/setup-python@82c7e631bb3cdc910f68e0081d67478d79c6982d # v5.1.0
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: python -m pip install pyyaml
+      - name: Verify every module has a category label
+        run: python .github/scripts/check_module_labels.py
+      - name: Verify CODEOWNERS module rules are not stale
+        run: python .github/scripts/check_codeowners.py
