@@ -17,13 +17,13 @@ setup(
     package_dir={"": "src"},
     include_package_data=True,
     install_requires=[
-        "scikit-learn==1.2.2",
-        "scikit-learn-intelex==2023.1.1",
+        "scikit-learn==1.7.2",
+        "scikit-learn-intelex==2026.1.0",
         "torch>=1.12.0",
         "openvino>=2023.0",
         "nncf>=2.7.0",
         "joblib>=1.2.0",
-        "numpy>=1.21.0,<2.0.0",
+        "numpy>=1.21.0,<3.0.0",
         "psutil>=5.9.0",
     ],
     extras_require={
@@ -31,10 +31,10 @@ setup(
             "intel_extension_for_pytorch>=2.1.0"  # For CPU (Linux/Windows)
         ],
         "ipex-xpu": [
-            "torch==2.7.0",
-            "torchvision==0.22.0", 
-            "torchaudio==2.7.0",
-            "intel-extension-for-pytorch==2.7.10+xpu"  # For XPU (Windows Intel GPU)
+            "torch==2.13.0",
+            "torchvision==0.28.0", 
+            "torchaudio==2.11.0",
+            "intel-extension-for-pytorch==2.8.0"  # For XPU (Windows Intel GPU)
         ],
         "tensorflow": [
             "tensorflow>=2.12.0",
