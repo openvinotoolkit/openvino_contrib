@@ -1,5 +1,7 @@
 // Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
+// Portions of this file are adapted from the MIT-licensed PointNet2 kernels
+// by Erik Wijmans and Charles R. Qi. See third-party-programs.txt.
 
 __kernel void ov_furthest_point_sampling(
     __global const INPUT0_TYPE* pts,  // (B, N, 3)
@@ -46,6 +48,9 @@ __kernel void ov_furthest_point_sampling(
     for (int j = 1; j < npoint; ++j) {
         // Read last selected index from LOCAL memory
         int last_idx = s_idx[0];
+
+	// Ensure all work-items have read s_idx[0] before s_idx is reused.
+	barrier(CLK_LOCAL_MEM_FENCE);
 
         float lx = pts_f32[pts_offset + last_idx * 3 + 0];
         float ly = pts_f32[pts_offset + last_idx * 3 + 1];

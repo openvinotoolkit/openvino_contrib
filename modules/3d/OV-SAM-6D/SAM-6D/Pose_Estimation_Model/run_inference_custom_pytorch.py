@@ -165,6 +165,7 @@ if __name__ == "__main__":
     cfg = init()
 
     random.seed(cfg.rd_seed)
+    np.random.seed(cfg.rd_seed)
     torch.manual_seed(cfg.rd_seed)
 
     # set device

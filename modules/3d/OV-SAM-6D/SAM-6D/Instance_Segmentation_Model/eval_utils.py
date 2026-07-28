@@ -19,25 +19,7 @@ def _mask_iou(mask_a: np.ndarray, mask_b: np.ndarray) -> float:
     return float(intersection / union) if union > 0 else 0.0
 
 
-def _compute_ap_101(recall: np.ndarray, precision: np.ndarray) -> float:
-    """COCO-style 101-point interpolation AP."""
-
-    if len(recall) == 0:
-        return 0.0
-
-    mrec = np.concatenate(([0.0], recall, [1.0]))
-    mpre = np.concatenate(([0.0], precision, [0.0]))
-
-    for i in range(len(mpre) - 2, -1, -1):
-        mpre[i] = max(mpre[i], mpre[i + 1])
-
-    recall_interp = np.linspace(0, 1, 101)
-    precision_interp = np.interp(recall_interp, mrec, mpre)
-
-    return float(np.mean(precision_interp))
-
-
-def compute_map_iou(pred_masks, pred_scores, gt_masks, iou_thresholds=None):
+def compute_map_iou_voc(pred_masks, pred_scores, gt_masks, iou_thresholds=None):
     """Compute VOC-style mAP @ IoU[0.50:0.95] for one image.
 
     Parameters
@@ -103,6 +85,13 @@ def compute_map_iou(pred_masks, pred_scores, gt_masks, iou_thresholds=None):
 
     return {"map": mAP, "ap_per_iou": ap_per_iou, "best_iou": best_iou,
             "n_pred": n_pred, "n_gt": n_gt}
+
+
+def compute_map_iou(pred_masks, pred_scores, gt_masks, iou_thresholds=None):
+    """Backward-compatible alias for VOC-style mAP @ IoU[0.50:0.95]."""
+
+    return compute_map_iou_voc(pred_masks, pred_scores, gt_masks,
+                               iou_thresholds)
 
 
 def _compute_ap_voc(recall: np.ndarray, precision: np.ndarray) -> float:
@@ -327,7 +316,8 @@ def evaluate_and_print_map(pred_masks_bin, pred_scores, gt_mask_arg,
                                  f"via connected components)")
 
     if gt_masks_list:
-        metrics = compute_map_iou(pred_masks_bin, pred_scores, gt_masks_list)
+        metrics = compute_map_iou_voc(pred_masks_bin, pred_scores,
+                                      gt_masks_list)
 
         print(f"\n  {'='*55}")
         print(f"  mAP @ IoU[0.50:0.95] (VOC-style)")

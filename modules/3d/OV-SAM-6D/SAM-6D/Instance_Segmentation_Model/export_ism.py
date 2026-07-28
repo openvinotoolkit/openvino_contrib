@@ -51,6 +51,8 @@ def _block_xformers():
         return
 
     import importlib
+    import importlib.abc
+    import importlib.util
 
     class _XFormersBlocker(importlib.abc.Loader):
         """Fake loader that always raises ImportError."""

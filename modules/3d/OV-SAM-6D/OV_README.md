@@ -7,6 +7,43 @@ SPDX-License-Identifier: Apache-2.0
 
 _This directory is an OpenVINO port of [SAM-6D](https://github.com/JiehongLin/SAM-6D) (based on commit 1c2543b). The original SAM-6D source files are **not** committed here — they are fetched and patched by `setup_from_original.sh`._
 
+## Example Data Attribution
+
+The committed example files below are derived from the BOP LM-O (Linemod-Occluded) dataset:
+
+- `SAM-6D/Data/Example/gt_pose.json`
+- `SAM-6D/Data/Example/models_info.json`
+- `SAM-6D/Data/Example/mask_visib/000003_000001.png`
+
+Source dataset page: [BOP LM-O](https://bop.felk.cvut.cz/datasets/#LM-O)  
+LM-O project page: [Brachmann et al. dataset](https://heidata.uni-heidelberg.de/dataset.xhtml?persistentId=doi:10.11588/data/V4MUMX)  
+License: [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)
+
+These files are redistributed as attribution/share-alike derivative annotations for reproducible examples in this module. If you reuse or redistribute them, retain attribution to LM-O and comply with CC BY-SA 4.0 terms.
+
+-----------------------
+
+## Third-Party License Notice (Commercial-Use Considerations)
+
+This module's own code is Apache-2.0. However, the runtime pipeline can pull in
+third-party components with more restrictive licenses. Review the following
+before any commercial use:
+
+- **FastSAM / ultralytics (AGPL-3.0):** This is an **optional, non-default**
+  segmentor. The default path is SAM (Apache-2.0); FastSAM is used only when the
+  user explicitly passes `--segmentor_model fastsam`. No AGPL code is committed
+  here — it is a user-installed optional dependency, disclosed in
+  `third-party-programs.txt`.
+- **MAE backbone weights (CC BY-NC 4.0, non-commercial):** The file
+  `checkpoints/mae_pretrain_vit_base.pth` is **not committed** to this repo. It
+  is downloaded at setup time by `download_sam6d-pem.py` from the upstream
+  SAM-6D release. The CC BY-NC 4.0 license restricts these weights to
+  **non-commercial** use.
+
+Users are responsible for ensuring their usage complies with these third-party
+license terms. For commercial deployments, obtain appropriate legal clearance
+or substitute compliant alternatives.
+
 -----------------------
 
 # OpenVINO Port Setup
@@ -46,9 +83,7 @@ This guide explains how to set up and run the OpenVINO-based SAM-6D pipeline on 
 # 1. Create and Activate Conda Environment
 
 ```bash
-cd openvino_contrib/modules/3d/OV-SAM-6D/SAM-6D 
-cd SAM-6D
-
+cd openvino_contrib/modules/3d/OV-SAM-6D/SAM-6D
 conda env create -f ov_environment_u24.yaml
 conda activate ov_sam6d
 ```

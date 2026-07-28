@@ -38,7 +38,7 @@ patches/pem.patch
 Pose_Estimation_Model/eval_utils.py
 Pose_Estimation_Model/common_infer_utils.py
 Pose_Estimation_Model/run_pos.sh
-Pose_Estimation_Model/.gitattributes
+Pose_Estimation_Model/.gitignore
 Pose_Estimation_Model/model/ov_pointnet2_op/ball_query.cl
 Pose_Estimation_Model/model/ov_pointnet2_op/ball_query.cpp
 Pose_Estimation_Model/model/ov_pointnet2_op/ball_query.hpp

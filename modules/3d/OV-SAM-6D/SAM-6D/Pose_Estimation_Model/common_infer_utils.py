@@ -71,7 +71,7 @@ def _get_template(path, cfg, device, tem_index=1, backend="torch"):
     xyz_path = os.path.join(path, "xyz_" + str(tem_index) + ".npy")
 
     if backend == "numpy":
-        rgb = cv2.imread(rgb_path, cv2.IMREAD_UNCHANGED).astype(np.uint8)
+        rgb = load_im(rgb_path).astype(np.uint8)
         xyz = np.load(xyz_path).astype(np.float32) / 1000.0
         mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE).astype(np.uint8) == 255
 

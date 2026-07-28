@@ -179,9 +179,10 @@ __kernel void ov_custom_svd_v(
 
     int finished = 0;
     int cnt = 0;
-    while (!finished)
+    while (!finished && cnt < max_sweeps)
     {
         finished = 1;
+        ++cnt;
 
         for (int p = 1; p < 3; ++p)
         {

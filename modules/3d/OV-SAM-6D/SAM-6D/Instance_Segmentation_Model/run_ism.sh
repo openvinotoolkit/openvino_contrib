@@ -11,7 +11,6 @@ DATA_ROOT="${DATA_ROOT:-$SCRIPT_DIR/../Data/BOP}"
 DATASET="${DATASET:-lmo}"
 CONDA_ENV="${CONDA_ENV:-ov_sam6d}"
 OV_DEVICE="${OV_DEVICE:-GPU}"
-OV_SAM_DEVICE="${OV_SAM_DEVICE:-GPU}"
 SEGMENTOR_MODEL="${SEGMENTOR_MODEL:-fastsam}"
 # LMO test split in Data/BOP/lmo/test/000002 currently has 200 images.
 # Keep MAX_IMAGES <= 200 to evaluate the full available split.
@@ -89,14 +88,13 @@ main() {
   log "Conda env: $CONDA_ENV"
   log "Segmentor model: $SEGMENTOR_MODEL"
   log "Max images: $MAX_IMAGES"
-  log "OV_DEVICE=$OV_DEVICE OV_SAM_DEVICE=$OV_SAM_DEVICE"
+  log "OV_DEVICE=$OV_DEVICE"
   log "Log file: $run_log"
 
   # Run inference in background, write output to log file directly
   # so the log is always written even if stdout is piped through head/grep.
   local rc=0
   OV_DEVICE="$OV_DEVICE" \
-  OV_SAM_DEVICE="$OV_SAM_DEVICE" \
   PYTHONUNBUFFERED=1 \
   conda run --no-capture-output -n "$CONDA_ENV" \
     "$PYTHON_BIN" eval_ism_ov_bop.py \

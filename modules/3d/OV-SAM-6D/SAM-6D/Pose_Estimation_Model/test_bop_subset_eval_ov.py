@@ -513,7 +513,9 @@ def main():
                     ar_mssd = ar_from_thresholds(mssd_mm, mssd_abs_thresh)
                     ar_mspd = ar_from_thresholds(mspd_px, mspd_thresh_px)
                     ar_vsd = ar_from_thresholds(vsd_mm, vsd_abs_thresh)
-                    ar_mean = float(np.mean([ar_mssd, ar_mspd, ar_vsd]))
+                    # Note: ar_vsd uses compute_vsd_surrogate (no rendering/visibility/symmetry),
+                    # so it's not comparable to proper BOP AR. Report separately, do not average.
+                    ar_mean = float(np.mean([ar_mssd, ar_mspd]))
 
                     rec = {
                         "sample_idx": len(per_sample),

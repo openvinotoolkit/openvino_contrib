@@ -5,8 +5,8 @@ import argparse
 import os
 import sys
 import os.path as osp
-import numpy as np
 import random
+import numpy as np
 import importlib
 import json
 
@@ -23,68 +23,6 @@ from common_infer_utils import (
     load_yaml_config,
 )
 import xml.etree.ElementTree as ET
-
-def patch_topk_by_io_and_name(xml_path: str):
-    tree = ET.parse(xml_path)
-    root = tree.getroot()
-
-    patched = 0
-
-    for layer in root.iter("layer"):
-
-        # 1. TYPE check (must be TopK)
-        if layer.get("type") != "TopK":
-            continue
-
-        # 2. NAME check (must start with TopK_)
-        name = layer.get("name", "")
-        if not name.startswith("TopK_"):
-            continue
-
-        inp = layer.find("input")
-        out = layer.find("output")
-        data = layer.find("data")
-
-        if inp is None or out is None or data is None:
-            continue
-
-        # 3. IO shape check (your unique signature)
-        input_match = False
-        output_match = False
-
-        for p in inp.findall("port"):
-            dims = [d.text for d in p.findall("dim")]
-            if dims == ["-1", "18000", "38416"]:
-                input_match = True
-
-        for p in out.findall("port"):
-            dims = [d.text for d in p.findall("dim")]
-            if dims == ["-1", "18000", "1"]:
-                output_match = True
-
-        if not (input_match and output_match):
-            continue
-
-        # 4. Apply fix
-        changed = False
-
-        if data.get("sort") != "none":
-            data.set("sort", "none")
-            changed = True
-
-        if data.get("stable") != "false":
-            data.set("stable", "false")
-            changed = True
-
-        if changed:
-            patched += 1
-
-    tree.write(xml_path, encoding="utf-8", xml_declaration=True)
-
-    print(f"[TopK Patch] Patched {patched} TopK_* layers")
-
-
-
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -237,21 +175,9 @@ def prepare_data(cfg, model, device):
         "dense_fo": input_data['dense_fo'],
     }
 
-    ov_fe_input_name = {"rgb_input":[42,3,224,224],
-                        "pts_input":[batch_size,210000,3],
-                        "choose_input":[42,5000]}
-    ov_fe_output_name = {"pts_output":[batch_size,2048,3], 
-                        "feat_output":[batch_size,2048,256]}
-    ov_fe_input = {
-        "rgb_input": rgb_input,
-        "pts_input": pts_input,
-        "choose_input": choose_input,
-    }
-
     return (onnx_pem_input_name, onnx_pem_output_name, onnx_pem_input,
             onnx_fe_input_name, onnx_fe_output_name, onnx_fe_input,
-            ov_pem_input_name, ov_pem_input,
-            ov_fe_input_name, ov_fe_output_name, ov_fe_input)
+            ov_pem_input_name, ov_pem_input)
 
 class FeatureExtractionWrapper(nn.Module):
     """feature_extraction get_obj_feats wrapper for onnx export"""
@@ -339,6 +265,7 @@ def main():
     cfg = init()
 
     random.seed(cfg.rd_seed)
+    np.random.seed(cfg.rd_seed)
     torch.manual_seed(cfg.rd_seed)
 
     print(f"cfg.rd_seed:{cfg.rd_seed}")
@@ -387,8 +314,7 @@ def main():
     # prepare data for model convert
     onnx_pem_input_name, onnx_pem_output_name, onnx_pem_input, \
     onnx_fe_input_name, onnx_fe_output_name, onnx_fe_input, \
-    ov_pem_input_name, ov_pem_input, \
-    ov_fe_input_name, ov_fe_output_name, ov_fe_input = prepare_data(cfg, model, device)
+    ov_pem_input_name, ov_pem_input = prepare_data(cfg, model, device)
 
     model_save_path = "model_save"
     os.makedirs(model_save_path, exist_ok=True)
@@ -396,7 +322,10 @@ def main():
     onnx_fe_model_path = os.path.join(model_save_path, 'onnx_fe_model_cpu.onnx')
     ov_pem_model_path = os.path.join(model_save_path, 'ov_pem_model_cpu.xml')
     ov_fe_model_path = os.path.join(model_save_path, 'ov_fe_model_cpu.xml')
-    ov_extension_lib_path = './model/ov_pointnet2_op/build/libopenvino_operation_extension.so'
+    ov_extension_lib_path = os.path.join(BASE_DIR, "model/ov_pointnet2_op/build/libopenvino_operation_extension.so")
+
+    if not os.path.isfile(ov_extension_lib_path):
+        raise FileNotFoundError(f"Extension not found: {ov_extension_lib_path}")
 
     core = Core()
     core.add_extension(ov_extension_lib_path)
@@ -408,7 +337,6 @@ def main():
     # # openvino model convert
     openvino_model_convert_feature_extraction_submodel(core, onnx_fe_model_path, ov_fe_model_path)
     openvino_model_convert_pose_estimation_submodel(core, ov_pem_input_name, ov_pem_input, onnx_pem_model_path, ov_pem_model_path, ov_extension_lib_path)
-    patch_topk_by_io_and_name(ov_pem_model_path)
 
 if __name__ == "__main__":
     main()

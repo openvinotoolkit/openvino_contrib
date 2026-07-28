@@ -1655,12 +1655,12 @@ def init_model_ov_ext(
                 if not _dim.is_dynamic:
                     _shape.append(_dim.get_length())
                 elif _i == 0:
-                    _shape.append(_ppb)   # batch dim → points_per_batch
+                    _shape.append(-1)   # batch dim → dynamic (handle uneven final batch)
                 else:
                     _shape.append(1)      # remaining dynamic → num_points_per_prompt
             _static_shapes[_inp.any_name] = _shape
         _dec_ir.reshape(_static_shapes)
-        print(f"Decoder static shapes={_static_shapes} (reshaped for GPU performance)")
+        print(f"Decoder static shapes={_static_shapes} (batch dim is dynamic; other dims static for GPU performance)")
         decoder_compiled = _compile(sam_decoder_xml, model_ir=_dec_ir)
     else:  # fastsam
         fastsam_xml = os.path.join(ov_model_dir, "fastsam_x_dynamic.xml")

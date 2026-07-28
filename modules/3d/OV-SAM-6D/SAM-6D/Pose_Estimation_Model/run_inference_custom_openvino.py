@@ -269,10 +269,13 @@ def main():
     print(f"[OpenVINO] Device: {cfg.device}, Precision: {precision_mode}, Seed: {cfg.seed}")
 
     # Paths
-    ov_pem_model_path = "model_save/ov_pem_model_cpu.xml"
-    ov_fe_model_path = "model_save/ov_fe_model_cpu.xml"
-    ov_gpu_kernel_path = "./model/ov_pointnet2_op/pem_gpu_ops.xml"
-    ov_extension_lib_path = "./model/ov_pointnet2_op/build/libopenvino_operation_extension.so"
+    ov_pem_model_path = os.path.join(BASE_DIR, "model_save/ov_pem_model_cpu.xml")
+    ov_fe_model_path = os.path.join(BASE_DIR, "model_save/ov_fe_model_cpu.xml")
+    ov_gpu_kernel_path = os.path.join(BASE_DIR, "model/ov_pointnet2_op/pem_gpu_ops.xml")
+    ov_extension_lib_path = os.path.join(BASE_DIR, "model/ov_pointnet2_op/build/libopenvino_operation_extension.so")
+
+    if not os.path.isfile(ov_extension_lib_path):
+        raise FileNotFoundError(f"Extension not found: {ov_extension_lib_path}")
 
     # Initialize OpenVINO
     core = Core()
