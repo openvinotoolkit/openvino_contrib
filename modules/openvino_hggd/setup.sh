@@ -33,7 +33,7 @@ fi
 echo "Installing packages into $ENV_NAME..."
 conda run -n "$ENV_NAME" pip install --upgrade pip
 
-# Core Intel XPU runtime libraries used by hggd_xpu.
+# Core Intel XPU runtime libraries used by hggd_intel.
 conda run -n "$ENV_NAME" pip install \
     intel-cmplr-lib-rt==2025.0.2 \
     intel-cmplr-lib-ur==2025.0.2 \
@@ -68,9 +68,10 @@ conda run -n "$ENV_NAME" pip install \
     cvxopt==1.3.3 \
     grasp-nms==1.0.2 \
     numba==0.64.0 \
+    onnx==1.22.0 \
     pillow==12.1.1
 
-# graspnetAPI 1.2.11 has a stale numpy pin (1.20.3); hggd_xpu uses it with the newer stack.
+# graspnetAPI 1.2.11 has a stale numpy pin (1.20.3); hggd_intel uses it with the newer stack.
 conda run -n "$ENV_NAME" pip install --no-deps graspnetAPI==1.2.11
 
 # Make the environment self-contained: activating it should prefer its own Intel runtime libs.
