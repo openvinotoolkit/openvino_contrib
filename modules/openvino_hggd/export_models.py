@@ -6,7 +6,7 @@ Loads PyTorch checkpoint, exports via ONNX, converts to OpenVINO IR (FP16),
 and validates on GPU.
 
 Usage:
-    conda activate hggd_xpu
+    conda activate hggd_intel
     cd path_to_openvino_hggd
     python export_models.py \
         --checkpoint-path /path/to/HGGD_realsense_checkpoint \
