@@ -241,20 +241,20 @@ class NativePointCloudOpsGPU:
         idx_shape = idx.shape
         D = features.shape[-1]
         
-        # Handle -1 indices (invalid)
-        valid_idx = np.maximum(idx, 0)
+        valid = idx >= 0
+        safe_idx = np.where(valid, idx, 0)
         
         if len(idx_shape) == 2:
             # [B, K] -> [B, K, D]
             gathered = np.zeros((B, idx_shape[1], D), dtype=features.dtype)
             for b in range(B):
-                gathered[b] = features[b, valid_idx[b]]
+                gathered[b][valid[b]] = features[b, safe_idx[b]][valid[b]]
         else:
             # [B, K1, K2] -> [B, K1, K2, D]
             gathered = np.zeros((*idx_shape, D), dtype=features.dtype)
             for b in range(B):
                 for i in range(idx_shape[1]):
-                    gathered[b, i] = features[b, valid_idx[b, i]]
+                    gathered[b, i][valid[b, i]] = features[b, safe_idx[b, i]][valid[b, i]]
         
         return gathered
 
