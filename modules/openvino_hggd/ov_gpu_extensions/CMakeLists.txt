@@ -35,7 +35,7 @@ target_link_libraries(${TARGET_NAME} PRIVATE openvino::runtime)
 
 # Compiler flags
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_compile_options(${TARGET_NAME} PRIVATE -O3 -march=native -ffast-math)
+    target_compile_options(${TARGET_NAME} PRIVATE -O3)
 endif()
 
 # Install targets
