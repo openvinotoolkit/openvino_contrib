@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+
 <!-- OpenVINO GPU Custom Layer Configuration for Point Cloud Operations -->
 
 <CustomLayer name="KNNPointsSingle" type="SimpleGPU" version="1">
