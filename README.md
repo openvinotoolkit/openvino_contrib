@@ -50,6 +50,7 @@ Additional build instructions are available for the following modules:
 * [**ollama_OpenVINO**](./modules/ollama_openvino)
 * [**openvino-langchain**](./modules/openvino-langchain): LangChain.js integrations for OpenVINO™
 * [**OpenVino BEVFusion**](./modules/openvino_bevfusion): Check the [INSTRUCTIONS](./modules/openvino_bevfusion/EXPORT_AND_INFERENCE_GUIDE.md) for detailed usage and build instructions.
+* [**OpenVino HGGD**](./modules/openvino_hggd): Check the [INSTRUCTIONS](./modules/openvino_hggd/README.md) for detailed usage and build instructions.
 * **3D**:
   * [**Point Pillars**](./modules/3d/pointPillars): Check the [README](./modules/3d/pointPillars/README.md) for detailed usage and build instructions.
   * [**CDPN**](./modules/3d/CDPN): Check the [README](./modules/3d/CDPN/README.md) for detailed usage and build instructions.
