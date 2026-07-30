@@ -40,11 +40,11 @@ endif()
 
 # Install targets
 install(TARGETS ${TARGET_NAME} LIBRARY DESTINATION lib RUNTIME DESTINATION lib)
-install(FILES 
-    pointcloud_ops_gpu.xml 
-    kernels/knn_points.cl
-    kernels/ball_query.cl
-    kernels/fps.cl
-    kernels/gather.cl
+install(FILES
+    pointcloud_ops_gpu_v2.xml
+    kernels/knn_points_tiled.cl
+    kernels/ball_query_single_v2.cl
+    kernels/fps_single_optimized.cl
+    kernels/fps_with_lengths_optimized.cl
     DESTINATION lib
 )
