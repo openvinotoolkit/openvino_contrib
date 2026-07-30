@@ -65,6 +65,12 @@ void KNNPoints::validate_and_infer_types() {
     NODE_VALIDATION_CHECK(this, p2_shape.rank().is_static() && p2_shape.rank().get_length() == 3,
                           "p2 must be 3D [B, N2, 3]");
 
+    // K must not exceed the source cloud size (partial_sort UB / OOB otherwise)
+    if (p2_shape[1].is_static()) {
+        NODE_VALIDATION_CHECK(this, m_k <= p2_shape[1].get_length(),
+                              "k must be <= N2 (source point count)");
+    }
+
     // Output shapes: [B, N1, K]
     ov::PartialShape out_shape{p1_shape[0], p1_shape[1], m_k};
     set_output_type(0, ov::element::f32, out_shape);  // dists
@@ -609,6 +615,12 @@ void KNNPointsSingle::validate_and_infer_types() {
                           "p1 must be 3D [B, N1, 3]");
     NODE_VALIDATION_CHECK(this, p2_shape.rank().is_static() && p2_shape.rank().get_length() == 3,
                           "p2 must be 3D [B, N2, 3]");
+
+    // K must not exceed source point count (partial_sort UB / OOB otherwise)
+    if (p2_shape[1].is_static()) {
+        NODE_VALIDATION_CHECK(this, m_k <= p2_shape[1].get_length(),
+                              "k must be <= N2 (source point count)");
+    }
 
     // Output shape: [B, N1, K*2] - first K are dists, next K are indices
     ov::PartialShape out_shape{p1_shape[0], p1_shape[1], m_k * 2};
