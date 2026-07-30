@@ -48,7 +48,9 @@ class NativePointCloudOpsGPU:
             gpu_config["INFERENCE_PRECISION_HINT"] = "f16"
         elif precision == 'f32':
             gpu_config["INFERENCE_PRECISION_HINT"] = "f32"
-        # else: let GPU plugin decide (default is f16)
+        else:
+            # Default / let GPU plugin decide
+            gpu_config["INFERENCE_PRECISION_HINT"] = "f16"
         
         self.core.set_property("GPU", gpu_config)
         

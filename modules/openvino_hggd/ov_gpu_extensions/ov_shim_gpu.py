@@ -1,10 +1,13 @@
 # Copyright (C) 2018-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 """
-OpenVINO GPU Extension shim for HGGD using native GPU kernels with FP16.
+OpenVINO GPU Extension shim for HGGD using native GPU kernels.
 
-Replaces pytorch3d ops with native GPU OpenVINO custom layer implementations.
-Uses the v2 kernels which support FP16 data correctly via INPUT0_TYPE macros.
+Replaces pytorch3d ops with native GPU OpenVINO custom-layer implementations.
+
+Defaults to FP32 so KNN/BallQuery/FPS indices stay exact: HGGD point clouds
+exceed 25k points, beyond FP16's exact-integer limit of 2048.  Distances can
+degrade in FP16; indices must not.
 
 Usage:
     from ov_gpu_extensions.ov_shim_gpu import install_ov_shim
@@ -31,16 +34,26 @@ _ops = None
 def get_ops() -> NativePointCloudOpsGPU:
     global _ops
     if _ops is None:
-        _ops = create_ops(precision='f16')  # Use FP16 for performance
+        # Indices must stay exact: FP16 only represents integers exactly up to 2048,
+        # but HGGD point clouds can reach 25600+ points. Use FP32 so KNN/BallQuery/FPS
+        # index outputs are not silently rounded.
+        _ops = create_ops(precision='f32')
     return _ops
 
 
-def install_ov_shim(verbose: bool = True, precision: str = 'f16'):
+def install_ov_shim(verbose: bool = True, precision: str = 'f32'):
     """Install GPU OpenVINO extension shim as pytorch3d replacement.
-    
+
+    Defaults to FP32 because KNN/BallQuery/FPS pack point-cloud indices as
+    floats in the same tensor as distances.  FP16 only represents integers
+    exactly up to 2048; HGGD point clouds can exceed 25000 points, so FP16
+    silently rounds indices and breaks neighbor gathering.  Distances tolerate
+    FP16, but indices must stay exact.
+
     Args:
         verbose: Print setup info
-        precision: 'f16' (default, fast), 'f32' (accurate), or 'default' (GPU decides)
+        precision: 'f32' (default, safe for indices), 'f16' (fast, N<=2048 only),
+                   or 'default' (GPU decides)
     """
     global _ops
     _ops = create_ops(precision=precision)
