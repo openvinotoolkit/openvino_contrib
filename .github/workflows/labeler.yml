@@ -30,7 +30,12 @@ jobs:
       pull-requests: write
     timeout-minutes: 5
     steps:
+      # Only run the path-based labeler on code changes, not on label edits.
+      # With sync-labels it removes category labels whose globs no longer match,
+      # so re-running it on a 'labeled' event would strip a label a maintainer
+      # just added by hand to a PR the globs do not cover.
       - name: Assign category labels from changed paths
+        if: github.event.action != 'labeled' && github.event.action != 'unlabeled'
         uses: actions/labeler@ac9175f8a1f3625fd0d4fb234536d26811351594 # v4.3.0
         with:
           repo-token: "${{ secrets.GITHUB_TOKEN }}"
