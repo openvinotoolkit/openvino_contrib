@@ -58,10 +58,12 @@ public class PrePostProcessorTests extends OVTest {
     @Test
     public void testScaleAndConvertLayout() {
         // Feed a u8 NHWC frame and let the preprocessor scale by 255 and transpose to the
-        // model's NCHW f32 layout. This mirrors the OpenCV-free YOLO input path.
-        int h = dimsArr[2];
-        int w = dimsArr[3];
-        int c = dimsArr[1];
+        // model's NCHW f32 layout. This mirrors the OpenCV-free YOLO input path. The test model
+        // input is [1, 3, 32, 32] (NCHW), so the user tensor is [1, 32, 32, 3] (NHWC).
+        int[] modelInput = net.input().get_shape(); // [1, 3, H, W]
+        int c = modelInput[1];
+        int h = modelInput[2];
+        int w = modelInput[3];
         byte[] u8data = new byte[h * w * c];
         for (int i = 0; i < u8data.length; i++) {
             u8data[i] = (byte) (i % 256);
