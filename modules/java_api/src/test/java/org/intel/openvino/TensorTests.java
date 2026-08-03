@@ -23,6 +23,51 @@ public class TensorTests extends OVTest {
     }
 
     @Test
+    public void testGetTensorFromByte() {
+        int size = Arrays.stream(dimsArr).reduce((i, j) -> i * j).orElse(1);
+        byte[] inputData = new byte[size];
+        for (int i = 0; i < size; i++) {
+            inputData[i] = (byte) (i * 10);
+        }
+
+        Tensor tensor = new Tensor(ElementType.u8, dimsArr, inputData);
+
+        assertArrayEquals(dimsArr, tensor.get_shape());
+        assertEquals(size, tensor.get_size());
+        assertEquals(ElementType.u8, tensor.get_element_type());
+
+        // u8 data comes back through as_int() as unsigned values in [0, 255].
+        int[] actual = tensor.as_int();
+        assertEquals(size, actual.length);
+        for (int i = 0; i < size; i++) {
+            assertEquals(inputData[i] & 0xFF, actual[i]);
+        }
+    }
+
+    @Test
+    public void testGetTensorFromByteWrongLength() {
+        byte[] inputData = new byte[] {1, 2, 3};
+        try {
+            new Tensor(ElementType.u8, dimsArr, inputData);
+            fail("Expected an exception for mismatched data length");
+        } catch (Exception e) {
+            assertTrue(e.getMessage().contains("does not match the tensor shape"));
+        }
+    }
+
+    @Test
+    public void testGetTensorFromByteWrongType() {
+        int size = Arrays.stream(dimsArr).reduce((i, j) -> i * j).orElse(1);
+        byte[] inputData = new byte[size];
+        try {
+            new Tensor(ElementType.f32, dimsArr, inputData);
+            fail("Expected an exception for a non-byte element type");
+        } catch (Exception e) {
+            assertTrue(e.getMessage().contains("only u8 and i8"));
+        }
+    }
+
+    @Test
     public void testGetTensorFromInt() {
         int size = Arrays.stream(dimsArr).reduce((i, j) -> i * j).orElse(1);
         int[] inputData = new int[size];

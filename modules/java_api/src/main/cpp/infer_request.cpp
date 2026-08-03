@@ -61,6 +61,19 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_InferRequest_GetOutputTensor(JNI
     return 0;
 }
 
+JNIEXPORT jlong JNICALL Java_org_intel_openvino_InferRequest_GetOutputTensor1(JNIEnv *env, jobject obj, jlong addr, jint index)
+{
+    JNI_METHOD("GetOutputTensor1",
+        InferRequest *infer_request = (InferRequest *)addr;
+        Tensor *output_tensor = new Tensor();
+
+        *output_tensor = infer_request->get_output_tensor(static_cast<size_t>(index));
+
+        return (jlong)output_tensor;
+    )
+    return 0;
+}
+
 JNIEXPORT jlong JNICALL Java_org_intel_openvino_InferRequest_GetTensor(JNIEnv *env, jobject obj, jlong addr, jstring tensorName)
 {
     JNI_METHOD("GetTensor",

@@ -56,6 +56,58 @@ public class PrePostProcessorTests extends OVTest {
     }
 
     @Test
+    public void testScaleAndConvertLayout() {
+        // Feed a u8 NHWC frame and let the preprocessor scale by 255 and transpose to the
+        // model's NCHW f32 layout. This mirrors the OpenCV-free YOLO input path.
+        int h = dimsArr[2];
+        int w = dimsArr[3];
+        int c = dimsArr[1];
+        byte[] u8data = new byte[h * w * c];
+        for (int i = 0; i < u8data.length; i++) {
+            u8data[i] = (byte) (i % 256);
+        }
+        Tensor u8input = new Tensor(ElementType.u8, new int[] {1, h, w, c}, u8data);
+
+        PrePostProcessor p = new PrePostProcessor(net);
+        p.input()
+                .tensor()
+                .set_element_type(ElementType.u8)
+                .set_layout(new Layout("NHWC"))
+                .set_spatial_static_shape(h, w);
+        p.input()
+                .preprocess()
+                .convert_element_type(ElementType.f32)
+                .scale(255.0f)
+                .convert_layout(new Layout("NCHW"));
+        p.input().model().set_layout(new Layout("NCHW"));
+        p.build();
+
+        CompiledModel compiledModel = core.compile_model(net, "CPU");
+        InferRequest inferRequest = compiledModel.create_infer_request();
+        inferRequest.set_input_tensor(u8input);
+        inferRequest.infer();
+
+        // A successful inference proves the scale + layout-convert steps were accepted and
+        // fused into the model (the input tensor precision is now u8, not f32).
+        assertEquals(ElementType.u8, compiledModel.inputs().get(0).get_element_type());
+    }
+
+    @Test
+    public void testPerChannelMeanScale() {
+        PrePostProcessor p = new PrePostProcessor(net);
+        p.input().tensor().set_element_type(ElementType.f32).set_layout(new Layout("NCHW"));
+        // (x - mean) / scale, three channels.
+        p.input()
+                .preprocess()
+                .mean(new float[] {0.485f, 0.456f, 0.406f})
+                .scale(new float[] {0.229f, 0.224f, 0.225f});
+        p.input().model().set_layout(new Layout("NCHW"));
+        Model built = p.build();
+
+        assertEquals(ElementType.f32, built.input().get_element_type());
+    }
+
+    @Test
     public void testWrongElementType() {
         String exceptionMessage = "";
         Layout tensor_layout = new Layout("NCHW");
