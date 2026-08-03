@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Streams a model's ONNX from its manifest URL (Ultralytics' official release asset by default)
  * into the on-disk cache, reporting progress, supporting cancel, and verifying the sha256 on
  * completion. This is the **only** network I/O in the app, and it uses the built-in
- * [HttpURLConnection] (no third-party HTTP or CV library, per the constraints).
+ * [HttpURLConnection].
  *
  * Not tied to any Activity: run it off a coroutine/executor so it survives configuration changes.
  */

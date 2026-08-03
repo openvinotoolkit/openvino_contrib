@@ -8,10 +8,9 @@ import androidx.camera.core.ImageProxy
 
 /**
  * Turns a CameraX [ImageProxy] (YUV_420_888) into a `u8` RGB NHWC buffer at the model's square
- * input size, **without OpenCV**. Everything OpenCV used to do here — color conversion, rotation,
- * resize — is plain Kotlin operating directly on the image plane buffers. The remaining steps
- * (divide by 255, NHWC→NCHW transpose) are pushed into the compiled model via `PrePostProcessor`,
- * so this class only emits raw `u8` pixels.
+ * input size. Color conversion, rotation and resize are plain Kotlin operating directly on the
+ * image plane buffers. The remaining steps (divide by 255, NHWC→NCHW transpose) are pushed into
+ * the compiled model via `PrePostProcessor`, so this class only emits raw `u8` pixels.
  *
  * The conversion is done by inverse sampling: for every destination pixel in the square input we
  * map back through the letterbox and the frame rotation to a source pixel in the raw YUV buffer,

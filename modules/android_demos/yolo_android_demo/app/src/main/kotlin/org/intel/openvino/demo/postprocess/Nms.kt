@@ -4,7 +4,7 @@
 package org.intel.openvino.demo.postprocess
 
 /**
- * Pure-Kotlin non-maximum suppression, replacing OpenCV's `Dnn.NMSBoxes`.
+ * Pure-Kotlin non-maximum suppression.
  *
  * A lightweight candidate box carrying whatever index the caller wants to recover after
  * suppression (its position in the pre-NMS list). Boxes are in any consistent coordinate space.

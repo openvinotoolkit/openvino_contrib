@@ -20,7 +20,7 @@ import org.intel.openvino.demo.postprocess.RawOutput
  *
  * The whole preprocessing pipeline is pushed into the compiled model via [PrePostProcessor], using
  * the Java API preprocessing ops added for this demo:
- *  - the app supplies a raw `u8` NHWC RGB frame (built without OpenCV) as a `byte[]` tensor —
+ *  - the app supplies a raw `u8` NHWC RGB frame as a `byte[]` tensor —
  *    `Tensor(ElementType.u8, dims, byte[])`,
  *  - `resize` fits it to the model input (the frame is already letterboxed to square, so this is a
  *    1:1 copy but keeps the graph robust to off-by-one),

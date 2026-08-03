@@ -9,7 +9,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Pure-Kotlin NMS behavior (class-aware), replacing OpenCV's Dnn.NMSBoxes. */
+/** Pure-Kotlin NMS behavior (class-aware). */
 class NmsTest {
 
     @Test

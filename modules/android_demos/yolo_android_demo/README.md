@@ -8,7 +8,7 @@ SPDX-License-Identifier: Apache-2.0
 A lightweight Android app that runs **YOLO** object detection, segmentation, pose estimation and
 classification on-device with [OpenVINO](https://github.com/openvinotoolkit/openvino) through the
 [OpenVINO Java API](../../java_api). It is written in **Kotlin**, uses **CameraX** for the live
-camera, and contains **no OpenCV** — preprocessing, NMS and rendering are plain Kotlin + the
+camera; preprocessing, NMS and rendering are plain Kotlin + the
 OpenVINO `PrePostProcessor` and Android `Canvas`.
 
 Supported models: **YOLOv8, YOLOv10, YOLO11, YOLOv12** (anchor-free). Inference runs on **CPU**;
@@ -56,7 +56,7 @@ app/src/main/kotlin/org/intel/openvino/demo/
 ├── data/          ModelManifest, ManifestRepository, ModelDownloader (HTTPS + progress + sha256), ModelCache, DownloadState
 ├── inference/     OvEngine (Core/CompiledModel/InferRequest, read_model(onnx)), ModelConfig (from the manifest)
 ├── camera/        CameraController (CameraX Preview + ImageAnalysis, latest-frame backpressure, own thread)
-├── preprocess/    LetterboxTransform (aspect-fit + exact inverse), FramePreprocessor (YUV → u8 RGB NHWC, no OpenCV)
+├── preprocess/    LetterboxTransform (aspect-fit + exact inverse), FramePreprocessor (YUV → u8 RGB NHWC)
 └── postprocess/   Nms (class-aware, pure Kotlin), YoloDecoder + per-family decoders, Detection types
 ```
 
