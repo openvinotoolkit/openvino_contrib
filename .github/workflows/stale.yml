@@ -1,0 +1,59 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+name: Mark stale pull requests
+
+on:
+  schedule:
+    # Run daily at 01:30 UTC
+    - cron: '30 1 * * *'
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  stale:
+    name: Mark and close stale pull requests
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    timeout-minutes: 10
+    steps:
+      - uses: actions/stale@1e223db275d687790206a7acac4d1a11bd6fe629 # v10.4.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          # Process more pull requests per run so a large backlog is not spread
+          # over many days (default is 30).
+          operations-per-run: 100
+          # Process the oldest pull requests first, so the ones closest to their
+          # close deadline are handled before the per-run budget is exhausted.
+          ascending: true
+          # Never touch draft pull requests, they are considered work in progress.
+          exempt-draft-pr: true
+          # Mark a pull request as stale after 2 weeks of inactivity.
+          days-before-pr-stale: 14
+          # Close a stale pull request one week after it was marked stale.
+          # Note: the age is evaluated only on each scheduled run, so the actual
+          # close happens on the first daily run after the label turns 7 days old
+          # (may lag up to ~24h). Increase the cron frequency for tighter timing.
+          days-before-pr-close: 7
+          stale-pr-label: 'stale'
+          # Never process pull requests carrying this label.
+          exempt-pr-labels: 'no_stale'
+          stale-pr-message: >
+            This pull request has been automatically marked as stale because it
+            has not had any activity for the last 2 weeks. It will be closed in
+            7 days if no further activity occurs. Please push new commits or
+            leave a comment to keep it open. Thank you for your contributions!
+          close-pr-message: >
+            This pull request has been automatically closed because it has been
+            stale for 7 days with no activity. Feel free to reopen it if you
+            would like to continue the work. Thank you for your contributions!
+          # Do not process issues with this workflow, only pull requests.
+          days-before-issue-stale: -1
+          days-before-issue-close: -1
+          # Remove the stale label as soon as the pull request gets new activity.
+          # Manually removing the label without any activity is not enough: the PR
+          # is still inactive, so it will be re-marked on the next run. Use the
+          # 'no_stale' exempt label to freeze a PR permanently.
+          remove-stale-when-updated: true
