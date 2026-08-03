@@ -89,6 +89,21 @@ public class Tensor extends Wrapper {
         return asInt(nativeObj);
     }
 
+    /**
+     * Returns the tensor data as a byte array.
+     *
+     * <p>Supported only for byte-wide element types ({@link ElementType#u8} and {@link
+     * ElementType#i8}), which cannot be read back through {@link #data()} or {@link #as_int()}.
+     * {@code u8} values are returned in their raw two's-complement byte form, so a pixel value of
+     * {@code 200} reads back as {@code (byte) 200 == -56}; mask with {@code & 0xFF} to recover the
+     * unsigned value.
+     *
+     * @return the tensor data as a byte array
+     */
+    public byte[] as_byte() {
+        return asByte(nativeObj);
+    }
+
     /*----------------------------------- native methods -----------------------------------*/
     private static native long TensorCArray(int type, int[] shape, long cArray);
 
@@ -107,6 +122,8 @@ public class Tensor extends Wrapper {
     private static native float[] asFloat(long addr);
 
     private static native int[] asInt(long addr);
+
+    private static native byte[] asByte(long addr);
 
     private static native int GetSize(long addr);
 

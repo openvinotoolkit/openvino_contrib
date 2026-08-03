@@ -200,6 +200,32 @@ JNIEXPORT jintArray JNICALL Java_org_intel_openvino_Tensor_asInt(JNIEnv *env, jo
     return 0;
 }
 
+JNIEXPORT jbyteArray JNICALL Java_org_intel_openvino_Tensor_asByte(JNIEnv *env, jobject, jlong addr)
+{
+    JNI_METHOD(
+        "asByte",
+        Tensor *ov_tensor = (Tensor *)addr;
+
+        element::Type_t t_type = ov_tensor->get_element_type();
+        if (t_type != element::u8 && t_type != element::i8) {
+            throw std::runtime_error("asByte supports only u8 and i8 element types!");
+        }
+
+        // A byte-wide element type has exactly one byte per element, so the number of
+        // elements equals the number of bytes to read back.
+        const jsize size = static_cast<jsize>(ov_tensor->get_size());
+
+        jbyteArray result = env->NewByteArray(size);
+        if (!result) {
+            throw std::runtime_error("Out of memory!");
+        }
+
+        env->SetByteArrayRegion(result, 0, size, (const jbyte*)ov_tensor->data());
+        return result;
+    )
+    return 0;
+}
+
 JNIEXPORT void JNICALL Java_org_intel_openvino_Tensor_delete(JNIEnv *, jobject, jlong addr)
 {
     Tensor *tensor = (Tensor *)addr;

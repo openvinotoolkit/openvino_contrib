@@ -96,9 +96,27 @@ public class PrePostProcessorTests extends OVTest {
 
     @Test
     public void testPerChannelMeanScale() {
+        int[] shape = net.input().get_shape();
+        int total = 1;
+        for (int d : shape) {
+            total *= d;
+        }
+        float[] inputData = new float[total];
+        for (int i = 0; i < total; i++) {
+            inputData[i] = (i % 17) + 1; // nonzero, varied
+        }
+        Tensor feed = new Tensor(shape, inputData);
+
+        // Baseline: the identical model with no preprocessing.
+        Model baseline = core.read_model(modelXml);
+        InferRequest baselineReq = core.compile_model(baseline, "CPU").create_infer_request();
+        baselineReq.set_input_tensor(feed);
+        baselineReq.infer();
+        float[] baselineOut = baselineReq.get_output_tensor().data();
+
+        // (x - mean) / scale, three channels, folded into the model.
         PrePostProcessor p = new PrePostProcessor(net);
         p.input().tensor().set_element_type(ElementType.f32).set_layout(new Layout("NCHW"));
-        // (x - mean) / scale, three channels.
         p.input()
                 .preprocess()
                 .mean(new float[] {0.485f, 0.456f, 0.406f})
@@ -107,6 +125,23 @@ public class PrePostProcessorTests extends OVTest {
         Model built = p.build();
 
         assertEquals(ElementType.f32, built.input().get_element_type());
+
+        InferRequest req = core.compile_model(built, "CPU").create_infer_request();
+        req.set_input_tensor(feed);
+        req.infer();
+        float[] out = req.get_output_tensor().data();
+
+        // The preprocessing must actually change the data reaching the model: a dropped or no-op
+        // mean/scale would leave the output identical to the baseline.
+        assertEquals(baselineOut.length, out.length);
+        boolean differs = false;
+        for (int i = 0; i < out.length; i++) {
+            if (Math.abs(out[i] - baselineOut[i]) > 1e-4f) {
+                differs = true;
+                break;
+            }
+        }
+        assertTrue("Per-channel mean/scale did not alter the inference result", differs);
     }
 
     @Test

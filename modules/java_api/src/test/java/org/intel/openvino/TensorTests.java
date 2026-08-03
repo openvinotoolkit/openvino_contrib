@@ -33,11 +33,37 @@ public class TensorTests extends OVTest {
         Tensor tensor = new Tensor(ElementType.u8, dimsArr, inputData);
 
         // A u8 tensor is not int/float pointer-representable, so it can't be read back through
-        // as_int()/data(); verify the construction (shape, size, element type) instead. The
-        // wrong-length and wrong-type cases below exercise the validation path.
+        // as_int()/data(); as_byte() round-trips the raw bytes and verifies the JNI copy path.
         assertArrayEquals(dimsArr, tensor.get_shape());
         assertEquals(size, tensor.get_size());
         assertEquals(ElementType.u8, tensor.get_element_type());
+        assertArrayEquals(inputData, tensor.as_byte());
+    }
+
+    @Test
+    public void testGetTensorFromByteSignedRoundTrip() {
+        int size = Arrays.stream(dimsArr).reduce((i, j) -> i * j).orElse(1);
+        byte[] inputData = new byte[size];
+        for (int i = 0; i < size; i++) {
+            // Mix of negative and positive values to exercise the i8 (signed) copy path.
+            inputData[i] = (byte) (i % 2 == 0 ? -i : i);
+        }
+
+        Tensor tensor = new Tensor(ElementType.i8, dimsArr, inputData);
+
+        assertEquals(ElementType.i8, tensor.get_element_type());
+        assertArrayEquals(inputData, tensor.as_byte());
+    }
+
+    @Test
+    public void testAsByteWrongType() {
+        Tensor tensor = new Tensor(dimsArr, data);
+        try {
+            tensor.as_byte();
+            fail("Expected an exception when reading a non-byte tensor as bytes");
+        } catch (Exception e) {
+            assertTrue(e.getMessage().contains("only u8 and i8"));
+        }
     }
 
     @Test
