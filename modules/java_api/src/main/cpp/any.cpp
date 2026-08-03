@@ -30,7 +30,7 @@ JNIEXPORT jobject JNICALL Java_org_intel_openvino_Any_asList(JNIEnv *env, jobjec
             for (const auto& it : obj->as<std::vector<ov::PropertyName>>()) {
                 std::string property_name = it;
                 jstring string = env->NewStringUTF(property_name.c_str());
-                env->CallObjectMethod(arrayObj, arrayAdd, string);
+                env->CallBooleanMethod(arrayObj, arrayAdd, string);
             }
 
             return arrayObj;
