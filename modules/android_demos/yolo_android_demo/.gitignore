@@ -20,3 +20,8 @@ app/src/main/jniLibs/arm64-v8a/*.so
 
 # Do not bundle test images (developer supplies via --es image_path).
 app/src/main/assets/test/
+
+# Generated Gradle wrapper scripts/jar (not committed; keep only gradle-wrapper.properties).
+gradlew
+gradlew.bat
+gradle/wrapper/gradle-wrapper.jar

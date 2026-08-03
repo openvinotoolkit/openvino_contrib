@@ -30,5 +30,10 @@ header:
     - 'modules/ollama_openvino/**'
     # Third-party license inventory, not a source file.
     - 'third-party-programs.txt'
+    # Class-name label lists read line-by-line by the YOLO demo; a header comment
+    # would be parsed as a label. Names are data, not source.
+    - 'modules/android_demos/yolo_android_demo/app/src/main/assets/labels/*.txt'
+    # Generated Gradle wrapper descriptor, not project source.
+    - '**/gradle/wrapper/gradle-wrapper.properties'
 
   comment: never
