@@ -1,0 +1,22 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# Gradle / Android build output
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+
+# OpenVINO Java API artifacts placed by the user (see README).
+# These are large and produced by the OpenVINO build, not source.
+app/libs/*.jar
+app/src/main/jniLibs/arm64-v8a/*.so
+
+# Downloaded model weights must never be committed (AGPL; the app fetches them at
+# runtime). Nothing under here is source; the manifest + labels ARE committed.
+*.onnx
+*.pt
+
+# Do not bundle test images (developer supplies via --es image_path).
+app/src/main/assets/test/

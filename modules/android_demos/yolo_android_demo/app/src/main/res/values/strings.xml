@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+<resources>
+    <string name="app_name">OpenVINO YOLO</string>
+    <string name="select_hint">Pick a model, then Start to download it and run live inference.</string>
+    <string name="label_version">YOLO version</string>
+    <string name="label_size">Model size</string>
+    <string name="label_task">Task</string>
+    <string name="start">Start</string>
+    <string name="cancel">Cancel</string>
+    <string name="retry">Retry</string>
+    <string name="camera_permission_rationale">Camera permission is required to run live inference.</string>
+    <string name="weights_notice">Models are downloaded on-device from Ultralytics’ official release assets (AGPL-3.0). This app hosts no weights.</string>
+    <string name="no_internet_title">No internet connection</string>
+    <string name="download_failed_title">Download failed</string>
+    <string name="compiling_model">Compiling model…</string>
+    <string name="clear_cache">Clear cache</string>
+    <string name="clear_cache_title">Clear downloaded models?</string>
+    <string name="clear_cache_empty">No downloaded models to clear.</string>
+</resources>

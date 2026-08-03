@@ -1,0 +1,88 @@
+// Copyright (C) 2018-2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.jetbrains.kotlin.android)
+}
+
+android {
+    namespace 'org.intel.openvino.demo'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "org.intel.openvino.demo"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+
+        // arm64-v8a only, matching the OpenVINO Android build and the bundled .so set.
+        ndk { abiFilters "arm64-v8a" }
+
+        // Optional model source override (§6a): point downloads at a mirror or LAN server.
+        // Empty (default) => the manifest's official Ultralytics release URLs are used as-is.
+        // Override at build time, e.g. -PmodelBaseUrl=http://192.168.1.10:8000/models
+        def modelBaseUrl = project.hasProperty('modelBaseUrl') ? project.property('modelBaseUrl') : ''
+        buildConfigField "String", "MODEL_BASE_URL_OVERRIDE", "\"${modelBaseUrl}\""
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+    buildFeatures {
+        viewBinding false
+        compose false
+        buildConfig true
+    }
+    sourceSets {
+        main {
+            java.srcDirs += 'src/main/kotlin'
+        }
+        test {
+            java.srcDirs += 'src/test/kotlin'
+        }
+    }
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+    // The native .so files ship unstripped from the OpenVINO build; keep them as-is.
+    packaging {
+        jniLibs {
+            useLegacyPackaging true
+        }
+    }
+}
+
+dependencies {
+    implementation libs.androidx.core.ktx
+    implementation libs.androidx.appcompat
+    implementation libs.androidx.activity.ktx
+    implementation libs.androidx.lifecycle.runtime.ktx
+    implementation libs.androidx.lifecycle.viewmodel.ktx
+    implementation libs.androidx.lifecycle.livedata.ktx
+    implementation libs.material
+
+    // CameraX (Jetpack / Camera2), the Android-framework camera stack.
+    implementation libs.camerax.core
+    implementation libs.camerax.camera2
+    implementation libs.camerax.lifecycle
+    implementation libs.camerax.view
+
+    // OpenVINO Java API bindings (built from modules/java_api). See README for how to
+    // produce and place this jar. The native .so set lives in src/main/jniLibs/arm64-v8a/,
+    // and must include libopenvino_onnx_frontend.so so read_model("*.onnx") works on-device.
+    implementation files('libs/openvino-java-api.jar')
+
+    testImplementation libs.junit
+}
