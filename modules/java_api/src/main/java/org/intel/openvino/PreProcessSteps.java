@@ -82,7 +82,7 @@ public class PreProcessSteps extends Wrapper {
     /**
      * Add an element-type conversion preprocessing operation.
      *
-     * <p>For example, converting a {@code u8} input tensor to {@code f32} before scaling — OpenVINO
+     * <p>For example, converting a {@code u8} input tensor to {@code f32} before scaling - OpenVINO
      * requires scale/mean to run on a real (floating-point) type, so a {@code u8} camera frame must
      * be converted first: {@code convert_element_type(f32).scale(255)}.
      *

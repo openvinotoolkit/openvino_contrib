@@ -123,7 +123,7 @@ public class Core extends Wrapper {
      *
      * @param model Model object acquired from {@link Core#read_model}.
      * @param device Name of a device to load a model to.
-     * @param properties properties – Map of pairs: (property name, property value) relevant only
+     * @param properties properties - Map of pairs: (property name, property value) relevant only
      *     for this load operation.
      * @return A compiled model.
      */
