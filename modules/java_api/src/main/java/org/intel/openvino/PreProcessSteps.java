@@ -28,8 +28,8 @@ public class PreProcessSteps extends Wrapper {
      * Add a scale preprocessing operation: divide each element by the given value.
      *
      * <p>For example, {@code scale(255.0f)} maps {@code u8} pixels in {@code [0, 255]} to floats in
-     * {@code [0, 1]}. Scaling happens inside the compiled model, so the application can keep feeding
-     * raw {@code u8} pixels.
+     * {@code [0, 1]}. Scaling happens inside the compiled model, so the application can keep
+     * feeding raw {@code u8} pixels.
      *
      * @param value Scale value applied to every element.
      * @return Reference to 'this' to allow chaining with other calls in a builder-like manner.

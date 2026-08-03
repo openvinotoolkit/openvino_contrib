@@ -26,8 +26,8 @@ public class Tensor extends Wrapper {
      * Constructs a {@link Tensor} of a byte-wide element type from the given byte array.
      *
      * <p>This is the OpenCV-free way to feed a CPU-side image buffer (for example a {@code u8} RGB
-     * frame produced from an Android {@code ImageProxy}) into inference: the data is copied into the
-     * tensor, so the source array can be reused right after. Only byte-wide element types are
+     * frame produced from an Android {@code ImageProxy}) into inference: the data is copied into
+     * the tensor, so the source array can be reused right after. Only byte-wide element types are
      * accepted, namely {@link ElementType#u8} and {@link ElementType#i8}.
      *
      * @param type element type of the tensor, must be {@link ElementType#u8} or {@link
