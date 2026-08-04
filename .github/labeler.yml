@@ -15,6 +15,9 @@
 'category: BEVFusion':
 - 'modules/openvino_bevfusion/**/*'
 
+'category: FlashOCC':
+- 'modules/openvino_flashocc/**/*'
+
 'category: custom operations':
 - 'modules/custom_operations/**/*'
 
