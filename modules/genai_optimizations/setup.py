@@ -19,11 +19,11 @@ EXTRAS_REQUIRE = {
 }
 
 INSTALL_REQUIRES = [
-    "torch==2.8.0",
+    "torch==2.13.0",
     "torchvision==0.23.0",
     "transformers>=4.48.0",
     "accelerate==1.9.0",
-    "wheel==0.45.1",
+    "wheel==0.46.2",
     "git+https://github.com/mit-han-lab/Block-Sparse-Attention.git", # Install with limited build threads to avoid OOM (MAX_JOBS=4)
 ]
 
