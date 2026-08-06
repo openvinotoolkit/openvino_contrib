@@ -5,6 +5,14 @@
 - '.github/**/*'
 - '.ci/**/*'
 - 'Jenkinsfile'
+# Repository-level meta files that belong to no module: keep every PR labelled.
+- '*.md'
+- 'LICENSE'
+- 'third-party-programs.txt'
+- '.gitignore'
+- '.gitattributes'
+- '.licenserc.yaml'
+- '.readthedocs.yaml'
 
 'category: 3D':
 - 'modules/3d/**/*'
