@@ -19,10 +19,7 @@ CODEOWNERS_FILE = os.path.join(".github", "CODEOWNERS")
 
 
 def main():
-    modules = {
-        d for d in os.listdir(MODULES_DIR)
-        if os.path.isdir(os.path.join(MODULES_DIR, d))
-    }
+    modules = {d for d in os.listdir(MODULES_DIR) if os.path.isdir(os.path.join(MODULES_DIR, d))}
 
     errors = []
     with open(CODEOWNERS_FILE, encoding="utf-8") as f:
@@ -50,7 +47,7 @@ def main():
         )
         return 1
 
-    print(f"OK: all CODEOWNERS module rules point at existing modules")
+    print("OK: all CODEOWNERS module rules point at existing modules")
     return 0
 
 

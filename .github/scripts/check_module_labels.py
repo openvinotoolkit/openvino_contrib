@@ -39,10 +39,7 @@ def flatten_patterns(node):
 def main():
     errors = []
 
-    modules = sorted(
-        d for d in os.listdir(MODULES_DIR)
-        if os.path.isdir(os.path.join(MODULES_DIR, d))
-    )
+    modules = sorted(d for d in os.listdir(MODULES_DIR) if os.path.isdir(os.path.join(MODULES_DIR, d)))
 
     with open(LABELER_FILE, encoding="utf-8") as f:
         labeler = yaml.safe_load(f) or {}
