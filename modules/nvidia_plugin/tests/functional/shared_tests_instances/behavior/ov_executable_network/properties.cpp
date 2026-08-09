@@ -32,7 +32,7 @@ const std::vector<ov::AnyMap> auto_inproperties = {
 const std::vector<ov::AnyMap> auto_batch_inproperties = {
     {ov::device::id("UNSUPPORTED_DEVICE_ID_STRING")},
     {{ov::device::priorities(std::string(ov::test::utils::DEVICE_NVIDIA) + "(4)")},
-     {ov::auto_batch_timeout(-1)}},
+     {ov::auto_batch_timeout.name(), "-1"}},
 };
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
@@ -112,10 +112,8 @@ const std::vector<ov::AnyMap> multi_properties = {
 
 const std::vector<ov::AnyMap> auto_batch_properties = {
     {ov::device::priorities(std::string(ov::test::utils::DEVICE_NVIDIA) + "(4)")},
-    {{ov::device::priorities(std::string(ov::test::utils::DEVICE_NVIDIA) + "(4)")},
-     {ov::auto_batch_timeout(1)}},
-    {{ov::device::priorities(std::string(ov::test::utils::DEVICE_NVIDIA) + "(4)")},
-     {ov::auto_batch_timeout(10)}},
+    {{ov::device::priorities(std::string(ov::test::utils::DEVICE_NVIDIA) + "(4)")}, {ov::auto_batch_timeout(1)}},
+    {{ov::device::priorities(std::string(ov::test::utils::DEVICE_NVIDIA) + "(4)")}, {ov::auto_batch_timeout(10)}},
 };
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,

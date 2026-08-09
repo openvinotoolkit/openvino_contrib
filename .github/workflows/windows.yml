@@ -96,7 +96,8 @@ jobs:
           Expand-Archive -Force ninja-win.zip
           # Add it to the GitHub Path so it would be available in the subsequent steps
           Add-Content -Path $env:GITHUB_PATH -Value "${{ github.workspace }}/ninja-win"
-          choco install opencv -y
+          choco install opencv --yes --no-progress
+          choco install ccache --version=4.9.1 --yes --no-progress
 
       #
       # Build
@@ -120,13 +121,6 @@ jobs:
               "$name=$value" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
             }
           }
-
-      - name: Download and install ccache
-        run: |
-          Invoke-WebRequest -Uri 'https://github.com/ccache/ccache/releases/download/v4.9.1/ccache-4.9.1-windows-x86_64.zip' -OutFile 'ccache.zip'
-          Expand-Archive -Path 'ccache.zip' -DestinationPath 'C:\temp\ccache'
-          Move-Item -Path 'C:\temp\ccache\*' -Destination 'C:\ccache'
-          Add-Content -Path $env:GITHUB_PATH -Value "C:\ccache"
 
       - name: Restore ccache
         id: ccache-restore

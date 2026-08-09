@@ -1,0 +1,104 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# Run module test policy in a restricted container on a selected runner group.
+
+name: Reusable · Isolated module tests
+
+on:
+  workflow_call:
+    inputs:
+      module-name:
+        description: Module name, used to validate the artifact and namespace results
+        type: string
+        required: true
+      test-script:
+        description: Repository-relative Python entry point executed in the test container
+        type: string
+        required: true
+      runner-group:
+        description: Self-hosted runner group
+        type: string
+        required: true
+      runner-label:
+        description: Hardware label within the runner group
+        type: string
+        required: true
+      image:
+        description: Test runtime image containing module dependencies
+        type: string
+        required: true
+      devices:
+        description: Newline-separated device selectors exposed to the test container
+        type: string
+        required: false
+        default: ''
+      preset:
+        description: Test preset (pr or nightly)
+        type: string
+        required: true
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  PYTHON_IMAGE: python:3.11.13-slim-bullseye@sha256:9e25f400253a5fa3191813d6a67eb801ca1e6f012b3bd2588fa6920b59e3eba6
+
+jobs:
+  tests:
+    name: Tests (${{ inputs.module-name }}, ${{ inputs.preset }})
+    timeout-minutes: ${{ inputs.preset == 'nightly' && 300 || 60 }}
+    runs-on:
+      group: ${{ inputs.runner-group }}
+      labels: ${{ inputs.runner-label }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI_MODULE_NAME: ${{ inputs.module-name }}
+      CI_TEST_SCRIPT: ${{ inputs.test-script }}
+      CI_PRESET: ${{ inputs.preset }}
+      CI_DEVICES: ${{ inputs.devices }}
+    steps:
+      - name: Checkout CI scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: openvino_contrib
+          sparse-checkout: '.github/scripts'
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: openvino_contrib/.github/scripts/requirements.txt
+
+      - name: Install CI script dependencies
+        run: python -m pip install -r openvino_contrib/.github/scripts/requirements.txt
+
+      - name: Download and run module tests
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TEST_IMAGE: ${{ inputs.image }}
+        run: python openvino_contrib/.github/scripts/ci.py test-module
+
+      - name: Validate publishable test results
+        id: validate-results
+        if: ${{ !cancelled() && env.RESULTS_DIR != '' }}
+        run: python openvino_contrib/.github/scripts/ci.py validate-results
+
+      - name: Upload test results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() && steps.validate-results.outcome == 'success' }}
+        with:
+          name: >-
+            test-results-${{ inputs.module-name }}-${{ inputs.preset }}-attempt-${{ github.run_attempt }}
+          path: ${{ env.RESULTS_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Clean isolated job directory
+        if: ${{ always() && env.JOB_DIR != '' }}
+        run: python openvino_contrib/.github/scripts/ci.py cleanup
