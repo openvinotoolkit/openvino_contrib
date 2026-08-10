@@ -53,6 +53,7 @@ extern "C"
     JNIEXPORT void JNICALL Java_org_intel_openvino_InferRequest_SetInputTensor(JNIEnv *, jobject, jlong, jlong);
     JNIEXPORT void JNICALL Java_org_intel_openvino_InferRequest_SetOutputTensor(JNIEnv *, jobject, jlong, jlong);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_InferRequest_GetOutputTensor(JNIEnv *, jobject, jlong);
+    JNIEXPORT jlong JNICALL Java_org_intel_openvino_InferRequest_GetOutputTensor1(JNIEnv *, jobject, jlong, jint);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_InferRequest_GetTensor(JNIEnv *, jobject, jlong, jstring);
     JNIEXPORT void JNICALL Java_org_intel_openvino_InferRequest_SetTensor(JNIEnv *, jobject, jlong, jstring, jlong);
     JNIEXPORT void JNICALL Java_org_intel_openvino_InferRequest_delete(JNIEnv *, jobject, jlong);
@@ -60,6 +61,7 @@ extern "C"
     // ov::Tensor
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Tensor_TensorCArray(JNIEnv *, jobject, jint, jintArray, jlong);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Tensor_TensorFloat(JNIEnv *, jobject, jintArray, jfloatArray);
+    JNIEXPORT jlong JNICALL Java_org_intel_openvino_Tensor_TensorByte(JNIEnv *, jobject, jint, jintArray, jbyteArray);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Tensor_TensorInt(JNIEnv *, jobject, jintArray, jintArray);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Tensor_TensorLong(JNIEnv *, jobject, jintArray, jlongArray);
     JNIEXPORT jint JNICALL Java_org_intel_openvino_Tensor_GetSize(JNIEnv *, jobject, jlong);
@@ -67,6 +69,7 @@ extern "C"
     JNIEXPORT jint JNICALL Java_org_intel_openvino_Tensor_GetElementType(JNIEnv *, jobject, jlong);
     JNIEXPORT jfloatArray JNICALL Java_org_intel_openvino_Tensor_asFloat(JNIEnv *, jobject, jlong);
     JNIEXPORT jintArray JNICALL Java_org_intel_openvino_Tensor_asInt(JNIEnv *, jobject, jlong);
+    JNIEXPORT jbyteArray JNICALL Java_org_intel_openvino_Tensor_asByte(JNIEnv *, jobject, jlong);
     JNIEXPORT void JNICALL Java_org_intel_openvino_Tensor_delete(JNIEnv *, jobject, jlong);
 
     // ov::PrePostProcessor
@@ -97,6 +100,12 @@ extern "C"
 
     // ov::preprocess::PreProcessSteps
     JNIEXPORT void JNICALL Java_org_intel_openvino_PreProcessSteps_Resize(JNIEnv *, jobject, jlong, jint);
+    JNIEXPORT void JNICALL Java_org_intel_openvino_PreProcessSteps_Scale(JNIEnv *, jobject, jlong, jfloat);
+    JNIEXPORT void JNICALL Java_org_intel_openvino_PreProcessSteps_ScaleValues(JNIEnv *, jobject, jlong, jfloatArray);
+    JNIEXPORT void JNICALL Java_org_intel_openvino_PreProcessSteps_Mean(JNIEnv *, jobject, jlong, jfloat);
+    JNIEXPORT void JNICALL Java_org_intel_openvino_PreProcessSteps_MeanValues(JNIEnv *, jobject, jlong, jfloatArray);
+    JNIEXPORT void JNICALL Java_org_intel_openvino_PreProcessSteps_ConvertElementType(JNIEnv *, jobject, jlong, jint);
+    JNIEXPORT void JNICALL Java_org_intel_openvino_PreProcessSteps_ConvertLayout(JNIEnv *, jobject, jlong, jlong);
     JNIEXPORT void JNICALL Java_org_intel_openvino_PreProcessSteps_delete(JNIEnv *, jobject, jlong);
 
     // ov::preprocess::InputModelInfo

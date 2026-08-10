@@ -50,7 +50,7 @@ JNIEXPORT jobject JNICALL Java_org_intel_openvino_Model_getOutputs(JNIEnv * env,
             *output = item;
 
             jobject outputObj = env->NewObject(outputClass, outputConstructor, (jlong)(output));
-            env->CallObjectMethod(arrayObj, arrayAdd, outputObj);
+            env->CallBooleanMethod(arrayObj, arrayAdd, outputObj);
         }
 
         return arrayObj;
