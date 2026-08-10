@@ -1,0 +1,16 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# Self-hosted runner labels used by the contrib workflows, so actionlint does
+# not flag them as unknown.
+self-hosted-runner:
+  labels:
+    - aks-linux-4-cores-16gb
+    - aks-linux-8-cores-32gb
+    - aks-linux-16-cores-32gb
+    - Nvidia-GPU
+    - RTX-4090
+    - lohika-ci
+    # Labels used by the legacy monolith workflows (linux/mac/windows).
+    - ubuntu-22.04-16-cores
+    - windows-2022-16-core
