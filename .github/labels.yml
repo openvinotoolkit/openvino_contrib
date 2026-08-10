@@ -24,6 +24,10 @@
   color: "#d3d3d3"
   description: "OpenVINO BEVFusion module (modules/openvino_bevfusion)"
 
+- name: "category: FlashOCC"
+  color: "#d3d3d3"
+  description: "OpenVINO FlashOCC module (modules/openvino_flashocc)"
+
 - name: "category: build"
   color: "#d3d3d3"
   description: "OpenVINO cmake script / infra"

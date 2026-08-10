@@ -27,6 +27,9 @@
 - changed-files:
   - any-glob-to-any-file: 'modules/openvino_bevfusion/**/*'
 
+'category: FlashOCC':
+- 'modules/openvino_flashocc/**/*'
+
 'category: custom operations':
 - changed-files:
   - any-glob-to-any-file: 'modules/custom_operations/**/*'

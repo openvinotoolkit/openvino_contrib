@@ -22,6 +22,7 @@ This list gives an overview of all modules available inside the contrib reposito
 * [**Ollama-OpenVINO**](./modules/ollama_openvino): OpenVINO GenAI empowered Ollama which accelerate LLM on Intel platforms(including CPU, iGPU/dGPU, NPU).
 * [**ov_training_kit**](./modules/ov_training_kit): Training Kit Python library -- provides scikit-learn, PyTorch and Tensorflow wrappers for training, optimization, and deployment with OpenVINO on AI PCs.
 * [**OpenVino BEVFusion**](./modules/openvino_bevfusion): OpenVino supported implementation of the BEVFusion model.
+* [**OpenVINO FlashOCC**](./modules/openvino_flashocc): OpenVINO-supported FlashOCC export, inference, and benchmarking pipeline for 3D occupancy prediction.
 * [**3D**](./modules/3d): A collection of 3D vision models implemented with OpenVINO. Currently, it includes the following models:
   * [**PointPillars**](./modules/3d/pointPillars): Use OpenVINO to perform 3D object detection with PointPillars model.
   * [**CDPN**](./modules/3d/CDPN): Use OpenVINO to perform 6-DoF object pose estimation with CDPN model.
@@ -50,6 +51,7 @@ Additional build instructions are available for the following modules:
 * [**ollama_OpenVINO**](./modules/ollama_openvino)
 * [**openvino-langchain**](./modules/openvino-langchain): LangChain.js integrations for OpenVINO™
 * [**OpenVino BEVFusion**](./modules/openvino_bevfusion): Check the [INSTRUCTIONS](./modules/openvino_bevfusion/EXPORT_AND_INFERENCE_GUIDE.md) for detailed usage and build instructions.
+* [**OpenVINO FlashOCC**](./modules/openvino_flashocc): Check the [INSTRUCTIONS](./modules/openvino_flashocc/EXPORT_AND_INFERENCE_GUIDE.md) for detailed usage and build instructions.
 * **3D**:
   * [**Point Pillars**](./modules/3d/pointPillars): Check the [README](./modules/3d/pointPillars/README.md) for detailed usage and build instructions.
   * [**CDPN**](./modules/3d/CDPN): Check the [README](./modules/3d/CDPN/README.md) for detailed usage and build instructions.

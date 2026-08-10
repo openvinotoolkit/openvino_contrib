@@ -1,0 +1,6 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+numpy>=2.0.0
+onnx>=1.14.0
+pytest>=7.0.0
