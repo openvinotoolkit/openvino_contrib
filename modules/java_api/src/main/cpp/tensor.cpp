@@ -55,6 +55,33 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_Tensor_TensorFloat(JNIEnv *env, 
     return 0;
 }
 
+JNIEXPORT jlong JNICALL Java_org_intel_openvino_Tensor_TensorByte(JNIEnv *env, jobject, jint type, jintArray shape, jbyteArray data)
+{
+    JNI_METHOD(
+        "TensorByte",
+        auto input_type = get_ov_type(type);
+        if (input_type != element::u8 && input_type != element::i8) {
+            throw std::runtime_error("TensorByte supports only u8 and i8 element types!");
+        }
+
+        Shape input_shape = jintArrayToVector(env, shape);
+        Tensor *ov_tensor = new Tensor(input_type, input_shape);
+
+        // A byte-wide element type has exactly one byte per element, so the number of
+        // elements equals the number of bytes to copy.
+        const jsize data_length = env->GetArrayLength(data);
+        if (static_cast<size_t>(data_length) != ov_tensor->get_size()) {
+            delete ov_tensor;
+            throw std::runtime_error("Data array length does not match the tensor shape!");
+        }
+
+        env->GetByteArrayRegion(data, 0, data_length, (jbyte*)ov_tensor->data());
+
+        return (jlong)ov_tensor;
+    );
+    return 0;
+}
+
 JNIEXPORT jlong JNICALL Java_org_intel_openvino_Tensor_TensorInt(JNIEnv *env, jobject, jintArray shape, jintArray data)
 {
     JNI_METHOD(
@@ -168,6 +195,32 @@ JNIEXPORT jintArray JNICALL Java_org_intel_openvino_Tensor_asInt(JNIEnv *env, jo
             arr[i] = data[i];
 
         env->ReleaseIntArrayElements(result, arr, 0);
+        return result;
+    )
+    return 0;
+}
+
+JNIEXPORT jbyteArray JNICALL Java_org_intel_openvino_Tensor_asByte(JNIEnv *env, jobject, jlong addr)
+{
+    JNI_METHOD(
+        "asByte",
+        Tensor *ov_tensor = (Tensor *)addr;
+
+        element::Type_t t_type = ov_tensor->get_element_type();
+        if (t_type != element::u8 && t_type != element::i8) {
+            throw std::runtime_error("asByte supports only u8 and i8 element types!");
+        }
+
+        // A byte-wide element type has exactly one byte per element, so the number of
+        // elements equals the number of bytes to read back.
+        const jsize size = static_cast<jsize>(ov_tensor->get_size());
+
+        jbyteArray result = env->NewByteArray(size);
+        if (!result) {
+            throw std::runtime_error("Out of memory!");
+        }
+
+        env->SetByteArrayRegion(result, 0, size, (const jbyte*)ov_tensor->data());
         return result;
     )
     return 0;

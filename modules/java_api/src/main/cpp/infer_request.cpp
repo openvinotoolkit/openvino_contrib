@@ -61,6 +61,21 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_InferRequest_GetOutputTensor(JNI
     return 0;
 }
 
+JNIEXPORT jlong JNICALL Java_org_intel_openvino_InferRequest_GetOutputTensor1(JNIEnv *env, jobject obj, jlong addr, jint index)
+{
+    JNI_METHOD("GetOutputTensor1",
+        InferRequest *infer_request = (InferRequest *)addr;
+
+        // Allocate only after the (possibly throwing) lookup succeeds: an out-of-range index
+        // makes get_output_tensor throw, and constructing the wrapper first would leak it while
+        // the exception unwinds through JNI_METHOD.
+        Tensor *output_tensor = new Tensor(infer_request->get_output_tensor(static_cast<size_t>(index)));
+
+        return (jlong)output_tensor;
+    )
+    return 0;
+}
+
 JNIEXPORT jlong JNICALL Java_org_intel_openvino_InferRequest_GetTensor(JNIEnv *env, jobject obj, jlong addr, jstring tensorName)
 {
     JNI_METHOD("GetTensor",

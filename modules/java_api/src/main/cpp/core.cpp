@@ -184,7 +184,7 @@ JNIEXPORT jobject JNICALL Java_org_intel_openvino_Core_GetAvailableDevices(JNIEn
 
         for (const std::string &item : devices_vec) {
             jstring device = env->NewStringUTF(item.c_str());
-            env->CallObjectMethod(arrayObj, arrayAdd, device);
+            env->CallBooleanMethod(arrayObj, arrayAdd, device);
         }
 
         return arrayObj;
