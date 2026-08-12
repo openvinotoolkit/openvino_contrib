@@ -9,7 +9,7 @@ EXTRAS_REQUIRE = {
         "datasets==2.14.7",
         "rouge==1.0.1",
         "scikit-learn>=1.7",
-        "fuzzywuzzy",
+        "thefuzz",
         "bitsandbytes==0.47.0",
         "protobuf",
         "sentencepiece==0.2.1",
@@ -24,7 +24,8 @@ INSTALL_REQUIRES = [
     "transformers>=4.48.0",
     "accelerate==1.9.0",
     "wheel==0.45.1",
-    "git+https://github.com/mit-han-lab/Block-Sparse-Attention.git", # Install with limited build threads to avoid OOM (MAX_JOBS=4)
+    # Install with limited build threads to avoid OOM (MAX_JOBS=4)
+    "block_sparse_attn @ git+https://github.com/mit-han-lab/Block-Sparse-Attention.git",
 ]
 
 # Safely read README.md for PyPI long description
