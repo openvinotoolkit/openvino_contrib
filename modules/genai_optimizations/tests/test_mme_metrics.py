@@ -18,7 +18,11 @@ from mme_metrics import (
     [
         ("Yes", "yes"),
         ("  **NO**, because...", "no"),
+        ("Answer: yes", "yes"),
+        ("The answer is no", "no"),
+        ("**Answer:** Yes, because...", "yes"),
         ("yesterday", "other"),
+        ("The response discusses yes and no", "other"),
         ("unknown", "other"),
     ],
 )

@@ -15,8 +15,13 @@ VALID_ANSWERS = frozenset({"yes", "no"})
 
 
 def parse_yes_no(text: str) -> str:
-    """Return the first yes/no answer in a response, or ``other``."""
-    match = re.match(r"\s*[\W_]*(yes|no)\b", text, flags=re.IGNORECASE)
+    """Return a leading yes/no answer in a response, or ``other``."""
+    match = re.match(
+        r"\s*[\W_]*(?:(?:the\s+)?answer\s*(?:is\s*)?[:=-]?\s*[\W_]*)?"
+        r"(yes|no)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
     return match.group(1).lower() if match else "other"
 
 

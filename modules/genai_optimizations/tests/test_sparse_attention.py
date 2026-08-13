@@ -78,6 +78,11 @@ def test_tri_shape_builds_and_dispatches_block_mask(monkeypatch):
     query = torch.randn(1, 2, 256, 4, generator=generator)
     key = torch.randn(1, 2, 256, 4, generator=generator)
     value = torch.randn(1, 2, 256, 4, generator=generator)
+    attention_mask = torch.full((1, 1, 256, 256), torch.finfo(query.dtype).min)
+    attention_mask.masked_fill_(
+        torch.ones(256, 256, dtype=torch.bool).tril().view(1, 1, 256, 256),
+        0,
+    )
     module = SimpleNamespace(num_key_value_groups=1, head_dim=4)
     attention = SparseAttention(
         "tri-shape",
@@ -91,7 +96,7 @@ def test_tri_shape_builds_and_dispatches_block_mask(monkeypatch):
         query,
         key,
         value,
-        attention_mask=None,
+        attention_mask=attention_mask,
     )
 
     assert output.shape == (1, 256, 2, 4)
@@ -129,6 +134,42 @@ def test_tri_shape_keeps_every_block_intersecting_dense_tail(monkeypatch):
         [True, True, True, False],
         [True, True, True, True],
     ]
+
+
+def test_tri_shape_falls_back_to_dense_for_padding_mask(monkeypatch):
+    def fail_if_called(*_args, **_kwargs):
+        pytest.fail("block-sparse kernel must not receive a token-level padding mask")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "block_sparse_attn",
+        SimpleNamespace(block_sparse_attn_func=fail_if_called),
+    )
+    query = torch.zeros(1, 1, 256, 2)
+    module = SimpleNamespace(num_key_value_groups=1, head_dim=2)
+    attention = SparseAttention(
+        "tri-shape",
+        last_query_size=0,
+        recent_size=128,
+        block_size=128,
+    )
+    attention_mask = torch.full((1, 1, 256, 256), torch.finfo(query.dtype).min)
+    attention_mask.masked_fill_(
+        torch.ones(256, 256, dtype=torch.bool).tril().view(1, 1, 256, 256),
+        0,
+    )
+    attention_mask[..., 0] = torch.finfo(query.dtype).min
+
+    output, weights = attention._tri_shape_attention(
+        module,
+        query,
+        query,
+        query,
+        attention_mask=attention_mask,
+    )
+
+    assert output.shape == (1, 256, 1, 2)
+    assert weights is None
 
 
 def test_sparse_attention_returns_weights_when_dense_tail_is_zero(monkeypatch):

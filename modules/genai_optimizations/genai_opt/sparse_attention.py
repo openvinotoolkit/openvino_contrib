@@ -108,10 +108,45 @@ class SparseAttention:
         scale = scaling if scaling is not None else module.head_dim**-0.5
         weights = torch.matmul(query_states, key_states.transpose(-2, -1)) * scale
         if attention_mask is not None:
-            weights = weights + attention_mask[..., : key_states.shape[-2]]
+            mask = attention_mask[..., : key_states.shape[-2]]
+            if mask.ndim == 2:
+                mask = mask[:, None, None, :]
+            if mask.dtype == torch.bool:
+                weights = weights.masked_fill(~mask, torch.finfo(weights.dtype).min)
+            else:
+                weights = weights + mask
         weights = F.softmax(weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
         output = torch.matmul(weights, value_states).transpose(1, 2).contiguous()
         return output, weights if self.output_attentions else None
+
+    @staticmethod
+    def _has_additional_masking(
+        attention_mask: torch.Tensor | None,
+        q_len: int,
+        k_len: int,
+    ) -> bool:
+        """Return whether a mask blocks or biases causally visible positions."""
+        if attention_mask is None:
+            return False
+
+        mask = attention_mask[..., -q_len:, :k_len]
+        if mask.shape[-2] not in (1, q_len):
+            return True
+
+        query_positions = torch.arange(q_len, device=mask.device) + max(
+            k_len - q_len, 0
+        )
+        key_positions = torch.arange(k_len, device=mask.device)
+        causally_visible = key_positions <= query_positions.unsqueeze(-1)
+        causally_visible = causally_visible.view(
+            *((1,) * (mask.ndim - 2)), q_len, k_len
+        )
+
+        if mask.dtype == torch.bool:
+            additionally_masked = ~mask
+        else:
+            additionally_masked = mask != 0
+        return bool(torch.any(additionally_masked & causally_visible).item())
 
     def _block_sparse_attention(
         self,
@@ -206,6 +241,10 @@ class SparseAttention:
         q_len = query_states.shape[-2]
         k_len = key_states.shape[-2]
         if q_len <= self.recent_size:
+            return self._dense_attention(
+                module, query_states, key_states, value_states, attention_mask, scaling
+            )
+        if self._has_additional_masking(attention_mask, q_len, k_len):
             return self._dense_attention(
                 module, query_states, key_states, value_states, attention_mask, scaling
             )
