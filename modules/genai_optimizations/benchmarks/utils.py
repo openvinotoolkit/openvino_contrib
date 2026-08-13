@@ -1,7 +1,13 @@
 # Copyright (C) 2018-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
-from genai_opt import SparseAttention
-from genai_opt import KVCacheCompressionMode, KVCacheCompressionParameters, KVCacheCompressor, KVCacheRefinedSelection
+from genai_opt import (
+    KVCacheCompressionMode,
+    KVCacheCompressionParameters,
+    KVCacheCompressor,
+    KVCacheRefinedSelection,
+    SparseAttention,
+)
+
 
 def add_visual_pruning_args(parser):
     group = parser.add_argument_group("Visual Token Pruning Arguments")
@@ -14,8 +20,7 @@ def add_visual_pruning_args(parser):
 def add_attention_args(parser):
     group = parser.add_argument_group("Attention Kernel Arguments")
     group.add_argument("--use_custom_attention", action="store_true", help="Enable custom attention kernel")
-    group.add_argument("--prefill_impl", default="dense", choices=["dense", "tri-shape", "x-attention"])
-    group.add_argument("--threshold", type=float, default=0.8, help="Threshold for X-Attention")
+    group.add_argument("--prefill_impl", default="dense", choices=["dense", "tri-shape"])
     group.add_argument(
         "--last_query_size",
         type=int,
@@ -78,7 +83,6 @@ def get_sparse_attention_patcher(args):
     print(f"Enable custom attention kernel with {args.prefill_impl} implementation")
     return SparseAttention(
         algorithm=args.prefill_impl,
-        threshold=args.threshold,
         recent_size=args.recent_size,
         last_query_size=args.last_query_size,
         output_attentions=args.enable_eviction,  # output attention weights only if eviction is enabled
