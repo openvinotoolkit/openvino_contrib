@@ -9,7 +9,6 @@ updates:
       - "/modules/3d/CDPN"
       - "/modules/3d/pointPillars"
       - "/modules/custom_operations/tests"
-      - "/modules/genai_optimizations"
       - "/modules/nvidia_plugin/tests/functional/shared_tests_instances/single_layer_tests/generator"
       - "/modules/nvidia_plugin/utils/shape-extractor"
       - "/modules/nvidia_plugin/wheel"

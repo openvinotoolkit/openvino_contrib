@@ -40,10 +40,6 @@
   color: "#d3d3d3"
   description: "OpenVINO Runtime Extension with custom operations"
 
-- name: "category: GenAI optimizations"
-  color: "#d3d3d3"
-  description: "GenAI optimizations module (modules/genai_optimizations)"
-
 - name: "category: java API"
   color: "#d3d3d3"
   description: "OpenVINO Runtime Java API"

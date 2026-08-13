@@ -35,10 +35,6 @@
 - changed-files:
   - any-glob-to-any-file: 'modules/custom_operations/**/*'
 
-'category: GenAI optimizations':
-- changed-files:
-  - any-glob-to-any-file: 'modules/genai_optimizations/**/*'
-
 'category: java API':
 - changed-files:
   - any-glob-to-any-file: 'modules/java_api/**/*'
