@@ -16,6 +16,9 @@ import com.openvino.notes.identity.api.AuthenticationState
 import com.openvino.notes.view.assistant.AssistantScreen
 import com.openvino.notes.view.assistant.AssistantViewModel
 import com.openvino.notes.view.identity.signin.IdentityViewModel
+import com.openvino.notes.view.identity.signin.IdentityInitializingScreen
+import com.openvino.notes.view.notes.folders.FoldersScreen
+import com.openvino.notes.view.notes.folders.FoldersViewModel
 import com.openvino.notes.view.identity.signin.SignedOutScreen
 import com.openvino.notes.view.notes.list.NotesListScreen
 import com.openvino.notes.view.notes.list.NotesListViewModel
@@ -27,6 +30,7 @@ import com.openvino.notes.view.sync.SyncStatusViewModel
 @Composable
 fun OpenVinoNotesRoot(
     notes: NotesListViewModel,
+    folders: FoldersViewModel,
     identity: IdentityViewModel,
     sync: SyncStatusViewModel,
     settings: SettingsViewModel,
@@ -36,6 +40,7 @@ fun OpenVinoNotesRoot(
     val appSettings by settings.settings.collectAsStateWithLifecycle()
     MaterialTheme {
         when (authentication) {
+            AuthenticationState.Initializing -> IdentityInitializingScreen()
             AuthenticationState.SignedOut -> SignedOutScreen(identity::signIn)
             is AuthenticationState.SignedIn -> {
                 var destination by remember { mutableStateOf(Destination.NOTES) }
@@ -46,6 +51,7 @@ fun OpenVinoNotesRoot(
                 ) { padding ->
                     when (destination) {
                         Destination.NOTES -> NotesListScreen(notes, Modifier, padding)
+                        Destination.FOLDERS -> FoldersScreen(folders, Modifier, padding)
                         Destination.SYNC -> SyncStatusScreen(sync, Modifier, padding)
                         Destination.SETTINGS -> SettingsScreen(
                             settings = settings,

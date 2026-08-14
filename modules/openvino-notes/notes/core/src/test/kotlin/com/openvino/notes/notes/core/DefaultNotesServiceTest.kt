@@ -9,6 +9,7 @@ import com.openvino.notes.kernel.AccountKey
 import com.openvino.notes.notes.api.ContentItem
 import com.openvino.notes.notes.api.ContentItemId
 import com.openvino.notes.notes.api.FakeNotesRepository
+import com.openvino.notes.notes.api.FakeFolderRepository
 import com.openvino.notes.notes.api.FieldUpdate
 import com.openvino.notes.notes.api.NoteDraft
 import com.openvino.notes.notes.api.NoteId
@@ -24,7 +25,12 @@ class DefaultNotesServiceTest {
     private val content = listOf(ContentItem.Text(ContentItemId("body"), "Body"))
 
     @Test fun `create requires a session`() = runTest {
-        val service = DefaultNotesService(FakeIdentityService(), FakeNotesRepository(), { Instant.EPOCH })
+        val service = DefaultNotesService(
+            FakeIdentityService(),
+            FakeNotesRepository(),
+            FakeFolderRepository(),
+            { Instant.EPOCH },
+        )
         assertEquals(NoteMutationOutcome.SignedOut, service.create(NoteDraft("Title", content)))
     }
 
@@ -35,7 +41,7 @@ class DefaultNotesServiceTest {
         }
         val repository = FakeNotesRepository()
         var now = Instant.EPOCH
-        val service = DefaultNotesService(identity, repository, { now }) { NoteId("note-1") }
+        val service = DefaultNotesService(identity, repository, FakeFolderRepository(), { now }) { NoteId("note-1") }
         service.create(NoteDraft("  Title  ", content, isFavorite = true))
 
         now = Instant.ofEpochSecond(1)

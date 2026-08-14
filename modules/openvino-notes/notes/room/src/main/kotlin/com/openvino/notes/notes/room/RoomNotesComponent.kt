@@ -14,11 +14,14 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
 import com.openvino.notes.kernel.AccountKey
+import com.openvino.notes.notes.api.AttachmentContentPort
 import com.openvino.notes.notes.api.AttachmentId
 import com.openvino.notes.notes.api.AttachmentMetadata
 import com.openvino.notes.notes.api.ContentItem
 import com.openvino.notes.notes.api.ContentItemId
 import com.openvino.notes.notes.api.FolderId
+import com.openvino.notes.notes.api.FolderRepository
+import com.openvino.notes.notes.api.FolderSyncPort
 import com.openvino.notes.notes.api.LocalChangeKind
 import com.openvino.notes.notes.api.LocalNoteChange
 import com.openvino.notes.notes.api.Note
@@ -29,6 +32,7 @@ import com.openvino.notes.notes.api.NotesSyncPort
 import com.openvino.notes.notes.api.RemoteApplyResult
 import com.openvino.notes.notes.api.RemoteNoteChange
 import com.openvino.notes.notes.api.RemoteRevision
+import java.io.File
 import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.util.Base64
@@ -83,6 +87,9 @@ internal interface NotesDao {
 
     @Query("SELECT * FROM notes WHERE accountKey = :accountKey AND id = :id")
     suspend fun find(accountKey: String, id: String): NoteEntity?
+
+    @Query("SELECT COUNT(*) FROM notes WHERE accountKey = :accountKey AND folderId = :folderId")
+    suspend fun countInFolder(accountKey: String, folderId: String): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: NoteEntity)
@@ -139,45 +146,69 @@ internal interface NotesDao {
 }
 
 @Database(
-    entities = [NoteEntity::class, OutboxEntity::class, RemoteRevisionEntity::class],
+    entities = [
+        NoteEntity::class,
+        OutboxEntity::class,
+        RemoteRevisionEntity::class,
+        FolderEntity::class,
+        FolderOutboxEntity::class,
+        FolderRemoteRevisionEntity::class,
+    ],
     version = 1,
     exportSchema = true,
 )
 internal abstract class NotesDatabase : RoomDatabase() {
     abstract fun notesDao(): NotesDao
+    abstract fun folderDao(): FolderDao
 }
 
-internal class RoomNotesRepository(private val dao: NotesDao) : NotesRepository, NotesSyncPort {
+internal class RoomNotesRepository(
+    private val dao: NotesDao,
+    private val attachmentContent: AttachmentContentPort,
+) : NotesRepository, NotesSyncPort {
     override fun observe(accountKey: AccountKey): Flow<List<Note>> =
         dao.observe(accountKey.value).map { entities -> entities.map(NoteEntity::toApi) }
 
     override suspend fun find(accountKey: AccountKey, id: NoteId): Note? =
         dao.find(accountKey.value, id.value)?.toApi()
 
+    override suspend fun countInFolder(accountKey: AccountKey, folderId: FolderId): Int =
+        dao.countInFolder(accountKey.value, folderId.value)
+
     override suspend fun save(note: Note) {
+        val previous = dao.find(note.accountKey.value, note.id.value)?.toApi()
         dao.saveLocally(note.toEntity(), note.toOutbox(LocalChangeKind.UPSERT))
+        previous?.attachments
+            ?.map(AttachmentMetadata::id)
+            ?.filter { previousId -> note.attachments.none { it.id == previousId } }
+            ?.forEach { attachmentContent.delete(note.accountKey, it) }
     }
 
-    override suspend fun delete(accountKey: AccountKey, id: NoteId): Boolean = dao.deleteLocally(
-        accountKey.value,
-        id.value,
-        OutboxEntity(
-            accountKey = accountKey.value,
-            changeId = UUID.randomUUID().toString(),
-            noteId = id.value,
-            kind = LocalChangeKind.DELETE.name,
-            baseRevision = null,
-            changedAtMillis = System.currentTimeMillis(),
-            title = null,
-            contentItems = null,
-            attachments = null,
-            folderId = null,
-            tags = null,
-            isFavorite = null,
-            summary = null,
-            createdAtMillis = null,
-        ),
-    )
+    override suspend fun delete(accountKey: AccountKey, id: NoteId): Boolean {
+        val previous = dao.find(accountKey.value, id.value)?.toApi()
+        val removed = dao.deleteLocally(
+            accountKey.value,
+            id.value,
+            OutboxEntity(
+                accountKey = accountKey.value,
+                changeId = UUID.randomUUID().toString(),
+                noteId = id.value,
+                kind = LocalChangeKind.DELETE.name,
+                baseRevision = null,
+                changedAtMillis = System.currentTimeMillis(),
+                title = null,
+                contentItems = null,
+                attachments = null,
+                folderId = null,
+                tags = null,
+                isFavorite = null,
+                summary = null,
+                createdAtMillis = null,
+            ),
+        )
+        if (removed) previous?.attachments?.forEach { attachmentContent.delete(accountKey, it.id) }
+        return removed
+    }
 
     override suspend fun pendingChanges(accountKey: AccountKey, limit: Int): List<LocalNoteChange> =
         dao.pending(accountKey.value, limit).map(OutboxEntity::toApi)
@@ -204,7 +235,12 @@ internal class RoomNotesRepository(private val dao: NotesDao) : NotesRepository,
         if (change.note.accountKey != accountKey) {
             return RemoteApplyResult.RejectedMalformed(change.note.id, "notes.remote.account_mismatch")
         }
+        val previous = dao.find(accountKey.value, change.note.id.value)?.toApi()
         return if (dao.applyRemoteUpsert(change.note.toEntity(), change.revision.value)) {
+            previous?.attachments
+                ?.map(AttachmentMetadata::id)
+                ?.filter { previousId -> change.note.attachments.none { it.id == previousId } }
+                ?.forEach { attachmentContent.delete(accountKey, it) }
             RemoteApplyResult.Applied(change.note.id, change.revision)
         } else {
             RemoteApplyResult.Conflict(change.note.id, localRevision(accountKey, change.note.id), change.revision)
@@ -214,10 +250,14 @@ internal class RoomNotesRepository(private val dao: NotesDao) : NotesRepository,
     private suspend fun applyTombstone(
         accountKey: AccountKey,
         change: RemoteNoteChange.Tombstone,
-    ): RemoteApplyResult = if (dao.applyRemoteTombstone(accountKey.value, change.noteId.value, change.revision.value)) {
-        RemoteApplyResult.TombstoneApplied(change.noteId, change.revision)
-    } else {
-        RemoteApplyResult.Conflict(change.noteId, localRevision(accountKey, change.noteId), change.revision)
+    ): RemoteApplyResult {
+        val previous = dao.find(accountKey.value, change.noteId.value)?.toApi()
+        return if (dao.applyRemoteTombstone(accountKey.value, change.noteId.value, change.revision.value)) {
+            previous?.attachments?.forEach { attachmentContent.delete(accountKey, it.id) }
+            RemoteApplyResult.TombstoneApplied(change.noteId, change.revision)
+        } else {
+            RemoteApplyResult.Conflict(change.noteId, localRevision(accountKey, change.noteId), change.revision)
+        }
     }
 
     private suspend fun localRevision(accountKey: AccountKey, noteId: NoteId): RemoteRevision? =
@@ -228,14 +268,19 @@ class RoomNotesComponent private constructor(
     private val database: NotesDatabase,
     val repository: NotesRepository,
     val syncPort: NotesSyncPort,
+    val folderRepository: FolderRepository,
+    val folderSyncPort: FolderSyncPort,
+    val attachmentContent: AttachmentContentPort,
 ) : AutoCloseable {
     override fun close() = database.close()
 
     companion object {
         fun create(context: Context, databaseName: String = "openvino-notes.db"): RoomNotesComponent {
             val database = Room.databaseBuilder(context.applicationContext, NotesDatabase::class.java, databaseName).build()
-            val implementation = RoomNotesRepository(database.notesDao())
-            return RoomNotesComponent(database, implementation, implementation)
+            val attachmentContent = FileAttachmentContentStore(File(context.applicationContext.filesDir, "notes-media"))
+            val notes = RoomNotesRepository(database.notesDao(), attachmentContent)
+            val folders = RoomFolderRepository(database.folderDao())
+            return RoomNotesComponent(database, notes, notes, folders, folders, attachmentContent)
         }
     }
 }

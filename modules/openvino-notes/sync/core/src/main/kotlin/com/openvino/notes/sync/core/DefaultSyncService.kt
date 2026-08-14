@@ -4,10 +4,12 @@
 package com.openvino.notes.sync.core
 
 import com.openvino.notes.kernel.AppLogger
+import com.openvino.notes.kernel.AccountKey
 import com.openvino.notes.kernel.DiagnosticEvent
 import com.openvino.notes.kernel.DiagnosticLevel
 import com.openvino.notes.sync.api.SyncBlockReason
 import com.openvino.notes.sync.api.SyncExecutor
+import com.openvino.notes.sync.api.SyncCheckpointPort
 import com.openvino.notes.sync.api.SyncOutcome
 import com.openvino.notes.sync.api.SyncPhase
 import com.openvino.notes.sync.api.SyncReason
@@ -29,7 +31,7 @@ class DisabledSyncService(private val logger: AppLogger) : SyncService, SyncExec
     )
     override val state: StateFlow<SyncState> = mutableState
 
-    override suspend fun execute(reason: SyncReason): SyncOutcome = sync(reason)
+    override suspend fun execute(accountKey: AccountKey, reason: SyncReason): SyncOutcome = sync(reason)
 
     override suspend fun sync(reason: SyncReason): SyncOutcome {
         mutableState.value = SyncState(
@@ -52,11 +54,15 @@ class DisabledSyncService(private val logger: AppLogger) : SyncService, SyncExec
     }
 }
 
-data class SyncCoreComponent(val service: SyncService, val executor: SyncExecutor) {
+data class SyncCoreComponent(
+    val service: SyncService,
+    val executor: SyncExecutor,
+    val checkpointPort: SyncCheckpointPort,
+) {
     companion object {
-        fun create(logger: AppLogger): SyncCoreComponent {
+        fun create(logger: AppLogger, checkpointPort: SyncCheckpointPort): SyncCoreComponent {
             val service = DisabledSyncService(logger)
-            return SyncCoreComponent(service, service)
+            return SyncCoreComponent(service, service, checkpointPort)
         }
     }
 }

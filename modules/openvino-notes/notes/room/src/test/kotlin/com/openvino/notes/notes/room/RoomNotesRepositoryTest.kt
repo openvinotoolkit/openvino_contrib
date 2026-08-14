@@ -7,6 +7,9 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.openvino.notes.kernel.AccountKey
+import com.openvino.notes.notes.api.AttachmentId
+import com.openvino.notes.notes.api.AttachmentMetadata
+import com.openvino.notes.notes.api.BinarySource
 import com.openvino.notes.notes.api.ContentItem
 import com.openvino.notes.notes.api.ContentItemId
 import com.openvino.notes.notes.api.Note
@@ -18,6 +21,7 @@ import com.openvino.notes.notes.api.RemoteRevision
 import java.time.Instant
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertArrayEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -30,7 +34,10 @@ class RoomNotesRepositoryTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val database = Room.inMemoryDatabaseBuilder(context, NotesDatabase::class.java).allowMainThreadQueries().build()
         try {
-            val repository = RoomNotesRepository(database.notesDao())
+            val repository = RoomNotesRepository(
+                database.notesDao(),
+                FileAttachmentContentStore(context.cacheDir.resolve("notes-room-save-test")),
+            )
             val accountKey = AccountKey("account")
             val note = Note(
                 id = NoteId("note"),
@@ -57,7 +64,10 @@ class RoomNotesRepositoryTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val database = Room.inMemoryDatabaseBuilder(context, NotesDatabase::class.java).allowMainThreadQueries().build()
         try {
-            val repository = RoomNotesRepository(database.notesDao())
+            val repository = RoomNotesRepository(
+                database.notesDao(),
+                FileAttachmentContentStore(context.cacheDir.resolve("notes-room-remote-test")),
+            )
             val accountKey = AccountKey("account")
             val note = Note(
                 id = NoteId("remote-note"),
@@ -88,6 +98,45 @@ class RoomNotesRepositoryTest {
             )
         } finally {
             database.close()
+        }
+    }
+
+    @Test fun `attachment files are opened through the port and removed with metadata or note deletion`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val database = Room.inMemoryDatabaseBuilder(context, NotesDatabase::class.java).allowMainThreadQueries().build()
+        val root = context.cacheDir.resolve("notes-room-attachment-test").apply { deleteRecursively() }
+        val content = FileAttachmentContentStore(root)
+        try {
+            val repository = RoomNotesRepository(database.notesDao(), content)
+            val accountKey = AccountKey("account")
+            val noteId = NoteId("note")
+            val itemId = ContentItemId("image")
+            val firstId = AttachmentId("first")
+            val secondId = AttachmentId("second")
+            val first = AttachmentMetadata(firstId, noteId, itemId, "first.png", "image/png", 3)
+            val second = AttachmentMetadata(secondId, noteId, itemId, "second.png", "image/png", 2)
+            content.put(accountKey, first, BinarySource { byteArrayOf(1, 2, 3) })
+            content.put(accountKey, second, BinarySource { byteArrayOf(4, 5) })
+            val note = Note(
+                id = noteId,
+                accountKey = accountKey,
+                title = "Images",
+                contentItems = listOf(ContentItem.Image(itemId, secondId)),
+                attachments = listOf(first, second),
+                createdAt = Instant.EPOCH,
+                updatedAt = Instant.EPOCH,
+            )
+
+            repository.save(note)
+            assertArrayEquals(byteArrayOf(1, 2, 3), content.open(accountKey, firstId)?.read())
+
+            repository.save(note.copy(attachments = listOf(second)))
+            assertEquals(null, content.open(accountKey, firstId))
+            repository.delete(accountKey, noteId)
+            assertEquals(null, content.open(accountKey, secondId))
+        } finally {
+            database.close()
+            root.deleteRecursively()
         }
     }
 }

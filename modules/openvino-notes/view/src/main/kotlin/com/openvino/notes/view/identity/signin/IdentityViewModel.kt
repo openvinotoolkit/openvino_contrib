@@ -18,7 +18,11 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-data class IdentityUiState(val signedIn: Boolean = false, val displayName: String? = null)
+data class IdentityUiState(
+    val initializing: Boolean = true,
+    val signedIn: Boolean = false,
+    val displayName: String? = null,
+)
 
 sealed interface IdentityUiAction {
     data object SignIn : IdentityUiAction
@@ -32,8 +36,13 @@ class IdentityViewModel(private val identity: IdentityService) : ViewModel() {
     val state: StateFlow<AuthenticationState> = identity.authenticationState
     val uiState: StateFlow<IdentityUiState> = state.map { authentication ->
         when (authentication) {
-            AuthenticationState.SignedOut -> IdentityUiState()
-            is AuthenticationState.SignedIn -> IdentityUiState(true, authentication.session.displayName)
+            AuthenticationState.Initializing -> IdentityUiState()
+            AuthenticationState.SignedOut -> IdentityUiState(initializing = false)
+            is AuthenticationState.SignedIn -> IdentityUiState(
+                initializing = false,
+                signedIn = true,
+                displayName = authentication.session.displayName,
+            )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), IdentityUiState())
 

@@ -8,7 +8,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 
-internal enum class Destination { NOTES, SYNC, SETTINGS, ASSISTANT }
+internal enum class Destination { NOTES, FOLDERS, SYNC, SETTINGS, ASSISTANT }
 
 @Composable
 internal fun AppNavigation(selected: Destination, onSelected: (Destination) -> Unit) {

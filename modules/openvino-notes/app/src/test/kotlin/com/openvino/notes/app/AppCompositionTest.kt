@@ -18,6 +18,7 @@ class AppCompositionTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         AppComposition(context).use { composition ->
             assertNotNull(composition.notesService)
+            assertNotNull(composition.folderService)
             assertNotNull(composition.identityService)
             assertNotNull(composition.syncService)
             assertNotNull(composition.noteAssistant)

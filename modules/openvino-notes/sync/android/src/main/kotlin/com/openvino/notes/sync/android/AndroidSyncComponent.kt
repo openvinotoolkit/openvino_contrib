@@ -24,24 +24,14 @@ import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
 import com.openvino.notes.kernel.AccountKey
 import com.openvino.notes.sync.api.SyncExecutor
+import com.openvino.notes.sync.api.SyncCheckpoint
+import com.openvino.notes.sync.api.SyncCheckpointPort
 import com.openvino.notes.sync.api.SyncOutcome
 import com.openvino.notes.sync.api.SyncReason
 import com.openvino.notes.sync.api.SyncScheduler
+import java.security.MessageDigest
 import java.time.Instant
 import java.util.concurrent.TimeUnit
-
-internal data class SyncCheckpoint(
-    val remoteCursor: String? = null,
-    val remoteRevisions: Map<String, String> = emptyMap(),
-    val lastCompletedAt: Instant? = null,
-    val resetRequired: Boolean = false,
-)
-
-internal interface SyncCheckpointStore {
-    suspend fun read(accountKey: AccountKey): SyncCheckpoint
-    suspend fun write(accountKey: AccountKey, checkpoint: SyncCheckpoint)
-    suspend fun clear(accountKey: AccountKey)
-}
 
 internal class SyncWorker(
     appContext: Context,
@@ -49,8 +39,10 @@ internal class SyncWorker(
     private val executor: SyncExecutor,
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
+        val accountKey = inputData.getString(KEY_ACCOUNT_KEY)?.takeIf(String::isNotBlank)?.let(::AccountKey)
+            ?: return Result.failure()
         val reason = inputData.getString(KEY_REASON)?.let { runCatching { SyncReason.valueOf(it) }.getOrNull() } ?: SyncReason.PERIODIC
-        return when (val outcome = executor.execute(reason)) {
+        return when (val outcome = executor.execute(accountKey, reason)) {
             is SyncOutcome.Completed, SyncOutcome.SignedOut, is SyncOutcome.Blocked -> Result.success()
             is SyncOutcome.Failed -> if (outcome.retryable) Result.retry() else Result.failure()
         }
@@ -63,22 +55,33 @@ class OpenVinoNotesWorkerFactory(private val executor: SyncExecutor) : WorkerFac
 }
 
 internal class WorkManagerSyncScheduler(private val workManager: WorkManager) : SyncScheduler {
-    override fun schedulePeriodic() {
+    override fun schedulePeriodic(accountKey: AccountKey) {
         val request = PeriodicWorkRequestBuilder<SyncWorker>(15, TimeUnit.MINUTES)
-            .setInputData(reasonData(SyncReason.PERIODIC))
-            .addTag(TAG)
+            .setInputData(syncInputData(accountKey, SyncReason.PERIODIC))
+            .addTag(accountWorkTag(accountKey))
             .build()
-        workManager.enqueueUniquePeriodicWork(PERIODIC_WORK, ExistingPeriodicWorkPolicy.UPDATE, request)
+        workManager.enqueueUniquePeriodicWork(
+            accountWorkName(accountKey, "periodic"),
+            ExistingPeriodicWorkPolicy.UPDATE,
+            request,
+        )
     }
 
-    override fun request(reason: SyncReason) {
-        val request = OneTimeWorkRequestBuilder<SyncWorker>().setInputData(reasonData(reason)).addTag(TAG).build()
-        workManager.enqueueUniqueWork("$ONE_TIME_WORK.${reason.name.lowercase()}", ExistingWorkPolicy.REPLACE, request)
+    override fun request(accountKey: AccountKey, reason: SyncReason) {
+        val request = OneTimeWorkRequestBuilder<SyncWorker>()
+            .setInputData(syncInputData(accountKey, reason))
+            .addTag(accountWorkTag(accountKey))
+            .build()
+        workManager.enqueueUniqueWork(
+            accountWorkName(accountKey, "once.${reason.name.lowercase()}"),
+            ExistingWorkPolicy.REPLACE,
+            request,
+        )
     }
 
-    override fun cancelAll() { workManager.cancelAllWorkByTag(TAG) }
-
-    private fun reasonData(reason: SyncReason): Data = Data.Builder().putString(KEY_REASON, reason.name).build()
+    override fun cancel(accountKey: AccountKey) {
+        workManager.cancelAllWorkByTag(accountWorkTag(accountKey))
+    }
 }
 
 @Entity(tableName = "sync_checkpoint")
@@ -107,7 +110,7 @@ internal abstract class SyncDatabase : RoomDatabase() {
     abstract fun checkpointDao(): SyncCheckpointDao
 }
 
-internal class RoomSyncCheckpointStore(private val dao: SyncCheckpointDao) : SyncCheckpointStore {
+internal class RoomSyncCheckpointStore(private val dao: SyncCheckpointDao) : SyncCheckpointPort {
     override suspend fun read(accountKey: AccountKey): SyncCheckpoint =
         dao.read(accountKey.value)?.toApi() ?: SyncCheckpoint()
 
@@ -120,15 +123,15 @@ internal class RoomSyncCheckpointStore(private val dao: SyncCheckpointDao) : Syn
     }
 }
 
-internal class AndroidSyncCheckpointComponent(
+class AndroidSyncCheckpointComponent internal constructor(
     private val database: SyncDatabase,
-    val checkpointStore: SyncCheckpointStore,
+    val checkpointPort: SyncCheckpointPort,
 ) : AutoCloseable {
     override fun close() = database.close()
 }
 
 object AndroidSyncComponent {
-    internal fun openCheckpointStore(context: Context): AndroidSyncCheckpointComponent {
+    fun openCheckpointStore(context: Context): AndroidSyncCheckpointComponent {
         val database = Room.databaseBuilder(context.applicationContext, SyncDatabase::class.java, "openvino-notes-sync.db").build()
         return AndroidSyncCheckpointComponent(database, RoomSyncCheckpointStore(database.checkpointDao()))
     }
@@ -137,6 +140,20 @@ object AndroidSyncComponent {
 
     fun createScheduler(context: Context): SyncScheduler = WorkManagerSyncScheduler(WorkManager.getInstance(context.applicationContext))
 }
+
+internal fun syncInputData(accountKey: AccountKey, reason: SyncReason): Data = Data.Builder()
+    .putString(KEY_ACCOUNT_KEY, accountKey.value)
+    .putString(KEY_REASON, reason.name)
+    .build()
+
+internal fun accountWorkTag(accountKey: AccountKey): String = "openvino-notes.sync.${accountScope(accountKey)}"
+
+internal fun accountWorkName(accountKey: AccountKey, suffix: String): String = "${accountWorkTag(accountKey)}.$suffix"
+
+private fun accountScope(accountKey: AccountKey): String = MessageDigest.getInstance("SHA-256")
+    .digest(accountKey.value.toByteArray(Charsets.UTF_8))
+    .take(12)
+    .joinToString("") { byte -> "%02x".format(byte) }
 
 private fun SyncCheckpointEntity.toApi() = SyncCheckpoint(
     remoteCursor = remoteCursor,
@@ -167,6 +184,4 @@ private fun escape(value: String): String = java.net.URLEncoder.encode(value, Ch
 private fun unescape(value: String): String = java.net.URLDecoder.decode(value, Charsets.UTF_8.name())
 
 private const val KEY_REASON = "sync_reason"
-private const val PERIODIC_WORK = "openvino-notes.sync.periodic"
-private const val ONE_TIME_WORK = "openvino-notes.sync.once"
-private const val TAG = "openvino-notes.sync"
+private const val KEY_ACCOUNT_KEY = "account_key"

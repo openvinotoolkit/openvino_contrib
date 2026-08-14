@@ -12,11 +12,31 @@ class FakeNotesRepository : NotesRepository {
     private val notes = MutableStateFlow<List<Note>>(emptyList())
     override fun observe(accountKey: AccountKey): Flow<List<Note>> = notes.map { values -> values.filter { it.accountKey == accountKey } }
     override suspend fun find(accountKey: AccountKey, id: NoteId): Note? = notes.value.firstOrNull { it.accountKey == accountKey && it.id == id }
+    override suspend fun countInFolder(accountKey: AccountKey, folderId: FolderId): Int =
+        notes.value.count { it.accountKey == accountKey && it.folderId == folderId }
     override suspend fun save(note: Note) { notes.value = notes.value.filterNot { it.accountKey == note.accountKey && it.id == note.id } + note }
     override suspend fun delete(accountKey: AccountKey, id: NoteId): Boolean {
         val before = notes.value.size
         notes.value = notes.value.filterNot { it.accountKey == accountKey && it.id == id }
         return before != notes.value.size
+    }
+}
+
+class FakeFolderRepository : FolderRepository {
+    private val folders = MutableStateFlow<List<Folder>>(emptyList())
+    override fun observe(accountKey: AccountKey): Flow<List<Folder>> =
+        folders.map { values -> values.filter { it.accountKey == accountKey } }
+    override suspend fun find(accountKey: AccountKey, id: FolderId): Folder? =
+        folders.value.firstOrNull { it.accountKey == accountKey && it.id == id }
+    override suspend fun findByName(accountKey: AccountKey, name: String): Folder? =
+        folders.value.firstOrNull { it.accountKey == accountKey && it.name.equals(name, ignoreCase = true) }
+    override suspend fun save(folder: Folder) {
+        folders.value = folders.value.filterNot { it.accountKey == folder.accountKey && it.id == folder.id } + folder
+    }
+    override suspend fun delete(accountKey: AccountKey, id: FolderId): Boolean {
+        val before = folders.value.size
+        folders.value = folders.value.filterNot { it.accountKey == accountKey && it.id == id }
+        return before != folders.value.size
     }
 }
 
@@ -38,6 +58,35 @@ class FakeNotesSyncPort : NotesSyncPort {
         appliedRemote += changes
         return remoteResults
     }
+}
+
+class FakeFolderSyncPort : FolderSyncPort {
+    val pending = mutableListOf<LocalFolderChange>()
+    val appliedRemote = mutableListOf<RemoteFolderChange>()
+    var remoteResults: List<FolderRemoteApplyResult> = emptyList()
+    override suspend fun pendingFolderChanges(accountKey: AccountKey, limit: Int): List<LocalFolderChange> =
+        pending.filter { it.accountKey == accountKey }.take(limit)
+    override suspend fun acknowledgeFolderChanges(accountKey: AccountKey, changeIds: Set<String>) {
+        pending.removeAll { it.accountKey == accountKey && it.changeId in changeIds }
+    }
+    override suspend fun applyRemoteFolders(
+        accountKey: AccountKey,
+        changes: List<RemoteFolderChange>,
+    ): List<FolderRemoteApplyResult> {
+        appliedRemote += changes
+        return remoteResults
+    }
+}
+
+class FakeAttachmentContentPort : AttachmentContentPort {
+    private val content = mutableMapOf<Pair<AccountKey, AttachmentId>, ByteArray>()
+    override suspend fun put(accountKey: AccountKey, attachment: AttachmentMetadata, source: BinarySource) {
+        content[accountKey to attachment.id] = source.read().copyOf()
+    }
+    override suspend fun open(accountKey: AccountKey, attachmentId: AttachmentId): BinarySource? =
+        content[accountKey to attachmentId]?.copyOf()?.let { bytes -> BinarySource { bytes.copyOf() } }
+    override suspend fun delete(accountKey: AccountKey, attachmentId: AttachmentId): Boolean =
+        content.remove(accountKey to attachmentId) != null
 }
 
 class FakeNotesService(initial: List<Note> = emptyList()) : NotesService {

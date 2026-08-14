@@ -53,6 +53,7 @@ val allowedEdges = setOf(
     ":identity:api->:kernel",
     ":notes:api->:kernel",
     ":cloud:api->:kernel",
+    ":sync:api->:kernel",
     ":assistant:api->:notes:api",
     ":notes:core->:notes:api", ":notes:core->:identity:api", ":notes:core->:kernel",
     ":notes:room->:notes:api", ":notes:room->:kernel",

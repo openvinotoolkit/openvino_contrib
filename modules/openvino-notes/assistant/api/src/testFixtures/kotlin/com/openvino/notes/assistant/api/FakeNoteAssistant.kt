@@ -19,8 +19,6 @@ class FakeNoteAssistant : NoteAssistant {
     override suspend fun suggestImageTags(
         noteId: NoteId,
         attachmentId: AttachmentId,
-        bytes: ByteArray,
-        mediaType: String,
     ): SuggestionOutcome = outcome
     override suspend fun apply(suggestion: AssistantSuggestion): ApplySuggestionOutcome = ApplySuggestionOutcome.Applied
 }

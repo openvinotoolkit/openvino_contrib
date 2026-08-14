@@ -13,19 +13,21 @@ import com.openvino.notes.view.app.OpenVinoNotesRoot
 import com.openvino.notes.view.assistant.AssistantViewModel
 import com.openvino.notes.view.identity.signin.IdentityViewModel
 import com.openvino.notes.view.notes.list.NotesListViewModel
+import com.openvino.notes.view.notes.folders.FoldersViewModel
 import com.openvino.notes.view.settings.SettingsViewModel
 import com.openvino.notes.view.sync.SyncStatusViewModel
 import org.koin.compose.viewmodel.koinViewModel
 
 class MainActivity : ComponentActivity() {
     private val identityController by lazy {
-        (application as OpenVinoNotesApplication).composition.createActivityIdentityController()
+        (application as OpenVinoNotesApplication).composition.createActivityIdentityController(this)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             val notes = koinViewModel<NotesListViewModel>()
+            val folders = koinViewModel<FoldersViewModel>()
             val identity = koinViewModel<IdentityViewModel>()
             val sync = koinViewModel<SyncStatusViewModel>()
             val settings = koinViewModel<SettingsViewModel>()
@@ -47,7 +49,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            OpenVinoNotesRoot(notes, identity, sync, settings, assistant)
+            OpenVinoNotesRoot(notes, folders, identity, sync, settings, assistant)
         }
     }
 }

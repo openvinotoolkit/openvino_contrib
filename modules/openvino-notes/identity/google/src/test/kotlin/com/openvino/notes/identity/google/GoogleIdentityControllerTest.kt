@@ -13,22 +13,34 @@ import org.junit.Test
 
 class GoogleIdentityUiControllerTest {
     @Test fun `sign in cancellation remains distinct from failure`() = runTest {
-        val component = GoogleIdentityComponent.create(
-            FakeLauncher(signInResult = GoogleSignInResult.Cancelled),
-        )
+        val component = GoogleIdentityComponent.create()
 
-        assertEquals(IdentityOutcome.Cancelled, component.createActivityController().signIn())
+        assertEquals(
+            IdentityOutcome.Cancelled,
+            component.createActivityController(FakeLauncher(signInResult = GoogleSignInResult.Cancelled)).signIn(),
+        )
         assertEquals(AuthenticationState.SignedOut, component.identityService.authenticationState.value)
     }
 
     @Test fun `authenticated result updates session through controller boundary`() = runTest {
         val session = UserSession(AccountKey("account"), "User", "user@example.test")
-        val component = GoogleIdentityComponent.create(
-            FakeLauncher(signInResult = GoogleSignInResult.Authenticated(session)),
-        )
+        val component = GoogleIdentityComponent.create()
 
-        assertEquals(IdentityOutcome.Completed, component.createActivityController().signIn())
+        assertEquals(
+            IdentityOutcome.Completed,
+            component.createActivityController(
+                FakeLauncher(signInResult = GoogleSignInResult.Authenticated(session)),
+            ).signIn(),
+        )
         assertEquals(AuthenticationState.SignedIn(session), component.identityService.authenticationState.value)
+    }
+
+    @Test fun `service exposes initialization before session restoration`() {
+        val service = GoogleIdentityService()
+
+        assertEquals(AuthenticationState.Initializing, service.authenticationState.value)
+        service.completeInitialization(null)
+        assertEquals(AuthenticationState.SignedOut, service.authenticationState.value)
     }
 }
 

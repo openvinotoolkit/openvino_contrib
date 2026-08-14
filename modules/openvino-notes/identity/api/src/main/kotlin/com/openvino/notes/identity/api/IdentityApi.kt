@@ -13,6 +13,7 @@ data class UserSession(
 )
 
 sealed interface AuthenticationState {
+    data object Initializing : AuthenticationState
     data object SignedOut : AuthenticationState
     data class SignedIn(val session: UserSession) : AuthenticationState
 }
@@ -40,6 +41,7 @@ interface SessionReader {
 
 interface AccessTokenProvider {
     suspend fun accessToken(): AccessTokenOutcome
+    suspend fun invalidateAccessToken()
 }
 
 interface IdentityService : SessionReader {

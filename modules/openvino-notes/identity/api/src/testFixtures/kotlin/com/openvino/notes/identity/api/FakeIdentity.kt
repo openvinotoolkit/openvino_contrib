@@ -15,6 +15,8 @@ class FakeIdentityService(
 
     override val authenticationState: StateFlow<AuthenticationState> = mutableAuthentication
     override val driveAuthorizationState: StateFlow<DriveAuthorizationState> = mutableDriveAuthorization
+    var invalidatedAccessTokens: Int = 0
+        private set
 
     override fun currentAccountKey(): AccountKey? =
         (authenticationState.value as? AuthenticationState.SignedIn)?.session?.accountKey
@@ -29,6 +31,9 @@ class FakeIdentityService(
         currentAccountKey() == null -> AccessTokenOutcome.SignedOut
         driveAuthorizationState.value != DriveAuthorizationState.AUTHORIZED -> AccessTokenOutcome.NotAuthorized
         else -> AccessTokenOutcome.Available("fake-token")
+    }
+    override suspend fun invalidateAccessToken() {
+        invalidatedAccessTokens += 1
     }
 
     fun setSession(session: UserSession?) {

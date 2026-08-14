@@ -52,8 +52,6 @@ interface NoteAssistant {
     suspend fun suggestImageTags(
         noteId: NoteId,
         attachmentId: AttachmentId,
-        bytes: ByteArray,
-        mediaType: String,
     ): SuggestionOutcome
     suspend fun apply(suggestion: AssistantSuggestion): ApplySuggestionOutcome
 }

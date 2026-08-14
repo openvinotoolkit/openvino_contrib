@@ -60,6 +60,16 @@ data class NoteDraft(
     val summary: String? = null,
 )
 
+data class Folder(
+    val id: FolderId,
+    val accountKey: AccountKey,
+    val name: String,
+    val createdAt: Instant,
+    val updatedAt: Instant,
+)
+
+data class FolderDraft(val name: String)
+
 sealed interface FieldUpdate<out T> {
     data object Keep : FieldUpdate<Nothing>
     data class Set<T>(val value: T) : FieldUpdate<T>
@@ -95,8 +105,43 @@ interface NotesService {
 interface NotesRepository {
     fun observe(accountKey: AccountKey): Flow<List<Note>>
     suspend fun find(accountKey: AccountKey, id: NoteId): Note?
+    suspend fun countInFolder(accountKey: AccountKey, folderId: FolderId): Int
     suspend fun save(note: Note)
     suspend fun delete(accountKey: AccountKey, id: NoteId): Boolean
+}
+
+sealed interface FolderMutationOutcome {
+    data class Saved(val folder: Folder) : FolderMutationOutcome
+    data object Deleted : FolderMutationOutcome
+    data object SignedOut : FolderMutationOutcome
+    data object NotFound : FolderMutationOutcome
+    data class NotEmpty(val noteCount: Int) : FolderMutationOutcome
+    data class Invalid(val field: String, val reason: String) : FolderMutationOutcome
+}
+
+sealed interface MoveNoteOutcome {
+    data class Moved(val note: Note) : MoveNoteOutcome
+    data object SignedOut : MoveNoteOutcome
+    data object NoteNotFound : MoveNoteOutcome
+    data object FolderNotFound : MoveNoteOutcome
+    data class Invalid(val reason: String) : MoveNoteOutcome
+}
+
+interface FolderService {
+    fun observeFolders(): Flow<List<Folder>>
+    suspend fun getFolder(id: FolderId): Folder?
+    suspend fun createFolder(draft: FolderDraft): FolderMutationOutcome
+    suspend fun renameFolder(id: FolderId, name: String): FolderMutationOutcome
+    suspend fun deleteFolder(id: FolderId): FolderMutationOutcome
+    suspend fun moveNote(noteId: NoteId, folderId: FolderId?): MoveNoteOutcome
+}
+
+interface FolderRepository {
+    fun observe(accountKey: AccountKey): Flow<List<Folder>>
+    suspend fun find(accountKey: AccountKey, id: FolderId): Folder?
+    suspend fun findByName(accountKey: AccountKey, name: String): Folder?
+    suspend fun save(folder: Folder)
+    suspend fun delete(accountKey: AccountKey, id: FolderId): Boolean
 }
 
 enum class LocalChangeKind { UPSERT, DELETE }
@@ -148,6 +193,59 @@ interface NotesSyncPort {
     suspend fun applyRemote(accountKey: AccountKey, changes: List<RemoteNoteChange>): List<RemoteApplyResult>
 }
 
+data class LocalFolderChange(
+    val changeId: String,
+    val accountKey: AccountKey,
+    val folderId: FolderId,
+    val kind: LocalChangeKind,
+    val baseRevision: RemoteRevision?,
+    val changedAt: Instant,
+    val payload: Folder? = null,
+)
+
+sealed interface RemoteFolderChange {
+    val folderId: FolderId?
+
+    data class Upsert(
+        val folder: Folder,
+        val baseRevision: RemoteRevision?,
+        val revision: RemoteRevision,
+    ) : RemoteFolderChange {
+        override val folderId: FolderId = folder.id
+    }
+
+    data class Tombstone(
+        override val folderId: FolderId,
+        val revision: RemoteRevision,
+    ) : RemoteFolderChange
+
+    data class Malformed(
+        override val folderId: FolderId?,
+        val diagnosticCode: String,
+    ) : RemoteFolderChange
+}
+
+sealed interface FolderRemoteApplyResult {
+    val folderId: FolderId?
+    data class Applied(override val folderId: FolderId, val revision: RemoteRevision) : FolderRemoteApplyResult
+    data class Conflict(
+        override val folderId: FolderId,
+        val localRevision: RemoteRevision?,
+        val remoteRevision: RemoteRevision,
+    ) : FolderRemoteApplyResult
+    data class TombstoneApplied(override val folderId: FolderId, val revision: RemoteRevision) : FolderRemoteApplyResult
+    data class RejectedMalformed(override val folderId: FolderId?, val diagnosticCode: String) : FolderRemoteApplyResult
+}
+
+interface FolderSyncPort {
+    suspend fun pendingFolderChanges(accountKey: AccountKey, limit: Int = 100): List<LocalFolderChange>
+    suspend fun acknowledgeFolderChanges(accountKey: AccountKey, changeIds: Set<String>)
+    suspend fun applyRemoteFolders(
+        accountKey: AccountKey,
+        changes: List<RemoteFolderChange>,
+    ): List<FolderRemoteApplyResult>
+}
+
 fun interface BinarySource {
     suspend fun read(): ByteArray
 }
@@ -155,4 +253,5 @@ fun interface BinarySource {
 interface AttachmentContentPort {
     suspend fun put(accountKey: AccountKey, attachment: AttachmentMetadata, source: BinarySource)
     suspend fun open(accountKey: AccountKey, attachmentId: AttachmentId): BinarySource?
+    suspend fun delete(accountKey: AccountKey, attachmentId: AttachmentId): Boolean
 }
