@@ -1,0 +1,23 @@
+plugins { alias(libs.plugins.android.library) }
+
+android {
+    namespace = "com.itlab.ai.text.openvino"
+    compileSdk { version = release(37) }
+    defaultConfig {
+        minSdk = 33
+        ndk { abiFilters += providers.gradleProperty("openvinoAndroidAbi").orElse("arm64-v8a").get() }
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    api(project(":ai:text-api"))
+    api(project(":kernel"))
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.kotlinx.coroutines.android)
+    testImplementation(libs.junit)
+}
+
