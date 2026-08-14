@@ -1,3 +1,6 @@
+// Copyright (C) 2018-2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 package com.itlab.sync.core
 
 import com.itlab.cloud.api.RemoteChangeFeed

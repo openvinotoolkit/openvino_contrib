@@ -1,3 +1,6 @@
+// Copyright (C) 2018-2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 import groovy.json.JsonOutput
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.plugins.JavaPluginExtension
