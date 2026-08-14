@@ -75,6 +75,7 @@ mkdir -p \
     "$STATE_ROOT/tmp" \
     "$STATE_ROOT/user-home" \
     "$STATE_ROOT/project-cache" \
+    "$STATE_ROOT/kotlin-project" \
     "$STATE_ROOT/gradle"
 
 export GRADLE_USER_HOME="$STATE_ROOT/gradle-user-home"
@@ -89,4 +90,5 @@ cd "$PROJECT_ROOT"
 exec "$JAVA_BIN" -classpath "$WRAPPER_JAR" org.gradle.wrapper.GradleWrapperMain \
     --project-cache-dir "$STATE_ROOT/project-cache" \
     -PopenvinoNotesBuildRoot="$STATE_ROOT/gradle" \
+    -Pkotlin.project.persistent.dir="$STATE_ROOT/kotlin-project" \
     "$@"
