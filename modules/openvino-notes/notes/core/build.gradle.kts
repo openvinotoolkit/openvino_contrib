@@ -7,11 +7,11 @@ plugins {
 }
 
 dependencies {
-    api(project(":notes:api"))
-    api(project(":kernel"))
+    implementation(project(":notes:api"))
+    implementation(project(":identity:api"))
+    implementation(project(":kernel"))
     testImplementation(testFixtures(project(":notes:api")))
     testImplementation(testFixtures(project(":identity:api")))
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
 }
-

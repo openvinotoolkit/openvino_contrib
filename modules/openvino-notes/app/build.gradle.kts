@@ -27,6 +27,15 @@ android {
 }
 
 dependencies {
+    implementation(project(":kernel"))
+    implementation(project(":settings:api"))
+    implementation(project(":identity:api"))
+    implementation(project(":notes:api"))
+    implementation(project(":cloud:api"))
+    implementation(project(":sync:api"))
+    implementation(project(":assistant:api"))
+    implementation(project(":ai:text-api"))
+    implementation(project(":ai:image-api"))
     implementation(project(":view"))
     implementation(project(":notes:core"))
     implementation(project(":notes:room"))

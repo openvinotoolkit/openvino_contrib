@@ -22,9 +22,8 @@ ksp {
 }
 
 dependencies {
-    api(project(":sync:api"))
-    api(project(":notes:api"))
-    api(project(":kernel"))
+    implementation(project(":sync:api"))
+    implementation(project(":kernel"))
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
@@ -35,4 +34,5 @@ dependencies {
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.robolectric)
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

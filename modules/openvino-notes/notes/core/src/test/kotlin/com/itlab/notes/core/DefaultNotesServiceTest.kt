@@ -3,13 +3,17 @@
 
 package com.itlab.notes.core
 
-import com.itlab.identity.api.AccountId
 import com.itlab.identity.api.FakeIdentityService
 import com.itlab.identity.api.UserSession
+import com.itlab.kernel.AccountKey
+import com.itlab.notes.api.ContentItem
+import com.itlab.notes.api.ContentItemId
 import com.itlab.notes.api.FakeNotesRepository
+import com.itlab.notes.api.FieldUpdate
 import com.itlab.notes.api.NoteDraft
 import com.itlab.notes.api.NoteId
 import com.itlab.notes.api.NoteMutationOutcome
+import com.itlab.notes.api.UpdateNoteCommand
 import java.time.Instant
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -17,17 +21,35 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DefaultNotesServiceTest {
+    private val content = listOf(ContentItem.Text(ContentItemId("body"), "Body"))
+
     @Test fun `create requires a session`() = runTest {
         val service = DefaultNotesService(FakeIdentityService(), FakeNotesRepository(), { Instant.EPOCH })
-        assertEquals(NoteMutationOutcome.SignedOut, service.create(NoteDraft("Title", "Body")))
+        assertEquals(NoteMutationOutcome.SignedOut, service.create(NoteDraft("Title", content)))
     }
 
-    @Test fun `create trims title and persists note`() = runTest {
-        val identity = FakeIdentityService().apply { setSession(UserSession(AccountId("account"), "User", "u@example.test")) }
+    @Test fun `patch preserves fields that are not supplied`() = runTest {
+        val accountKey = AccountKey("account")
+        val identity = FakeIdentityService().apply {
+            setSession(UserSession(accountKey, "User", "u@example.test"))
+        }
         val repository = FakeNotesRepository()
-        val service = DefaultNotesService(identity, repository, { Instant.EPOCH }) { NoteId("note-1") }
-        val outcome = service.create(NoteDraft("  Title  ", "Body"))
+        var now = Instant.EPOCH
+        val service = DefaultNotesService(identity, repository, { now }) { NoteId("note-1") }
+        service.create(NoteDraft("  Title  ", content, isFavorite = true))
+
+        now = Instant.ofEpochSecond(1)
+        val outcome = service.update(
+            UpdateNoteCommand(NoteId("note-1"), summary = FieldUpdate.Set("Summary")),
+        )
+
         assertTrue(outcome is NoteMutationOutcome.Saved)
-        assertEquals("Title", repository.find(AccountId("account"), NoteId("note-1"))?.title)
+        val saved = repository.find(accountKey, NoteId("note-1"))
+        assertEquals("Title", saved?.title)
+        assertEquals(content, saved?.contentItems)
+        assertEquals(true, saved?.isFavorite)
+        assertEquals("Summary", saved?.summary)
+        assertEquals(Instant.EPOCH, saved?.createdAt)
+        assertEquals(now, saved?.updatedAt)
     }
 }

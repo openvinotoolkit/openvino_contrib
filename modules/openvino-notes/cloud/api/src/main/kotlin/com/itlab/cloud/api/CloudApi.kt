@@ -3,11 +3,12 @@
 
 package com.itlab.cloud.api
 
-import com.itlab.identity.api.AccountId
+import com.itlab.kernel.AccountKey
 import java.time.Instant
 
 @JvmInline value class RemoteObjectId(val value: String)
 @JvmInline value class RemoteCursor(val value: String)
+@JvmInline value class RemoteRevision(val value: String)
 
 data class RemoteObject(
     val id: RemoteObjectId,
@@ -25,12 +26,26 @@ data class RemoteObjectMetadata(
     val name: String,
     val mediaType: String,
     val modifiedAt: Instant,
+    val revision: RemoteRevision,
     val deleted: Boolean = false,
 )
 
-data class RemoteChangePage(val changes: List<RemoteObjectMetadata>, val nextCursor: RemoteCursor?)
+data class RemoteChangePage(
+    val changes: List<RemoteObjectMetadata>,
+    val nextCursor: RemoteCursor?,
+    val resetRequired: Boolean = false,
+)
 
-enum class RemoteErrorCode { NOT_CONFIGURED, SIGNED_OUT, NOT_AUTHORIZED, NOT_FOUND, CONFLICT, UNAVAILABLE, INVALID_RESPONSE }
+enum class RemoteErrorCode {
+    NOT_CONFIGURED,
+    SIGNED_OUT,
+    NOT_AUTHORIZED,
+    NOT_FOUND,
+    CONFLICT,
+    UNAVAILABLE,
+    INVALID_CURSOR,
+    INVALID_RESPONSE,
+}
 data class RemoteError(val code: RemoteErrorCode, val diagnosticCode: String)
 
 sealed interface RemoteOutcome<out T> {
@@ -39,11 +54,21 @@ sealed interface RemoteOutcome<out T> {
 }
 
 interface RemoteObjectStore {
-    suspend fun put(accountId: AccountId, objectValue: RemoteObject): RemoteOutcome<RemoteObjectMetadata>
-    suspend fun get(accountId: AccountId, id: RemoteObjectId): RemoteOutcome<RemoteObject>
-    suspend fun delete(accountId: AccountId, id: RemoteObjectId): RemoteOutcome<Unit>
+    suspend fun put(
+        accountKey: AccountKey,
+        objectValue: RemoteObject,
+        expectedRevision: RemoteRevision? = null,
+    ): RemoteOutcome<RemoteObjectMetadata>
+
+    suspend fun get(accountKey: AccountKey, id: RemoteObjectId): RemoteOutcome<RemoteObject>
+
+    suspend fun delete(
+        accountKey: AccountKey,
+        id: RemoteObjectId,
+        expectedRevision: RemoteRevision? = null,
+    ): RemoteOutcome<RemoteObjectMetadata>
 }
 
 interface RemoteChangeFeed {
-    suspend fun changes(accountId: AccountId, cursor: RemoteCursor?): RemoteOutcome<RemoteChangePage>
+    suspend fun changes(accountKey: AccountKey, cursor: RemoteCursor?): RemoteOutcome<RemoteChangePage>
 }

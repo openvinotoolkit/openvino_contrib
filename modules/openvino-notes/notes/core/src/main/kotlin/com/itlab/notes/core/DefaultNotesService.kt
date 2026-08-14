@@ -6,6 +6,9 @@ package com.itlab.notes.core
 import com.itlab.identity.api.AuthenticationState
 import com.itlab.identity.api.SessionReader
 import com.itlab.kernel.AppClock
+import com.itlab.notes.api.AttachmentMetadata
+import com.itlab.notes.api.ContentItem
+import com.itlab.notes.api.FieldUpdate
 import com.itlab.notes.api.Note
 import com.itlab.notes.api.NoteDraft
 import com.itlab.notes.api.NoteId
@@ -14,10 +17,10 @@ import com.itlab.notes.api.NotesRepository
 import com.itlab.notes.api.NotesService
 import com.itlab.notes.api.UpdateNoteCommand
 import java.util.UUID
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DefaultNotesService(
@@ -29,38 +32,105 @@ class DefaultNotesService(
     override fun observeNotes(): Flow<List<Note>> = sessions.authenticationState.flatMapLatest { state ->
         when (state) {
             AuthenticationState.SignedOut -> flowOf(emptyList())
-            is AuthenticationState.SignedIn -> repository.observe(state.session.accountId)
+            is AuthenticationState.SignedIn -> repository.observe(state.session.accountKey)
         }
     }
 
+    override suspend fun get(id: NoteId): Note? =
+        sessions.currentAccountKey()?.let { repository.find(it, id) }
+
     override suspend fun create(draft: NoteDraft): NoteMutationOutcome {
-        val accountId = sessions.currentAccountId() ?: return NoteMutationOutcome.SignedOut
-        validate(draft.title, draft.body)?.let { return it }
-        val note = Note(newId(), accountId, draft.title.trim(), draft.body, draft.folderId, clock.now())
+        val accountKey = sessions.currentAccountKey() ?: return NoteMutationOutcome.SignedOut
+        val noteId = newId()
+        val now = clock.now()
+        val note = Note(
+            id = noteId,
+            accountKey = accountKey,
+            title = draft.title.trim(),
+            contentItems = draft.contentItems,
+            attachments = draft.attachments.normalizeNoteId(noteId),
+            folderId = draft.folderId,
+            tags = draft.tags,
+            isFavorite = draft.isFavorite,
+            summary = draft.summary,
+            createdAt = now,
+            updatedAt = now,
+        )
+        validate(note)?.let { return it }
         repository.save(note)
         return NoteMutationOutcome.Saved(note)
     }
 
     override suspend fun update(command: UpdateNoteCommand): NoteMutationOutcome {
-        val accountId = sessions.currentAccountId() ?: return NoteMutationOutcome.SignedOut
-        validate(command.title, command.body)?.let { return it }
-        repository.find(accountId, command.id) ?: return NoteMutationOutcome.NotFound
-        val note = Note(command.id, accountId, command.title.trim(), command.body, command.folderId, clock.now())
-        repository.save(note)
-        return NoteMutationOutcome.Saved(note)
+        val accountKey = sessions.currentAccountKey() ?: return NoteMutationOutcome.SignedOut
+        val existing = repository.find(accountKey, command.id) ?: return NoteMutationOutcome.NotFound
+        val candidate = existing.copy(
+            title = command.title.resolve(existing.title).trim(),
+            contentItems = command.contentItems.resolve(existing.contentItems),
+            attachments = command.attachments.resolve(existing.attachments).normalizeNoteId(existing.id),
+            folderId = command.folderId.resolve(existing.folderId),
+            tags = command.tags.resolve(existing.tags),
+            isFavorite = command.isFavorite.resolve(existing.isFavorite),
+            summary = command.summary.resolve(existing.summary),
+        )
+        validate(candidate)?.let { return it }
+        if (candidate == existing) return NoteMutationOutcome.Saved(existing)
+
+        val updated = candidate.copy(updatedAt = clock.now())
+        repository.save(updated)
+        return NoteMutationOutcome.Saved(updated)
     }
 
     override suspend fun delete(id: NoteId): NoteMutationOutcome {
-        val accountId = sessions.currentAccountId() ?: return NoteMutationOutcome.SignedOut
-        return if (repository.delete(accountId, id)) NoteMutationOutcome.Deleted else NoteMutationOutcome.NotFound
+        val accountKey = sessions.currentAccountKey() ?: return NoteMutationOutcome.SignedOut
+        return if (repository.delete(accountKey, id)) NoteMutationOutcome.Deleted else NoteMutationOutcome.NotFound
     }
 
-    private fun validate(title: String, body: String): NoteMutationOutcome.Invalid? = when {
-        title.isBlank() -> NoteMutationOutcome.Invalid("title", "must not be blank")
-        title.length > 200 -> NoteMutationOutcome.Invalid("title", "must not exceed 200 characters")
-        body.length > 100_000 -> NoteMutationOutcome.Invalid("body", "must not exceed 100000 characters")
-        else -> null
+    private fun validate(note: Note): NoteMutationOutcome.Invalid? {
+        if (note.title.isBlank()) return invalid("title", "must not be blank")
+        if (note.title.length > MAX_TITLE_LENGTH) return invalid("title", "must not exceed $MAX_TITLE_LENGTH characters")
+        if (note.contentItems.filterIsInstance<ContentItem.Text>().sumOf { it.text.length } > MAX_TEXT_LENGTH) {
+            return invalid("contentItems", "text must not exceed $MAX_TEXT_LENGTH characters")
+        }
+        if (note.contentItems.map(ContentItem::id).toSet().size != note.contentItems.size) {
+            return invalid("contentItems", "ids must be unique")
+        }
+        if (note.attachments.map(AttachmentMetadata::id).toSet().size != note.attachments.size) {
+            return invalid("attachments", "ids must be unique")
+        }
+        val contentIds = note.contentItems.map(ContentItem::id).toSet()
+        if (note.attachments.any { it.noteId != note.id || it.contentItemId !in contentIds || it.sizeBytes < 0 }) {
+            return invalid("attachments", "must reference this note and an existing content item")
+        }
+        val attachmentIds = note.attachments.map(AttachmentMetadata::id).toSet()
+        val referencedAttachmentIds = note.contentItems.mapNotNull {
+            when (it) {
+                is ContentItem.Image -> it.attachmentId
+                is ContentItem.File -> it.attachmentId
+                else -> null
+            }
+        }
+        if (referencedAttachmentIds.any { it !in attachmentIds }) {
+            return invalid("contentItems", "attachment references must resolve")
+        }
+        return null
     }
+
+    private fun invalid(field: String, reason: String) = NoteMutationOutcome.Invalid(field, reason)
+
+    private companion object {
+        const val MAX_TITLE_LENGTH = 200
+        const val MAX_TEXT_LENGTH = 100_000
+    }
+}
+
+private fun List<AttachmentMetadata>.normalizeNoteId(noteId: NoteId): List<AttachmentMetadata> =
+    map { it.copy(noteId = noteId) }
+
+@Suppress("UNCHECKED_CAST")
+private fun <T> FieldUpdate<T>.resolve(current: T): T = when (this) {
+    FieldUpdate.Keep -> current
+    is FieldUpdate.Set -> value
 }
 
 data class NotesCoreComponent(val notesService: NotesService) {

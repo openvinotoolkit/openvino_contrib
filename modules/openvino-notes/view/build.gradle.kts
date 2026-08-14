@@ -23,7 +23,6 @@ dependencies {
     implementation(project(":sync:api"))
     implementation(project(":assistant:api"))
     implementation(project(":settings:api"))
-    implementation(project(":kernel"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
@@ -32,8 +31,6 @@ dependencies {
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.ui.tooling.preview)
-    implementation(libs.koin.android)
-    implementation(libs.koin.androidx.compose)
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(testFixtures(project(":notes:api")))
     testImplementation(testFixtures(project(":identity:api")))
@@ -43,4 +40,3 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
 }
-

@@ -9,9 +9,9 @@ import com.itlab.ai.image.openvino.OpenVinoImageComponent
 import com.itlab.ai.text.openvino.OpenVinoTextComponent
 import com.itlab.assistant.api.NoteAssistant
 import com.itlab.assistant.core.AssistantCoreComponent
-import com.itlab.cloud.drive.DriveCloudComponent
 import com.itlab.identity.api.IdentityService
 import com.itlab.identity.google.GoogleIdentityComponent
+import com.itlab.identity.google.GoogleIdentityUiController
 import com.itlab.kernel.NoOpAppLogger
 import com.itlab.kernel.SystemAppClock
 import com.itlab.notes.api.NotesService
@@ -20,7 +20,6 @@ import com.itlab.notes.room.RoomNotesComponent
 import com.itlab.settings.api.SettingsService
 import com.itlab.settings.datastore.DataStoreSettingsComponent
 import com.itlab.sync.android.AndroidSyncComponent
-import com.itlab.sync.android.AndroidSyncStateComponent
 import com.itlab.sync.api.SyncScheduler
 import com.itlab.sync.api.SyncService
 import com.itlab.sync.core.SyncCoreComponent
@@ -30,20 +29,10 @@ class AppComposition(context: Context) : AutoCloseable {
     private val identity = GoogleIdentityComponent.create()
     private val notesStorage = RoomNotesComponent.create(appContext)
     private val settings = DataStoreSettingsComponent.create(appContext)
-    private val drive = DriveCloudComponent.create(identity.accessTokenProvider)
-    private val syncState: AndroidSyncStateComponent = AndroidSyncComponent.openStateStore(appContext)
     private val notesCore = NotesCoreComponent.create(identity.identityService, notesStorage.repository, SystemAppClock)
     private val textAi = OpenVinoTextComponent.create()
     private val imageAi = OpenVinoImageComponent.create()
-    private val syncCore = SyncCoreComponent.create(
-        identity.identityService,
-        notesStorage.syncPort,
-        drive.objectStore,
-        drive.changeFeed,
-        syncState.stateStore,
-        SystemAppClock,
-        NoOpAppLogger,
-    )
+    private val syncCore = SyncCoreComponent.create(NoOpAppLogger)
     private val assistantCore = AssistantCoreComponent.create(notesCore.notesService, textAi.assistant, imageAi.tagger)
 
     val identityService: IdentityService = identity.identityService
@@ -54,10 +43,11 @@ class AppComposition(context: Context) : AutoCloseable {
     val workerFactory: WorkerFactory = AndroidSyncComponent.createWorkerFactory(syncCore.executor)
     val syncScheduler: SyncScheduler by lazy { AndroidSyncComponent.createScheduler(appContext) }
 
+    fun createActivityIdentityController(): GoogleIdentityUiController = identity.createActivityController()
+
     override fun close() {
         textAi.assistant.close()
         imageAi.tagger.close()
-        syncState.close()
         notesStorage.close()
     }
 }

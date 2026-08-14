@@ -17,10 +17,9 @@ android {
 }
 
 dependencies {
-    api(project(":ai:text-api"))
-    api(project(":kernel"))
+    implementation(project(":ai:text-api"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
 }
-

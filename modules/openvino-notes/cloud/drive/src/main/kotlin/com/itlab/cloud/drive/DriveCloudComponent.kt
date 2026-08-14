@@ -15,13 +15,21 @@ import com.itlab.cloud.api.RemoteObjectStore
 import com.itlab.cloud.api.RemoteOutcome
 import com.itlab.identity.api.AccessTokenOutcome
 import com.itlab.identity.api.AccessTokenProvider
-import com.itlab.identity.api.AccountId
+import com.itlab.kernel.AccountKey
 
 internal class DriveRemoteStore(private val tokens: AccessTokenProvider) : RemoteObjectStore, RemoteChangeFeed {
-    override suspend fun put(accountId: AccountId, objectValue: RemoteObject): RemoteOutcome<RemoteObjectMetadata> = unavailable()
-    override suspend fun get(accountId: AccountId, id: RemoteObjectId): RemoteOutcome<RemoteObject> = unavailable()
-    override suspend fun delete(accountId: AccountId, id: RemoteObjectId): RemoteOutcome<Unit> = unavailable()
-    override suspend fun changes(accountId: AccountId, cursor: RemoteCursor?): RemoteOutcome<RemoteChangePage> = unavailable()
+    override suspend fun put(
+        accountKey: AccountKey,
+        objectValue: RemoteObject,
+        expectedRevision: com.itlab.cloud.api.RemoteRevision?,
+    ): RemoteOutcome<RemoteObjectMetadata> = unavailable()
+    override suspend fun get(accountKey: AccountKey, id: RemoteObjectId): RemoteOutcome<RemoteObject> = unavailable()
+    override suspend fun delete(
+        accountKey: AccountKey,
+        id: RemoteObjectId,
+        expectedRevision: com.itlab.cloud.api.RemoteRevision?,
+    ): RemoteOutcome<RemoteObjectMetadata> = unavailable()
+    override suspend fun changes(accountKey: AccountKey, cursor: RemoteCursor?): RemoteOutcome<RemoteChangePage> = unavailable()
 
     private suspend fun unavailable(): RemoteOutcome.Failure = when (tokens.accessToken()) {
         AccessTokenOutcome.SignedOut -> failure(RemoteErrorCode.SIGNED_OUT, "drive.signed_out")

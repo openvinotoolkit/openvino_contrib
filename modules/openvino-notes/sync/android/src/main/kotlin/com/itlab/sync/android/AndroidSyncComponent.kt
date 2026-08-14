@@ -22,16 +22,26 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
-import com.itlab.identity.api.AccountId
+import com.itlab.kernel.AccountKey
 import com.itlab.sync.api.SyncExecutor
 import com.itlab.sync.api.SyncOutcome
-import com.itlab.sync.api.SyncPhase
 import com.itlab.sync.api.SyncReason
 import com.itlab.sync.api.SyncScheduler
-import com.itlab.sync.api.SyncState
-import com.itlab.sync.api.SyncStateStore
 import java.time.Instant
 import java.util.concurrent.TimeUnit
+
+internal data class SyncCheckpoint(
+    val remoteCursor: String? = null,
+    val remoteRevisions: Map<String, String> = emptyMap(),
+    val lastCompletedAt: Instant? = null,
+    val resetRequired: Boolean = false,
+)
+
+internal interface SyncCheckpointStore {
+    suspend fun read(accountKey: AccountKey): SyncCheckpoint
+    suspend fun write(accountKey: AccountKey, checkpoint: SyncCheckpoint)
+    suspend fun clear(accountKey: AccountKey)
+}
 
 internal class SyncWorker(
     appContext: Context,
@@ -71,42 +81,56 @@ internal class WorkManagerSyncScheduler(private val workManager: WorkManager) : 
     private fun reasonData(reason: SyncReason): Data = Data.Builder().putString(KEY_REASON, reason.name).build()
 }
 
-@Entity(tableName = "sync_state")
-internal data class SyncStateEntity(
-    @androidx.room.PrimaryKey val accountId: String,
-    val phase: String,
-    val lastSuccessfulAtMillis: Long?,
-    val diagnosticCode: String?,
-    val continuationToken: String?,
+@Entity(tableName = "sync_checkpoint")
+internal data class SyncCheckpointEntity(
+    @androidx.room.PrimaryKey val accountKey: String,
+    val remoteCursor: String?,
+    val remoteRevisions: String,
+    val lastCompletedAtMillis: Long?,
+    val resetRequired: Boolean,
 )
 
 @Dao
-internal interface SyncStateDao {
-    @Query("SELECT * FROM sync_state WHERE accountId = :accountId") suspend fun read(accountId: String): SyncStateEntity?
-    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun write(state: SyncStateEntity)
+internal interface SyncCheckpointDao {
+    @Query("SELECT * FROM sync_checkpoint WHERE accountKey = :accountKey")
+    suspend fun read(accountKey: String): SyncCheckpointEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun write(checkpoint: SyncCheckpointEntity)
+
+    @Query("DELETE FROM sync_checkpoint WHERE accountKey = :accountKey")
+    suspend fun clear(accountKey: String)
 }
 
-@Database(entities = [SyncStateEntity::class], version = 1, exportSchema = true)
+@Database(entities = [SyncCheckpointEntity::class], version = 1, exportSchema = true)
 internal abstract class SyncDatabase : RoomDatabase() {
-    abstract fun stateDao(): SyncStateDao
+    abstract fun checkpointDao(): SyncCheckpointDao
 }
 
-internal class RoomSyncStateStore(private val dao: SyncStateDao) : SyncStateStore {
-    override suspend fun read(accountId: AccountId): SyncState = dao.read(accountId.value)?.toApi() ?: SyncState()
-    override suspend fun write(accountId: AccountId, state: SyncState) { dao.write(state.toEntity(accountId)) }
+internal class RoomSyncCheckpointStore(private val dao: SyncCheckpointDao) : SyncCheckpointStore {
+    override suspend fun read(accountKey: AccountKey): SyncCheckpoint =
+        dao.read(accountKey.value)?.toApi() ?: SyncCheckpoint()
+
+    override suspend fun write(accountKey: AccountKey, checkpoint: SyncCheckpoint) {
+        dao.write(checkpoint.toEntity(accountKey))
+    }
+
+    override suspend fun clear(accountKey: AccountKey) {
+        dao.clear(accountKey.value)
+    }
 }
 
-class AndroidSyncStateComponent internal constructor(
+internal class AndroidSyncCheckpointComponent(
     private val database: SyncDatabase,
-    val stateStore: SyncStateStore,
+    val checkpointStore: SyncCheckpointStore,
 ) : AutoCloseable {
     override fun close() = database.close()
 }
 
 object AndroidSyncComponent {
-    fun openStateStore(context: Context): AndroidSyncStateComponent {
+    internal fun openCheckpointStore(context: Context): AndroidSyncCheckpointComponent {
         val database = Room.databaseBuilder(context.applicationContext, SyncDatabase::class.java, "openvino-notes-sync.db").build()
-        return AndroidSyncStateComponent(database, RoomSyncStateStore(database.stateDao()))
+        return AndroidSyncCheckpointComponent(database, RoomSyncCheckpointStore(database.checkpointDao()))
     }
 
     fun createWorkerFactory(executor: SyncExecutor): WorkerFactory = OpenVinoNotesWorkerFactory(executor)
@@ -114,8 +138,33 @@ object AndroidSyncComponent {
     fun createScheduler(context: Context): SyncScheduler = WorkManagerSyncScheduler(WorkManager.getInstance(context.applicationContext))
 }
 
-private fun SyncStateEntity.toApi() = SyncState(SyncPhase.valueOf(phase), lastSuccessfulAtMillis?.let(Instant::ofEpochMilli), diagnosticCode, continuationToken)
-private fun SyncState.toEntity(accountId: AccountId) = SyncStateEntity(accountId.value, phase.name, lastSuccessfulAt?.toEpochMilli(), diagnosticCode, continuationToken)
+private fun SyncCheckpointEntity.toApi() = SyncCheckpoint(
+    remoteCursor = remoteCursor,
+    remoteRevisions = decodeRevisions(remoteRevisions),
+    lastCompletedAt = lastCompletedAtMillis?.let(Instant::ofEpochMilli),
+    resetRequired = resetRequired,
+)
+
+private fun SyncCheckpoint.toEntity(accountKey: AccountKey) = SyncCheckpointEntity(
+    accountKey = accountKey.value,
+    remoteCursor = remoteCursor,
+    remoteRevisions = remoteRevisions.entries
+        .sortedBy(Map.Entry<String, String>::key)
+        .joinToString("\n") { "${escape(it.key)}=${escape(it.value)}" },
+    lastCompletedAtMillis = lastCompletedAt?.toEpochMilli(),
+    resetRequired = resetRequired,
+)
+
+private fun decodeRevisions(value: String): Map<String, String> = value.lineSequence()
+    .filter(String::isNotEmpty)
+    .associate { line ->
+        val separator = line.indexOf('=')
+        require(separator >= 0) { "Invalid sync revision entry" }
+        unescape(line.substring(0, separator)) to unescape(line.substring(separator + 1))
+    }
+
+private fun escape(value: String): String = java.net.URLEncoder.encode(value, Charsets.UTF_8.name())
+private fun unescape(value: String): String = java.net.URLDecoder.decode(value, Charsets.UTF_8.name())
 
 private const val KEY_REASON = "sync_reason"
 private const val PERIODIC_WORK = "openvino-notes.sync.periodic"

@@ -14,10 +14,11 @@ android {
 }
 
 dependencies {
-    api(project(":identity:api"))
-    api(project(":kernel"))
+    implementation(project(":identity:api"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
+    testImplementation(testFixtures(project(":identity:api")))
+    testImplementation(project(":kernel"))
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
 }
-

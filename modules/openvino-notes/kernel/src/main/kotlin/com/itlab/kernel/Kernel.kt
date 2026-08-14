@@ -7,6 +7,13 @@ import java.time.Instant
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 
+@JvmInline
+value class AccountKey(val value: String) {
+    init {
+        require(value.isNotBlank()) { "AccountKey must not be blank" }
+    }
+}
+
 fun interface AppClock {
     fun now(): Instant
 }

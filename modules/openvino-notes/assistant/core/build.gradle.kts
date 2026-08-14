@@ -7,15 +7,13 @@ plugins {
 }
 
 dependencies {
-    api(project(":assistant:api"))
-    api(project(":notes:api"))
-    api(project(":ai:text-api"))
-    api(project(":ai:image-api"))
-    api(project(":kernel"))
+    implementation(project(":assistant:api"))
+    implementation(project(":notes:api"))
+    implementation(project(":ai:text-api"))
+    implementation(project(":ai:image-api"))
     testImplementation(testFixtures(project(":notes:api")))
     testImplementation(testFixtures(project(":ai:text-api")))
     testImplementation(testFixtures(project(":ai:image-api")))
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
 }
-

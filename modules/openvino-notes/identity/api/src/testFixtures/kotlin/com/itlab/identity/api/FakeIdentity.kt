@@ -3,6 +3,7 @@
 
 package com.itlab.identity.api
 
+import com.itlab.kernel.AccountKey
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -15,11 +16,9 @@ class FakeIdentityService(
     override val authenticationState: StateFlow<AuthenticationState> = mutableAuthentication
     override val driveAuthorizationState: StateFlow<DriveAuthorizationState> = mutableDriveAuthorization
 
-    override fun currentAccountId(): AccountId? =
-        (authenticationState.value as? AuthenticationState.SignedIn)?.session?.accountId
+    override fun currentAccountKey(): AccountKey? =
+        (authenticationState.value as? AuthenticationState.SignedIn)?.session?.accountKey
 
-    override suspend fun launchSignIn(): IdentityOutcome = IdentityOutcome.NotConfigured("fake requires an explicit session")
-    override suspend fun authorizeDrive(): IdentityOutcome = IdentityOutcome.NotConfigured("fake requires explicit authorization")
     override suspend fun signOut(): IdentityOutcome {
         mutableAuthentication.value = AuthenticationState.SignedOut
         mutableDriveAuthorization.value = DriveAuthorizationState.NOT_AUTHORIZED
@@ -27,7 +26,7 @@ class FakeIdentityService(
     }
     override suspend fun disconnect(): IdentityOutcome = signOut()
     override suspend fun accessToken(): AccessTokenOutcome = when {
-        currentAccountId() == null -> AccessTokenOutcome.SignedOut
+        currentAccountKey() == null -> AccessTokenOutcome.SignedOut
         driveAuthorizationState.value != DriveAuthorizationState.AUTHORIZED -> AccessTokenOutcome.NotAuthorized
         else -> AccessTokenOutcome.Available("fake-token")
     }

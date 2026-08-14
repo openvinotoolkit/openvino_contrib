@@ -9,9 +9,7 @@ plugins {
 
 dependencies {
     api(project(":kernel"))
-    api(project(":identity:api"))
     api(libs.kotlinx.coroutines.core)
     testFixturesImplementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit)
 }
-

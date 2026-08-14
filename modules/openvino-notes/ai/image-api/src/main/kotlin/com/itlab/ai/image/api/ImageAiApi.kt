@@ -9,7 +9,12 @@ sealed interface ImageInput {
     data class Bytes(val value: ByteArray, val mediaType: String) : ImageInput
 }
 
-data class ImageTag(val label: String, val confidence: Float)
+data class ImageTag(val label: String, val confidence: Float) {
+    init {
+        require(label.isNotBlank()) { "Image tag label must not be blank" }
+        require(confidence in 0.0f..1.0f) { "Image tag confidence must be between 0 and 1" }
+    }
+}
 enum class ImageModelState { UNAVAILABLE, LOADING, READY, FAILED, CLOSED }
 
 sealed interface ImageOutcome {

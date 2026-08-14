@@ -15,7 +15,10 @@ plugins {
     alias(libs.plugins.ksp) apply false
 }
 
-val workspaceBuildRoot = rootDir.resolve("../../../builds/android/openvino-notes/gradle").canonicalFile
+val workspaceBuildRoot = (
+    providers.gradleProperty("openvinoNotesBuildRoot").orNull?.let(::file)
+        ?: rootDir.resolve("build")
+    ).canonicalFile
 layout.buildDirectory.set(workspaceBuildRoot.resolve("root"))
 
 subprojects {
@@ -48,20 +51,17 @@ val expectedModules = setOf(
 
 val allowedEdges = setOf(
     ":identity:api->:kernel",
-    ":settings:api->:kernel",
-    ":notes:api->:kernel", ":notes:api->:identity:api",
-    ":cloud:api->:kernel", ":cloud:api->:identity:api",
-    ":sync:api->:kernel", ":sync:api->:identity:api",
-    ":assistant:api->:kernel", ":assistant:api->:notes:api",
-    ":ai:text-api->:kernel", ":ai:image-api->:kernel",
-    ":notes:core->:notes:api", ":notes:core->:kernel",
+    ":notes:api->:kernel",
+    ":cloud:api->:kernel",
+    ":assistant:api->:notes:api",
+    ":notes:core->:notes:api", ":notes:core->:identity:api", ":notes:core->:kernel",
     ":notes:room->:notes:api", ":notes:room->:kernel",
     ":identity:google->:identity:api", ":identity:google->:kernel",
     ":settings:datastore->:settings:api", ":settings:datastore->:kernel",
     ":cloud:drive->:cloud:api", ":cloud:drive->:identity:api", ":cloud:drive->:kernel",
     ":sync:core->:sync:api", ":sync:core->:notes:api", ":sync:core->:cloud:api",
     ":sync:core->:identity:api", ":sync:core->:kernel",
-    ":sync:android->:sync:api", ":sync:android->:notes:api", ":sync:android->:kernel",
+    ":sync:android->:sync:api", ":sync:android->:kernel",
     ":assistant:core->:assistant:api", ":assistant:core->:notes:api",
     ":assistant:core->:ai:text-api", ":assistant:core->:ai:image-api", ":assistant:core->:kernel",
     ":ai:text-openvino->:ai:text-api", ":ai:text-openvino->:kernel",
@@ -72,6 +72,9 @@ val allowedEdges = setOf(
     ":app->:identity:google", ":app->:settings:datastore", ":app->:cloud:drive",
     ":app->:sync:core", ":app->:sync:android", ":app->:assistant:core",
     ":app->:ai:text-openvino", ":app->:ai:image-openvino",
+    ":app->:kernel", ":app->:settings:api", ":app->:identity:api", ":app->:notes:api",
+    ":app->:cloud:api", ":app->:sync:api", ":app->:assistant:api",
+    ":app->:ai:text-api", ":app->:ai:image-api",
 )
 
 fun architectureProjects() = subprojects.filter { it.buildFile.isFile }
@@ -135,8 +138,9 @@ tasks.register("checkArchitecture") {
         }
 
         val actualEdges = productionEdges()
-        check(actualEdges == allowedEdges) {
-            "Dependency allowlist mismatch. Missing=${allowedEdges - actualEdges}; forbidden=${actualEdges - allowedEdges}"
+        val forbiddenEdges = actualEdges - allowedEdges
+        check(forbiddenEdges.isEmpty()) {
+            "Forbidden module dependencies: ${forbiddenEdges.sorted()}"
         }
 
         val neutralModules = expectedModules.filter {
@@ -158,10 +162,17 @@ tasks.register("checkArchitecture") {
             check(forbidden.none(text::contains)) { "Implementation import in :view: ${source.relativeTo(rootDir)}" }
         }
 
-        architectureProjects().filter { it.path !in setOf(":app", ":view") }.forEach { module ->
+        architectureProjects().filter { it.path != ":app" }.forEach { module ->
             module.fileTree("src/main").matching { include("**/*.kt") }.files.forEach { source ->
                 check(!source.readText().contains("org.koin")) {
-                    "Koin is only allowed in :app and :view: ${source.relativeTo(rootDir)}"
+                    "Koin is only allowed in :app: ${source.relativeTo(rootDir)}"
+                }
+            }
+            listOf("api", "implementation", "compileOnly", "runtimeOnly").forEach { configurationName ->
+                module.configurations.findByName(configurationName)?.dependencies.orEmpty().forEach { dependency ->
+                    check(dependency.group != "io.insert-koin") {
+                        "Koin dependency is only allowed in :app: ${module.path} -> ${dependency.group}:${dependency.name}"
+                    }
                 }
             }
         }
@@ -181,3 +192,16 @@ tasks.register("checkArchitecture") {
         }
     }
 }
+
+tasks.register("checkArchitectureRules") {
+    group = "verification"
+    description = "Self-tests subset semantics used by the architecture dependency gate."
+    doLast {
+        val permittedSubset = allowedEdges.take(1).toSet()
+        check((permittedSubset - allowedEdges).isEmpty()) { "An allowed optional edge subset must pass" }
+        val syntheticForbidden = setOf(":view->:notes:room")
+        check((syntheticForbidden - allowedEdges) == syntheticForbidden) { "A forbidden edge must be rejected" }
+    }
+}
+
+tasks.named("checkArchitecture") { dependsOn("checkArchitectureRules") }

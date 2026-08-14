@@ -19,9 +19,14 @@ internal class OpenVinoImageTagger(private val modelDirectory: String?) : ImageT
         return ImageOutcome.NotConfigured(modelDirectory?.let { "OpenVINO runtime artifact is not connected" } ?: "Image model directory is not configured")
     }
 
-    override suspend fun tag(input: ImageInput): ImageOutcome = when (state.value) {
-        ImageModelState.READY -> ImageOutcome.Failed("image_openvino.native_bridge_missing")
-        else -> ImageOutcome.NotConfigured("Image model is not loaded")
+    override suspend fun tag(input: ImageInput): ImageOutcome {
+        if (input is ImageInput.Bytes && (input.value.isEmpty() || !input.mediaType.startsWith("image/"))) {
+            return ImageOutcome.Failed("image_openvino.invalid_input")
+        }
+        return when (state.value) {
+            ImageModelState.READY -> ImageOutcome.Failed("image_openvino.native_bridge_missing")
+            else -> ImageOutcome.NotConfigured("Image model is not loaded")
+        }
     }
 
     override fun close() { mutableState.value = ImageModelState.CLOSED }

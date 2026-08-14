@@ -22,8 +22,8 @@ ksp {
 }
 
 dependencies {
-    api(project(":notes:api"))
-    api(project(":kernel"))
+    implementation(project(":notes:api"))
+    implementation(project(":kernel"))
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     implementation(libs.kotlinx.coroutines.android)

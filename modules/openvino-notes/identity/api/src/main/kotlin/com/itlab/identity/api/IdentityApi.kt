@@ -3,13 +3,11 @@
 
 package com.itlab.identity.api
 
+import com.itlab.kernel.AccountKey
 import kotlinx.coroutines.flow.StateFlow
 
-@JvmInline
-value class AccountId(val value: String)
-
 data class UserSession(
-    val accountId: AccountId,
+    val accountKey: AccountKey,
     val displayName: String,
     val email: String,
 )
@@ -23,6 +21,7 @@ enum class DriveAuthorizationState { NOT_AUTHORIZED, AUTHORIZED }
 
 sealed interface IdentityOutcome {
     data object Completed : IdentityOutcome
+    data object Cancelled : IdentityOutcome
     data class NotConfigured(val reason: String) : IdentityOutcome
     data class Failed(val code: String) : IdentityOutcome
 }
@@ -36,7 +35,7 @@ sealed interface AccessTokenOutcome {
 
 interface SessionReader {
     val authenticationState: StateFlow<AuthenticationState>
-    fun currentAccountId(): AccountId?
+    fun currentAccountKey(): AccountKey?
 }
 
 interface AccessTokenProvider {
@@ -45,8 +44,6 @@ interface AccessTokenProvider {
 
 interface IdentityService : SessionReader {
     val driveAuthorizationState: StateFlow<DriveAuthorizationState>
-    suspend fun launchSignIn(): IdentityOutcome
-    suspend fun authorizeDrive(): IdentityOutcome
     suspend fun signOut(): IdentityOutcome
     suspend fun disconnect(): IdentityOutcome
 }

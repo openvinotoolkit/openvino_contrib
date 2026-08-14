@@ -14,12 +14,10 @@ android {
 }
 
 dependencies {
-    api(project(":settings:api"))
-    api(project(":kernel"))
+    implementation(project(":settings:api"))
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.coroutines.android)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
 }
-
