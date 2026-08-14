@@ -21,5 +21,6 @@ sealed interface ApplySuggestionOutcome {
 interface NoteAssistant {
     suspend fun suggestTitle(noteId: NoteId): SuggestionOutcome
     suspend fun summarize(noteId: NoteId): SuggestionOutcome
+    suspend fun suggestImageTags(noteId: NoteId, bytes: ByteArray, mediaType: String): SuggestionOutcome
     suspend fun apply(suggestion: AssistantSuggestion): ApplySuggestionOutcome
 }

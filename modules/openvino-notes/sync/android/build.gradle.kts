@@ -14,6 +14,10 @@ android {
     }
 }
 
+ksp {
+    arg("room.schemaLocation", layout.buildDirectory.dir("schemas").get().asFile.path)
+}
+
 dependencies {
     api(project(":sync:api"))
     api(project(":notes:api"))
@@ -29,4 +33,3 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.junit)
 }
-

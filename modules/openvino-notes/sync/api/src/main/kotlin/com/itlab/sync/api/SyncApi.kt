@@ -11,6 +11,7 @@ data class SyncState(
     val phase: SyncPhase = SyncPhase.IDLE,
     val lastSuccessfulAt: Instant? = null,
     val diagnosticCode: String? = null,
+    val continuationToken: String? = null,
 )
 
 sealed interface SyncOutcome {
