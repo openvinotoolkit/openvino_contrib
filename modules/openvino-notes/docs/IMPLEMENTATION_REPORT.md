@@ -13,15 +13,16 @@ The module does not include Google credentials, a Drive HTTP client, OpenVINO An
 
 ## Implemented Boundaries
 
-- Gradle validates an allowed-edge subset, rejects Koin outside `:app`, rejects infrastructure-port references in `:view`, and generates the actual module graph.
+- Gradle validates an allowed-edge subset, reserves future App-to-Cloud composition, rejects the obsolete Sync-to-Identity edge, rejects Koin outside `:app`, rejects infrastructure-port references in `:view`, and generates the actual module graph.
 - Neutral `AccountKey` and `AccountScope` remove Identity-owned account types and the `:notes:core -> :identity:api` production edge.
 - Notes supports complete product fields plus Folder lifecycle/move semantics, Room round-trips, note/folder outbox transactions, revisions, conflicts, malformed changes, and tombstones.
-- Room owns account-scoped attachment files and cleanup; injected dispatchers, bounded chunk reads, and atomic chunked writes avoid attachment-sized allocations in persistence/sync. Assistant uses an explicit bounded contiguous read for image inference.
+- Room owns account-scoped attachment files and cleanup; injected dispatchers, bounded chunk reads, atomic first writes, and immutable `AttachmentId` enforcement avoid attachment-sized allocations and silent media replacement. Assistant uses an explicit bounded contiguous read for image inference.
 - Cloud exposes explicit initial listing/cursor bootstrap and a generic resumable upload/streamed download boundary whose terminal result includes remote metadata and revision.
 - AI APIs expose summary, text tags, rewrite, and structured image tags. Prompts, normalization, retry, and cancellation handling stay in the text OpenVINO adapter.
 - Identity launches one-shot effects through `MainActivity` and an activity-scoped Google controller with typed cancellation/result mapping. Startup initialization and access-token invalidation are explicit contracts.
-- Unsafe upload-first sync was removed. The production service is honestly disabled; consumer state and neutral checkpoint infrastructure are separate. Work is account-scoped from scheduler name/tag through Worker input and executor invocation.
-- UI and UI state/action boundaries, including folders and neutral identity loading, are organized as vertical capability slices without Koin imports.
+- Unsafe upload-first sync was removed. The production service is honestly disabled; consumer state, replication checkpoints, and durable resumable-transfer checkpoints are separate. Opaque session capabilities are redacted and persisted only by Sync-owned Room storage. Work is account-scoped from scheduler name/tag through Worker input and executor invocation.
+- UI and UI state/action boundaries, including folders, structured multimodal editing, and neutral identity loading, are organized as vertical capability slices without Koin imports.
+- Infrastructure-only sync/credential supporting models live with their ports, and version-controlled Notes/Sync Room v1 schemas establish the migration baseline.
 - A relocatable repository script and dedicated JDK 21 / Android API 37 workflow run the architecture, unit, Android unit, and APK gates.
 
 ## Verification

@@ -23,7 +23,7 @@ The default Android ABI is `arm64-v8a`. Use an emulator ABI explicitly when need
 ./scripts/openvino_notes_gradle.sh :app:assembleDebug -PopenvinoAndroidAbi=x86_64
 ```
 
-The script requires JDK 21 and `ANDROID_SDK_ROOT` or `ANDROID_HOME`. It uses the checked-in Gradle wrapper and redirects Gradle, Android, cache, temporary, report, and APK state to `builds/android/openvino-notes/`. In a larger workspace containing `RULES.md`, that directory is created at the workspace root; in a standalone clone it is created at the repository root. Set `OPENVINO_NOTES_STATE_ROOT` to an in-workspace path to override it.
+The script requires the workspace JDK 21 and Android API 37 installation. It uses the checked-in Gradle wrapper and redirects the Gradle build tree, caches, Android state, temporary files, reports, and APKs to the workspace `builds/android/openvino-notes/` directory.
 
 ## Development Rules
 
@@ -35,8 +35,11 @@ The script requires JDK 21 and `ANDROID_SDK_ROOT` or `ANDROID_HOME`. It uses the
 - Define all Koin bindings and ViewModel factories in `:app` only.
 - Add focused tests beside implementations and reusable fakes to API `testFixtures`.
 - Keep scheduled sync account-scoped; never infer a Worker's account from current UI session state.
+- Persist resumable transfer progress only through `SyncTransferCheckpointPort`; never log or expose session capabilities.
 - Access attachment bytes only through `AttachmentContentPort`; do not expose file paths or raw media in View APIs.
+- Treat binary content as immutable by `AttachmentId`; allocate a new ID and update the Note when bytes change.
 - Keep infrastructure contracts under `*.api.port`; `:view` may import consumer services but must not import ports.
 - Consume attachment content in bounded chunks unless a downstream API explicitly requires a size-limited contiguous value.
+- Preserve committed Room schema JSON whenever a database contract changes, and add migrations before incrementing a shipped schema.
 
 Sync is deliberately `Blocked(NotConfigured)` until a remote-first, revision-aware engine is implemented. See [Architecture](docs/ARCHITECTURE.md) and [Implementation Report](docs/IMPLEMENTATION_REPORT.md).
