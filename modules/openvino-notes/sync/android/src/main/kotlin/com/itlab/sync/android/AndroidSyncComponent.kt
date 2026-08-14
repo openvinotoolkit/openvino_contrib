@@ -100,24 +100,15 @@ class AndroidSyncStateComponent internal constructor(
     override fun close() = database.close()
 }
 
-data class AndroidSyncRuntimeComponent(
-    val scheduler: SyncScheduler,
-    val workerFactory: WorkerFactory,
-)
-
 object AndroidSyncComponent {
     fun openStateStore(context: Context): AndroidSyncStateComponent {
         val database = Room.databaseBuilder(context.applicationContext, SyncDatabase::class.java, "openvino-notes-sync.db").build()
         return AndroidSyncStateComponent(database, RoomSyncStateStore(database.stateDao()))
     }
 
-    fun createRuntime(context: Context, executor: SyncExecutor): AndroidSyncRuntimeComponent {
-        val appContext = context.applicationContext
-        return AndroidSyncRuntimeComponent(
-            WorkManagerSyncScheduler(WorkManager.getInstance(appContext)),
-            OpenVinoNotesWorkerFactory(executor),
-        )
-    }
+    fun createWorkerFactory(executor: SyncExecutor): WorkerFactory = OpenVinoNotesWorkerFactory(executor)
+
+    fun createScheduler(context: Context): SyncScheduler = WorkManagerSyncScheduler(WorkManager.getInstance(context.applicationContext))
 }
 
 private fun SyncStateEntity.toApi() = SyncState(SyncPhase.valueOf(phase), lastSuccessfulAtMillis?.let(Instant::ofEpochMilli), diagnosticCode, continuationToken)
