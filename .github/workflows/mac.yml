@@ -51,7 +51,7 @@ jobs:
         with:
           repository: 'openvinotoolkit/openvino'
           path: 'openvino'
-          submodules: 'true'
+          submodules: 'recursive'
           ref: ${{ env.OV_BRANCH}}
 
       - name: Clone OpenVINO Contrib
