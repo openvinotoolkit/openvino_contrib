@@ -5,11 +5,11 @@ SPDX-License-Identifier: Apache-2.0
 
 # OpenVINO Notes
 
-This module is an Android architecture skeleton derived from the design documents in the workspace `dev/` directory. It establishes stable feature contracts, implementation boundaries, an Android composition root, and executable architecture checks. Google Identity, Drive transport, native OpenVINO runtime libraries, and model assets are intentionally not bundled; their adapters report typed unavailable states instead of simulating success.
+OpenVINO Notes is a 21-module Android architecture skeleton. It freezes feature contracts, ownership boundaries, local persistence, UI slices, and executable dependency checks so follow-up work can proceed independently. Google Identity, Drive transport, OpenVINO runtime libraries, models, credentials, and secrets are intentionally not included; their adapters return typed unavailable states.
 
 ## Build
 
-Run commands from `/Volumes/SAMSUNG/repos/openvino-contrib-openvino-notes` so all generated state remains under `builds/android/openvino-notes/`:
+From the repository root, use the versioned wrapper entrypoint:
 
 ```sh
 ./scripts/openvino_notes_gradle.sh checkArchitecture
@@ -17,14 +17,21 @@ Run commands from `/Volumes/SAMSUNG/repos/openvino-contrib-openvino-notes` so al
 ./scripts/openvino_notes_gradle.sh :app:assembleDebug
 ```
 
-The APK is written to `builds/android/openvino-notes/gradle/app/outputs/apk/debug/app-debug.apk`. Generated module graphs are under `builds/android/openvino-notes/gradle/root/reports/architecture/`.
+The default Android ABI is `arm64-v8a`. Use an emulator ABI explicitly when needed:
+
+```sh
+./scripts/openvino_notes_gradle.sh :app:assembleDebug -PopenvinoAndroidAbi=x86_64
+```
+
+The script requires JDK 21 and `ANDROID_SDK_ROOT` or `ANDROID_HOME`. It uses the checked-in Gradle wrapper and redirects Gradle, Android, cache, temporary, report, and APK state to `builds/android/openvino-notes/`. In a larger workspace containing `RULES.md`, that directory is created at the workspace root; in a standalone clone it is created at the repository root. Set `OPENVINO_NOTES_STATE_ROOT` to an in-workspace path to override it.
 
 ## Development Rules
 
-- Add feature behavior to its API and implementation pair; do not introduce implementation-to-implementation dependencies.
-- Keep `:kernel`, all API modules, and JVM core modules free of Android imports.
-- Keep Room, WorkManager, Drive, and OpenVINO types out of `:view`.
-- Bind implementations only in `:app`; Koin is limited to `:app` and `:view`.
-- Add fakes to API `testFixtures` and focused regression tests beside the changed implementation.
+- Extend a capability through its API and owning implementation; do not add implementation-to-implementation edges.
+- Treat the dependency allowlist as a ceiling: optional allowed edges need not exist.
+- Keep Android and vendor types out of `:kernel`, API modules, and JVM core modules.
+- Keep Room, WorkManager, Drive, OpenVINO, and DI lookups out of `:view`.
+- Define all Koin bindings and ViewModel factories in `:app` only.
+- Add focused tests beside implementations and reusable fakes to API `testFixtures`.
 
-See [Architecture](docs/ARCHITECTURE.md) and [Implementation Report](docs/IMPLEMENTATION_REPORT.md).
+Sync is deliberately `Blocked(NotConfigured)` until a remote-first, revision-aware engine is implemented. See [Architecture](docs/ARCHITECTURE.md) and [Implementation Report](docs/IMPLEMENTATION_REPORT.md).
