@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "com.itlab.notes.room"
+    namespace = "com.openvino.notes.notes.room"
     compileSdk { version = release(37) }
     defaultConfig { minSdk = 33 }
     testOptions { unitTests.isIncludeAndroidResources = true }

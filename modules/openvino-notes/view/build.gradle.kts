@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "com.itlab.view"
+    namespace = "com.openvino.notes.view"
     compileSdk { version = release(37) }
     defaultConfig { minSdk = 33 }
     buildFeatures { compose = true }

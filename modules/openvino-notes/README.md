@@ -27,6 +27,7 @@ The script requires JDK 21 and `ANDROID_SDK_ROOT` or `ANDROID_HOME`. It uses the
 
 ## Development Rules
 
+- Use `com.openvino.notes` as the base package, Android namespace, and application identifier.
 - Extend a capability through its API and owning implementation; do not add implementation-to-implementation edges.
 - Treat the dependency allowlist as a ceiling: optional allowed edges need not exist.
 - Keep Android and vendor types out of `:kernel`, API modules, and JVM core modules.

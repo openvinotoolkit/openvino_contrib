@@ -190,6 +190,20 @@ tasks.register("checkArchitecture") {
                 "Firebase or Google Services reference: ${source.relativeTo(rootDir)}"
             }
         }
+
+        val requiredPackagePrefix = "com.openvino.notes"
+        fileTree(rootDir) {
+            include("**/src/**/*.kt")
+            exclude("**/build/**")
+        }.files.forEach { source ->
+            val packageName = Regex("^package\\s+([^\\s]+)", RegexOption.MULTILINE)
+                .find(source.readText())
+                ?.groupValues
+                ?.get(1)
+            check(packageName == requiredPackagePrefix || packageName?.startsWith("$requiredPackagePrefix.") == true) {
+                "Unexpected package in ${source.relativeTo(rootDir)}: $packageName"
+            }
+        }
     }
 }
 

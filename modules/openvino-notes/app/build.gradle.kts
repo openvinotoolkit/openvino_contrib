@@ -7,10 +7,10 @@ plugins {
 }
 
 android {
-    namespace = "com.itlab.app"
+    namespace = "com.openvino.notes.app"
     compileSdk { version = release(37) }
     defaultConfig {
-        applicationId = "com.itlab.notes"
+        applicationId = "com.openvino.notes"
         minSdk = 33
         targetSdk = 37
         versionCode = 1

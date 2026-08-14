@@ -4,7 +4,7 @@
 plugins { alias(libs.plugins.android.library) }
 
 android {
-    namespace = "com.itlab.ai.image.openvino"
+    namespace = "com.openvino.notes.ai.image.openvino"
     compileSdk { version = release(37) }
     defaultConfig {
         minSdk = 33

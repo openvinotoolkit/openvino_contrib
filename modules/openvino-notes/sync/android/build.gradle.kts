@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "com.itlab.sync.android"
+    namespace = "com.openvino.notes.sync.android"
     compileSdk { version = release(37) }
     defaultConfig { minSdk = 33 }
     testOptions { unitTests.isIncludeAndroidResources = true }
