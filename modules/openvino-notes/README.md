@@ -34,5 +34,7 @@ The script requires JDK 21 and `ANDROID_SDK_ROOT` or `ANDROID_HOME`. It uses the
 - Keep Room, WorkManager, Drive, OpenVINO, and DI lookups out of `:view`.
 - Define all Koin bindings and ViewModel factories in `:app` only.
 - Add focused tests beside implementations and reusable fakes to API `testFixtures`.
+- Keep scheduled sync account-scoped; never infer a Worker's account from current UI session state.
+- Access attachment bytes only through `AttachmentContentPort`; do not expose file paths or raw media in View APIs.
 
 Sync is deliberately `Blocked(NotConfigured)` until a remote-first, revision-aware engine is implemented. See [Architecture](docs/ARCHITECTURE.md) and [Implementation Report](docs/IMPLEMENTATION_REPORT.md).

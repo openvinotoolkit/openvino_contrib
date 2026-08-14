@@ -15,11 +15,13 @@ The module does not include Google credentials, a Drive HTTP client, OpenVINO An
 
 - Gradle validates an allowed-edge subset, rejects Koin outside `:app`, and generates the actual module graph.
 - Neutral `AccountKey` replaces Identity-owned account IDs in Notes, Cloud, and Sync persistence contracts.
-- Notes supports complete product fields, lossless patch updates, Room round-trips, outbox transactions, revisions, conflicts, malformed changes, and tombstones.
+- Notes supports complete product fields plus Folder lifecycle/move semantics, Room round-trips, note/folder outbox transactions, revisions, conflicts, malformed changes, and tombstones.
+- Room owns account-scoped attachment files and cleanup; Assistant reads image input through `AttachmentContentPort`, keeping raw binary out of its public API.
+- Cloud exposes explicit initial listing/cursor bootstrap and a generic resumable upload/streamed download boundary.
 - AI APIs expose summary, text tags, rewrite, and structured image tags. Prompts, normalization, retry, and cancellation handling stay in the text OpenVINO adapter.
-- Identity launches one-shot effects through `MainActivity` and an activity-scoped Google controller with typed cancellation/result mapping.
-- Unsafe upload-first sync was removed. The production service is honestly disabled; consumer state and internal checkpoints are separate.
-- UI and UI state/action boundaries are organized as vertical capability slices without Koin imports.
+- Identity launches one-shot effects through `MainActivity` and an activity-scoped Google controller with typed cancellation/result mapping. Startup initialization and access-token invalidation are explicit contracts.
+- Unsafe upload-first sync was removed. The production service is honestly disabled; consumer state and neutral checkpoint infrastructure are separate. Work is account-scoped from scheduler name/tag through Worker input and executor invocation.
+- UI and UI state/action boundaries, including folders and neutral identity loading, are organized as vertical capability slices without Koin imports.
 - A relocatable repository script and dedicated JDK 21 / Android API 37 workflow run the architecture, unit, Android unit, and APK gates.
 
 ## Verification
@@ -34,4 +36,4 @@ The command completed successfully, including APK assembly. CI verification is i
 
 ## Follow-up Work
 
-Separate PRs should implement approved Google Activity Result integration, token refresh and Drive Changes transport, a remote-first sync engine using the frozen revision/tombstone/reset contracts, production OpenVINO runtime/model loading, Room migrations after initial schema v1, editor/navigation UX, and target-device inference validation.
+Separate PRs should implement approved Google Activity Result integration, token refresh and Drive transport, a remote-first sync engine using the frozen revision/tombstone/reset contracts, production OpenVINO runtime/model loading, optional Room normalization before post-v1 migrations, structured multimodal editor/navigation UX, and target-device inference validation. Text formatting remains deferred; image dimensions remain derived media metadata.
