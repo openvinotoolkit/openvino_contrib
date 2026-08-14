@@ -18,8 +18,17 @@ data class RemoteObject(
     val modifiedAt: Instant,
     val bytes: ByteArray,
 ) {
-    override fun equals(other: Any?): Boolean = other is RemoteObject && id == other.id && bytes.contentEquals(other.bytes)
-    override fun hashCode(): Int = 31 * id.hashCode() + bytes.contentHashCode()
+    override fun equals(other: Any?): Boolean = other is RemoteObject &&
+        id == other.id && name == other.name && mediaType == other.mediaType &&
+        modifiedAt == other.modifiedAt && bytes.contentEquals(other.bytes)
+
+    override fun hashCode(): Int {
+        var result = id.hashCode()
+        result = 31 * result + name.hashCode()
+        result = 31 * result + mediaType.hashCode()
+        result = 31 * result + modifiedAt.hashCode()
+        return 31 * result + bytes.contentHashCode()
+    }
 }
 
 data class RemoteObjectMetadata(
@@ -82,20 +91,35 @@ data class UploadDescriptor(
     val name: String,
     val mediaType: String,
     val sizeBytes: Long,
-)
+) {
+    init {
+        require(name.isNotBlank()) { "Upload name must not be blank" }
+        require(mediaType.isNotBlank()) { "Upload media type must not be blank" }
+        require(sizeBytes >= 0) { "Upload size must not be negative" }
+    }
+}
 
 data class UploadSession(
     val id: TransferSessionId,
     val objectId: RemoteObjectId,
     val nextOffset: Long,
     val expiresAt: Instant? = null,
-)
+) {
+    init { require(nextOffset >= 0) { "Upload offset must not be negative" } }
+}
 
 class UploadChunk(val offset: Long, val bytes: ByteArray, val final: Boolean) {
+    init { require(offset >= 0) { "Upload chunk offset must not be negative" } }
+
     override fun equals(other: Any?): Boolean = other is UploadChunk &&
         offset == other.offset && final == other.final && bytes.contentEquals(other.bytes)
 
     override fun hashCode(): Int = 31 * (31 * offset.hashCode() + bytes.contentHashCode()) + final.hashCode()
+}
+
+sealed interface UploadChunkOutcome {
+    data class InProgress(val session: UploadSession) : UploadChunkOutcome
+    data class Completed(val metadata: RemoteObjectMetadata) : UploadChunkOutcome
 }
 
 fun interface RemoteByteSink {
@@ -115,7 +139,7 @@ interface ResumableTransferClient {
         accountKey: AccountKey,
         sessionId: TransferSessionId,
         chunk: UploadChunk,
-    ): RemoteOutcome<UploadSession>
+    ): RemoteOutcome<UploadChunkOutcome>
 
     suspend fun downloadStream(
         accountKey: AccountKey,

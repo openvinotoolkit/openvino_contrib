@@ -9,9 +9,9 @@ import androidx.work.Data
 import androidx.work.ListenableWorker
 import androidx.work.testing.TestListenableWorkerBuilder
 import com.openvino.notes.kernel.AccountKey
-import com.openvino.notes.sync.api.SyncExecutor
 import com.openvino.notes.sync.api.SyncOutcome
 import com.openvino.notes.sync.api.SyncReason
+import com.openvino.notes.sync.api.port.SyncExecutor
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals

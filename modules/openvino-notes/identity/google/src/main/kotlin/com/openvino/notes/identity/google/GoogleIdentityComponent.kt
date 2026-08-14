@@ -5,12 +5,12 @@ package com.openvino.notes.identity.google
 
 import android.app.Activity
 import com.openvino.notes.identity.api.AccessTokenOutcome
-import com.openvino.notes.identity.api.AccessTokenProvider
 import com.openvino.notes.identity.api.AuthenticationState
 import com.openvino.notes.identity.api.DriveAuthorizationState
 import com.openvino.notes.identity.api.IdentityOutcome
 import com.openvino.notes.identity.api.IdentityService
 import com.openvino.notes.identity.api.UserSession
+import com.openvino.notes.identity.api.port.AccessTokenProvider
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 

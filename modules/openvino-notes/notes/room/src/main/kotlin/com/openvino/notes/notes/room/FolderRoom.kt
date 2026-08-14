@@ -13,12 +13,12 @@ import com.openvino.notes.kernel.AccountKey
 import com.openvino.notes.notes.api.Folder
 import com.openvino.notes.notes.api.FolderId
 import com.openvino.notes.notes.api.FolderRemoteApplyResult
-import com.openvino.notes.notes.api.FolderRepository
-import com.openvino.notes.notes.api.FolderSyncPort
 import com.openvino.notes.notes.api.LocalChangeKind
 import com.openvino.notes.notes.api.LocalFolderChange
 import com.openvino.notes.notes.api.RemoteFolderChange
 import com.openvino.notes.notes.api.RemoteRevision
+import com.openvino.notes.notes.api.port.FolderRepository
+import com.openvino.notes.notes.api.port.FolderSyncPort
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow

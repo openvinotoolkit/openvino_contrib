@@ -4,6 +4,14 @@
 package com.openvino.notes.notes.api
 
 import com.openvino.notes.kernel.AccountKey
+import com.openvino.notes.notes.api.port.AttachmentContentPort
+import com.openvino.notes.notes.api.port.BinarySource
+import com.openvino.notes.notes.api.port.FolderRepository
+import com.openvino.notes.notes.api.port.FolderSyncPort
+import com.openvino.notes.notes.api.port.NotesRepository
+import com.openvino.notes.notes.api.port.NotesSyncPort
+import com.openvino.notes.notes.api.port.binarySourceOf
+import com.openvino.notes.notes.api.port.readAll
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
@@ -81,10 +89,11 @@ class FakeFolderSyncPort : FolderSyncPort {
 class FakeAttachmentContentPort : AttachmentContentPort {
     private val content = mutableMapOf<Pair<AccountKey, AttachmentId>, ByteArray>()
     override suspend fun put(accountKey: AccountKey, attachment: AttachmentMetadata, source: BinarySource) {
-        content[accountKey to attachment.id] = source.read().copyOf()
+        require(source.sizeBytes == attachment.sizeBytes)
+        content[accountKey to attachment.id] = source.readAll(attachment.sizeBytes)
     }
     override suspend fun open(accountKey: AccountKey, attachmentId: AttachmentId): BinarySource? =
-        content[accountKey to attachmentId]?.copyOf()?.let { bytes -> BinarySource { bytes.copyOf() } }
+        content[accountKey to attachmentId]?.let(::binarySourceOf)
     override suspend fun delete(accountKey: AccountKey, attachmentId: AttachmentId): Boolean =
         content.remove(accountKey to attachmentId) != null
 }

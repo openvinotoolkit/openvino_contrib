@@ -19,7 +19,6 @@ import com.openvino.notes.assistant.api.AssistantRewriteStyle
 import com.openvino.notes.assistant.api.AssistantSuggestion
 import com.openvino.notes.assistant.api.NoteAssistant
 import com.openvino.notes.assistant.api.SuggestionOutcome
-import com.openvino.notes.notes.api.AttachmentContentPort
 import com.openvino.notes.notes.api.AttachmentId
 import com.openvino.notes.notes.api.ContentItem
 import com.openvino.notes.notes.api.ContentItemId
@@ -30,6 +29,8 @@ import com.openvino.notes.notes.api.NoteMutationOutcome
 import com.openvino.notes.notes.api.NoteTag
 import com.openvino.notes.notes.api.NotesService
 import com.openvino.notes.notes.api.UpdateNoteCommand
+import com.openvino.notes.notes.api.port.AttachmentContentPort
+import com.openvino.notes.notes.api.port.readAll
 import kotlinx.coroutines.CancellationException
 
 class DefaultNoteAssistant(
@@ -80,15 +81,18 @@ class DefaultNoteAssistant(
             ?: return@withNote SuggestionOutcome.InvalidTarget("attachment does not belong to note")
         val source = attachmentContent.open(note.accountKey, attachmentId)
             ?: return@withNote SuggestionOutcome.InvalidTarget("attachment content is unavailable")
+        if (source.sizeBytes != attachment.sizeBytes) {
+            return@withNote SuggestionOutcome.Failed("assistant.attachment_size_mismatch")
+        }
+        if (source.sizeBytes > MAX_IMAGE_BYTES) {
+            return@withNote SuggestionOutcome.Failed("assistant.attachment_too_large")
+        }
         val bytes = try {
-            source.read()
+            source.readAll(MAX_IMAGE_BYTES)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
             return@withNote SuggestionOutcome.Failed("assistant.attachment_read_failed")
-        }
-        if (bytes.size.toLong() != attachment.sizeBytes) {
-            return@withNote SuggestionOutcome.Failed("assistant.attachment_size_mismatch")
         }
         when (val outcome = images.tag(ImageInput.Bytes(bytes, attachment.mediaType))) {
             is ImageOutcome.Tagged -> ready(
@@ -151,6 +155,8 @@ class DefaultNoteAssistant(
 
     private fun ready(suggestion: AssistantSuggestion) = SuggestionOutcome.Ready(suggestion)
 }
+
+private const val MAX_IMAGE_BYTES = 64L * 1024L * 1024L
 
 data class AssistantCoreComponent(val assistant: NoteAssistant) {
     companion object {

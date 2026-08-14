@@ -3,8 +3,6 @@
 
 package com.openvino.notes.notes.core
 
-import com.openvino.notes.identity.api.FakeIdentityService
-import com.openvino.notes.identity.api.UserSession
 import com.openvino.notes.kernel.AccountKey
 import com.openvino.notes.notes.api.ContentItem
 import com.openvino.notes.notes.api.ContentItemId
@@ -26,19 +24,17 @@ import org.junit.Test
 class DefaultFolderServiceTest {
     @Test fun `folder lifecycle validates moves and rejects deleting a non-empty folder`() = runTest {
         val accountKey = AccountKey("account")
-        val identity = FakeIdentityService().apply {
-            setSession(UserSession(accountKey, "User", "user@example.test"))
-        }
+        val accounts = FakeAccountScope(accountKey)
         val notesRepository = FakeNotesRepository()
         val folderRepository = FakeFolderRepository()
         val notes = DefaultNotesService(
-            identity,
+            accounts,
             notesRepository,
             folderRepository,
             { Instant.EPOCH },
         ) { NoteId("note") }
         val folders = DefaultFolderService(
-            identity,
+            accounts,
             folderRepository,
             notesRepository,
             notes,
@@ -64,19 +60,17 @@ class DefaultFolderServiceTest {
 
     @Test fun `move rejects an unknown folder without changing the note`() = runTest {
         val accountKey = AccountKey("account")
-        val identity = FakeIdentityService().apply {
-            setSession(UserSession(accountKey, "User", "user@example.test"))
-        }
+        val accounts = FakeAccountScope(accountKey)
         val notesRepository = FakeNotesRepository()
         val folderRepository = FakeFolderRepository()
         val notes = DefaultNotesService(
-            identity,
+            accounts,
             notesRepository,
             folderRepository,
             { Instant.EPOCH },
         ) { NoteId("note") }
         val folders = DefaultFolderService(
-            identity,
+            accounts,
             folderRepository,
             notesRepository,
             notes,

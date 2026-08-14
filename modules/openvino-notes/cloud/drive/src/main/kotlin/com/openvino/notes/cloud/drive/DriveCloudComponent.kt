@@ -17,11 +17,12 @@ import com.openvino.notes.cloud.api.RemoteByteSink
 import com.openvino.notes.cloud.api.ResumableTransferClient
 import com.openvino.notes.cloud.api.TransferSessionId
 import com.openvino.notes.cloud.api.UploadChunk
+import com.openvino.notes.cloud.api.UploadChunkOutcome
 import com.openvino.notes.cloud.api.UploadDescriptor
 import com.openvino.notes.cloud.api.UploadSession
 import com.openvino.notes.identity.api.AccessTokenOutcome
-import com.openvino.notes.identity.api.AccessTokenProvider
 import com.openvino.notes.kernel.AccountKey
+import com.openvino.notes.identity.api.port.AccessTokenProvider
 
 internal class DriveRemoteStore(private val tokens: AccessTokenProvider) :
     RemoteObjectStore,
@@ -54,7 +55,7 @@ internal class DriveRemoteStore(private val tokens: AccessTokenProvider) :
         accountKey: AccountKey,
         sessionId: TransferSessionId,
         chunk: UploadChunk,
-    ): RemoteOutcome<UploadSession> = unavailable()
+    ): RemoteOutcome<UploadChunkOutcome> = unavailable()
     override suspend fun downloadStream(
         accountKey: AccountKey,
         id: RemoteObjectId,

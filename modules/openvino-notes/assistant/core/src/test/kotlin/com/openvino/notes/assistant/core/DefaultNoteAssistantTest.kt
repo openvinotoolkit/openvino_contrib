@@ -17,7 +17,6 @@ import com.openvino.notes.assistant.api.SuggestionOutcome
 import com.openvino.notes.kernel.AccountKey
 import com.openvino.notes.notes.api.AttachmentId
 import com.openvino.notes.notes.api.AttachmentMetadata
-import com.openvino.notes.notes.api.BinarySource
 import com.openvino.notes.notes.api.ContentItem
 import com.openvino.notes.notes.api.ContentItemId
 import com.openvino.notes.notes.api.FakeNotesService
@@ -25,9 +24,13 @@ import com.openvino.notes.notes.api.FakeAttachmentContentPort
 import com.openvino.notes.notes.api.Note
 import com.openvino.notes.notes.api.NoteId
 import com.openvino.notes.notes.api.NoteTag
+import com.openvino.notes.notes.api.port.AttachmentContentPort
+import com.openvino.notes.notes.api.port.BinarySource
+import com.openvino.notes.notes.api.port.binarySourceOf
 import java.time.Instant
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -108,7 +111,7 @@ class DefaultNoteAssistantTest {
             attachments = listOf(attachment),
         )
         val content = FakeAttachmentContentPort().apply {
-            put(target.accountKey, attachment, BinarySource { bytes })
+            put(target.accountKey, attachment, binarySourceOf(bytes))
         }
         val images = FakeImageTagger().apply {
             outcome = ImageOutcome.Tagged(listOf(ImageTag(" Diagram ", 0.9f)))
@@ -121,6 +124,56 @@ class DefaultNoteAssistantTest {
             AssistantSuggestion.ImageTags(noteId, attachmentId, setOf(NoteTag("diagram"))),
             outcome.suggestion,
         )
+    }
+
+    @Test fun `image inference rejects oversized content before allocating or reading it`() = runTest {
+        val noteId = NoteId("note")
+        val attachmentId = AttachmentId("large-image")
+        val contentItemId = ContentItemId("image-item")
+        val oversizedBytes = 64L * 1024L * 1024L + 1
+        val attachment = AttachmentMetadata(
+            attachmentId,
+            noteId,
+            contentItemId,
+            "large.png",
+            "image/png",
+            oversizedBytes,
+        )
+        val target = note().copy(
+            contentItems = listOf(ContentItem.Image(contentItemId, attachmentId)),
+            attachments = listOf(attachment),
+        )
+        var readCalled = false
+        val content = object : AttachmentContentPort {
+            override suspend fun put(
+                accountKey: AccountKey,
+                attachment: AttachmentMetadata,
+                source: BinarySource,
+            ) = error("not used")
+
+            override suspend fun open(accountKey: AccountKey, attachmentId: AttachmentId): BinarySource =
+                object : BinarySource {
+                    override val sizeBytes = oversizedBytes
+                    override suspend fun read(offset: Long, maxBytes: Int): ByteArray {
+                        readCalled = true
+                        return byteArrayOf()
+                    }
+                }
+
+            override suspend fun delete(accountKey: AccountKey, attachmentId: AttachmentId): Boolean = false
+        }
+        val assistant = DefaultNoteAssistant(
+            FakeNotesService(listOf(target)),
+            content,
+            FakeTextAssistant(),
+            FakeImageTagger(),
+        )
+
+        assertEquals(
+            SuggestionOutcome.Failed("assistant.attachment_too_large"),
+            assistant.suggestImageTags(noteId, attachmentId),
+        )
+        assertFalse(readCalled)
     }
 
     private fun note() = Note(

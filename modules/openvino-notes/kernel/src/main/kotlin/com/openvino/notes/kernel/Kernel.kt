@@ -6,12 +6,19 @@ package com.openvino.notes.kernel
 import java.time.Instant
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 
 @JvmInline
 value class AccountKey(val value: String) {
     init {
         require(value.isNotBlank()) { "AccountKey must not be blank" }
     }
+}
+
+/** Neutral active-account boundary shared by capabilities without depending on Identity. */
+interface AccountScope {
+    val activeAccountKey: Flow<AccountKey?>
+    fun currentAccountKey(): AccountKey?
 }
 
 fun interface AppClock {

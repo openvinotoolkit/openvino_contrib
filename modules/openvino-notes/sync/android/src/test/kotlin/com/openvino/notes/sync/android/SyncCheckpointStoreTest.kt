@@ -7,7 +7,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.openvino.notes.kernel.AccountKey
-import com.openvino.notes.sync.api.SyncCheckpoint
+import com.openvino.notes.sync.api.port.SyncCheckpoint
 import java.time.Instant
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals

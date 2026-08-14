@@ -23,12 +23,12 @@ import androidx.work.WorkManager
 import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
 import com.openvino.notes.kernel.AccountKey
-import com.openvino.notes.sync.api.SyncExecutor
-import com.openvino.notes.sync.api.SyncCheckpoint
-import com.openvino.notes.sync.api.SyncCheckpointPort
 import com.openvino.notes.sync.api.SyncOutcome
 import com.openvino.notes.sync.api.SyncReason
-import com.openvino.notes.sync.api.SyncScheduler
+import com.openvino.notes.sync.api.port.SyncCheckpoint
+import com.openvino.notes.sync.api.port.SyncCheckpointPort
+import com.openvino.notes.sync.api.port.SyncExecutor
+import com.openvino.notes.sync.api.port.SyncScheduler
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.concurrent.TimeUnit

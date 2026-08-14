@@ -7,9 +7,9 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.openvino.notes.kernel.AccountKey
+import com.openvino.notes.kernel.AppDispatchers
 import com.openvino.notes.notes.api.AttachmentId
 import com.openvino.notes.notes.api.AttachmentMetadata
-import com.openvino.notes.notes.api.BinarySource
 import com.openvino.notes.notes.api.ContentItem
 import com.openvino.notes.notes.api.ContentItemId
 import com.openvino.notes.notes.api.Note
@@ -18,7 +18,11 @@ import com.openvino.notes.notes.api.NoteTag
 import com.openvino.notes.notes.api.RemoteApplyResult
 import com.openvino.notes.notes.api.RemoteNoteChange
 import com.openvino.notes.notes.api.RemoteRevision
+import com.openvino.notes.notes.api.port.BinarySource
+import com.openvino.notes.notes.api.port.binarySourceOf
+import com.openvino.notes.notes.api.port.readAll
 import java.time.Instant
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertArrayEquals
@@ -30,13 +34,15 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class RoomNotesRepositoryTest {
+    private val testDispatchers = AppDispatchers(Dispatchers.Unconfined, Dispatchers.Unconfined)
+
     @Test fun `save preserves the complete note and writes an outbox snapshot`() = runTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val database = Room.inMemoryDatabaseBuilder(context, NotesDatabase::class.java).allowMainThreadQueries().build()
         try {
             val repository = RoomNotesRepository(
                 database.notesDao(),
-                FileAttachmentContentStore(context.cacheDir.resolve("notes-room-save-test")),
+                FileAttachmentContentStore(context.cacheDir.resolve("notes-room-save-test"), testDispatchers),
             )
             val accountKey = AccountKey("account")
             val note = Note(
@@ -66,7 +72,7 @@ class RoomNotesRepositoryTest {
         try {
             val repository = RoomNotesRepository(
                 database.notesDao(),
-                FileAttachmentContentStore(context.cacheDir.resolve("notes-room-remote-test")),
+                FileAttachmentContentStore(context.cacheDir.resolve("notes-room-remote-test"), testDispatchers),
             )
             val accountKey = AccountKey("account")
             val note = Note(
@@ -105,7 +111,7 @@ class RoomNotesRepositoryTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val database = Room.inMemoryDatabaseBuilder(context, NotesDatabase::class.java).allowMainThreadQueries().build()
         val root = context.cacheDir.resolve("notes-room-attachment-test").apply { deleteRecursively() }
-        val content = FileAttachmentContentStore(root)
+        val content = FileAttachmentContentStore(root, testDispatchers)
         try {
             val repository = RoomNotesRepository(database.notesDao(), content)
             val accountKey = AccountKey("account")
@@ -115,8 +121,8 @@ class RoomNotesRepositoryTest {
             val secondId = AttachmentId("second")
             val first = AttachmentMetadata(firstId, noteId, itemId, "first.png", "image/png", 3)
             val second = AttachmentMetadata(secondId, noteId, itemId, "second.png", "image/png", 2)
-            content.put(accountKey, first, BinarySource { byteArrayOf(1, 2, 3) })
-            content.put(accountKey, second, BinarySource { byteArrayOf(4, 5) })
+            content.put(accountKey, first, binarySourceOf(byteArrayOf(1, 2, 3)))
+            content.put(accountKey, second, binarySourceOf(byteArrayOf(4, 5)))
             val note = Note(
                 id = noteId,
                 accountKey = accountKey,
@@ -128,7 +134,10 @@ class RoomNotesRepositoryTest {
             )
 
             repository.save(note)
-            assertArrayEquals(byteArrayOf(1, 2, 3), content.open(accountKey, firstId)?.read())
+            val opened = requireNotNull(content.open(accountKey, firstId))
+            assertEquals(3L, opened.sizeBytes)
+            assertArrayEquals(byteArrayOf(2), opened.read(offset = 1, maxBytes = 1))
+            assertArrayEquals(byteArrayOf(1, 2, 3), opened.readAll(maxTotalBytes = 3))
 
             repository.save(note.copy(attachments = listOf(second)))
             assertEquals(null, content.open(accountKey, firstId))
@@ -136,6 +145,44 @@ class RoomNotesRepositoryTest {
             assertEquals(null, content.open(accountKey, secondId))
         } finally {
             database.close()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun `attachment writes consume bounded chunks instead of materializing the source`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val root = context.cacheDir.resolve("notes-room-chunk-test").apply { deleteRecursively() }
+        val content = FileAttachmentContentStore(root, testDispatchers)
+        val accountKey = AccountKey("account")
+        val attachment = AttachmentMetadata(
+            AttachmentId("large"),
+            NoteId("note"),
+            ContentItemId("file"),
+            "large.bin",
+            "application/octet-stream",
+            150_000,
+        )
+        var largestRequest = 0
+        val source = object : BinarySource {
+            override val sizeBytes = attachment.sizeBytes
+
+            override suspend fun read(offset: Long, maxBytes: Int): ByteArray {
+                largestRequest = maxOf(largestRequest, maxBytes)
+                val count = minOf(maxBytes.toLong(), sizeBytes - offset).coerceAtLeast(0).toInt()
+                return ByteArray(count) { index -> ((offset + index) % 251).toByte() }
+            }
+        }
+        try {
+            content.put(accountKey, attachment, source)
+
+            assertEquals(64 * 1024, largestRequest)
+            val opened = requireNotNull(content.open(accountKey, attachment.id))
+            assertEquals(attachment.sizeBytes, opened.sizeBytes)
+            assertArrayEquals(
+                ByteArray(32) { index -> ((70_000 + index) % 251).toByte() },
+                opened.read(offset = 70_000, maxBytes = 32),
+            )
+        } finally {
             root.deleteRecursively()
         }
     }

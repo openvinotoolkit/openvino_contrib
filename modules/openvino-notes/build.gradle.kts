@@ -55,7 +55,7 @@ val allowedEdges = setOf(
     ":cloud:api->:kernel",
     ":sync:api->:kernel",
     ":assistant:api->:notes:api",
-    ":notes:core->:notes:api", ":notes:core->:identity:api", ":notes:core->:kernel",
+    ":notes:core->:notes:api", ":notes:core->:kernel",
     ":notes:room->:notes:api", ":notes:room->:kernel",
     ":identity:google->:identity:api", ":identity:google->:kernel",
     ":settings:datastore->:settings:api", ":settings:datastore->:kernel",
@@ -68,13 +68,13 @@ val allowedEdges = setOf(
     ":ai:text-openvino->:ai:text-api", ":ai:text-openvino->:kernel",
     ":ai:image-openvino->:ai:image-api", ":ai:image-openvino->:kernel",
     ":view->:notes:api", ":view->:identity:api", ":view->:sync:api",
-    ":view->:assistant:api", ":view->:settings:api", ":view->:kernel",
+    ":view->:assistant:api", ":view->:settings:api",
     ":app->:view", ":app->:notes:core", ":app->:notes:room",
-    ":app->:identity:google", ":app->:settings:datastore", ":app->:cloud:drive",
+    ":app->:identity:google", ":app->:settings:datastore",
     ":app->:sync:core", ":app->:sync:android", ":app->:assistant:core",
     ":app->:ai:text-openvino", ":app->:ai:image-openvino",
     ":app->:kernel", ":app->:settings:api", ":app->:identity:api", ":app->:notes:api",
-    ":app->:cloud:api", ":app->:sync:api", ":app->:assistant:api",
+    ":app->:sync:api", ":app->:assistant:api",
     ":app->:ai:text-api", ":app->:ai:image-api",
 )
 
@@ -91,6 +91,7 @@ fun productionEdges(): Set<String> =
 
 val graphMarkdown = layout.buildDirectory.file("reports/architecture/module-graph.md")
 val graphJson = layout.buildDirectory.file("reports/architecture/module-graph.json")
+val infrastructurePortPattern = Regex("""\bcom\.openvino\.notes\.[A-Za-z0-9_.]+\.api\.port\.""")
 
 val generateModuleGraph by tasks.registering {
     group = "documentation"
@@ -161,6 +162,9 @@ tasks.register("checkArchitecture") {
             val text = source.readText()
             val forbidden = listOf("androidx.room", "androidx.work", "org.intel.openvino", ".notes.room", ".cloud.drive")
             check(forbidden.none(text::contains)) { "Implementation import in :view: ${source.relativeTo(rootDir)}" }
+            check(!infrastructurePortPattern.containsMatchIn(text)) {
+                "Infrastructure API port in :view: ${source.relativeTo(rootDir)}"
+            }
         }
 
         architectureProjects().filter { it.path != ":app" }.forEach { module ->
@@ -216,6 +220,15 @@ tasks.register("checkArchitectureRules") {
         check((permittedSubset - allowedEdges).isEmpty()) { "An allowed optional edge subset must pass" }
         val syntheticForbidden = setOf(":view->:notes:room")
         check((syntheticForbidden - allowedEdges) == syntheticForbidden) { "A forbidden edge must be rejected" }
+        check(infrastructurePortPattern.containsMatchIn("import com.openvino.notes.notes.api.port.NotesRepository")) {
+            "Infrastructure port imports must be recognized"
+        }
+        check(infrastructurePortPattern.containsMatchIn("com.openvino.notes.sync.api.port.SyncCheckpointPort")) {
+            "Fully qualified infrastructure port references must be recognized"
+        }
+        check(!infrastructurePortPattern.containsMatchIn("import com.openvino.notes.notes.api.NotesService")) {
+            "Consumer service imports must remain allowed"
+        }
     }
 }
 

@@ -102,14 +102,6 @@ interface NotesService {
     suspend fun delete(id: NoteId): NoteMutationOutcome
 }
 
-interface NotesRepository {
-    fun observe(accountKey: AccountKey): Flow<List<Note>>
-    suspend fun find(accountKey: AccountKey, id: NoteId): Note?
-    suspend fun countInFolder(accountKey: AccountKey, folderId: FolderId): Int
-    suspend fun save(note: Note)
-    suspend fun delete(accountKey: AccountKey, id: NoteId): Boolean
-}
-
 sealed interface FolderMutationOutcome {
     data class Saved(val folder: Folder) : FolderMutationOutcome
     data object Deleted : FolderMutationOutcome
@@ -134,14 +126,6 @@ interface FolderService {
     suspend fun renameFolder(id: FolderId, name: String): FolderMutationOutcome
     suspend fun deleteFolder(id: FolderId): FolderMutationOutcome
     suspend fun moveNote(noteId: NoteId, folderId: FolderId?): MoveNoteOutcome
-}
-
-interface FolderRepository {
-    fun observe(accountKey: AccountKey): Flow<List<Folder>>
-    suspend fun find(accountKey: AccountKey, id: FolderId): Folder?
-    suspend fun findByName(accountKey: AccountKey, name: String): Folder?
-    suspend fun save(folder: Folder)
-    suspend fun delete(accountKey: AccountKey, id: FolderId): Boolean
 }
 
 enum class LocalChangeKind { UPSERT, DELETE }
@@ -187,12 +171,6 @@ sealed interface RemoteApplyResult {
     data class RejectedMalformed(override val noteId: NoteId?, val diagnosticCode: String) : RemoteApplyResult
 }
 
-interface NotesSyncPort {
-    suspend fun pendingChanges(accountKey: AccountKey, limit: Int = 100): List<LocalNoteChange>
-    suspend fun acknowledge(accountKey: AccountKey, changeIds: Set<String>)
-    suspend fun applyRemote(accountKey: AccountKey, changes: List<RemoteNoteChange>): List<RemoteApplyResult>
-}
-
 data class LocalFolderChange(
     val changeId: String,
     val accountKey: AccountKey,
@@ -235,23 +213,4 @@ sealed interface FolderRemoteApplyResult {
     ) : FolderRemoteApplyResult
     data class TombstoneApplied(override val folderId: FolderId, val revision: RemoteRevision) : FolderRemoteApplyResult
     data class RejectedMalformed(override val folderId: FolderId?, val diagnosticCode: String) : FolderRemoteApplyResult
-}
-
-interface FolderSyncPort {
-    suspend fun pendingFolderChanges(accountKey: AccountKey, limit: Int = 100): List<LocalFolderChange>
-    suspend fun acknowledgeFolderChanges(accountKey: AccountKey, changeIds: Set<String>)
-    suspend fun applyRemoteFolders(
-        accountKey: AccountKey,
-        changes: List<RemoteFolderChange>,
-    ): List<FolderRemoteApplyResult>
-}
-
-fun interface BinarySource {
-    suspend fun read(): ByteArray
-}
-
-interface AttachmentContentPort {
-    suspend fun put(accountKey: AccountKey, attachment: AttachmentMetadata, source: BinarySource)
-    suspend fun open(accountKey: AccountKey, attachmentId: AttachmentId): BinarySource?
-    suspend fun delete(accountKey: AccountKey, attachmentId: AttachmentId): Boolean
 }

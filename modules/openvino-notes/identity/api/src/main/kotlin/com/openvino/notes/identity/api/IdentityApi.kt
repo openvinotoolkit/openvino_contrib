@@ -4,7 +4,10 @@
 package com.openvino.notes.identity.api
 
 import com.openvino.notes.kernel.AccountKey
+import com.openvino.notes.kernel.AccountScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 
 data class UserSession(
     val accountKey: AccountKey,
@@ -34,14 +37,13 @@ sealed interface AccessTokenOutcome {
     data class Failed(val code: String) : AccessTokenOutcome
 }
 
-interface SessionReader {
+interface SessionReader : AccountScope {
     val authenticationState: StateFlow<AuthenticationState>
-    fun currentAccountKey(): AccountKey?
-}
-
-interface AccessTokenProvider {
-    suspend fun accessToken(): AccessTokenOutcome
-    suspend fun invalidateAccessToken()
+    override val activeAccountKey: Flow<AccountKey?>
+        get() = authenticationState.map { state ->
+            (state as? AuthenticationState.SignedIn)?.session?.accountKey
+        }
+    override fun currentAccountKey(): AccountKey?
 }
 
 interface IdentityService : SessionReader {

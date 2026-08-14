@@ -3,8 +3,6 @@
 
 package com.openvino.notes.notes.core
 
-import com.openvino.notes.identity.api.FakeIdentityService
-import com.openvino.notes.identity.api.UserSession
 import com.openvino.notes.kernel.AccountKey
 import com.openvino.notes.notes.api.ContentItem
 import com.openvino.notes.notes.api.ContentItemId
@@ -26,7 +24,7 @@ class DefaultNotesServiceTest {
 
     @Test fun `create requires a session`() = runTest {
         val service = DefaultNotesService(
-            FakeIdentityService(),
+            FakeAccountScope(),
             FakeNotesRepository(),
             FakeFolderRepository(),
             { Instant.EPOCH },
@@ -36,12 +34,10 @@ class DefaultNotesServiceTest {
 
     @Test fun `patch preserves fields that are not supplied`() = runTest {
         val accountKey = AccountKey("account")
-        val identity = FakeIdentityService().apply {
-            setSession(UserSession(accountKey, "User", "u@example.test"))
-        }
+        val accounts = FakeAccountScope(accountKey)
         val repository = FakeNotesRepository()
         var now = Instant.EPOCH
-        val service = DefaultNotesService(identity, repository, FakeFolderRepository(), { now }) { NoteId("note-1") }
+        val service = DefaultNotesService(accounts, repository, FakeFolderRepository(), { now }) { NoteId("note-1") }
         service.create(NoteDraft("  Title  ", content, isFavorite = true))
 
         now = Instant.ofEpochSecond(1)

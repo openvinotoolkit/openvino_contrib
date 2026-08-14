@@ -3,7 +3,6 @@
 
 package com.openvino.notes.sync.api
 
-import com.openvino.notes.kernel.AccountKey
 import java.time.Instant
 import kotlinx.coroutines.flow.StateFlow
 
@@ -34,28 +33,4 @@ sealed interface SyncOutcome {
 interface SyncService {
     val state: StateFlow<SyncState>
     suspend fun sync(reason: SyncReason): SyncOutcome
-}
-
-fun interface SyncExecutor {
-    suspend fun execute(accountKey: AccountKey, reason: SyncReason): SyncOutcome
-}
-
-interface SyncScheduler {
-    fun schedulePeriodic(accountKey: AccountKey)
-    fun request(accountKey: AccountKey, reason: SyncReason)
-    fun cancel(accountKey: AccountKey)
-}
-
-/** Internal replication state. It is intentionally separate from consumer-facing [SyncState]. */
-data class SyncCheckpoint(
-    val remoteCursor: String? = null,
-    val remoteRevisions: Map<String, String> = emptyMap(),
-    val lastCompletedAt: Instant? = null,
-    val resetRequired: Boolean = false,
-)
-
-interface SyncCheckpointPort {
-    suspend fun read(accountKey: AccountKey): SyncCheckpoint
-    suspend fun write(accountKey: AccountKey, checkpoint: SyncCheckpoint)
-    suspend fun clear(accountKey: AccountKey)
 }

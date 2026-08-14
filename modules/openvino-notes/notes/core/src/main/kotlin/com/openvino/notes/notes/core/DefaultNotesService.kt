@@ -3,9 +3,8 @@
 
 package com.openvino.notes.notes.core
 
-import com.openvino.notes.identity.api.AuthenticationState
-import com.openvino.notes.identity.api.SessionReader
 import com.openvino.notes.kernel.AccountKey
+import com.openvino.notes.kernel.AccountScope
 import com.openvino.notes.kernel.AppClock
 import com.openvino.notes.notes.api.AttachmentMetadata
 import com.openvino.notes.notes.api.ContentItem
@@ -14,16 +13,16 @@ import com.openvino.notes.notes.api.Folder
 import com.openvino.notes.notes.api.FolderDraft
 import com.openvino.notes.notes.api.FolderId
 import com.openvino.notes.notes.api.FolderMutationOutcome
-import com.openvino.notes.notes.api.FolderRepository
 import com.openvino.notes.notes.api.FolderService
 import com.openvino.notes.notes.api.MoveNoteOutcome
 import com.openvino.notes.notes.api.Note
 import com.openvino.notes.notes.api.NoteDraft
 import com.openvino.notes.notes.api.NoteId
 import com.openvino.notes.notes.api.NoteMutationOutcome
-import com.openvino.notes.notes.api.NotesRepository
 import com.openvino.notes.notes.api.NotesService
 import com.openvino.notes.notes.api.UpdateNoteCommand
+import com.openvino.notes.notes.api.port.FolderRepository
+import com.openvino.notes.notes.api.port.NotesRepository
 import java.util.UUID
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -32,25 +31,21 @@ import kotlinx.coroutines.flow.flowOf
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DefaultNotesService(
-    private val sessions: SessionReader,
+    private val accounts: AccountScope,
     private val repository: NotesRepository,
     private val folders: FolderRepository,
     private val clock: AppClock,
     private val newId: () -> NoteId = { NoteId(UUID.randomUUID().toString()) },
 ) : NotesService {
-    override fun observeNotes(): Flow<List<Note>> = sessions.authenticationState.flatMapLatest { state ->
-        when (state) {
-            AuthenticationState.Initializing,
-            AuthenticationState.SignedOut -> flowOf(emptyList())
-            is AuthenticationState.SignedIn -> repository.observe(state.session.accountKey)
-        }
+    override fun observeNotes(): Flow<List<Note>> = accounts.activeAccountKey.flatMapLatest { accountKey ->
+        accountKey?.let(repository::observe) ?: flowOf(emptyList())
     }
 
     override suspend fun get(id: NoteId): Note? =
-        sessions.currentAccountKey()?.let { repository.find(it, id) }
+        accounts.currentAccountKey()?.let { repository.find(it, id) }
 
     override suspend fun create(draft: NoteDraft): NoteMutationOutcome {
-        val accountKey = sessions.currentAccountKey() ?: return NoteMutationOutcome.SignedOut
+        val accountKey = accounts.currentAccountKey() ?: return NoteMutationOutcome.SignedOut
         val noteId = newId()
         val now = clock.now()
         val note = Note(
@@ -73,7 +68,7 @@ class DefaultNotesService(
     }
 
     override suspend fun update(command: UpdateNoteCommand): NoteMutationOutcome {
-        val accountKey = sessions.currentAccountKey() ?: return NoteMutationOutcome.SignedOut
+        val accountKey = accounts.currentAccountKey() ?: return NoteMutationOutcome.SignedOut
         val existing = repository.find(accountKey, command.id) ?: return NoteMutationOutcome.NotFound
         val candidate = existing.copy(
             title = command.title.resolve(existing.title).trim(),
@@ -94,7 +89,7 @@ class DefaultNotesService(
     }
 
     override suspend fun delete(id: NoteId): NoteMutationOutcome {
-        val accountKey = sessions.currentAccountKey() ?: return NoteMutationOutcome.SignedOut
+        val accountKey = accounts.currentAccountKey() ?: return NoteMutationOutcome.SignedOut
         return if (repository.delete(accountKey, id)) NoteMutationOutcome.Deleted else NoteMutationOutcome.NotFound
     }
 
@@ -145,26 +140,22 @@ class DefaultNotesService(
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DefaultFolderService(
-    private val sessions: SessionReader,
+    private val accounts: AccountScope,
     private val folders: FolderRepository,
     private val notesRepository: NotesRepository,
     private val notesService: NotesService,
     private val clock: AppClock,
     private val newId: () -> FolderId = { FolderId(UUID.randomUUID().toString()) },
 ) : FolderService {
-    override fun observeFolders(): Flow<List<Folder>> = sessions.authenticationState.flatMapLatest { state ->
-        when (state) {
-            AuthenticationState.Initializing,
-            AuthenticationState.SignedOut -> flowOf(emptyList())
-            is AuthenticationState.SignedIn -> folders.observe(state.session.accountKey)
-        }
+    override fun observeFolders(): Flow<List<Folder>> = accounts.activeAccountKey.flatMapLatest { accountKey ->
+        accountKey?.let(folders::observe) ?: flowOf(emptyList())
     }
 
     override suspend fun getFolder(id: FolderId): Folder? =
-        sessions.currentAccountKey()?.let { folders.find(it, id) }
+        accounts.currentAccountKey()?.let { folders.find(it, id) }
 
     override suspend fun createFolder(draft: FolderDraft): FolderMutationOutcome {
-        val accountKey = sessions.currentAccountKey() ?: return FolderMutationOutcome.SignedOut
+        val accountKey = accounts.currentAccountKey() ?: return FolderMutationOutcome.SignedOut
         val name = draft.name.trim()
         validateName(name)?.let { return it }
         if (folders.findByName(accountKey, name) != null) return duplicateName()
@@ -175,7 +166,7 @@ class DefaultFolderService(
     }
 
     override suspend fun renameFolder(id: FolderId, name: String): FolderMutationOutcome {
-        val accountKey = sessions.currentAccountKey() ?: return FolderMutationOutcome.SignedOut
+        val accountKey = accounts.currentAccountKey() ?: return FolderMutationOutcome.SignedOut
         val existing = folders.find(accountKey, id) ?: return FolderMutationOutcome.NotFound
         val normalized = name.trim()
         validateName(normalized)?.let { return it }
@@ -188,7 +179,7 @@ class DefaultFolderService(
     }
 
     override suspend fun deleteFolder(id: FolderId): FolderMutationOutcome {
-        val accountKey = sessions.currentAccountKey() ?: return FolderMutationOutcome.SignedOut
+        val accountKey = accounts.currentAccountKey() ?: return FolderMutationOutcome.SignedOut
         if (folders.find(accountKey, id) == null) return FolderMutationOutcome.NotFound
         val noteCount = notesRepository.countInFolder(accountKey, id)
         if (noteCount > 0) return FolderMutationOutcome.NotEmpty(noteCount)
@@ -196,7 +187,7 @@ class DefaultFolderService(
     }
 
     override suspend fun moveNote(noteId: NoteId, folderId: FolderId?): MoveNoteOutcome {
-        val accountKey = sessions.currentAccountKey() ?: return MoveNoteOutcome.SignedOut
+        val accountKey = accounts.currentAccountKey() ?: return MoveNoteOutcome.SignedOut
         if (folderId != null && folders.find(accountKey, folderId) == null) return MoveNoteOutcome.FolderNotFound
         return when (val outcome = notesService.update(UpdateNoteCommand(noteId, folderId = FieldUpdate.Set(folderId)))) {
             is NoteMutationOutcome.Saved -> MoveNoteOutcome.Moved(outcome.note)
@@ -233,13 +224,13 @@ private fun <T> FieldUpdate<T>.resolve(current: T): T = when (this) {
 data class NotesCoreComponent(val notesService: NotesService, val folderService: FolderService) {
     companion object {
         fun create(
-            sessions: SessionReader,
+            accounts: AccountScope,
             notesRepository: NotesRepository,
             folderRepository: FolderRepository,
             clock: AppClock,
         ): NotesCoreComponent {
-            val notes = DefaultNotesService(sessions, notesRepository, folderRepository, clock)
-            val folders = DefaultFolderService(sessions, folderRepository, notesRepository, notes, clock)
+            val notes = DefaultNotesService(accounts, notesRepository, folderRepository, clock)
+            val folders = DefaultFolderService(accounts, folderRepository, notesRepository, notes, clock)
             return NotesCoreComponent(notes, folders)
         }
     }

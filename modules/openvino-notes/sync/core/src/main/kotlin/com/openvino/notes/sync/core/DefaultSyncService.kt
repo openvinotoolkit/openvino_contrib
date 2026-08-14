@@ -8,13 +8,13 @@ import com.openvino.notes.kernel.AccountKey
 import com.openvino.notes.kernel.DiagnosticEvent
 import com.openvino.notes.kernel.DiagnosticLevel
 import com.openvino.notes.sync.api.SyncBlockReason
-import com.openvino.notes.sync.api.SyncExecutor
-import com.openvino.notes.sync.api.SyncCheckpointPort
 import com.openvino.notes.sync.api.SyncOutcome
 import com.openvino.notes.sync.api.SyncPhase
 import com.openvino.notes.sync.api.SyncReason
 import com.openvino.notes.sync.api.SyncService
 import com.openvino.notes.sync.api.SyncState
+import com.openvino.notes.sync.api.port.SyncCheckpointPort
+import com.openvino.notes.sync.api.port.SyncExecutor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 

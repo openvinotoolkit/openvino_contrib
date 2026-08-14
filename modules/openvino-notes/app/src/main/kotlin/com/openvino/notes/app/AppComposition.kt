@@ -13,6 +13,7 @@ import com.openvino.notes.assistant.core.AssistantCoreComponent
 import com.openvino.notes.identity.api.IdentityService
 import com.openvino.notes.identity.google.GoogleIdentityComponent
 import com.openvino.notes.identity.google.GoogleIdentityUiController
+import com.openvino.notes.kernel.AppDispatchers
 import com.openvino.notes.kernel.NoOpAppLogger
 import com.openvino.notes.kernel.SystemAppClock
 import com.openvino.notes.notes.api.NotesService
@@ -22,14 +23,15 @@ import com.openvino.notes.notes.room.RoomNotesComponent
 import com.openvino.notes.settings.api.SettingsService
 import com.openvino.notes.settings.datastore.DataStoreSettingsComponent
 import com.openvino.notes.sync.android.AndroidSyncComponent
-import com.openvino.notes.sync.api.SyncScheduler
 import com.openvino.notes.sync.api.SyncService
+import com.openvino.notes.sync.api.port.SyncScheduler
 import com.openvino.notes.sync.core.SyncCoreComponent
 
 class AppComposition(context: Context) : AutoCloseable {
     private val appContext = context.applicationContext
+    private val dispatchers = AppDispatchers.production()
     private val identity = GoogleIdentityComponent.create()
-    private val notesStorage = RoomNotesComponent.create(appContext)
+    private val notesStorage = RoomNotesComponent.create(appContext, dispatchers = dispatchers)
     private val settings = DataStoreSettingsComponent.create(appContext)
     private val notesCore = NotesCoreComponent.create(
         identity.identityService,

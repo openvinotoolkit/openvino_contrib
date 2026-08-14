@@ -14,24 +14,25 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
 import com.openvino.notes.kernel.AccountKey
-import com.openvino.notes.notes.api.AttachmentContentPort
+import com.openvino.notes.kernel.AppDispatchers
 import com.openvino.notes.notes.api.AttachmentId
 import com.openvino.notes.notes.api.AttachmentMetadata
 import com.openvino.notes.notes.api.ContentItem
 import com.openvino.notes.notes.api.ContentItemId
 import com.openvino.notes.notes.api.FolderId
-import com.openvino.notes.notes.api.FolderRepository
-import com.openvino.notes.notes.api.FolderSyncPort
 import com.openvino.notes.notes.api.LocalChangeKind
 import com.openvino.notes.notes.api.LocalNoteChange
 import com.openvino.notes.notes.api.Note
 import com.openvino.notes.notes.api.NoteId
 import com.openvino.notes.notes.api.NoteTag
-import com.openvino.notes.notes.api.NotesRepository
-import com.openvino.notes.notes.api.NotesSyncPort
 import com.openvino.notes.notes.api.RemoteApplyResult
 import com.openvino.notes.notes.api.RemoteNoteChange
 import com.openvino.notes.notes.api.RemoteRevision
+import com.openvino.notes.notes.api.port.AttachmentContentPort
+import com.openvino.notes.notes.api.port.FolderRepository
+import com.openvino.notes.notes.api.port.FolderSyncPort
+import com.openvino.notes.notes.api.port.NotesRepository
+import com.openvino.notes.notes.api.port.NotesSyncPort
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.time.Instant
@@ -275,9 +276,16 @@ class RoomNotesComponent private constructor(
     override fun close() = database.close()
 
     companion object {
-        fun create(context: Context, databaseName: String = "openvino-notes.db"): RoomNotesComponent {
+        fun create(
+            context: Context,
+            databaseName: String = "openvino-notes.db",
+            dispatchers: AppDispatchers = AppDispatchers.production(),
+        ): RoomNotesComponent {
             val database = Room.databaseBuilder(context.applicationContext, NotesDatabase::class.java, databaseName).build()
-            val attachmentContent = FileAttachmentContentStore(File(context.applicationContext.filesDir, "notes-media"))
+            val attachmentContent = FileAttachmentContentStore(
+                File(context.applicationContext.filesDir, "notes-media"),
+                dispatchers,
+            )
             val notes = RoomNotesRepository(database.notesDao(), attachmentContent)
             val folders = RoomFolderRepository(database.folderDao())
             return RoomNotesComponent(database, notes, notes, folders, folders, attachmentContent)
