@@ -23,18 +23,25 @@ The module does not include Google credentials, a Drive HTTP client, OpenVINO An
 - Unsafe upload-first sync was removed. The production service is honestly disabled; consumer state, replication checkpoints, and durable resumable-transfer checkpoints are separate. Opaque session capabilities are redacted and persisted only by Sync-owned Room storage. Work is account-scoped from scheduler name/tag through Worker input and executor invocation.
 - UI and UI state/action boundaries, including folders, structured multimodal editing, and neutral identity loading, are organized as vertical capability slices without Koin imports.
 - Infrastructure-only sync/credential supporting models live with their ports, and version-controlled Notes/Sync Room v1 schemas establish the migration baseline.
-- A relocatable repository script and dedicated JDK 21 / Android API 37 workflow run the architecture, unit, Android unit, and APK gates.
+- A dedicated JDK 21 / Android API 37 workflow invokes the versioned Gradle wrapper JAR directly and runs the architecture, unit, Android unit, and APK gates.
 
 ## Verification
 
-Local verification on 2026-08-15 used JDK 21, Android API 37, Gradle 9.5.0, and the versioned repository script:
+Local verification on 2026-08-15 used JDK 21, Android API 37, Gradle 9.5.0, and the versioned wrapper JAR directly:
 
 ```sh
-./scripts/openvino_notes_gradle.sh checkArchitecture test testDebugUnitTest :app:assembleDebug -PopenvinoAndroidAbi=x86_64
+cd modules/openvino-notes
+java -classpath gradle/wrapper/gradle-wrapper.jar \
+  org.gradle.wrapper.GradleWrapperMain \
+  --project-cache-dir "$OPENVINO_NOTES_STATE_ROOT/project-cache" \
+  -PopenvinoNotesBuildRoot="$OPENVINO_NOTES_STATE_ROOT/gradle" \
+  -Pkotlin.project.persistent.dir="$OPENVINO_NOTES_STATE_ROOT/kotlin-project" \
+  checkArchitecture test testDebugUnitTest :app:assembleDebug \
+  -PopenvinoAndroidAbi=x86_64
 ```
 
 The command completed successfully, including APK assembly. CI verification is intentionally not claimed here: `.github/workflows/openvino_notes.yml` must run successfully on the pushed PR head.
 
 ## Follow-up Work
 
-Separate PRs should implement approved Google Activity Result integration, token refresh and Drive transport, a remote-first sync engine using the frozen revision/tombstone/reset contracts, production OpenVINO runtime/model loading, optional Room normalization before post-v1 migrations, structured multimodal editor/navigation UX, and target-device inference validation. Text formatting remains deferred; image dimensions remain derived media metadata.
+Separate PRs should implement approved Google Activity Result integration, token refresh and Drive transport, a remote-first sync engine using the frozen revision/tombstone/reset contracts, production OpenVINO runtime/model loading, optional Room normalization before post-v1 migrations, production multimodal editor/navigation UX, and target-device inference validation. Text formatting remains deferred; image dimensions remain derived media metadata.
