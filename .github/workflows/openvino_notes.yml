@@ -7,7 +7,6 @@ on:
   pull_request:
     paths:
       - "modules/openvino-notes/**"
-      - "scripts/openvino_notes_gradle.sh"
       - ".github/workflows/openvino_notes.yml"
   push:
     branches:
@@ -15,7 +14,6 @@ on:
       - "an/**"
     paths:
       - "modules/openvino-notes/**"
-      - "scripts/openvino_notes_gradle.sh"
       - ".github/workflows/openvino_notes.yml"
 
 permissions:
@@ -31,10 +29,28 @@ jobs:
       GRADLE_USER_HOME: ${{ github.workspace }}/builds/android/openvino-notes/gradle-user-home
       ANDROID_HOME: ${{ github.workspace }}/builds/android/sdk
       ANDROID_SDK_ROOT: ${{ github.workspace }}/builds/android/sdk
+      ANDROID_USER_HOME: ${{ github.workspace }}/builds/android/openvino-notes/android-user-home
+      XDG_CACHE_HOME: ${{ github.workspace }}/builds/android/openvino-notes/cache
+      TMPDIR: ${{ github.workspace }}/builds/android/openvino-notes/tmp
+      JAVA_TOOL_OPTIONS: >-
+        -Duser.home=${{ github.workspace }}/builds/android/openvino-notes/user-home
+        -Djava.io.tmpdir=${{ github.workspace }}/builds/android/openvino-notes/tmp
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Prepare build state
+        run: >-
+          mkdir -p
+          "$OPENVINO_NOTES_STATE_ROOT/gradle"
+          "$GRADLE_USER_HOME"
+          "$ANDROID_USER_HOME"
+          "$XDG_CACHE_HOME"
+          "$TMPDIR"
+          "$OPENVINO_NOTES_STATE_ROOT/user-home"
+          "$OPENVINO_NOTES_STATE_ROOT/project-cache"
+          "$OPENVINO_NOTES_STATE_ROOT/kotlin-project"
 
       - name: Set up JDK 21
         uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v5.0.0
@@ -48,16 +64,18 @@ jobs:
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
 
       - name: Install Android API 37
-        run: sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
+        run: sdkmanager --sdk_root="$ANDROID_SDK_ROOT" "platform-tools" "platforms;android-37.0" "build-tools;36.0.0"
 
       - name: Run architecture, unit, and build gates
-        run: >-
-          ./scripts/openvino_notes_gradle.sh
-          checkArchitecture
-          test
-          testDebugUnitTest
-          :app:assembleDebug
-          -PopenvinoAndroidAbi=x86_64
+        working-directory: modules/openvino-notes
+        run: |
+          java -classpath gradle/wrapper/gradle-wrapper.jar \
+            org.gradle.wrapper.GradleWrapperMain \
+            --project-cache-dir "$OPENVINO_NOTES_STATE_ROOT/project-cache" \
+            -PopenvinoNotesBuildRoot="$OPENVINO_NOTES_STATE_ROOT/gradle" \
+            -Pkotlin.project.persistent.dir="$OPENVINO_NOTES_STATE_ROOT/kotlin-project" \
+            checkArchitecture test testDebugUnitTest :app:assembleDebug \
+            -PopenvinoAndroidAbi=x86_64
 
       - name: Upload failure reports
         if: failure()
