@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.Flow
 @JvmInline value class FolderId(val value: String)
 @JvmInline value class ContentItemId(val value: String)
 @JvmInline value class AttachmentId(val value: String)
-@JvmInline value class RemoteRevision(val value: String)
 
 @JvmInline
 value class NoteTag(val value: String) {
@@ -126,91 +125,4 @@ interface FolderService {
     suspend fun renameFolder(id: FolderId, name: String): FolderMutationOutcome
     suspend fun deleteFolder(id: FolderId): FolderMutationOutcome
     suspend fun moveNote(noteId: NoteId, folderId: FolderId?): MoveNoteOutcome
-}
-
-enum class LocalChangeKind { UPSERT, DELETE }
-
-data class LocalNoteChange(
-    val changeId: String,
-    val accountKey: AccountKey,
-    val noteId: NoteId,
-    val kind: LocalChangeKind,
-    val baseRevision: RemoteRevision?,
-    val changedAt: Instant,
-    val payload: Note? = null,
-)
-
-sealed interface RemoteNoteChange {
-    val noteId: NoteId?
-
-    data class Upsert(
-        val note: Note,
-        val baseRevision: RemoteRevision?,
-        val revision: RemoteRevision,
-    ) : RemoteNoteChange {
-        override val noteId: NoteId = note.id
-    }
-
-    data class Tombstone(
-        override val noteId: NoteId,
-        val revision: RemoteRevision,
-    ) : RemoteNoteChange
-
-    data class Malformed(
-        override val noteId: NoteId?,
-        val diagnosticCode: String,
-    ) : RemoteNoteChange
-}
-
-sealed interface RemoteApplyResult {
-    val noteId: NoteId?
-    data class Applied(override val noteId: NoteId, val revision: RemoteRevision) : RemoteApplyResult
-    data class Merged(override val noteId: NoteId, val generatedChangeId: String) : RemoteApplyResult
-    data class Conflict(override val noteId: NoteId, val localRevision: RemoteRevision?, val remoteRevision: RemoteRevision) : RemoteApplyResult
-    data class TombstoneApplied(override val noteId: NoteId, val revision: RemoteRevision) : RemoteApplyResult
-    data class RejectedMalformed(override val noteId: NoteId?, val diagnosticCode: String) : RemoteApplyResult
-}
-
-data class LocalFolderChange(
-    val changeId: String,
-    val accountKey: AccountKey,
-    val folderId: FolderId,
-    val kind: LocalChangeKind,
-    val baseRevision: RemoteRevision?,
-    val changedAt: Instant,
-    val payload: Folder? = null,
-)
-
-sealed interface RemoteFolderChange {
-    val folderId: FolderId?
-
-    data class Upsert(
-        val folder: Folder,
-        val baseRevision: RemoteRevision?,
-        val revision: RemoteRevision,
-    ) : RemoteFolderChange {
-        override val folderId: FolderId = folder.id
-    }
-
-    data class Tombstone(
-        override val folderId: FolderId,
-        val revision: RemoteRevision,
-    ) : RemoteFolderChange
-
-    data class Malformed(
-        override val folderId: FolderId?,
-        val diagnosticCode: String,
-    ) : RemoteFolderChange
-}
-
-sealed interface FolderRemoteApplyResult {
-    val folderId: FolderId?
-    data class Applied(override val folderId: FolderId, val revision: RemoteRevision) : FolderRemoteApplyResult
-    data class Conflict(
-        override val folderId: FolderId,
-        val localRevision: RemoteRevision?,
-        val remoteRevision: RemoteRevision,
-    ) : FolderRemoteApplyResult
-    data class TombstoneApplied(override val folderId: FolderId, val revision: RemoteRevision) : FolderRemoteApplyResult
-    data class RejectedMalformed(override val folderId: FolderId?, val diagnosticCode: String) : FolderRemoteApplyResult
 }

@@ -1,0 +1,101 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "70813ed1d0fad2dd0b4190101dfafb28",
+    "entities": [
+      {
+        "tableName": "sync_checkpoint",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`accountKey` TEXT NOT NULL, `remoteCursor` TEXT, `remoteRevisions` TEXT NOT NULL, `lastCompletedAtMillis` INTEGER, `resetRequired` INTEGER NOT NULL, PRIMARY KEY(`accountKey`))",
+        "fields": [
+          {
+            "fieldPath": "accountKey",
+            "columnName": "accountKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteCursor",
+            "columnName": "remoteCursor",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "remoteRevisions",
+            "columnName": "remoteRevisions",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastCompletedAtMillis",
+            "columnName": "lastCompletedAtMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "resetRequired",
+            "columnName": "resetRequired",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "accountKey"
+          ]
+        }
+      },
+      {
+        "tableName": "sync_transfer_checkpoint",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`accountKey` TEXT NOT NULL, `operationId` TEXT NOT NULL, `objectKey` TEXT NOT NULL, `opaqueSessionId` TEXT NOT NULL, `nextOffset` INTEGER NOT NULL, `expiresAtMillis` INTEGER, PRIMARY KEY(`accountKey`, `operationId`))",
+        "fields": [
+          {
+            "fieldPath": "accountKey",
+            "columnName": "accountKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "operationId",
+            "columnName": "operationId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "objectKey",
+            "columnName": "objectKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "opaqueSessionId",
+            "columnName": "opaqueSessionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nextOffset",
+            "columnName": "nextOffset",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expiresAtMillis",
+            "columnName": "expiresAtMillis",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "accountKey",
+            "operationId"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '70813ed1d0fad2dd0b4190101dfafb28')"
+    ]
+  }
+}

@@ -41,8 +41,12 @@ class AppComposition(context: Context) : AutoCloseable {
     )
     private val textAi = OpenVinoTextComponent.create()
     private val imageAi = OpenVinoImageComponent.create()
-    private val syncStorage = AndroidSyncComponent.openCheckpointStore(appContext)
-    private val syncCore = SyncCoreComponent.create(NoOpAppLogger, syncStorage.checkpointPort)
+    private val syncStorage = AndroidSyncComponent.openPersistence(appContext)
+    private val syncCore = SyncCoreComponent.create(
+        NoOpAppLogger,
+        syncStorage.checkpointPort,
+        syncStorage.transferCheckpointPort,
+    )
     private val assistantCore = AssistantCoreComponent.create(
         notesCore.notesService,
         notesStorage.attachmentContent,

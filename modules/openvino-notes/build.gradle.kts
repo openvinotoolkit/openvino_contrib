@@ -61,7 +61,7 @@ val allowedEdges = setOf(
     ":settings:datastore->:settings:api", ":settings:datastore->:kernel",
     ":cloud:drive->:cloud:api", ":cloud:drive->:identity:api", ":cloud:drive->:kernel",
     ":sync:core->:sync:api", ":sync:core->:notes:api", ":sync:core->:cloud:api",
-    ":sync:core->:identity:api", ":sync:core->:kernel",
+    ":sync:core->:kernel",
     ":sync:android->:sync:api", ":sync:android->:kernel",
     ":assistant:core->:assistant:api", ":assistant:core->:notes:api",
     ":assistant:core->:ai:text-api", ":assistant:core->:ai:image-api", ":assistant:core->:kernel",
@@ -74,7 +74,7 @@ val allowedEdges = setOf(
     ":app->:sync:core", ":app->:sync:android", ":app->:assistant:core",
     ":app->:ai:text-openvino", ":app->:ai:image-openvino",
     ":app->:kernel", ":app->:settings:api", ":app->:identity:api", ":app->:notes:api",
-    ":app->:sync:api", ":app->:assistant:api",
+    ":app->:cloud:api", ":app->:cloud:drive", ":app->:sync:api", ":app->:assistant:api",
     ":app->:ai:text-api", ":app->:ai:image-api",
 )
 
@@ -218,6 +218,9 @@ tasks.register("checkArchitectureRules") {
     doLast {
         val permittedSubset = allowedEdges.take(1).toSet()
         check((permittedSubset - allowedEdges).isEmpty()) { "An allowed optional edge subset must pass" }
+        val futureCloudComposition = setOf(":app->:cloud:api", ":app->:cloud:drive")
+        check((futureCloudComposition - allowedEdges).isEmpty()) { "Future Cloud composition edges must remain allowed" }
+        check(":sync:core->:identity:api" !in allowedEdges) { "Sync core must use Kernel account scope and Cloud contracts" }
         val syntheticForbidden = setOf(":view->:notes:room")
         check((syntheticForbidden - allowedEdges) == syntheticForbidden) { "A forbidden edge must be rejected" }
         check(infrastructurePortPattern.containsMatchIn("import com.openvino.notes.notes.api.port.NotesRepository")) {
@@ -225,6 +228,9 @@ tasks.register("checkArchitectureRules") {
         }
         check(infrastructurePortPattern.containsMatchIn("com.openvino.notes.sync.api.port.SyncCheckpointPort")) {
             "Fully qualified infrastructure port references must be recognized"
+        }
+        check(infrastructurePortPattern.containsMatchIn("import com.openvino.notes.notes.api.port.RemoteNoteChange")) {
+            "Infrastructure supporting models must be recognized"
         }
         check(!infrastructurePortPattern.containsMatchIn("import com.openvino.notes.notes.api.NotesService")) {
             "Consumer service imports must remain allowed"

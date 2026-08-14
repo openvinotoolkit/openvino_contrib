@@ -15,6 +15,7 @@ import com.openvino.notes.sync.api.SyncService
 import com.openvino.notes.sync.api.SyncState
 import com.openvino.notes.sync.api.port.SyncCheckpointPort
 import com.openvino.notes.sync.api.port.SyncExecutor
+import com.openvino.notes.sync.api.port.SyncTransferCheckpointPort
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -58,11 +59,16 @@ data class SyncCoreComponent(
     val service: SyncService,
     val executor: SyncExecutor,
     val checkpointPort: SyncCheckpointPort,
+    val transferCheckpointPort: SyncTransferCheckpointPort,
 ) {
     companion object {
-        fun create(logger: AppLogger, checkpointPort: SyncCheckpointPort): SyncCoreComponent {
+        fun create(
+            logger: AppLogger,
+            checkpointPort: SyncCheckpointPort,
+            transferCheckpointPort: SyncTransferCheckpointPort,
+        ): SyncCoreComponent {
             val service = DisabledSyncService(logger)
-            return SyncCoreComponent(service, service, checkpointPort)
+            return SyncCoreComponent(service, service, checkpointPort, transferCheckpointPort)
         }
     }
 }

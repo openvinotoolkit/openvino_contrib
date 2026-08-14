@@ -7,6 +7,7 @@ import com.openvino.notes.kernel.AccountKey
 import com.openvino.notes.kernel.AppDispatchers
 import com.openvino.notes.notes.api.AttachmentId
 import com.openvino.notes.notes.api.AttachmentMetadata
+import com.openvino.notes.notes.api.port.AttachmentContentConflictException
 import com.openvino.notes.notes.api.port.AttachmentContentPort
 import com.openvino.notes.notes.api.port.BinarySource
 import java.io.File
@@ -33,9 +34,11 @@ internal class FileAttachmentContentStore(
             "Attachment content size does not match metadata"
         }
         val target = contentFile(accountKey, attachment.id)
-        target.parentFile?.mkdirs()
-        val temporary = File.createTempFile("attachment-", ".tmp", target.parentFile)
+        val directory = requireNotNull(target.parentFile)
+        check(directory.isDirectory || directory.mkdirs()) { "Unable to create attachment content directory" }
+        val temporary = File.createTempFile("attachment-", ".tmp", directory)
         try {
+            val digest = MessageDigest.getInstance(CONTENT_DIGEST_ALGORITHM)
             temporary.outputStream().buffered().use { output ->
                 var offset = 0L
                 while (offset < source.sizeBytes) {
@@ -45,18 +48,22 @@ internal class FileAttachmentContentStore(
                     check(chunk.isNotEmpty()) { "Attachment source ended before its declared size" }
                     check(chunk.size <= requested) { "Attachment source returned more bytes than requested" }
                     output.write(chunk)
+                    digest.update(chunk)
                     offset += chunk.size
                 }
             }
-            try {
-                Files.move(
-                    temporary.toPath(),
-                    target.toPath(),
-                    StandardCopyOption.ATOMIC_MOVE,
-                    StandardCopyOption.REPLACE_EXISTING,
-                )
-            } catch (_: AtomicMoveNotSupportedException) {
-                Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            RandomAccessFile(directory.resolve(CONTENT_LOCK_FILE), "rw").channel.use { channel ->
+                channel.lock().use {
+                    if (target.isFile) {
+                        requireSameContent(target, source.sizeBytes, digest.digest(), attachment.id)
+                    } else {
+                        try {
+                            Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
+                        } catch (_: AtomicMoveNotSupportedException) {
+                            Files.move(temporary.toPath(), target.toPath())
+                        }
+                    }
+                }
             }
         } finally {
             temporary.delete()
@@ -75,6 +82,17 @@ internal class FileAttachmentContentStore(
 
     private fun contentFile(accountKey: AccountKey, attachmentId: AttachmentId): File =
         root.resolve(accountKey.value.sha256()).resolve("${attachmentId.value.sha256()}.bin")
+
+    private suspend fun requireSameContent(
+        existing: File,
+        expectedSize: Long,
+        expectedDigest: ByteArray,
+        attachmentId: AttachmentId,
+    ) {
+        val sameSize = existing.length() == expectedSize
+        val sameDigest = sameSize && MessageDigest.isEqual(existing.sha256Bytes(), expectedDigest)
+        if (!sameDigest) throw AttachmentContentConflictException(attachmentId)
+    }
 }
 
 private class FileBinarySource(
@@ -102,4 +120,20 @@ private fun String.sha256(): String = MessageDigest.getInstance("SHA-256")
     .digest(toByteArray(Charsets.UTF_8))
     .joinToString("") { byte -> "%02x".format(byte) }
 
+private suspend fun File.sha256Bytes(): ByteArray {
+    val digest = MessageDigest.getInstance(CONTENT_DIGEST_ALGORITHM)
+    inputStream().buffered().use { input ->
+        val buffer = ByteArray(COPY_CHUNK_BYTES)
+        while (true) {
+            currentCoroutineContext().ensureActive()
+            val count = input.read(buffer)
+            if (count < 0) break
+            digest.update(buffer, 0, count)
+        }
+    }
+    return digest.digest()
+}
+
 private const val COPY_CHUNK_BYTES = 64 * 1024
+private const val CONTENT_DIGEST_ALGORITHM = "SHA-256"
+private const val CONTENT_LOCK_FILE = ".attachment-content.lock"

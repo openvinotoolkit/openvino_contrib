@@ -20,9 +20,9 @@ import com.openvino.notes.cloud.api.UploadChunk
 import com.openvino.notes.cloud.api.UploadChunkOutcome
 import com.openvino.notes.cloud.api.UploadDescriptor
 import com.openvino.notes.cloud.api.UploadSession
-import com.openvino.notes.identity.api.AccessTokenOutcome
-import com.openvino.notes.kernel.AccountKey
+import com.openvino.notes.identity.api.port.AccessTokenOutcome
 import com.openvino.notes.identity.api.port.AccessTokenProvider
+import com.openvino.notes.kernel.AccountKey
 
 internal class DriveRemoteStore(private val tokens: AccessTokenProvider) :
     RemoteObjectStore,

@@ -6,6 +6,8 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+val roomSchemaDirectory = layout.projectDirectory.dir("schemas")
+
 android {
     namespace = "com.openvino.notes.sync.android"
     compileSdk { version = release(37) }
@@ -18,7 +20,7 @@ android {
 }
 
 ksp {
-    arg("room.schemaLocation", layout.buildDirectory.dir("schemas").get().asFile.path)
+    arg("room.schemaLocation", roomSchemaDirectory.asFile.path)
 }
 
 dependencies {

@@ -3,8 +3,9 @@
 
 package com.openvino.notes.identity.api
 
-import com.openvino.notes.kernel.AccountKey
+import com.openvino.notes.identity.api.port.AccessTokenOutcome
 import com.openvino.notes.identity.api.port.AccessTokenProvider
+import com.openvino.notes.kernel.AccountKey
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 

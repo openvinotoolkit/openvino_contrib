@@ -25,10 +25,13 @@ import androidx.work.WorkerParameters
 import com.openvino.notes.kernel.AccountKey
 import com.openvino.notes.sync.api.SyncOutcome
 import com.openvino.notes.sync.api.SyncReason
+import com.openvino.notes.sync.api.port.OpaqueTransferSessionId
+import com.openvino.notes.sync.api.port.PendingTransferCheckpoint
 import com.openvino.notes.sync.api.port.SyncCheckpoint
 import com.openvino.notes.sync.api.port.SyncCheckpointPort
 import com.openvino.notes.sync.api.port.SyncExecutor
 import com.openvino.notes.sync.api.port.SyncScheduler
+import com.openvino.notes.sync.api.port.SyncTransferCheckpointPort
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.concurrent.TimeUnit
@@ -105,9 +108,42 @@ internal interface SyncCheckpointDao {
     suspend fun clear(accountKey: String)
 }
 
-@Database(entities = [SyncCheckpointEntity::class], version = 1, exportSchema = true)
+@Entity(tableName = "sync_transfer_checkpoint", primaryKeys = ["accountKey", "operationId"])
+internal data class SyncTransferCheckpointEntity(
+    val accountKey: String,
+    val operationId: String,
+    val objectKey: String,
+    val opaqueSessionId: String,
+    val nextOffset: Long,
+    val expiresAtMillis: Long?,
+)
+
+@Dao
+internal interface SyncTransferCheckpointDao {
+    @Query("SELECT * FROM sync_transfer_checkpoint WHERE accountKey = :accountKey AND operationId = :operationId")
+    suspend fun read(accountKey: String, operationId: String): SyncTransferCheckpointEntity?
+
+    @Query("SELECT * FROM sync_transfer_checkpoint WHERE accountKey = :accountKey ORDER BY operationId")
+    suspend fun pending(accountKey: String): List<SyncTransferCheckpointEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun write(checkpoint: SyncTransferCheckpointEntity)
+
+    @Query("DELETE FROM sync_transfer_checkpoint WHERE accountKey = :accountKey AND operationId = :operationId")
+    suspend fun remove(accountKey: String, operationId: String): Int
+
+    @Query("DELETE FROM sync_transfer_checkpoint WHERE accountKey = :accountKey")
+    suspend fun clear(accountKey: String)
+}
+
+@Database(
+    entities = [SyncCheckpointEntity::class, SyncTransferCheckpointEntity::class],
+    version = 1,
+    exportSchema = true,
+)
 internal abstract class SyncDatabase : RoomDatabase() {
     abstract fun checkpointDao(): SyncCheckpointDao
+    abstract fun transferCheckpointDao(): SyncTransferCheckpointDao
 }
 
 internal class RoomSyncCheckpointStore(private val dao: SyncCheckpointDao) : SyncCheckpointPort {
@@ -123,17 +159,47 @@ internal class RoomSyncCheckpointStore(private val dao: SyncCheckpointDao) : Syn
     }
 }
 
-class AndroidSyncCheckpointComponent internal constructor(
+internal class RoomSyncTransferCheckpointStore(
+    private val dao: SyncTransferCheckpointDao,
+) : SyncTransferCheckpointPort {
+    override suspend fun read(accountKey: AccountKey, operationId: String): PendingTransferCheckpoint? {
+        require(operationId.isNotBlank()) { "Transfer operation ID must not be blank" }
+        return dao.read(accountKey.value, operationId)?.toApi()
+    }
+
+    override suspend fun pending(accountKey: AccountKey): List<PendingTransferCheckpoint> =
+        dao.pending(accountKey.value).map(SyncTransferCheckpointEntity::toApi)
+
+    override suspend fun write(accountKey: AccountKey, checkpoint: PendingTransferCheckpoint) {
+        dao.write(checkpoint.toEntity(accountKey))
+    }
+
+    override suspend fun remove(accountKey: AccountKey, operationId: String): Boolean {
+        require(operationId.isNotBlank()) { "Transfer operation ID must not be blank" }
+        return dao.remove(accountKey.value, operationId) > 0
+    }
+
+    override suspend fun clear(accountKey: AccountKey) {
+        dao.clear(accountKey.value)
+    }
+}
+
+class AndroidSyncPersistenceComponent internal constructor(
     private val database: SyncDatabase,
     val checkpointPort: SyncCheckpointPort,
+    val transferCheckpointPort: SyncTransferCheckpointPort,
 ) : AutoCloseable {
     override fun close() = database.close()
 }
 
 object AndroidSyncComponent {
-    fun openCheckpointStore(context: Context): AndroidSyncCheckpointComponent {
+    fun openPersistence(context: Context): AndroidSyncPersistenceComponent {
         val database = Room.databaseBuilder(context.applicationContext, SyncDatabase::class.java, "openvino-notes-sync.db").build()
-        return AndroidSyncCheckpointComponent(database, RoomSyncCheckpointStore(database.checkpointDao()))
+        return AndroidSyncPersistenceComponent(
+            database,
+            RoomSyncCheckpointStore(database.checkpointDao()),
+            RoomSyncTransferCheckpointStore(database.transferCheckpointDao()),
+        )
     }
 
     fun createWorkerFactory(executor: SyncExecutor): WorkerFactory = OpenVinoNotesWorkerFactory(executor)
@@ -170,6 +236,23 @@ private fun SyncCheckpoint.toEntity(accountKey: AccountKey) = SyncCheckpointEnti
         .joinToString("\n") { "${escape(it.key)}=${escape(it.value)}" },
     lastCompletedAtMillis = lastCompletedAt?.toEpochMilli(),
     resetRequired = resetRequired,
+)
+
+private fun SyncTransferCheckpointEntity.toApi() = PendingTransferCheckpoint(
+    operationId = operationId,
+    objectKey = objectKey,
+    sessionId = OpaqueTransferSessionId(opaqueSessionId),
+    nextOffset = nextOffset,
+    expiresAt = expiresAtMillis?.let(Instant::ofEpochMilli),
+)
+
+private fun PendingTransferCheckpoint.toEntity(accountKey: AccountKey) = SyncTransferCheckpointEntity(
+    accountKey = accountKey.value,
+    operationId = operationId,
+    objectKey = objectKey,
+    opaqueSessionId = sessionId.value,
+    nextOffset = nextOffset,
+    expiresAtMillis = expiresAt?.toEpochMilli(),
 )
 
 private fun decodeRevisions(value: String): Map<String, String> = value.lineSequence()

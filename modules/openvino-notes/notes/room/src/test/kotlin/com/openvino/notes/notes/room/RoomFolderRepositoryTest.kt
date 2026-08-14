@@ -9,9 +9,9 @@ import androidx.test.core.app.ApplicationProvider
 import com.openvino.notes.kernel.AccountKey
 import com.openvino.notes.notes.api.Folder
 import com.openvino.notes.notes.api.FolderId
-import com.openvino.notes.notes.api.FolderRemoteApplyResult
-import com.openvino.notes.notes.api.RemoteFolderChange
-import com.openvino.notes.notes.api.RemoteRevision
+import com.openvino.notes.notes.api.port.FolderRemoteApplyResult
+import com.openvino.notes.notes.api.port.RemoteFolderChange
+import com.openvino.notes.notes.api.port.RemoteRevision
 import java.time.Instant
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest

@@ -30,13 +30,6 @@ sealed interface IdentityOutcome {
     data class Failed(val code: String) : IdentityOutcome
 }
 
-sealed interface AccessTokenOutcome {
-    data class Available(val value: String) : AccessTokenOutcome
-    data object SignedOut : AccessTokenOutcome
-    data object NotAuthorized : AccessTokenOutcome
-    data class Failed(val code: String) : AccessTokenOutcome
-}
-
 interface SessionReader : AccountScope {
     val authenticationState: StateFlow<AuthenticationState>
     override val activeAccountKey: Flow<AccountKey?>

@@ -7,6 +7,8 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.openvino.notes.kernel.AccountKey
+import com.openvino.notes.sync.api.port.OpaqueTransferSessionId
+import com.openvino.notes.sync.api.port.PendingTransferCheckpoint
 import com.openvino.notes.sync.api.port.SyncCheckpoint
 import java.time.Instant
 import kotlinx.coroutines.test.runTest
@@ -39,6 +41,56 @@ class SyncCheckpointStoreTest {
             assertEquals(SyncCheckpoint(), store.read(accountKey))
         } finally {
             database.close()
+        }
+    }
+
+    @Test fun `transfer checkpoint survives database reopen and stays account scoped`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val databaseName = "sync-transfer-checkpoint-test.db"
+        context.deleteDatabase(databaseName)
+        val accountKey = AccountKey("account")
+        val otherAccountKey = AccountKey("other-account")
+        val checkpoint = PendingTransferCheckpoint(
+            operationId = "upload-attachment-1",
+            objectKey = "attachment-1",
+            sessionId = OpaqueTransferSessionId("sensitive-session-capability"),
+            nextOffset = 70_000,
+            expiresAt = Instant.parse("2026-08-16T00:00:00Z"),
+        )
+        try {
+            val firstDatabase = Room.databaseBuilder(context, SyncDatabase::class.java, databaseName)
+                .allowMainThreadQueries()
+                .build()
+            try {
+                val store = RoomSyncTransferCheckpointStore(firstDatabase.transferCheckpointDao())
+                store.write(accountKey, checkpoint)
+                store.write(otherAccountKey, checkpoint.copy(operationId = "other-upload"))
+            } finally {
+                firstDatabase.close()
+            }
+
+            val reopenedDatabase = Room.databaseBuilder(context, SyncDatabase::class.java, databaseName)
+                .allowMainThreadQueries()
+                .build()
+            try {
+                val store = RoomSyncTransferCheckpointStore(reopenedDatabase.transferCheckpointDao())
+                assertEquals(checkpoint, store.read(accountKey, checkpoint.operationId))
+                assertEquals(listOf(checkpoint), store.pending(accountKey))
+                assertEquals(false, checkpoint.toString().contains("sensitive-session-capability"))
+
+                val resumed = checkpoint.copy(nextOffset = 96_000)
+                store.write(accountKey, resumed)
+                assertEquals(resumed, store.read(accountKey, checkpoint.operationId))
+                assertEquals(true, store.remove(accountKey, checkpoint.operationId))
+                assertEquals(emptyList<PendingTransferCheckpoint>(), store.pending(accountKey))
+                assertEquals(1, store.pending(otherAccountKey).size)
+                store.clear(otherAccountKey)
+                assertEquals(emptyList<PendingTransferCheckpoint>(), store.pending(otherAccountKey))
+            } finally {
+                reopenedDatabase.close()
+            }
+        } finally {
+            context.deleteDatabase(databaseName)
         }
     }
 }

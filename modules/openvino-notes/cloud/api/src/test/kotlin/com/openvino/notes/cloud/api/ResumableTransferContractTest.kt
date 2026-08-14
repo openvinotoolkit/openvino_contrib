@@ -7,6 +7,7 @@ import com.openvino.notes.kernel.AccountKey
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class ResumableTransferContractTest {
@@ -18,6 +19,7 @@ class ResumableTransferContractTest {
             accountKey,
             UploadDescriptor(objectId, "image.jpg", "image/jpeg", sizeBytes = 4),
         ).value()
+        assertFalse(session.toString().contains(session.id.value))
 
         val first = store.uploadChunk(
             accountKey,

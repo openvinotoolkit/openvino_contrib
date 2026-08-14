@@ -15,10 +15,11 @@ import com.openvino.notes.notes.api.ContentItemId
 import com.openvino.notes.notes.api.Note
 import com.openvino.notes.notes.api.NoteId
 import com.openvino.notes.notes.api.NoteTag
-import com.openvino.notes.notes.api.RemoteApplyResult
-import com.openvino.notes.notes.api.RemoteNoteChange
-import com.openvino.notes.notes.api.RemoteRevision
+import com.openvino.notes.notes.api.port.AttachmentContentConflictException
 import com.openvino.notes.notes.api.port.BinarySource
+import com.openvino.notes.notes.api.port.RemoteApplyResult
+import com.openvino.notes.notes.api.port.RemoteNoteChange
+import com.openvino.notes.notes.api.port.RemoteRevision
 import com.openvino.notes.notes.api.port.binarySourceOf
 import com.openvino.notes.notes.api.port.readAll
 import java.time.Instant
@@ -181,6 +182,39 @@ class RoomNotesRepositoryTest {
             assertArrayEquals(
                 ByteArray(32) { index -> ((70_000 + index) % 251).toByte() },
                 opened.read(offset = 70_000, maxBytes = 32),
+            )
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun `attachment id is immutable while identical writes remain idempotent`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val root = context.cacheDir.resolve("notes-room-immutable-attachment-test").apply { deleteRecursively() }
+        val content = FileAttachmentContentStore(root, testDispatchers)
+        val accountKey = AccountKey("account")
+        val attachment = AttachmentMetadata(
+            AttachmentId("immutable"),
+            NoteId("note"),
+            ContentItemId("file"),
+            "content.bin",
+            "application/octet-stream",
+            3,
+        )
+        try {
+            content.put(accountKey, attachment, binarySourceOf(byteArrayOf(1, 2, 3)))
+            content.put(accountKey, attachment, binarySourceOf(byteArrayOf(1, 2, 3)))
+
+            try {
+                content.put(accountKey, attachment, binarySourceOf(byteArrayOf(3, 2, 1)))
+                throw AssertionError("Different content must not replace an existing AttachmentId")
+            } catch (_: AttachmentContentConflictException) {
+                // Expected: callers must allocate a new AttachmentId for changed bytes.
+            }
+
+            assertArrayEquals(
+                byteArrayOf(1, 2, 3),
+                requireNotNull(content.open(accountKey, attachment.id)).readAll(maxTotalBytes = 3),
             )
         } finally {
             root.deleteRecursively()

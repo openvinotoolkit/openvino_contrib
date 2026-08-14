@@ -4,12 +4,19 @@
 package com.openvino.notes.notes.api
 
 import com.openvino.notes.kernel.AccountKey
+import com.openvino.notes.notes.api.port.AttachmentContentConflictException
 import com.openvino.notes.notes.api.port.AttachmentContentPort
 import com.openvino.notes.notes.api.port.BinarySource
 import com.openvino.notes.notes.api.port.FolderRepository
+import com.openvino.notes.notes.api.port.FolderRemoteApplyResult
 import com.openvino.notes.notes.api.port.FolderSyncPort
+import com.openvino.notes.notes.api.port.LocalFolderChange
+import com.openvino.notes.notes.api.port.LocalNoteChange
 import com.openvino.notes.notes.api.port.NotesRepository
 import com.openvino.notes.notes.api.port.NotesSyncPort
+import com.openvino.notes.notes.api.port.RemoteApplyResult
+import com.openvino.notes.notes.api.port.RemoteFolderChange
+import com.openvino.notes.notes.api.port.RemoteNoteChange
 import com.openvino.notes.notes.api.port.binarySourceOf
 import com.openvino.notes.notes.api.port.readAll
 import kotlinx.coroutines.flow.Flow
@@ -90,7 +97,13 @@ class FakeAttachmentContentPort : AttachmentContentPort {
     private val content = mutableMapOf<Pair<AccountKey, AttachmentId>, ByteArray>()
     override suspend fun put(accountKey: AccountKey, attachment: AttachmentMetadata, source: BinarySource) {
         require(source.sizeBytes == attachment.sizeBytes)
-        content[accountKey to attachment.id] = source.readAll(attachment.sizeBytes)
+        val key = accountKey to attachment.id
+        val bytes = source.readAll(attachment.sizeBytes)
+        val existing = content[key]
+        if (existing != null && !existing.contentEquals(bytes)) {
+            throw AttachmentContentConflictException(attachment.id)
+        }
+        content.putIfAbsent(key, bytes)
     }
     override suspend fun open(accountKey: AccountKey, attachmentId: AttachmentId): BinarySource? =
         content[accountKey to attachmentId]?.let(::binarySourceOf)

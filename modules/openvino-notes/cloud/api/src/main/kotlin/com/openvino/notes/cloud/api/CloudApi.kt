@@ -9,7 +9,15 @@ import java.time.Instant
 @JvmInline value class RemoteObjectId(val value: String)
 @JvmInline value class RemoteCursor(val value: String)
 @JvmInline value class RemoteRevision(val value: String)
-@JvmInline value class TransferSessionId(val value: String)
+
+/** Sensitive resumable-upload capability. Its string representation never exposes the underlying value. */
+class TransferSessionId(val value: String) {
+    init { require(value.isNotBlank()) { "Transfer session ID must not be blank" } }
+
+    override fun equals(other: Any?): Boolean = other is TransferSessionId && value == other.value
+    override fun hashCode(): Int = value.hashCode()
+    override fun toString(): String = "TransferSessionId(**redacted**)"
+}
 
 data class RemoteObject(
     val id: RemoteObjectId,

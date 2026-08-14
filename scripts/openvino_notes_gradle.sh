@@ -24,7 +24,7 @@ case "$STATE_ROOT" in
 esac
 
 if [[ -f "$WORKSPACE_ROOT/RULES.md" ]]; then
-    STORAGE_BOUNDARY=$WORKSPACE_ROOT
+    STORAGE_BOUNDARY="$WORKSPACE_ROOT/builds/android"
 else
     STORAGE_BOUNDARY=$REPOSITORY_ROOT
 fi
