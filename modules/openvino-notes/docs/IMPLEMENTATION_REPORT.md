@@ -13,11 +13,11 @@ The module does not include Google credentials, a Drive HTTP client, OpenVINO An
 
 ## Implemented Boundaries
 
-- Gradle validates an allowed-edge subset, rejects Koin outside `:app`, and generates the actual module graph.
-- Neutral `AccountKey` replaces Identity-owned account IDs in Notes, Cloud, and Sync persistence contracts.
+- Gradle validates an allowed-edge subset, rejects Koin outside `:app`, rejects infrastructure-port references in `:view`, and generates the actual module graph.
+- Neutral `AccountKey` and `AccountScope` remove Identity-owned account types and the `:notes:core -> :identity:api` production edge.
 - Notes supports complete product fields plus Folder lifecycle/move semantics, Room round-trips, note/folder outbox transactions, revisions, conflicts, malformed changes, and tombstones.
-- Room owns account-scoped attachment files and cleanup; Assistant reads image input through `AttachmentContentPort`, keeping raw binary out of its public API.
-- Cloud exposes explicit initial listing/cursor bootstrap and a generic resumable upload/streamed download boundary.
+- Room owns account-scoped attachment files and cleanup; injected dispatchers, bounded chunk reads, and atomic chunked writes avoid attachment-sized allocations in persistence/sync. Assistant uses an explicit bounded contiguous read for image inference.
+- Cloud exposes explicit initial listing/cursor bootstrap and a generic resumable upload/streamed download boundary whose terminal result includes remote metadata and revision.
 - AI APIs expose summary, text tags, rewrite, and structured image tags. Prompts, normalization, retry, and cancellation handling stay in the text OpenVINO adapter.
 - Identity launches one-shot effects through `MainActivity` and an activity-scoped Google controller with typed cancellation/result mapping. Startup initialization and access-token invalidation are explicit contracts.
 - Unsafe upload-first sync was removed. The production service is honestly disabled; consumer state and neutral checkpoint infrastructure are separate. Work is account-scoped from scheduler name/tag through Worker input and executor invocation.
@@ -26,10 +26,10 @@ The module does not include Google credentials, a Drive HTTP client, OpenVINO An
 
 ## Verification
 
-Local verification on 2026-08-14 used JDK 21, Android API 37, Gradle 9.5.0, and the versioned repository script:
+Local verification on 2026-08-15 used JDK 21, Android API 37, Gradle 9.5.0, and the versioned repository script:
 
 ```sh
-./scripts/openvino_notes_gradle.sh checkArchitecture test testDebugUnitTest :app:assembleDebug -PopenvinoAndroidAbi=x86_64 --continue
+./scripts/openvino_notes_gradle.sh checkArchitecture test testDebugUnitTest :app:assembleDebug -PopenvinoAndroidAbi=x86_64
 ```
 
 The command completed successfully, including APK assembly. CI verification is intentionally not claimed here: `.github/workflows/openvino_notes.yml` must run successfully on the pushed PR head.
