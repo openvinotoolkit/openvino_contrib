@@ -65,7 +65,6 @@ conda run -n "$ENV_NAME" pip install \
     transforms3d==0.4.2 \
     trimesh==4.11.4 \
     autolab_core==1.1.1 \
-    cvxopt==1.3.3 \
     grasp-nms==1.0.2 \
     numba==0.64.0 \
     onnx==1.22.0 \
