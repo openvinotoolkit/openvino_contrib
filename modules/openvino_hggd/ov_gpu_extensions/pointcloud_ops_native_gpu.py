@@ -186,11 +186,21 @@ class NativePointCloudOpsGPU:
         else:
             points_padded = points
         
+        # When padding is applied and no lengths are provided, zero-pad rows at
+        # indices >= N are valid FPS candidates to FPSSingle (which has no
+        # notion of valid length). A (0,0,0) pad point is frequently the
+        # farthest point for clouds away from the origin and gets selected;
+        # np.clip would then silently collapse that out-of-range index to N-1.
+        # Route through FPSWithLengths whenever padding is active so the kernel
+        # only considers the true N points.
+        if lengths is None and N_pad > N:
+            lengths = np.full(B, float(N), dtype=np.float32)
+
         if lengths is not None:
             # Clamp lengths to N (original, not padded) to avoid out-of-bounds
             lengths = np.ascontiguousarray(lengths, dtype=np.float32)
             lengths = np.minimum(lengths, float(N))
-            
+
             key = f"fps_len_{B}_{N_pad}_{k}"
             
             xml = f'''<net name="fps_len" version="11"><layers>
@@ -203,7 +213,8 @@ class NativePointCloudOpsGPU:
             model = self._get_model(key, xml)
             result = model({"points": points_padded, "lengths": lengths})[0]
         else:
-            # Use original FPSSingle kernel (pad N similarly)
+            # No padding needed (N is already a power-of-2 bucket size);
+            # FPSSingle is safe because there are no pad rows.
             key = f"fps_{B}_{N_pad}_{k}"
             
             xml = f'''<net name="fps" version="11"><layers>
