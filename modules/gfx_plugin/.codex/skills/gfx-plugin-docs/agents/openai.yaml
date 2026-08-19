@@ -1,0 +1,4 @@
+interface:
+  display_name: "GFX Plugin Docs"
+  short_description: "Keep GFX plugin docs aligned with code"
+  default_prompt: "Use $gfx-plugin-docs to sync GFX plugin documentation with the current code."

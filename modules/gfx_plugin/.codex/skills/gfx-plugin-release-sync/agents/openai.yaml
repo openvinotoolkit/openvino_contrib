@@ -1,0 +1,4 @@
+interface:
+  display_name: "GFX Plugin Release Sync"
+  short_description: "Publish matching GFX plugin changes to both repos"
+  default_prompt: "Use $gfx-plugin-release-sync to commit and publish the same GFX plugin change in both repositories."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "GFX Plugin Dev"
+  short_description: "Build and refactor the OpenVINO GFX plugin"
+  default_prompt: "Use $gfx-plugin-dev to implement or refactor a GFX plugin change."

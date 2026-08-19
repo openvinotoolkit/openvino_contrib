@@ -1,0 +1,390 @@
+# Testing Guide
+
+This guide summarizes validation for `modules/gfx_plugin`.
+
+## Main Targets
+
+`tests/CMakeLists.txt` defines the primary test binaries:
+
+- `ov_gfx_func_tests`: plugin-facing behavior and OpenVINO shared-test coverage
+- `ov_gfx_unit_tests`: focused compiler, manifest, runtime, MLIR, cache,
+  property, profiling, and backend tests
+- `ov_gfx_runtime_micro_tests`: small runtime-subgraph regression checks
+- `ov_gfx_compare_runner`: accuracy and per-op diff tool
+- `ov_gfx_microbench`: MB0-MB3 microbench and calibration workflow
+- `ov_gfx_conv_shape_bench`: representative Conv2D compile-plus-infer probe
+
+The test CMake flow also creates `gfx_test_plugins_xml`, which writes a
+controlled `plugins.xml` with `GFX`, `TEMPLATE`, and `AUTO`. The AUTO entry has
+startup and runtime fallback disabled so tests do not hide unsupported GFX
+routes behind another plugin. Test binaries receive `GFX_PLUGIN_PATH` through
+their CTest environment.
+
+`tests/CMakeLists.txt` also wires executable matrix capture through
+`tests/tools/gfx_gtest_matrix.py`. That tool runs real GFX test binaries with
+`--gtest_list_tests` and rejects duplicate registrations, `DISABLED_` tests,
+and matrix drift. Architecture readiness must not be proven through source
+parsing, file-presence checks, grep/string checks, line counts, or deleted-symbol
+checks. Backend-unavailable coverage should be explicit executable contract
+coverage, not a skip helper or a source-registration mirror.
+
+Build:
+
+```bash
+cmake --build build-gfx-plugin --target ov_gfx_func_tests
+cmake --build build-gfx-plugin --target ov_gfx_unit_tests ov_gfx_runtime_micro_tests
+cmake --build build-gfx-plugin --target ov_gfx_compare_runner ov_gfx_microbench ov_gfx_conv_shape_bench
+```
+
+Run all GFX-labeled tests:
+
+```bash
+ctest --test-dir build-gfx-plugin --output-on-failure -L GFX
+```
+
+Run a focused gtest filter:
+
+```bash
+find build-gfx-plugin -name ov_gfx_unit_tests -type f
+DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
+  <path-to-ov_gfx_unit_tests> --gtest_filter=GfxStagePolicy.*
+```
+
+## Test Layout
+
+- `tests/unit/`: focused unit tests for plugin logic, MLIR lowering, runtime
+  helpers, caches, submission, profiling, backend registry contracts, and
+  OpenCL source artifacts
+- `tests/backends/metal/`: Metal-specific runtime, MPSRT, memory, and behavior
+  coverage
+- `tests/integration/`: plugin integration checks
+- `tests/shared_tests_instances/`: OpenVINO shared-test wiring
+- `tests/tools/`: compare runner, gtest matrix helper,
+  microbench, Conv shape bench, and standalone OpenCL experiment tools
+- `bench/`: optional evaluation orchestration helpers
+- `tools/`: profiling and microbench post-processing helpers
+
+Only Metal has backend-specific runtime execution tests in the current source
+tree. OpenCL runtime behavior is covered through source-artifact unit tests,
+runtime-bundle contract tests, integration paths, and target execution.
+
+`tests/integration/gfx_no_disabled_test_patterns.cpp` keeps the OpenVINO shared
+test disabled-pattern hook intentionally empty. Backend-unavailable cases are
+covered by explicit `*_unavailable_test.cpp` files instead of hiding coverage
+through skip patterns.
+
+`tests/integration/gfx_basic_ops_func_test.cpp` carries the plugin-facing basic
+operation checks. Do not restore the removed Metal-only
+`tests/backends/metal/basic_ops_test.cpp` split.
+
+`tests/tools/gfx_gtest_matrix.py` captures or compares
+`--gtest_list_tests` output from GFX production targets. Use it when changing
+test registration or target composition; it fails on duplicate registrations,
+`DISABLED_` tests, and matrix drift. The CMake `gfx_gtest_matrix_capture`
+target uses the tool in `--check-only` mode when host execution is possible.
+`gfx_gtest_matrix_compare` requires explicit
+`macos`, `android`, `rpi4`, and `rpi5` matrix labels through
+`GFX_GTEST_MATRIX_<TARGET>_ROOT` cache paths or equivalent `LABEL=DIR` entries
+in `GFX_GTEST_MATRIX_REFERENCE_ROOTS`. Native builds use
+`GFX_GTEST_MATRIX_CURRENT_LABEL` for the locally captured label; cross-build
+host capture fails unless `CMAKE_CROSSCOMPILING_EMULATOR` is configured.
+Use `tests/tools/gfx_gtest_device_matrix.py` to create the Android/RPi roots
+from the matching build output. Android capture runs through `adb`; Raspberry
+Pi 4 and Raspberry Pi 5 capture runs through SSH device files. In Android and
+Raspberry build directories, the CMake device-capture targets default to the
+current `ov_gfx_*` target output directory and depend on the production test
+binaries before capture. Use `gfx_gtest_matrix_capture_current_devices` in a
+matching Android/Raspberry build dir, `gfx_gtest_matrix_capture_android_devices`
+for Android-only capture, and `gfx_gtest_matrix_capture_raspberry_devices` for
+RPi4/RPi5 capture. `gfx_gtest_matrix_capture_devices` is the explicit all-remote
+aggregate and is valid only when every required local root/device file is
+configured. Use `GFX_GTEST_MATRIX_*_LOCAL_ROOT` only to compare a different
+build tree deliberately; stale deploy directories are not acceptance evidence.
+The helper only executes `ov_gfx_func_tests`, `ov_gfx_unit_tests`, and
+`ov_gfx_runtime_micro_tests` with `--gtest_list_tests`; it does not filter, skip,
+or rewrite tests.
+
+`tests/tools/gfx_architecture_guard.py` is the architecture/publication hygiene
+gate for legacy backend identities. The `gfx_architecture_guard` target and
+`ov_gfx_architecture_guard` CTest entry reject GFX-owned Vulkan/SPIR-V source,
+CMake target, or build-artifact names while allowing CLVK/CLSPV internals under
+the OpenCL delivery path. This guard is not functional coverage; pair it with
+the relevant contract tests.
+
+## What To Test
+
+Add or update tests when changing:
+
+- public properties or backend selection
+- `query_model()` or support probing
+- compiler backend registry, operation policies, lowering plans, manifests,
+  executable bundles, runtime executable descriptors, or artifact payloads
+- compiler pipeline-stage builder/fusion plans, pipeline-stage I/O plans,
+  memory plans, cache envelopes, cache import/repository behavior, runtime
+  execution plans, runtime-stage materialization, runtime-session binding
+  tables, fused-output lifetime plans, or prepared executable binding behavior
+- compiled-model cache public-property boundaries, `ov::cache_dir`,
+  `export_model()` / `import_model()` round-trips, cache-envelope wire
+  round-trips, cache import contracts, backend payload codecs, or stable-key
+  repository store/load behavior
+- compiler-owned tensor-layout classification
+- MLIR builders, passes, source plans, or runtime-value planning
+- backend stage-placement policy, stage fusion, precision, or submit policy
+- OpenCL source-artifact metadata, source coverage, chunking, constant
+  materialization, boolean buffer handling, or dynamic shape scalars
+- backend-owned OpenCL source payload materialization in
+  `src/backends/opencl/compiler/opencl_kernel_artifacts.*`
+- OpenCL remote context/tensor allocation, external `cl_mem` wrapping, context
+  validation, byte-size validation, or backend-unavailable adapters
+- Metal MPS/MPSGraph placement, MPSRT records, storage bridges, MSL binding
+  plans, or request-time resource binding
+- stateful `ReadValue` / `Assign`
+- reusable infer plans, reusable host outputs, immutable const caches, prepared
+  binding caches, or workspace allocation
+- output-source tracking, output aliases, or view-style Split/VariadicSplit
+  behavior
+- profiling JSON fields, stage estimates, target-profile counters, or
+  microbench schema
+- compare-runner behavior, precision-aware tolerances, or golden-reference flow
+
+## Recommended Test Selection
+
+For MLIR or transform changes:
+
+- prefer `tests/unit/mlir_*_test.cpp`
+- add IR-shape assertions where possible
+- use runtime tests only after the lowering contract is covered
+
+For plugin/property changes:
+
+- update `tests/unit/plugin_tests.cpp`
+- check `ov::available_devices`, `ov::device::id`, `ov::supported_properties`,
+  `GFX_BACKEND`, and compiled-model property behavior
+
+For compiler-service, manifest, or executable-descriptor changes:
+
+- `tests/unit/gpu_backend_base_test.cpp`
+- `tests/unit/gfx_backend_architecture_contract_test.cpp` when backend target
+  identity, kernel-unit registration, manifest contracts, memory plans, cache
+  envelopes, cache import/repository contracts, pipeline-stage builder/fusion
+  ownership, runtime execution-plan ownership, runtime-stage materializer
+  ownership, or runtime-session descriptor contracts move
+- `tests/unit/plugin_tests.cpp` when `query_model()` or compile behavior moves
+- backend artifact tests when payload materialization reaches Metal or OpenCL
+  runtime loaders
+- architecture-contract coverage when `BackendStageFactory`,
+  `PipelineStageBuildRequest`, `RuntimeStageMaterializer`, or
+  `RuntimeMaterializedStage` ownership changes
+- split contract coverage when ownership moves into descriptor/materialization
+  helpers:
+  `tests/unit/gfx_runtime_descriptor_contract_test.cpp`,
+  `tests/unit/gfx_runtime_stage_materialization_contract_test.cpp`,
+  `tests/unit/gfx_runtime_param_descriptor_contract_test.cpp`,
+  `tests/unit/gfx_backend_artifact_payload_contract_test.cpp`,
+  `tests/unit/gfx_const_tensor_descriptor_contract_test.cpp`,
+  `tests/unit/gfx_memory_cache_contract_test.cpp`,
+  `tests/unit/gfx_backend_module_contract_test.cpp`, and
+  `tests/unit/gfx_kernel_registry_contract_test.cpp`
+- stage-placement contract coverage when backend domain/storage selection moves
+- Metal vendor-descriptor coverage when MPS/MPSGraph payloads reach
+  `MpsrtVendorPrimitiveStage`
+- tensor-layout tests when `src/compiler/tensor_layout.*` changes
+- infer-pipeline reuse tests when `RuntimeSession`, prepared executable
+  bindings, descriptor-owned view/alias classification, fused-output lifetimes,
+  runtime-shape argument policy, descriptor memory-region use, descriptor-owned
+  `RuntimeParams` payload materialization, descriptor-owned `ConstTensor`
+  materialization, or fail-closed runtime descriptor verification changes
+- `tests/unit/gfx_runtime_execution_plan_contract_test.cpp` when materialized
+  stage ownership moves between `CompiledModel`, `RuntimeExecutableDescriptor`,
+  `RuntimeExecutionPlan`, and the infer executor
+- OpenCL runtime-bundle contract tests when dynamic loader candidate ordering
+  or CLVK tool-path setup changes
+
+For scheduling, cache, or infer-path changes:
+
+- `tests/unit/gfx_stage_policy_test.cpp`
+- `tests/unit/gfx_parallelism_test.cpp`
+- `tests/unit/infer_submission_test.cpp`
+- `tests/unit/infer_pipeline_reuse_test.cpp`
+- `tests/unit/gpu_const_cache_test.cpp`
+- `tests/unit/gfx_memory_cache_contract_test.cpp`
+- `tests/unit/gfx_runtime_descriptor_contract_test.cpp`
+- `tests/unit/gfx_runtime_stage_materialization_contract_test.cpp`
+- `tests/unit/gfx_runtime_param_descriptor_contract_test.cpp`
+- `tests/unit/gfx_runtime_execution_plan_contract_test.cpp`
+- `tests/unit/kernel_arg_reuse_test.cpp`
+- `tests/unit/gpu_backend_base_test.cpp`
+- `ov_gfx_runtime_micro_tests` focused files such as
+  `tests/unit/gfx_activation_runtime_test.cpp`,
+  `tests/unit/gfx_add_runtime_test.cpp`,
+  `tests/unit/gfx_matmul_runtime_test.cpp`,
+  `tests/unit/gfx_multiply_runtime_test.cpp`,
+  `tests/unit/gfx_reduce_logical_runtime_test.cpp`,
+  `tests/unit/gfx_split_runtime_test.cpp`
+- `tests/unit/gfx_softmax_kernel_contract_test.cpp` and
+  `tests/unit/gfx_pool_kernel_contract_test.cpp` for Softmax and Pooling
+  lowering, source-artifact, kernel-registry, and payload contracts
+
+For OpenCL source-artifact changes:
+
+- start with `tests/unit/gfx_opencl_source_artifacts_test.cpp`
+- include `tests/unit/gfx_activation_kernel_contract_test.cpp`,
+  `tests/unit/gfx_eltwise_kernel_contract_test.cpp`, or
+  `tests/unit/gfx_shapeof_kernel_contract_test.cpp` when the generated source
+  unit contract for those families changes
+- include `tests/unit/gfx_reduction_kernel_contract_test.cpp` when reduction
+  MLIR lowering, OpenCL reduction source-artifact behavior, or backend
+  reduction kernel-unit routing changes
+- include `tests/unit/gfx_softmax_kernel_contract_test.cpp` when generated
+  Metal Softmax/LogSoftmax payloads, OpenCL static or dynamic-static-rank
+  Softmax artifacts, axis metadata, or Softmax kernel-unit routing changes
+- include `tests/unit/gfx_conv_kernel_contract_test.cpp` when OpenCL generated
+  Conv2D/GroupConv2D f32 source ids, constant-weight tensor bindings, scalar
+  metadata, Metal MPS vendor routes, or Conv kernel-unit registration changes
+- include `tests/unit/gfx_pool_kernel_contract_test.cpp` when OpenCL generated
+  Pool2D artifacts, Metal MPS Pool2D vendor routing, or Pooling kernel-unit
+  registration changes
+- include `tests/unit/gfx_interpolate_kernel_contract_test.cpp` when OpenCL
+  Interpolate source ids, semantic scalar metadata, static NCHW shape
+  contracts, or kernel-unit routing changes
+- include `tests/unit/gfx_matmul_kernel_contract_test.cpp` when OpenCL generated
+  MatMul source ids, static f32 shape/stride scalar contracts, backend
+  kernel-unit routing, or unsupported MatMul variant behavior changes
+- include `tests/unit/gfx_opencl_source_artifacts_test.cpp` and
+  `tests/unit/gfx_backend_architecture_contract_test.cpp` when OpenCL route
+  catalog ownership, generated ShapeOf, Tile, compare/select, or logical-bool
+  elementwise kernel units move
+- include split tests such as
+  `tests/unit/gfx_opencl_range_tile_source_artifacts_test.cpp`,
+  `tests/unit/gfx_opencl_concat_split_source_artifacts_test.cpp`,
+  `tests/unit/gfx_opencl_gather_scatter_source_artifacts_test.cpp`, and
+  `tests/unit/gfx_opencl_layout_source_artifacts_test.cpp` when those
+  source-artifact families or missing-route contracts change
+- use `tests/unit/gfx_opencl_source_artifact_verifier.hpp` for reusable
+  OpenCL source-artifact assertions instead of duplicating role/scalar checks
+- keep reusable generated activation and elementwise case data in
+  `tests/unit/gfx_activation_contract_cases.hpp`,
+  `tests/unit/gfx_activation_opencl_contract_cases.cpp`,
+  `tests/unit/gfx_activation_msl_contract_cases.cpp`,
+  `tests/unit/gfx_eltwise_contract_cases.hpp`, and
+  `tests/unit/gfx_eltwise_opencl_contract_cases.cpp`
+- include `tests/unit/gfx_eltwise_opencl_source_artifacts_test.cpp` when
+  elementwise OpenCL artifact metadata or source identity changes
+- use `tests/unit/gpu_backend_base_test.cpp` when a source artifact is expected
+  to appear in the compiler executable bundle
+- use `tests/unit/gfx_backend_architecture_contract_test.cpp` when OpenCL
+  source payload materialization moves between common compiler code and
+  backend module code
+- add runtime coverage when dynamic OpenCL loading, buffer binding, runtime
+  output shape, static f32 scalar binding, constant materialization, boolean
+  storage, or command execution changes
+- include `tests/unit/gfx_opencl_runtime_bundle_contract_test.cpp` or the
+  unavailable adapter when runtime library candidate ordering or bundled CLVK
+  tool-path setup changes
+- include `tests/unit/gfx_opencl_remote_tensor_contract_test.cpp` or
+  `tests/unit/gfx_opencl_remote_tensor_contract_unavailable_test.cpp` when
+  OpenCL remote context/tensor creation, external `cl_mem` validation,
+  byte-size handling, or OpenCL backend availability wiring changes
+- use `tests/tools/ov_gfx_opencl_conv_microbench.py` and
+  `tests/tools/ov_gfx_opencl_conv_microbench_android.cpp` only as kernel-family
+  experiments before promotion into the plugin contract
+
+For Metal placement or MPSRT changes:
+
+- cover manifest/source-plan records in `tests/unit/gfx_stage_policy_test.cpp`,
+  the split `tests/unit/basic_ops_*_contract_test.cpp` files, or
+  `tests/unit/gpu_backend_base_test.cpp`
+- cover compiler-owned generated MSL, typed MPSRT program, and MPS/MPSGraph
+  `VendorDescriptor` payloads in `tests/unit/gpu_backend_base_test.cpp`
+- cover MPSRT program cache payloads in
+  `tests/unit/gfx_metal_mpsrt_program_cache_contract_test.cpp`
+- cover fused vendor attention artifact materialization and the absence of the
+  deleted standalone `mps_graph_attention_stage.*` route in
+  `tests/unit/gfx_backend_architecture_contract_test.cpp`
+- cover generated reduction MSL source plans and payload routing in
+  `tests/unit/gfx_reduction_kernel_contract_test.cpp`
+- cover generated Softmax/LogSoftmax MSL source plans and payload routing in
+  `tests/unit/gfx_softmax_kernel_contract_test.cpp`
+- cover Pool2D vendor-route and MSL-fallback rejection contracts in
+  `tests/unit/gfx_pool_kernel_contract_test.cpp`
+- cover request-time execution in `tests/backends/metal/gpu_backend_test.mm`
+  when the route reaches encode time
+- use `tests/unit/memory_device_integration_test.mm` for Metal memory/device
+  integration behavior
+
+## Compare Runner
+
+Use `ov_gfx_compare_runner` for correctness and narrowing:
+
+- full-model reference comparison
+- `--per-op-all`
+- `--single-op-output`
+- real-image PPM inputs
+- golden-reference output directories
+- `--gfx-inference-precision f16|f32`
+- boolean-output and Select mismatch probes
+- detailed first/worst mismatch output
+
+Keep it accuracy-focused. Use `benchmark_app` or `ov_gfx_microbench` for
+performance data.
+
+## Microbench And Profiling
+
+Use `ov_gfx_microbench` for MB0-MB3 overhead and calibration triage. The
+supported backend argument is:
+
+```bash
+./ov_gfx_microbench --backend auto|metal|opencl --warmup 1 --iterations 3
+```
+
+Use:
+
+- `docs/MICROBENCH_SCHEMA.md` for JSON and calibration artifact fields
+- `docs/PROFILING_RUNBOOK.md` for platform profiling commands
+- `tools/gfx_profile_runbook.py` to print ready-to-run command sets
+- `tools/gfx_microbench_smoke.py` for artifact round-trip checks
+- `tools/gfx_calibration_diff.py` for calibration comparison
+- `tools/gfx_external_trace_summary.py` for trace post-processing
+- `tests/tools/gfx_gtest_matrix.py` for comparing captured gtest registration
+  lists across production test targets
+
+## Cross-Device Strategy
+
+Treat backend routes separately:
+
+- macOS validates the Metal/MPS/MPSRT/MSL path.
+- Android or Linux targets with a working OpenCL GPU runtime validate the
+  OpenCL source-kernel path.
+- Raspberry Pi validation should use the OpenCL runtime that belongs to the
+  target deployment contract, including the staged CLVK/CLSPV bundle when that
+  is the deployment route.
+
+A Metal pass does not prove OpenCL correctness. An OpenCL failure should be
+fixed in the shared manifest/lowering/artifact path first unless the evidence
+points to a concrete backend runtime boundary.
+
+Do not turn device failures into skips until the same op has been checked
+through the narrow unit path and a real backend execution path.
+
+## Practical Pre-Commit Checks
+
+For docs-only changes:
+
+```bash
+git diff --check
+rg -n "sensitive-placeholder" README.md docs .codex/skills || true
+```
+
+For documentation/security publication tasks, skip build and test targets
+unless they are explicitly requested. Use source inspection, security grep,
+stale-reference grep, `git diff --check`, and staged diff review instead.
+
+For source or build-file changes:
+
+```bash
+cmake --build build-gfx-plugin --target openvino_gfx_plugin ov_gfx_unit_tests
+ctest --test-dir build-gfx-plugin --output-on-failure -L GFX
+```
+
+Use narrower gtest filters first when a full label run is not needed or would be
+too heavy for the current change.

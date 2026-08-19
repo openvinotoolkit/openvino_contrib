@@ -1,0 +1,304 @@
+// Copyright (C) 2025 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+
+#include "unit/gfx_backend_contracts.hpp"
+
+#include "common/gpu_device_profile.hpp"
+#include "compiler/backend_registry.hpp"
+#include "compiler/cache_envelope.hpp"
+#include "compiler/executable_bundle.hpp"
+#include "compiler/manifest.hpp"
+#include "compiler/pipeline_stage_graph_snapshot.hpp"
+#include "compiler/runtime_executable_descriptor_builder.hpp"
+#include "runtime/gfx_logger.hpp"
+#include "runtime/executable_descriptor.hpp"
+#include "openvino/core/except.hpp"
+#include "openvino/op/constant.hpp"
+#include "openvino/op/parameter.hpp"
+#include "openvino/op/range.hpp"
+#include "openvino/op/relu.hpp"
+#include "openvino/op/result.hpp"
+#include "transformations/rt_info/disable_constant_folding.hpp"
+
+namespace ov {
+namespace gfx_plugin {
+namespace test {
+namespace {
+
+bool contains(std::string_view haystack, std::string_view needle) {
+    return haystack.find(needle) != std::string_view::npos;
+}
+
+}  // namespace
+
+BackendTargetContract::BackendTargetContract(compiler::BackendTarget target)
+    : m_target(std::move(target)) {}
+
+const compiler::BackendTarget& BackendTargetContract::target() const noexcept {
+    return m_target;
+}
+
+bool BackendTargetContract::has_concrete_oop_identity() const {
+    return !m_target.backend_id().empty() &&
+           !m_target.runtime_api().empty() &&
+           !m_target.device_family().empty() &&
+           !m_target.device_profile().empty() &&
+           !m_target.device_name().empty() &&
+           !m_target.vendor_id().empty() &&
+           !m_target.driver_id().empty() &&
+           !m_target.compiler_id().empty() &&
+           !m_target.cache_compatibility_id().empty() &&
+           m_target.is_compatible_with_fingerprint(m_target.fingerprint());
+}
+
+bool BackendTargetContract::has_profiled_cache_identity() const {
+    const auto fingerprint = m_target.fingerprint();
+    return contains(fingerprint, "backend=" + m_target.backend_id()) &&
+           contains(fingerprint, "runtime=" + m_target.runtime_api()) &&
+           contains(fingerprint, "family=" + m_target.device_family()) &&
+           contains(fingerprint, "profile=" + m_target.device_profile()) &&
+           contains(fingerprint, "device=" + m_target.device_name()) &&
+           contains(fingerprint, "vendor=" + m_target.vendor_id()) &&
+           contains(fingerprint, "driver=" + m_target.driver_id()) &&
+           contains(fingerprint, "compiler=" + m_target.compiler_id()) &&
+           contains(fingerprint,
+                    "cache=" + m_target.cache_compatibility_id());
+}
+
+bool BackendTargetContract::avoids_inverse_apple_bucket() const {
+    const auto debug = m_target.debug_string();
+    return !contains(debug, "non_apple") &&
+           !contains(debug, "non-apple") &&
+           !contains(debug, "not_apple");
+}
+
+BackendModuleContract::BackendModuleContract(
+    std::shared_ptr<const compiler::BackendModule> module)
+    : m_module(std::move(module)) {}
+
+const compiler::BackendModule& BackendModuleContract::module() const {
+    OPENVINO_ASSERT(m_module, "GFX test backend module contract is empty");
+    return *m_module;
+}
+
+const compiler::BackendTarget& BackendModuleContract::target() const {
+    return module().target();
+}
+
+compiler::GfxCompileResult BackendModuleContract::compile_without_graph_pipeline(
+    const std::shared_ptr<const ov::Model>& model) const {
+    const auto& backend_module = module();
+    compiler::GfxCompileResult compile_result;
+    compile_result.target = backend_module.target();
+    compile_result.transformed_model = model;
+    compile_result.lowering_plan =
+        backend_module.lowering_planner().plan(model,
+                                               backend_module.legalizer());
+    compile_result.manifest =
+        compiler::ManifestBuilder{}.build(compile_result.lowering_plan);
+    const auto compiler_stage_graph_snapshot =
+        compiler::detail::make_pipeline_stage_graph_snapshot(
+            model,
+            compiler::detail::make_pipeline_stage_fusion_config(
+                backend_module.capabilities().fusion(),
+                /*enable_fusion=*/true,
+                gfx_log_debug_enabled()));
+    compile_result.executable = compiler::ExecutableBundleBuilder(
+        [&backend_module](compiler::KernelArtifactDescriptor& descriptor,
+                          const compiler::PlannedOperation& op) {
+            return backend_module.finalize_artifact_descriptor(descriptor, op);
+        },
+        [&backend_module](const compiler::KernelArtifactDescriptor& descriptor,
+                          const compiler::PlannedOperation& op) {
+            return backend_module.materialize_artifact_payload(descriptor, op);
+        }).build(compile_result.manifest, compile_result.lowering_plan);
+    compiler::CacheEnvelopeBuildOptions cache_options;
+    cache_options.model_fingerprint =
+        compiler::make_model_cache_fingerprint(*model);
+    cache_options.backend_capabilities_fingerprint =
+        compiler::make_backend_capabilities_fingerprint(
+            backend_module.capabilities());
+    cache_options.backend_compiler_revision =
+        backend_module.target().compiler_id();
+    cache_options.driver_identity = backend_module.target().driver_id();
+    compile_result.unsupported = compile_result.lowering_plan.unsupported;
+    if (compile_result.lowering_plan.executable() &&
+        compile_result.manifest.valid() && compile_result.executable.valid()) {
+        const compiler::BackendRegistry registry({m_module});
+        compiler::RuntimeExecutableDescriptorBuildRequest descriptor_request;
+        descriptor_request.executable = &compile_result.executable;
+        descriptor_request.stage_graph_snapshot = &compiler_stage_graph_snapshot;
+        descriptor_request.backend_registry = &registry;
+        descriptor_request.target = compile_result.target;
+        descriptor_request.backend_name = compile_result.target.backend_id();
+        auto runtime_descriptor =
+            compiler::RuntimeExecutableDescriptorBuilder{}.build_finalized(
+                descriptor_request);
+        compile_result.runtime_descriptor =
+            std::make_shared<const RuntimeExecutableDescriptor>(
+                std::move(runtime_descriptor));
+        compile_result.cache_envelope =
+            compiler::CacheEnvelopeBuilder{}.build(
+                compile_result.executable, *compile_result.runtime_descriptor,
+                cache_options);
+    }
+    return compile_result;
+}
+
+bool BackendModuleContract::compile_result_obeys_manifest_contract(
+    const compiler::GfxCompileResult& compile_result) const {
+    if (!compile_result.supported() ||
+        compile_result.target.fingerprint() != target().fingerprint() ||
+        !compile_result.manifest.verify().valid() ||
+        !compile_result.executable.verify().valid() ||
+        !compile_result.cache_envelope.verify(compile_result.executable)
+             .valid()) {
+        return false;
+    }
+    if (!compile_result.manifest.memory_plan.valid() ||
+        !compile_result.executable.memory_plan.valid() ||
+        compiler::make_memory_plan_fingerprint(
+            compile_result.manifest.memory_plan) !=
+            compiler::make_memory_plan_fingerprint(
+                compile_result.executable.memory_plan)) {
+        return false;
+    }
+    if (!compile_result.runtime_descriptor ||
+        !compiler::runtime_executable_descriptor_materialization_valid(
+            *compile_result.runtime_descriptor)) {
+        return false;
+    }
+    if (compile_result.manifest.route_count(compiler::LoweringRouteKind::Common) !=
+        compile_result.lowering_plan.route_count(
+            compiler::LoweringRouteKind::Common)) {
+        return false;
+    }
+    for (const auto& stage : compile_result.manifest.stages) {
+        if (stage.memory.hidden_host_copy_allowed ||
+            stage.dispatch.backend_domain != stage.backend_domain ||
+            stage.dispatch.kernel_unit_id != stage.kernel_unit_id ||
+            stage.dispatch.kernel_unit_kind != stage.kernel_unit_kind ||
+            !compile_result.manifest.memory_plan.has_alias_group(
+                stage.memory.alias_group)) {
+            return false;
+        }
+        for (const auto& input : stage.inputs) {
+            if (!compile_result.manifest.memory_plan.has_region(
+                    input.memory_region_id)) {
+                return false;
+            }
+        }
+        for (const auto& output : stage.outputs) {
+            if (!compile_result.manifest.memory_plan.has_region(
+                    output.memory_region_id)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+BackendContractCatalog::BackendContractCatalog()
+    : BackendContractCatalog(compiler::BackendRegistry::default_registry()) {}
+
+BackendContractCatalog::BackendContractCatalog(
+    const compiler::BackendRegistry& registry)
+    : m_registry(&registry) {}
+
+std::vector<BackendTargetContract>
+BackendContractCatalog::known_target_contracts() const {
+    return {BackendTargetContract{
+                compiler::BackendTarget::from_backend(GpuBackend::Metal)},
+            BackendTargetContract{
+                compiler::BackendTarget::from_backend(GpuBackend::OpenCL)},
+            BackendTargetContract{
+                compiler::BackendTarget::from_backend_device_family(
+                    GpuBackend::OpenCL, GpuDeviceFamily::QualcommAdreno)},
+            BackendTargetContract{
+                compiler::BackendTarget::from_backend_device_family(
+                    GpuBackend::OpenCL, GpuDeviceFamily::BroadcomV3D)}};
+}
+
+std::vector<BackendModuleContract>
+BackendContractCatalog::compiled_module_contracts() const {
+    OPENVINO_ASSERT(m_registry, "GFX test backend catalog has no registry");
+    std::vector<BackendModuleContract> contracts;
+    for (const auto& target : m_registry->available_targets()) {
+        auto module = m_registry->resolve(target);
+        if (module) {
+            contracts.emplace_back(std::move(module));
+        }
+    }
+    return contracts;
+}
+
+KernelRegistryContract KernelRegistryContract::for_opencl() {
+    const auto target =
+        compiler::BackendTarget::from_backend(GpuBackend::OpenCL);
+    return KernelRegistryContract{
+        compiler::make_opencl_kernel_registry(target)};
+}
+
+KernelRegistryContract KernelRegistryContract::for_metal() {
+    const auto target = compiler::BackendTarget::from_backend(GpuBackend::Metal);
+    return KernelRegistryContract{compiler::make_metal_kernel_registry(target)};
+}
+
+KernelRegistryContract::KernelRegistryContract(compiler::KernelRegistry registry)
+    : m_registry(std::move(registry)) {}
+
+bool KernelRegistryContract::audit_is_valid() const {
+    return m_registry.audit().valid();
+}
+
+bool KernelRegistryContract::rejects_unit(
+    compiler::LoweringRouteKind route,
+    std::string_view kernel_unit_id) const {
+    return !m_registry.resolve(route, kernel_unit_id).valid();
+}
+
+compiler::KernelUnit KernelRegistryContract::resolve_unit(
+    compiler::LoweringRouteKind route,
+    std::string_view kernel_unit_id) const {
+    return m_registry.resolve(route, kernel_unit_id);
+}
+
+std::shared_ptr<ov::Model> ModelContractFactory::passthrough(
+    const ov::PartialShape& shape) const {
+    auto parameter =
+        std::make_shared<ov::op::v0::Parameter>(ov::element::f32, shape);
+    auto result = std::make_shared<ov::op::v0::Result>(parameter);
+    return std::make_shared<ov::Model>(ov::ResultVector{result},
+                                       ov::ParameterVector{parameter});
+}
+
+std::shared_ptr<ov::Model> ModelContractFactory::relu() const {
+    auto parameter =
+        std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                ov::Shape{2, 3});
+    auto relu = std::make_shared<ov::op::v0::Relu>(parameter);
+    auto result = std::make_shared<ov::op::v0::Result>(relu);
+    return std::make_shared<ov::Model>(ov::ResultVector{result},
+                                       ov::ParameterVector{parameter});
+}
+
+std::shared_ptr<ov::Model> ModelContractFactory::static_range() const {
+    auto start =
+        ov::op::v0::Constant::create(ov::element::f32, ov::Shape{}, {1.0f});
+    auto stop =
+        ov::op::v0::Constant::create(ov::element::f32, ov::Shape{}, {4.0f});
+    auto step =
+        ov::op::v0::Constant::create(ov::element::f32, ov::Shape{}, {1.0f});
+    auto range =
+        std::make_shared<ov::op::v4::Range>(start, stop, step,
+                                            ov::element::f32);
+    ov::disable_constant_folding(range);
+    auto result = std::make_shared<ov::op::v0::Result>(range);
+    return std::make_shared<ov::Model>(ov::ResultVector{result},
+                                       ov::ParameterVector{});
+}
+
+}  // namespace test
+}  // namespace gfx_plugin
+}  // namespace ov

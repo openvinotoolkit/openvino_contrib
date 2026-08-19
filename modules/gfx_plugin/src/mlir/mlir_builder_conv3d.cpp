@@ -1,0 +1,166 @@
+// Copyright (C) 2025 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+
+#include "mlir/mlir_builder.hpp"
+
+#include "mlir/gfx_mlir_type_utils.hpp"
+
+#include "openvino/op/convolution.hpp"
+#include "openvino/core/model.hpp"
+#include "openvino/core/strides.hpp"
+#include "openvino/core/coordinate_diff.hpp"
+
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
+
+namespace ov {
+namespace gfx_plugin {
+
+namespace {
+mlir::DenseIntElementsAttr make_i64_attr(mlir::OpBuilder& b, const ov::Strides& vals) {
+    auto i64 = b.getI64Type();
+    auto type = mlir::RankedTensorType::get({static_cast<int64_t>(vals.size())}, i64);
+    llvm::SmallVector<int64_t, 4> data;
+    data.reserve(vals.size());
+    for (auto v : vals) {
+        data.push_back(static_cast<int64_t>(v));
+    }
+    return mlir::DenseIntElementsAttr::get(type, data);
+}
+
+mlir::DenseIntElementsAttr make_i64_attr(mlir::OpBuilder& b, const ov::CoordinateDiff& vals) {
+    auto i64 = b.getI64Type();
+    auto type = mlir::RankedTensorType::get({static_cast<int64_t>(vals.size())}, i64);
+    llvm::SmallVector<int64_t, 4> data;
+    data.reserve(vals.size());
+    for (auto v : vals) {
+        data.push_back(static_cast<int64_t>(v));
+    }
+    return mlir::DenseIntElementsAttr::get(type, data);
+}
+}  // namespace
+
+mlir::ModuleOp build_mlir_conv3d_from_model(const std::shared_ptr<const ov::Model>& model,
+                                            mlir::MLIRContext& ctx) {
+    ctx.loadDialect<mlir::func::FuncDialect,
+                    mlir::linalg::LinalgDialect,
+                    mlir::tensor::TensorDialect,
+                    mlir::arith::ArithDialect,
+                    mlir::math::MathDialect>();
+    std::shared_ptr<const ov::op::v1::Convolution> conv;
+    for (const auto& node : model->get_ordered_ops()) {
+        if (auto c = ov::as_type_ptr<const ov::op::v1::Convolution>(node)) {
+            if (c->get_input_partial_shape(0).rank().is_static() &&
+                c->get_input_partial_shape(0).rank().get_length() == 5) {
+                conv = c;
+                break;
+            }
+        }
+    }
+    OPENVINO_ASSERT(conv, "Conv3D builder: Convolution op (rank-5) not found");
+
+    const auto in_shape = conv->get_input_shape(0);   // NCDHW
+    const auto w_shape  = conv->get_input_shape(1);   // OIDHW
+    OPENVINO_ASSERT(in_shape.size() == 5 && w_shape.size() == 5, "Conv3D: rank-5 expected");
+
+    auto elem_ty = to_mlir_type(conv->get_output_element_type(0), ctx);
+    llvm::SmallVector<int64_t> in_dims(in_shape.begin(), in_shape.end());
+    llvm::SmallVector<int64_t> w_dims(w_shape.begin(), w_shape.end());
+    auto in_ty = mlir::RankedTensorType::get(in_dims, elem_ty);
+    auto w_ty  = mlir::RankedTensorType::get(w_dims, elem_ty);
+
+    auto out_shape = conv->get_output_shape(0);
+    llvm::SmallVector<int64_t> out_dims(out_shape.begin(), out_shape.end());
+    auto out_ty = mlir::RankedTensorType::get(out_dims, elem_ty);
+
+    mlir::OpBuilder mb(&ctx);
+    auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+    mb.setInsertionPointToStart(module.getBody());
+
+    auto func_type = mb.getFunctionType({in_ty, w_ty}, {out_ty});
+    auto func = mb.create<mlir::func::FuncOp>(mlir::UnknownLoc::get(&ctx), "conv3d_main", func_type);
+    func.addEntryBlock();
+
+    mlir::OpBuilder b(func.getBody());
+    b.setInsertionPointToStart(&func.getBody().front());
+    auto loc = mlir::UnknownLoc::get(&ctx);
+    auto empty = b.create<mlir::tensor::EmptyOp>(loc, out_dims, elem_ty);
+    auto zero_attr = llvm::isa<mlir::Float16Type>(elem_ty)
+                         ? b.getF16FloatAttr(0.0f)
+                         : b.getF32FloatAttr(0.0f);
+    auto zero = b.create<mlir::arith::ConstantOp>(loc, zero_attr);
+    auto filled = b.create<mlir::linalg::FillOp>(loc,
+                                                 mlir::ValueRange{zero},
+                                                 mlir::ValueRange{empty.getResult()});
+
+    const auto pads_begin = conv->get_pads_begin();  // {front, top, left}
+    const auto pads_end   = conv->get_pads_end();    // {back, bottom, right}
+    const auto strides    = conv->get_strides();
+    const auto dilations  = conv->get_dilations();
+    bool has_pad = (pads_begin[0] || pads_begin[1] || pads_begin[2] ||
+                    pads_end[0]   || pads_end[1]   || pads_end[2]);
+
+    mlir::Value input_val = func.getArgument(0);
+    if (has_pad) {
+        mlir::SmallVector<int64_t> low_static = {
+            0,
+            0,
+            static_cast<int64_t>(pads_begin[0]),
+            static_cast<int64_t>(pads_begin[1]),
+            static_cast<int64_t>(pads_begin[2])
+        };
+        mlir::SmallVector<int64_t> high_static = {
+            0,
+            0,
+            static_cast<int64_t>(pads_end[0]),
+            static_cast<int64_t>(pads_end[1]),
+            static_cast<int64_t>(pads_end[2])
+        };
+        mlir::SmallVector<mlir::OpFoldResult> low_ofr, high_ofr;
+        for (auto v : low_static) low_ofr.push_back(b.getI64IntegerAttr(v));
+        for (auto v : high_static) high_ofr.push_back(b.getI64IntegerAttr(v));
+        auto zero_attr = llvm::isa<mlir::Float16Type>(elem_ty)
+                             ? b.getF16FloatAttr(0.0f)
+                             : b.getF32FloatAttr(0.0f);
+        auto zero = b.create<mlir::arith::ConstantOp>(loc, zero_attr);
+        input_val = b.create<mlir::tensor::PadOp>(
+            loc,
+            mlir::RankedTensorType::get(
+                {static_cast<int64_t>(in_shape[0]),
+                 static_cast<int64_t>(in_shape[1]),
+                 static_cast<int64_t>(in_shape[2] + pads_begin[0] + pads_end[0]),
+                 static_cast<int64_t>(in_shape[3] + pads_begin[1] + pads_end[1]),
+                 static_cast<int64_t>(in_shape[4] + pads_begin[2] + pads_end[2])},
+                elem_ty),
+            func.getArgument(0),
+            low_ofr,
+            high_ofr,
+            zero,
+            false);
+    }
+
+    auto strides_attr = make_i64_attr(b, strides);
+    auto dil_attr = make_i64_attr(b, dilations);
+    auto conv_op = b.create<mlir::linalg::Conv3DNcdhwFcdhwOp>(
+        loc,
+        out_ty,
+        mlir::ValueRange{input_val, func.getArgument(1)},
+        mlir::ValueRange{filled.getResult(0)},
+        strides_attr,
+        dil_attr);
+    conv_op->setAttr("gfx.pad_begin", make_i64_attr(b, pads_begin));
+    conv_op->setAttr("gfx.pad_end", make_i64_attr(b, pads_end));
+
+    b.create<mlir::func::ReturnOp>(loc, conv_op.getResult(0));
+
+    return module;
+}
+
+}  // namespace gfx_plugin
+}  // namespace ov
