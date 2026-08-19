@@ -2,20 +2,60 @@
 # SPDX-License-Identifier: Apache-2.0
 
 name: "Pull Request Labeler"
+
+# Assign 'category:' labels from the changed paths and then require that at
+# least one is present. Both run as ordered steps in a single job, so the check
+# reads the labels only after the labeler has assigned them - no race between
+# two separate workflows and no dependency on a rerun.
 on:
-- pull_request_target
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      # Re-run when a label is changed by hand, so a maintainer adding a
+      # 'category:' label to a PR the path-based labeler did not match turns
+      # the check green without needing a new push.
+      - labeled
+      - unlabeled
 
 permissions: read-all
 
 jobs:
-  triage:
+  require-category-label:
+    name: Require a category label
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
-    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-    - uses: actions/labeler@ac9175f8a1f3625fd0d4fb234536d26811351594 # v4.3.0
-      with:
-        repo-token: "${{ secrets.GITHUB_TOKEN }}"
-        configuration-path: '.github/labeler.yml'
-        sync-labels: 'true'
+      # Only run the path-based labeler on code changes, not on label edits.
+      # With sync-labels it removes category labels whose globs no longer match,
+      # so re-running it on a 'labeled' event would strip a label a maintainer
+      # just added by hand to a PR the globs do not cover.
+      - name: Assign category labels from changed paths
+        if: github.event.action != 'labeled' && github.event.action != 'unlabeled'
+        uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7.0.0
+        with:
+          repo-token: "${{ secrets.GITHUB_TOKEN }}"
+          configuration-path: '.github/labeler.yml'
+          sync-labels: 'true'
+
+      - name: Check the pull request has a category label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          labels="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json labels --jq '.labels[].name')"
+          echo "Pull request labels:"
+          echo "${labels:-<none>}"
+          if echo "$labels" | grep -q '^category:'; then
+            echo "OK: pull request has a category label"
+          else
+            echo "::error::This pull request has no 'category:' label. Add the label" \
+                 "matching the changed module (see .github/labels.yml); the labeler" \
+                 "assigns one automatically from the changed paths."
+            exit 1
+          fi

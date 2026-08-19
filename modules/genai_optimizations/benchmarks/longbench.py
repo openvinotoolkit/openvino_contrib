@@ -13,7 +13,7 @@ from contextlib import ExitStack
 import datasets
 import torch
 import transformers
-from fuzzywuzzy import fuzz
+from thefuzz import fuzz
 from rouge import Rouge
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM
