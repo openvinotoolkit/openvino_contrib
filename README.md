@@ -22,6 +22,7 @@ This list gives an overview of all modules available inside the contrib reposito
 * [**Ollama-OpenVINO**](./modules/ollama_openvino): OpenVINO GenAI empowered Ollama which accelerate LLM on Intel platforms(including CPU, iGPU/dGPU, NPU).
 * [**ov_training_kit**](./modules/ov_training_kit): Training Kit Python library -- provides scikit-learn, PyTorch and Tensorflow wrappers for training, optimization, and deployment with OpenVINO on AI PCs.
 * [**OpenVino BEVFusion**](./modules/openvino_bevfusion): OpenVino supported implementation of the BEVFusion model.
+* [**OpenVINO HGGD**](./modules/openvino_hggd): OpenVINO-accelerated HGGD grasp detection using custom GPU point cloud extensions.
 * [**3D**](./modules/3d): A collection of 3D vision models implemented with OpenVINO. Currently, it includes the following models:
   * [**PointPillars**](./modules/3d/pointPillars): Use OpenVINO to perform 3D object detection with PointPillars model.
   * [**CDPN**](./modules/3d/CDPN): Use OpenVINO to perform 6-DoF object pose estimation with CDPN model.

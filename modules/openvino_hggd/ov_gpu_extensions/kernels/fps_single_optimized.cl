@@ -128,7 +128,11 @@ __kernel void fps_single_optimized_kernel(
                 if (d2 < md) md = d2;
             }
 
-            if (md > my_max) {
+            /* Skip already-selected points: md == 0 means this point is
+             * coincident with (or is) an already-selected point; selecting it
+             * again would emit a duplicate index (diverges from CPU reference
+             * which marks selected points with min_dist = -1). */
+            if (md > 0.0f && md > my_max) {
                 my_max = md;
                 my_idx = i;
             }

@@ -207,7 +207,11 @@ def masked_gather(points: torch.Tensor, idx: torch.Tensor) -> torch.Tensor:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def euler_angles_to_matrix(euler: torch.Tensor, convention: str = "XYZ") -> torch.Tensor:
-    """Convert Euler angles to rotation matrices (numpy fallback)."""
+    """Convert Euler angles to rotation matrices (numpy fallback).
+
+    API-compatible with pytorch3d.transforms.euler_angles_to_matrix
+    (https://github.com/facebookresearch/pytorch3d).
+    """
     if euler.dim() == 1:
         euler = euler.unsqueeze(0)
     
@@ -236,7 +240,11 @@ def euler_angles_to_matrix(euler: torch.Tensor, convention: str = "XYZ") -> torc
 
 
 def matrix_to_quaternion(R: torch.Tensor) -> torch.Tensor:
-    """Convert rotation matrix to quaternion (numpy fallback)."""
+    """Convert rotation matrix to quaternion using Shepperd's method (numpy fallback).
+
+    API-compatible with pytorch3d.transforms.matrix_to_quaternion
+    (https://github.com/facebookresearch/pytorch3d).
+    """
     device = R.device
     dtype = R.dtype
     

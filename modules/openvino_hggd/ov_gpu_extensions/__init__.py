@@ -8,12 +8,12 @@ OpenVINO custom C++ extensions.
 
 Usage:
     # Install pytorch3d shim
-    from ov_gpu_extensions.ov_shim_v3 import install_ov_shim
+    from ov_gpu_extensions.ov_shim_gpu import install_ov_shim
     install_ov_shim()
-    
+
     # Or use ops directly
-    from ov_gpu_extensions.pointcloud_ops_native import create_ops
-    ops = create_ops(device='CPU')
+    from ov_gpu_extensions.pointcloud_ops_native_gpu import create_ops
+    ops = create_ops(device='GPU')
 """
 
 from .pointcloud_ops_native_gpu import NativePointCloudOpsGPU
