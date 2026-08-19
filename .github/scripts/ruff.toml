@@ -1,0 +1,9 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# Ruff config for the CI helper scripts under .github/scripts.
+line-length = 110
+target-version = "py310"
+
+[lint]
+select = ["E", "F", "I", "W", "UP", "B"]

@@ -1,32 +1,23 @@
 # Copyright (C) 2018-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-# This logic is largely copied from the
-# - https://github.com/microsoft/ProphetNet/tree/master/CRITIC
-# - https://github.com/openai/prm800k
-# - https://github.com/microsoft/ToRA/blob/main/src/eval/grader.py
-# - https://github.com/deepseek-ai/DeepSeek-Math/blob/main/evaluation/eval/eval_utils.py
-# - https://github.com/VITA-Group/SEAL/tree/main
-
 import argparse
 import json
 import os
 import random
-import re
 from collections import Counter
 from contextlib import ExitStack
 
 from datasets import load_dataset
+from math_evaluation import evaluate_math_predictions
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM
-from transformers import AutoTokenizer
-
-from utils import add_attention_args, add_token_eviction_args
-from utils import get_eviction_patcher, get_sparse_attention_patcher
-
-from reasoning_parser import extract_answer
-from reasoning_parser import parallel_math_equal
-from reasoning_parser import strip_string
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from utils import (
+    add_attention_args,
+    add_token_eviction_args,
+    get_eviction_patcher,
+    get_sparse_attention_patcher,
+)
 
 # disable tokenizer parallelism warnings
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -43,24 +34,27 @@ def run_evaluation(res_path, save=False, k=None, output_dir=None):
             example["model_generation"] = example["model_output"]
         if k is not None:
             example["model_generation"] = example["model_generation"][:k]
-        gt_cot = example["answer"]
-        gt_ans = extract_answer(gt_cot, data_name="omni-math")
-        gt_cot = str(gt_cot).strip()
-        gt_ans = strip_string(gt_ans, skip_unit=False)
-        all_pred = [extract_answer(p, data_name="omni-math") for p in example["model_generation"]]
-        all_pred = [strip_string(p, skip_unit=False) for p in all_pred]
-        all_eval = parallel_math_equal(all_pred, gt_ans, timeout=5)
-        effective_pred = [p for p, o in zip(all_pred, example["model_generation"]) if "boxed" in o]
+        all_pred, all_eval = evaluate_math_predictions(
+            example["answer"],
+            example["model_generation"],
+        )
+        effective_pred = [
+            prediction
+            for prediction, output in zip(
+                all_pred, example["model_generation"], strict=True
+            )
+            if "boxed" in output
+        ]
         if len(effective_pred) == 0:
             effective_pred = all_pred
         counter = Counter(effective_pred)
         pred = counter.most_common(1)[0][0]
         index = all_pred.index(pred)
-        eval = all_eval[index]
+        majority_result = all_eval[index]
         example["all_pred"] = all_pred
         example["all_eval"] = all_eval
         example["mv_pred"] = pred
-        example["mv_eval"] = eval
+        example["mv_eval"] = majority_result
         example["mv_index"] = index
 
     acc = sum([example["mv_eval"] for example in data]) / len(data)
@@ -76,9 +70,14 @@ def run_evaluation(res_path, save=False, k=None, output_dir=None):
             incorrect_avg_len.append(OUTPUT_LENGTHS[i])
 
     if len(correct_avg_len) != 0:
-        print(f"Correct avg len: {sum(correct_avg_len) / len(correct_avg_len):.2f}", end=", ")
+        print(
+            f"Correct avg len: {sum(correct_avg_len) / len(correct_avg_len):.2f}",
+            end=", ",
+        )
     if len(incorrect_avg_len) != 0:
-        print(f"Incorrect avg len: {sum(incorrect_avg_len) / len(incorrect_avg_len):.2f}")
+        print(
+            f"Incorrect avg len: {sum(incorrect_avg_len) / len(incorrect_avg_len):.2f}"
+        )
 
     if save:
         out_file = os.path.join(output_dir, "math_eval.jsonl")
@@ -103,67 +102,33 @@ def trim_output(output):
     return output
 
 
-def extract_box(pred_str):
-    ans = pred_str.split("boxed")[-1]
-    if len(ans) == 0:
-        return ""
-    elif ans[0] == "{":
-        stack = 1
-        a = ""
-        for c in ans[1:]:
-            if c == "{":
-                stack += 1
-                a += c
-            elif c == "}":
-                stack -= 1
-                if stack == 0:
-                    break
-                a += c
-            else:
-                a += c
-    else:
-        a = ans.split("$")[0].strip()
-
-    return a
-
-
 def prepare_dataset(dataset, max_samples=None):
     test_data = []
     if dataset == "MATH500":
         data = load_dataset("HuggingFaceH4/MATH-500", split="test")
         for example in data:
-            gt = extract_box(example["solution"])
             test_data.append(
                 {
                     "question": example["problem"],
                     "answer": example["solution"],
-                    "gt": gt,
+                    "gt": example["solution"],
                 }
             )
     elif dataset == "GSM":
-        data_path = "gsm.jsonl"
-
-        if not os.path.exists(data_path):
-            import requests
-            url = "https://raw.githubusercontent.com/VITA-Group/SEAL/main/data/gsm/test.jsonl"
-            response = requests.get(url)
-            response.raise_for_status()
-            with open(data_path, "w", encoding="utf-8") as f:
-                f.write(response.text)
-            print(f"Downloaded and saved to '{data_path}'.")
-
-        with open(data_path) as fin:
-            for line in fin:
-                example = json.loads(line)
-                answer = example["answer"].split("####")[1].strip()
-                answer = re.sub(r"(\d),(\d)", r"\1\2", answer)
-                test_data.append(
-                    {
-                        "question": example["question"],
-                        "answer": example["answer"].split("####")[0].strip(),
-                        "gt": answer,
-                    }
+        data = load_dataset("openai/gsm8k", "main", split="test")
+        for example in data:
+            reasoning, separator, answer = example["answer"].rpartition("####")
+            if not separator:
+                raise ValueError(
+                    "GSM8K answer does not contain the expected #### delimiter"
                 )
+            test_data.append(
+                {
+                    "question": example["question"],
+                    "answer": reasoning.strip(),
+                    "gt": answer.strip(),
+                }
+            )
 
     if max_samples and len(test_data) > max_samples:
         test_data = test_data[:max_samples]
@@ -183,21 +148,36 @@ def main(args):
         tokenizer.pad_token_id = tokenizer.eos_token_id
 
     prefix = (
-        "Answer the following questions. You should think step-by-step and put your final answer within \\boxed{}.\n"
+        "Answer the following questions. You should think step-by-step and put "
+        "your final answer within \\boxed{}.\n"
     )
     prompts = []
     for example in test_data:
         prompt = prefix + "Question: " + example["question"].strip() + "\nAnswer: "
         if not args.omit_chat_template:
             if "deepseek" in args.model:
-                messages = [{"role": "user", "content": prefix + "Question: " + example["question"].strip()}]
+                messages = [
+                    {
+                        "role": "user",
+                        "content": prefix + "Question: " + example["question"].strip(),
+                    }
+                ]
             else:
                 messages = [
                     {"role": "system", "content": prefix},
-                    {"role": "user", "content": "Question: " + example["question"].strip()},
+                    {
+                        "role": "user",
+                        "content": "Question: " + example["question"].strip(),
+                    },
                 ]
-            prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-            if not args.keep_bos and tokenizer.bos_token is not None and prompt.startswith(tokenizer.bos_token):
+            prompt = tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+            if (
+                not args.keep_bos
+                and tokenizer.bos_token is not None
+                and prompt.startswith(tokenizer.bos_token)
+            ):
                 prompt = prompt[len(tokenizer.bos_token) :]
         prompts.append(prompt)
 
@@ -211,7 +191,7 @@ def main(args):
         trust_remote_code=True,
         device_map="auto",
         token=os.environ.get("HF_TOKEN", None),
-        **kwargs
+        **kwargs,
     )
     model.eval()
 
@@ -233,7 +213,9 @@ def main(args):
 
         for prompt in tqdm(prompts):
             tokenized_batch = tokenizer(prompt, return_tensors="pt", padding=True)
-            tokenized_batch = {k: v.to(model.device) for k, v in tokenized_batch.items()}
+            tokenized_batch = {
+                k: v.to(model.device) for k, v in tokenized_batch.items()
+            }
             avg_prompt_len.append(tokenized_batch["input_ids"].shape[1])
 
             output = model.generate(
@@ -244,7 +226,10 @@ def main(args):
                 pad_token_id=tokenizer.eos_token_id,
             )
             OUTPUT_LENGTHS.append(output.shape[1])
-            output = [tokenizer.decode(o[avg_prompt_len[-1]:], skip_special_tokens=True) for o in output]
+            output = [
+                tokenizer.decode(o[avg_prompt_len[-1] :], skip_special_tokens=True)
+                for o in output
+            ]
             outputs.extend(output)
 
     outputs = [[trim_output(o)] for o in outputs]
@@ -259,18 +244,19 @@ def main(args):
             "solution": example["answer"],
             "model_generation": output,
         }
-        for example, output, prompt in zip(test_data, outputs, prompts)
+        for example, output, prompt in zip(test_data, outputs, prompts, strict=True)
     ]
 
     with open(os.path.join(args.save_dir, "predictions.jsonl"), "w") as fout:
-        for prediction in predictions:
-            fout.write(json.dumps(prediction) + "\n")
+        fout.writelines(json.dumps(prediction) + "\n" for prediction in predictions)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, required=True)
-    parser.add_argument("--dataset", type=str, default="MATH500", choices=["MATH500", "GSM"])
+    parser.add_argument(
+        "--dataset", type=str, default="MATH500", choices=["MATH500", "GSM"]
+    )
     parser.add_argument("--max_examples", type=int, default=None)
     parser.add_argument("--start", type=int, default=None)
     parser.add_argument("--save_dir", type=str, default="results")
@@ -296,4 +282,6 @@ if __name__ == "__main__":
 
     print(f"Results will be saved to {args.save_dir}")
     main(args)
-    run_evaluation(os.path.join(args.save_dir, "predictions.jsonl"), output_dir=args.save_dir)
+    run_evaluation(
+        os.path.join(args.save_dir, "predictions.jsonl"), output_dir=args.save_dir
+    )

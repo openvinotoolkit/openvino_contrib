@@ -2,29 +2,34 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
-from setuptools import setup, find_packages
+
+from setuptools import find_packages, setup
 
 EXTRAS_REQUIRE = {
     "benchmarks": [
         "datasets==2.14.7",
         "rouge==1.0.1",
         "scikit-learn>=1.7",
-        "fuzzywuzzy",
+        "thefuzz",
         "bitsandbytes==0.47.0",
         "protobuf",
         "sentencepiece==0.2.1",
-        "latex2sympy2",
-        "word2number",
+        "math-verify[antlr4_13_2]==0.9.0",
     ],
 }
 
 INSTALL_REQUIRES = [
     "torch==2.8.0",
     "torchvision==0.23.0",
-    "transformers>=4.48.0",
+    "transformers>=4.48.0,<5",
     "accelerate==1.9.0",
     "wheel==0.45.1",
-    "git+https://github.com/mit-han-lab/Block-Sparse-Attention.git", # Install with limited build threads to avoid OOM (MAX_JOBS=4)
+    # Install with limited build threads to avoid OOM (MAX_JOBS=4)
+    (
+        "block_sparse_attn @ "
+        "git+https://github.com/mit-han-lab/Block-Sparse-Attention.git"
+        "@49d6c39e4dc0303442cda3bb758b3925d4399c49"
+    ),
 ]
 
 # Safely read README.md for PyPI long description
