@@ -12,30 +12,6 @@
 
 OPENVINO_CREATE_EXTENSIONS(
     std::vector<ov::Extension::Ptr>({
-        // KNN Points - K-nearest neighbors (multi-output)
-        std::make_shared<ov::OpExtension<HGGDExtension::KNNPoints>>(),
-        std::make_shared<ov::frontend::OpExtension<HGGDExtension::KNNPoints>>(),
-        
-        // Ball Query - radius search (multi-output)
-        std::make_shared<ov::OpExtension<HGGDExtension::BallQuery>>(),
-        std::make_shared<ov::frontend::OpExtension<HGGDExtension::BallQuery>>(),
-        
-        // FPS - farthest point sampling (multi-output)
-        std::make_shared<ov::OpExtension<HGGDExtension::FPS>>(),
-        std::make_shared<ov::frontend::OpExtension<HGGDExtension::FPS>>(),
-        
-        // MaskedGather - index gathering with -1 handling
-        std::make_shared<ov::OpExtension<HGGDExtension::MaskedGather>>(),
-        std::make_shared<ov::frontend::OpExtension<HGGDExtension::MaskedGather>>(),
-        
-        // GatherMaxPool - fused gather + max pooling
-        std::make_shared<ov::OpExtension<HGGDExtension::GatherMaxPool>>(),
-        std::make_shared<ov::frontend::OpExtension<HGGDExtension::GatherMaxPool>>(),
-        
-        // PointGather - simple [B, K] gather
-        std::make_shared<ov::OpExtension<HGGDExtension::PointGather>>(),
-        std::make_shared<ov::frontend::OpExtension<HGGDExtension::PointGather>>(),
-        
         // ═══ GPU-Compatible Single-Output Operations ═══
         // These pack multi-output results into single tensor for GPU custom layer support
         
