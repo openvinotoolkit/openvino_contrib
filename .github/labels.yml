@@ -60,6 +60,10 @@
   color: "#d3d3d3"
   description: "OpenVINO NVIDIA plugin"
 
+- name: "category: OpenVINO Notes"
+  color: "#d3d3d3"
+  description: "OpenVINO Notes module (modules/openvino-notes)"
+
 - name: "category: Ollama"
   color: "#d3d3d3"
   description: "OpenVINO integration with Ollama (modules/ollama_openvino)"
