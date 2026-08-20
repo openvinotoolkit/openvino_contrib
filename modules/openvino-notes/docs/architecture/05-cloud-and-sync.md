@@ -22,6 +22,12 @@ Small metadata objects may use the generic `RemoteObject` value. Media uses
 - observing `Completed(metadata)` with durable object metadata and revision;
 - streaming download chunks without materializing the full object.
 
+During upload, sync opens the app-private local attachment as a `BinarySource`,
+reads only the next bounded chunk, and sends that chunk through the resumable
+session. An in-memory materialization limit therefore does not impose the same
+limit on the transfer size. The current local-first model requires a local source;
+it does not yet represent cloud-only attachments that must be downloaded lazily.
+
 The Drive module translates these contracts to a provider implementation. It is
 currently an adapter placeholder and returns typed unavailable outcomes.
 

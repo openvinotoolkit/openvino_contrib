@@ -39,6 +39,11 @@ and never storage ports. Implementations can depend on their own API and neutral
 cross-capability contracts, but not on sibling implementations. `:app` chooses
 implementations and owns their lifecycle.
 
+In this handbook, a **port** is a provider-neutral interface at an architectural
+boundary. Core modules depend on ports, while adapters implement them with Room,
+WorkManager, Drive, or other infrastructure. This keeps policy independent of
+Android and vendor APIs and allows tests to substitute in-memory implementations.
+
 ## Core Principles
 
 1. **Account scope is explicit.** `AccountKey` partitions every note, file,
@@ -50,9 +55,12 @@ implementations and owns their lifecycle.
 3. **Offline state is authoritative locally.** Notes and durable sync metadata are
    transactional. A later sync engine must reconcile revisions without creating
    an outbox loop.
-4. **Large binary data stays streamed.** Public Notes and View contracts carry
-   metadata, not absolute paths or unbounded byte arrays. Full materialization is
-   allowed only behind an explicit size limit.
+4. **Large binary data stays streamed.** Attachments are stored as app-private
+   local files. Public Notes and View contracts carry metadata, not absolute paths
+   or unbounded byte arrays; storage and Drive sync access bytes through bounded
+   reads. Full in-memory materialization is allowed only behind an explicit size
+   limit. Cloud-only attachments without a local source are outside the current
+   local-first model.
 5. **Unavailable integrations fail honestly.** Placeholders return typed
    `NotConfigured` or unavailable outcomes and never imitate a successful remote
    or inference operation.

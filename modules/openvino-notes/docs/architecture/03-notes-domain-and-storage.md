@@ -62,11 +62,18 @@ committed version. Destructive fallback is not an accepted migration strategy.
 ## Attachment Ownership
 
 Room owns attachment metadata and account-scoped files below the application's
-`files/notes-media/` area. `AttachmentContentPort` is the only binary access seam;
-it exposes no absolute path. `BinarySource` offers bounded offset reads and a
-stable declared size so consumers can stream data and honor cancellation.
+`files/notes-media/` area. `AttachmentContentPort` is the account-scoped storage
+port for putting, opening, and deleting attachment bytes. It is implemented by
+the storage adapter and exposes no absolute path or Room detail. `BinarySource`
+offers bounded offset reads and a stable declared size so consumers can stream
+data and honor cancellation.
 
-An `AttachmentId` identifies immutable bytes:
+`ContentItemId` identifies the logical, ordered item inside a Note, whereas
+`AttachmentId` identifies the immutable binary content and its metadata. Keeping
+the IDs separate allows a content item to retain its identity when its attachment
+is replaced and gives synchronization and cleanup a stable binary identity.
+
+The following rules apply to each `AttachmentId`:
 
 1. The first write streams 64 KiB chunks into a temporary file.
 2. The adapter verifies size/content and atomically publishes the completed file.
