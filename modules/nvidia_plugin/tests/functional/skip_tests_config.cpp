@@ -42,6 +42,13 @@ const std::vector<std::regex>& disabled_test_patterns() {
             std::regex(R"(.*smoke_GroupConvolutionBias(Add|AddAdd)_2D_ExplicitPaddingSymmetric2.*FP16*.*)"),
             // Issue: 128924
             std::regex(R"(.*smoke_OVClassNetworkTestP/OVClassModelTestP.ImportModelWithNullContextThrows.*)"),
+            // First observed when real-GPU CI was enabled in PR #1126 (run 31194538114).
+            // CI hardware: 2x RTX 4090 (SM 8.9, 24564 MiB each), driver 595.84,
+            // CUDA 11.8, cuDNN 8.9.6.50, cuTENSOR 1.7.0.1.
+            std::regex(
+                R"(.*smoke_OVClassGetAvailableDevices/OVGetAvailableDevicesPropsTest\.GetAvailableDevicesNoThrow/0.*)"),
+            std::regex(
+                R"(.*smoke_SDPA_4D_f16/SDPANVIDIATest\.Inference/Q=\[1\.4\.16\.32\]_K=\[1\.4\.16\.32\]_V=\[1\.4\.16\.32\]_TS=\{\(1\.4\.16\.32\)_\(1\.4\.16\.32\)_\(1\.4\.16\.32\)\}_causal=(false|true)_precision=f16.*)"),
 #ifdef _WIN32
             // CVS-63989
             std::regex(R"(.*ReferenceSigmoidLayerTest.*u64.*)")),

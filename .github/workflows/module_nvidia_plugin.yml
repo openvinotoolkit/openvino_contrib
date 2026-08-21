@@ -1,0 +1,57 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# NVIDIA plugin policy. All NVIDIA-specific values stay in this file; the
+# OpenVINO plugin lifecycle only implements shared mechanics.
+
+name: Module · NVIDIA plugin
+
+on:
+  workflow_call:
+    inputs:
+      nightly:
+        description: Run the extended test policy
+        type: boolean
+        default: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  plugin:
+    uses: ./.github/workflows/module_openvino_plugin.yml
+    with:
+      module-name: nvidia_plugin
+      module-path: modules/nvidia_plugin
+      change-paths: |
+        modules/nvidia_plugin/**
+        .github/scripts/nvidia_plugin/**
+      build-runner: aks-linux-16-cores-32gb
+      build-image: ov_build/ubuntu_22_04_x64_nvidia
+      cmake-targets: |
+        ov_nvidia_func_tests
+        ov_nvidia_unit_tests
+      artifact-files: |
+        ov_nvidia_func_tests
+        ov_nvidia_unit_tests
+        libopenvino_nvidia_gpu_plugin.so
+        plugins.xml
+      cmake-options: |
+        -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF
+        -DCMAKE_CUDA_COMPILER_LAUNCHER=sccache
+        -DCMAKE_CUDA_FLAGS=--generate-line-info
+        -DENABLE_NVIDIA=ON
+        -DENABLE_PLUGINS_XML=ON
+      utils: cuda-sanitizer.sh
+      test-support-libraries: openvino_tests/tests/libopenvino_template_plugin.so
+      runtime-libraries: /usr/lib/x86_64-linux-gnu/libcutensor/11/libcutensor.so.1
+      test-script: .github/scripts/nvidia_plugin/run_tests.py
+      test-runner-group: nvidia-gpu
+      test-runner-label: RTX-4090
+      test-image: >-
+        nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04@sha256:f6913f3c02f297877f6859d12ff330043c0be668fdad86868c29a239a5a82151
+      nightly-test-image: >-
+        nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04@sha256:bd746eb3b9953805ebe644847a227e218b5da775f47007c69930569a75c9ad7d
+      devices: nvidia.com/gpu=all
+      nightly: ${{ inputs.nightly }}

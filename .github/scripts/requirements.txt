@@ -1,0 +1,10 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# Dependencies for the CI helper scripts under .github/scripts.
+certifi==2026.7.22
+charset-normalizer==3.4.9
+idna==3.18
+requests==2.34.2
+tenacity==9.1.4
+urllib3==2.7.0

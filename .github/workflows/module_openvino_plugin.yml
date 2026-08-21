@@ -1,0 +1,316 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# Shared mechanics for OpenVINO C++ plugins. Module workflows pass readable
+# scalar or multiline inputs; this workflow contains no module policy.
+
+name: Lifecycle · OpenVINO plugin
+
+on:
+  workflow_call:
+    inputs:
+      module-name:
+        description: Stable module identifier
+        type: string
+        required: true
+      module-path:
+        description: Repository-relative module source path
+        type: string
+        required: true
+      change-paths:
+        description: Newline-separated paths owned by the module
+        type: string
+        required: true
+      build-runner:
+        description: GitHub runner label for compilation
+        type: string
+        required: true
+      build-image:
+        description: OpenVINO CI image path without registry or tag
+        type: string
+        required: true
+      cmake-targets:
+        description: Newline-separated CMake targets
+        type: string
+        required: true
+      artifact-files:
+        description: Newline-separated build outputs
+        type: string
+        required: true
+      cmake-options:
+        description: Newline-separated module CMake options
+        type: string
+        required: false
+        default: ''
+      utils:
+        description: Newline-separated files copied from the module utils directory
+        type: string
+        required: false
+        default: ''
+      test-support-libraries:
+        description: Newline-separated paths copied from the OpenVINO package
+        type: string
+        required: false
+        default: ''
+      runtime-libraries:
+        description: Newline-separated runtime libraries copied into the artifact
+        type: string
+        required: false
+        default: ''
+      test-script:
+        description: Repository-relative module test policy
+        type: string
+        required: true
+      test-runner-group:
+        description: Self-hosted test runner group
+        type: string
+        required: true
+      test-runner-label:
+        description: Hardware label within the test runner group
+        type: string
+        required: true
+      test-image:
+        description: Pinned test image used for pull requests
+        type: string
+        required: true
+      nightly-test-image:
+        description: Pinned test image used for nightly tests
+        type: string
+        required: true
+      devices:
+        description: Newline-separated device selectors
+        type: string
+        required: false
+        default: ''
+      nightly:
+        description: Run the extended test policy
+        type: boolean
+        default: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  select:
+    name: Select changed module
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    outputs:
+      selected: ${{ steps.changes.outputs.selected }}
+      base_sha: ${{ steps.changes.outputs.base_sha }}
+      head_sha: ${{ steps.changes.outputs.head_sha }}
+      base_ref: ${{ steps.changes.outputs.base_ref }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Detect changes
+        id: changes
+        env:
+          CI_MODULE_PATHS: |
+            .github/ci/README.md
+            .github/scripts/ci.py
+            .github/scripts/common/**
+            .github/scripts/openvino_plugin/**
+            .github/scripts/requirements.txt
+            .github/workflows/job_module_tests.yml
+            .github/workflows/module_openvino_plugin.yml
+            .github/workflows/module_${{ inputs.module-name }}.yml
+            .github/workflows/overall_status.yml
+            ${{ inputs.change-paths }}
+        run: python .github/scripts/ci.py detect-changes
+
+  images:
+    name: Resolve images
+    needs: select
+    if: ${{ needs.select.outputs.selected == 'true' }}
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    outputs:
+      style: ${{ steps.resolve.outputs.style }}
+      build: ${{ steps.resolve.outputs.build }}
+    steps:
+      - name: Checkout CI scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: '.github/scripts'
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+      - name: Checkout OpenVINO image tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openvinotoolkit/openvino
+          ref: ${{ needs.select.outputs.base_ref }}
+          sparse-checkout: '.github/dockerfiles/docker_tag'
+          sparse-checkout-cone-mode: false
+          path: openvino
+          persist-credentials: false
+      - name: Resolve images
+        id: resolve
+        env:
+          CI_IMAGE_REGISTRY: openvinogithubactions.azurecr.io
+          CI_IMAGE_TAG_FILE: openvino/.github/dockerfiles/docker_tag
+          CI_IMAGES: |
+            style=ov_build/ubuntu_22_04_x64
+            build=${{ inputs.build-image }}
+        run: python .github/scripts/ci.py resolve-images
+
+  style:
+    name: Code style
+    needs: [ select, images ]
+    if: ${{ needs.select.outputs.selected == 'true' && !inputs.nightly }}
+    timeout-minutes: 15
+    runs-on: aks-linux-4-cores-16gb
+    container:
+      image: ${{ needs.images.outputs.style }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI_CLANG_FORMAT: clang-format-12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+      - name: Check changed sources
+        env:
+          CI_MODULE_PATHS: ${{ inputs.module-path }}
+          CI_BASE_SHA: ${{ needs.select.outputs.base_sha }}
+          CI_HEAD_SHA: ${{ needs.select.outputs.head_sha }}
+        run: python .github/scripts/ci.py clang-format
+
+  build:
+    name: Build
+    needs: [ select, images ]
+    if: ${{ needs.select.outputs.selected == 'true' }}
+    timeout-minutes: 40
+    runs-on: ${{ inputs.build-runner }}
+    container:
+      image: ${{ needs.images.outputs.build }}
+      volumes:
+        - /mount/build-artifacts:/mount/build-artifacts:ro
+    defaults:
+      run:
+        shell: bash
+    env:
+      CMAKE_BUILD_TYPE: Release
+      CMAKE_GENERATOR: Ninja Multi-Config
+      CMAKE_CXX_COMPILER_LAUNCHER: sccache
+      CMAKE_C_COMPILER_LAUNCHER: sccache
+      DEBIAN_FRONTEND: noninteractive
+      CI_MODULE_NAME: ${{ inputs.module-name }}
+      CI_MODULE_PATH: ${{ inputs.module-path }}
+      CI_CMAKE_TARGETS: ${{ inputs.cmake-targets }}
+      CI_ARTIFACT_FILES: ${{ inputs.artifact-files }}
+      CI_EXTRA_CMAKE: ${{ inputs.cmake-options }}
+      CI_UTILS: ${{ inputs.utils }}
+      CI_TEST_SUPPORT_LIBRARIES: ${{ inputs.test-support-libraries }}
+      CI_RUNTIME_LIBRARIES: ${{ inputs.runtime-libraries }}
+    steps:
+      - name: Checkout CI scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: openvino_contrib
+          sparse-checkout: '.github/scripts'
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+      - name: Prepare workspace
+        run: python openvino_contrib/.github/scripts/ci.py prepare-build
+      - name: Checkout OpenVINO artifact action
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openvinotoolkit/openvino
+          ref: 0f453eb8dca021e7176cdcc8570242c9f2fec7c5
+          sparse-checkout: '.github/actions'
+          path: openvino_actions
+          persist-credentials: false
+      - name: Get prebuilt OpenVINO
+        uses: ./openvino_actions/.github/actions/restore_artifacts
+        with:
+          trigger_repo_sha: latest_available_commit
+          branch_name: ${{ needs.select.outputs.base_ref }}
+          event_name: push
+          to_restore: all
+          storage_root: /mount/build-artifacts
+          platform: ubuntu22_x86_64
+          target_dir: ${{ env.OV_INSTALL_DIR }}
+      - name: Checkout module
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: openvino_contrib
+          sparse-checkout: |
+            .github/scripts
+            ${{ inputs.module-path }}
+          persist-credentials: false
+      - name: Restore sccache
+        id: sccache-restore
+        continue-on-error: true
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.SCCACHE_DIR }}
+          key: >-
+            sccache-ubuntu22_x86_64-Release-${{ inputs.module-name }}-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            sccache-ubuntu22_x86_64-Release-${{ inputs.module-name }}-${{ github.ref_name }}-
+            sccache-ubuntu22_x86_64-Release-${{ inputs.module-name }}-master-
+      - name: Build and package module
+        run: python openvino_contrib/.github/scripts/ci.py build-plugin
+      - name: Show sccache stats
+        if: ${{ always() }}
+        continue-on-error: true
+        run: sccache --show-stats
+      - name: Upload build artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.module-name }}_build
+          path: ${{ env.ARCHIVE_PATH }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 2
+          overwrite: true
+      - name: Stop sccache server
+        if: ${{ always() }}
+        continue-on-error: true
+        run: sccache --stop-server
+      - name: Save sccache
+        if: >-
+          ${{ success() && github.ref_name == 'master' &&
+              steps.sccache-restore.outputs.cache-hit != 'true' }}
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.SCCACHE_DIR }}
+          key: >-
+            sccache-ubuntu22_x86_64-Release-${{ inputs.module-name }}-${{ github.ref_name }}-${{ github.sha }}
+      - name: Clean workspace
+        if: ${{ always() && env.WORK_DIR != '' }}
+        run: python openvino_contrib/.github/scripts/ci.py cleanup
+
+  tests:
+    name: Tests
+    needs: [ select, build ]
+    if: ${{ needs.select.outputs.selected == 'true' }}
+    uses: ./.github/workflows/job_module_tests.yml
+    with:
+      module-name: ${{ inputs.module-name }}
+      test-script: ${{ inputs.test-script }}
+      runner-group: ${{ inputs.test-runner-group }}
+      runner-label: ${{ inputs.test-runner-label }}
+      image: ${{ inputs.nightly && inputs.nightly-test-image || inputs.test-image }}
+      devices: ${{ inputs.devices }}
+      preset: ${{ inputs.nightly && 'nightly' || 'pr' }}

@@ -35,6 +35,7 @@ jobs:
       # so re-running it on a 'labeled' event would strip a label a maintainer
       # just added by hand to a PR the globs do not cover.
       - name: Assign category labels from changed paths
+        id: labeler
         if: github.event.action != 'labeled' && github.event.action != 'unlabeled'
         uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7.0.0
         with:
@@ -43,19 +44,9 @@ jobs:
           sync-labels: 'true'
 
       - name: Check the pull request has a category label
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          REPO: ${{ github.repository }}
-        run: |
-          labels="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json labels --jq '.labels[].name')"
-          echo "Pull request labels:"
-          echo "${labels:-<none>}"
-          if echo "$labels" | grep -q '^category:'; then
-            echo "OK: pull request has a category label"
-          else
-            echo "::error::This pull request has no 'category:' label. Add the label" \
-                 "matching the changed module (see .github/labels.yml); the labeler" \
-                 "assigns one automatically from the changed paths."
-            exit 1
-          fi
+        if: >-
+          ${{ !contains(
+            steps.labeler.outputs.all-labels || join(github.event.pull_request.labels.*.name, ','),
+            'category:'
+          ) }}
+        run: exit 1

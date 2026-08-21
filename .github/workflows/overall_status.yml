@@ -1,0 +1,58 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# Stable entry point for independent module workflows. GitHub requires reusable
+# workflow paths to be static, so every module is registered here explicitly.
+
+name: Contrib CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - 'releases/**'
+  merge_group:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      nightly:
+        description: Run extended/nightly module tests
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: >-
+    contrib-ci-${{ github.event_name }}-${{
+      github.event_name == 'push' && github.run_id ||
+      github.event.pull_request.number || github.event.merge_group.head_sha || github.ref
+    }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  nvidia_plugin:
+    name: NVIDIA plugin
+    uses: ./.github/workflows/module_nvidia_plugin.yml
+    with:
+      nightly: ${{ github.event_name == 'schedule' || inputs.nightly == true }}
+
+  Overall_Status:
+    name: ci/gha_overall_status
+    if: ${{ always() }}
+    needs: [ nvidia_plugin ]
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - name: Aggregate module results
+        if: >-
+          ${{
+            contains(needs.*.result, 'failure') ||
+            contains(needs.*.result, 'cancelled')
+          }}
+        run: exit 1
