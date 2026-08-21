@@ -13,7 +13,7 @@ This folder provides examples for evaluating and optimizing Generative AI models
 
 This [example](./longbench.py) demonstrates how to evaluate and optimize LLMs using the [LongBench](https://arxiv.org/pdf/2308.14508), a bilingual, multi-task benchmark designed to assess long-context understanding. LongBench includes 21 datasets across six task categories—single-document QA, multi-document QA, summarization, few-shot learning, synthetic reasoning, and code completion—in both English and Chinese.
 
-Sparse attention speeds up the prefill stage in LLMs by attending only to the most relevant query-key blocks. Static patterns like Tri-Shape and dynamic mechanisms like XAttention reduce memory and computation without significant accuracy loss, enabling efficient handling of long prompts.
+Tri-Shape sparse attention speeds up the prefill stage in LLMs by preserving initial tokens, local windows, and the final query segment while reducing memory and computation for long prompts.
 
 KV-Cache Token Eviction accelerates the decoding stage in LLMs by removing less important cached tokens while preserving those essential for contextual understanding, allowing efficient long-sequence inference under constrained memory.
 
@@ -47,7 +47,7 @@ This [example](./mmebench.py) demonstrates how to evaluate and optimize MLLMs us
 
 Visual token pruning enables significant acceleration of inference in VLMs, where the number of input visual tokens is often much larger than the number of textual tokens. By pruning these tokens, we reduce first-token latency and overall FLOPs while preserving accuracy.
 
-Sparse attention speeds up the prefill stage in LLMs and MMLLMs by attending only to the most relevant query-key blocks. Static patterns like Tri-Shape and dynamic mechanisms like XAttention reduce memory and computation without significant accuracy loss, enabling efficient handling of long prompts, high-resolution images, and multi-frame videos.
+Tri-Shape sparse attention reduces memory and computation for long multimodal prompts while preserving initial tokens, local windows, and the final query segment.
 
 ### Run Example
 
@@ -59,7 +59,7 @@ python mmebench.py \
     --num_keep_tokens 128 \
     --theta 0.5 \
     --use_custom_attention \
-    --prefill_impl x-attention \
+    --prefill_impl tri-shape \
     --enable_eviction \
     --algorithm snapkv \
     --granularity per_group \

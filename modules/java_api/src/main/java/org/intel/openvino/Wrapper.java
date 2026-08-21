@@ -27,7 +27,7 @@ public class Wrapper implements AutoCloseable {
 
     @Override
     public void close() {
-        if (!closed.compareAndSet(false, true)) {
+        if (closed.compareAndSet(false, true)) {
             delete(nativeObj);
         }
     }

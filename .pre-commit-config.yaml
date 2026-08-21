@@ -1,0 +1,39 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# Pre-commit hooks for the CI infrastructure under .github/. Scope is limited to
+# .github/ so the many independently-managed modules under modules/ are not
+# affected. Run locally with:  pre-commit run --all-files
+
+minimum_pre_commit_version: "3.5.0"
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+        files: ^\.github/.*\.ya?ml$
+      - id: end-of-file-fixer
+        files: ^\.github/.*\.(ya?ml|py)$
+      - id: trailing-whitespace
+        files: ^\.github/.*\.(ya?ml|py)$
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix, --config, .github/scripts/ruff.toml]
+        files: ^\.github/.*\.py$
+      - id: ruff-format
+        args: [--config, .github/scripts/ruff.toml]
+        files: ^\.github/.*\.py$
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.7
+    hooks:
+      - id: actionlint
+        files: ^\.github/workflows/.*\.ya?ml$
+        # Lint workflow structure/expressions/runner labels across all workflows.
+        # The external shellcheck integration is disabled: our scripts are Python
+        # (no inline bash), and we do not rewrite the legacy monolith bash here.
+        args: ['-shellcheck=']

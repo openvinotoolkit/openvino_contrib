@@ -21,7 +21,6 @@ This module provides experimental optimizations for GenAI models in PyTorch. The
 - [**Sparse Attention**](./sparse_attention.py):
   Designed to accelerate the prefill stage in LLMs and MMLLMs with long prompts, high-resolution images, or videos by attending only to the most relevant query-key blocks. This block-wise attention mechanism reduces memory usage and FLOPs while preserving model accuracy. Supported modes:
   - **Tri-Shape Mode** – A static block-sparse attention pattern that preserves the initial tokens, local windows, and the final segment of the query, forming a triangular structure to capture critical tokens while maintaining instruction-following performance in both turn-0 and multi-request scenarios. Paper: https://arxiv.org/pdf/2412.10319
-  - **XAttention Mode** – A dynamic block-sparse attention mechanism that accelerates inference by focusing computation on the most important regions of the attention matrix using antidiagonal block scoring, reducing FLOPs and memory usage without significant loss of accuracy. Paper: https://arxiv.org/pdf/2503.16428
 
 - [**KV Cache Token Eviction**](./token_eviction.py):
   Designed to optimize KV cache memory usage during autoregressive generation in LLMs. It selectively removes less important cached tokens while preserving those crucial for contextual understanding, enabling efficient long-sequence inference under constrained memory. Note that currently eviction starts only after the full prompt has been processed; i.e., no eviction takes place during the prefill phase.
