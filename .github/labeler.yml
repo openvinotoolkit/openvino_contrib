@@ -2,53 +2,77 @@
 # SPDX-License-Identifier: Apache-2.0
 
 'category: CI':
-- '.github/**/*'
-- '.ci/**/*'
-- 'Jenkinsfile'
+- changed-files:
+  - any-glob-to-any-file: ['.github/**/*', '.ci/**/*', 'Jenkinsfile']
+# Repository-level meta files that belong to no module: keep every PR labelled.
+- changed-files:
+  - any-glob-to-any-file:
+    - '*.md'
+    - 'LICENSE'
+    - 'third-party-programs.txt'
+    - '.gitignore'
+    - '.gitattributes'
+    - '.licenserc.yaml'
+    - '.readthedocs.yaml'
 
 'category: 3D':
-- 'modules/3d/**/*'
+- changed-files:
+  - any-glob-to-any-file: 'modules/3d/**/*'
 
 'category: android demos':
-- 'modules/android_demos/**/*'
+- changed-files:
+  - any-glob-to-any-file: 'modules/android_demos/**/*'
 
 'category: BEVFusion':
-- 'modules/openvino_bevfusion/**/*'
+- changed-files:
+  - any-glob-to-any-file: 'modules/openvino_bevfusion/**/*'
+
+'category: FlashOCC':
+- changed-files:
+  - any-glob-to-any-file: 'modules/openvino_flashocc/**/*'
 
 'category: custom operations':
-- 'modules/custom_operations/**/*'
+- changed-files:
+  - any-glob-to-any-file: 'modules/custom_operations/**/*'
 
 'category: GenAI optimizations':
-- 'modules/genai_optimizations/**/*'
+- changed-files:
+  - any-glob-to-any-file: 'modules/genai_optimizations/**/*'
 
 'category: java API':
-- 'modules/java_api/**/*'
+- changed-files:
+  - any-glob-to-any-file: 'modules/java_api/**/*'
 
 'category: LangChain':
-- 'modules/openvino-langchain/**/*'
+- changed-files:
+  - any-glob-to-any-file: 'modules/openvino-langchain/**/*'
 
 'category: llama.cpp plugin':
-- 'modules/llama_cpp_plugin/**/*'
+- changed-files:
+  - any-glob-to-any-file: 'modules/llama_cpp_plugin/**/*'
 
 'category: NVIDIA plugin':
-- 'modules/nvidia_plugin/**/*'
+- changed-files:
+  - any-glob-to-any-file: 'modules/nvidia_plugin/**/*'
 
 'category: Ollama':
-- 'modules/ollama_openvino/**/*'
+- changed-files:
+  - any-glob-to-any-file: 'modules/ollama_openvino/**/*'
 
 'category: Token Merging':
-- 'modules/token_merging/**/*'
+- changed-files:
+  - any-glob-to-any-file: 'modules/token_merging/**/*'
 
 'category: training kit':
-- 'modules/openvino_training_kit/**/*'
+- changed-files:
+  - any-glob-to-any-file: 'modules/openvino_training_kit/**/*'
 
 'category: build':
-- '**/CMakeLists.txt'
-- '**/*.cmake'
+- changed-files:
+  - any-glob-to-any-file: ['**/CMakeLists.txt', '**/*.cmake']
 
 'dependencies':
-- '**/requirement*.txt'
-- '.gitmodules'
-- '**/setup.py'
-- any: ['**/thirdparty/**/*',
-        '!**/CMakeLists.txt']
+- changed-files:
+  - any-glob-to-any-file: ['**/requirement*.txt', '.gitmodules', '**/setup.py']
+- changed-files:
+  - all-globs-to-any-file: ['**/thirdparty/**/*', '!**/CMakeLists.txt']

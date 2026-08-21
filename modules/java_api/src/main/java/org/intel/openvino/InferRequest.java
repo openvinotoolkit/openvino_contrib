@@ -43,6 +43,20 @@ public class InferRequest extends Wrapper {
     }
 
     /**
+     * Gets an output tensor for inference by its index.
+     *
+     * <p>Use this for models with several outputs, such as YOLO segmentation (detections + mask
+     * prototypes) or pose (detections + keypoints). The index order matches {@link
+     * CompiledModel#outputs()}.
+     *
+     * @param index Index of the output tensor.
+     * @return Output tensor at the given index.
+     */
+    public Tensor get_output_tensor(int index) {
+        return new Tensor(GetOutputTensor1(nativeObj, index));
+    }
+
+    /**
      * Starts inference of specified input(s) in asynchronous mode.
      *
      * <p>It returns immediately. Inference starts also immediately. Calling any method while the
@@ -111,6 +125,8 @@ public class InferRequest extends Wrapper {
     private static native void SetOutputTensor(long addr, long tensorAddr);
 
     private static native long GetOutputTensor(long addr);
+
+    private static native long GetOutputTensor1(long addr, int index);
 
     private static native long GetTensor(long addr, String tensorName);
 

@@ -1,0 +1,20 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+*.o
+*.so
+*.pyc
+work_dirs/
+*.log
+*.bak
+*.opt
+.conda/
+ov_build/
+setup.env
+run_results/
+checkpoints/
+debug_output/
+.cache/
+openvino_extensions/bev_pool/build*/
+.venv_convert/
+split_f16out/
