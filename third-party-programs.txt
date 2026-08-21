@@ -221,6 +221,30 @@ opencv
 
 -------------------------------------------------------------
 
+DINOv2
+
+Apache License 2.0
+
+Copyright (c) Meta Platforms, Inc. and affiliates.
+
+This module vendors and uses DINOv2 code and model assets under Apache-2.0.
+The full Apache License 2.0 text is included in the `segment-anything`
+entry below.
+
+-------------------------------------------------------------
+
+FastSAM
+
+GNU Affero General Public License v3.0
+
+Copyright (c) CASIA IVA Lab and FastSAM contributors.
+
+This module supports FastSAM via the AGPL-3.0 FastSAM/ultralytics stack.
+The full GNU AGPL-3.0 license text is included in the `ultralytics`
+entry below.
+
+-------------------------------------------------------------
+
 opencv-python
 
 MIT License
