@@ -3,5 +3,7 @@
 
 setuptools>=84.0.0
 wheel>=0.48.0
+packaging>=24.0
+build>=1.0.0
 python-decouple>=3.8
 defusedxml>=0.7.1
