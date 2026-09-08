@@ -1,0 +1,9 @@
+__pycache__/
+build
+*.so
+*.log
+*.bak
+*.opt
+*.ply
+*.glb
+*venv*
