@@ -67,6 +67,10 @@
 - changed-files:
   - any-glob-to-any-file: 'modules/openvino_training_kit/**/*'
 
+'category: robotics':
+- changed-files:
+  - any-glob-to-any-file: 'modules/robotics/**/*'
+
 'category: build':
 - changed-files:
   - any-glob-to-any-file: ['**/CMakeLists.txt', '**/*.cmake']

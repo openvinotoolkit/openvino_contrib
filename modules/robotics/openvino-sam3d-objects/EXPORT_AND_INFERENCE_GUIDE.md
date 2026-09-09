@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # SAM 3D Objects — Export and Inference Guide
 
 This guide explains how to export SAM 3D Objects models to OpenVINO IR and run
