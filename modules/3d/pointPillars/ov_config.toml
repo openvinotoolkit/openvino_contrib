@@ -1,0 +1,95 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# PointPillars OpenVINO export configuration.
+#
+# This file is read by ov_contrib/ov_export.py. The exporter writes the generated
+# C++ headers, OpenCL defines, GPU kernel XML, and OpenVINO model files from these
+# values. Keep the configuration, checkpoint, and generated files in sync.
+#
+# After changing this file, regenerate the plugin files and rebuild:
+#
+#   bash ov_contrib/ov_plugins/build.sh
+#   python3 ov_contrib/ov_export.py
+#   python3 ov_contrib/ov_export.py --embed-custom-ops
+
+[pillar]
+# Voxel dimensions in meters, ordered as [x, y, z].
+voxel_size = [0.16, 0.16, 4.0]
+# Point-cloud bounds in meters, ordered as
+# [min_x, min_y, min_z, max_x, max_y, max_z].
+# The bounds and voxel_size define the voxel/pillar grid.
+point_cloud_range = [0.0, -39.68, -3.0, 69.12, 39.68, 1.0]
+
+# Number of object classes represented by the checkpoint.
+num_classes = 3
+# Downsampling factor from the pillar grid to the detection-head feature map.
+# This must match the backbone used by the checkpoint.
+backbone_stride = 2
+# Values stored for each input point. The model expects [x, y, z, intensity].
+point_features = 4
+# Output channels of the pillar feature network and BEV pseudo-image.
+# This must match the checkpoint.
+pfn_channels = 64
+
+# Fixed input and pillar capacities. These allocate the tensors used by the
+# exported model; unused capacity is retained for every frame.
+# Maximum number of input points in one frame.
+max_points = 300000
+# Maximum number of occupied pillars in one frame.
+max_pillars = 16000
+# Maximum number of points retained in one pillar. Additional points are dropped.
+max_points_per_pillar = 32
+
+[decoder]
+# Anchor dimensions in meters, ordered as [width, length, height]. Rows follow
+# the checkpoint class order: [pedestrian, cyclist, car].
+anchor_sizes = [[0.6, 0.8, 1.73], [0.6, 1.76, 1.73], [1.6, 3.9, 1.56]]
+# Bottom z coordinate of each class anchor in meters, in the same class order
+# as anchor_sizes.
+anchor_bottom_heights = [-0.6, -0.6, -1.78]
+# Anchor yaw values in radians. Each class receives one anchor per rotation.
+rotations = [0.0, 1.57]
+
+# Minimum sigmoid class score required to keep an anchor as a candidate.
+score_threshold = 0.1
+# Minimum rotated BEV IoU used to suppress a candidate during NMS.
+nms_threshold = 0.01
+# Direction-classification yaw offset in radians. This must match training.
+dir_offset = 0.0
+
+# Output capacities: candidates after score filtering and detections after NMS.
+max_candidates = 2048
+max_detections = 256
+
+[tuning]
+# Device-specific OpenCL launch settings. These affect execution shape and
+# performance, not model outputs. The exporter writes them to the generated
+# OpenCL defines and pp_custom_gpu_kernels.xml. Retune these for a new device.
+
+# Work-items in the voxelization scatter work-group. The kernel uses one group.
+scatter_wg = 1024
+
+# Work-items in each BEV-row work-group.
+bev_row_wg = 512
+# Number of adjacent BEV x cells written per work-item step. This must divide
+# the generated BEV width.
+bev_vec = 2
+
+# Work-items in each score-filter work-group. Choose a value compatible with the
+# generated anchor count and selection-bitmap word size.
+scores_wg = 128
+
+# Work-items in the candidate compaction/decode/sort work-group.
+candidates_wg = 1024
+
+# Number of candidates represented by one NMS mask word. This also determines
+# the side length of each NMS tile.
+nms_block = 32
+# Number of work-groups in the NMS tile pool.
+nms_groups = 64
+# Required subgroup width for the NMS kernel on the target device.
+nms_simd = 16
+
+# Work-items in the greedy-suppression work-group.
+gather_wg = 64
