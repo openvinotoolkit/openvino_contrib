@@ -1,0 +1,8 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+build/
+
+# Ignore generated files
+*_generated.*
+pp_custom_gpu_kernels.xml
