@@ -1,0 +1,672 @@
+# Copyright (C) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+
+include_guard(GLOBAL)
+
+set(_gfx_src_dir "${CMAKE_CURRENT_LIST_DIR}/../src")
+
+set(GFX_COMPILER_COMMON_SOURCES
+    ${_gfx_src_dir}/compiler/backend_registry.cpp
+    ${_gfx_src_dir}/compiler/static_backend_module.cpp
+    ${_gfx_src_dir}/compiler/backend_target.cpp
+    ${_gfx_src_dir}/compiler/cache_envelope.cpp
+    ${_gfx_src_dir}/compiler/cache_envelope_wire.cpp
+    ${_gfx_src_dir}/compiler/cache_import.cpp
+    ${_gfx_src_dir}/compiler/cache_materialization_contract.cpp
+    ${_gfx_src_dir}/compiler/cache_repository.cpp
+    ${_gfx_src_dir}/compiler/executable_bundle.cpp
+    ${_gfx_src_dir}/compiler/gfx_compiler_service.cpp
+    ${_gfx_src_dir}/compiler/kernel_registry.cpp
+    ${_gfx_src_dir}/compiler/kernel_unit.cpp
+    ${_gfx_src_dir}/compiler/lowering_planner.cpp
+    ${_gfx_src_dir}/compiler/manifest.cpp
+    ${_gfx_src_dir}/compiler/memory_plan.cpp
+    ${_gfx_src_dir}/compiler/operation_legalizer.cpp
+    ${_gfx_src_dir}/compiler/operation_support.cpp
+    ${_gfx_src_dir}/compiler/pipeline_stage_builder.cpp
+    ${_gfx_src_dir}/compiler/pipeline_stage_fusion.cpp
+    ${_gfx_src_dir}/compiler/pipeline_stage_graph_snapshot.cpp
+    ${_gfx_src_dir}/compiler/pipeline_stage_materialization_draft.cpp
+    ${_gfx_src_dir}/compiler/pipeline_stage_plan.cpp
+    ${_gfx_src_dir}/compiler/runtime_executable_descriptor_builder.cpp
+    ${_gfx_src_dir}/compiler/runtime_executable_descriptor_finalizer.cpp
+    ${_gfx_src_dir}/compiler/stage_compiler_policy.cpp
+    ${_gfx_src_dir}/compiler/stage_placement.cpp
+    ${_gfx_src_dir}/compiler/stage_policy.cpp
+    ${_gfx_src_dir}/compiler/tensor_layout.cpp
+)
+
+set(GFX_COMPILER_COMMON_HEADERS
+    ${_gfx_src_dir}/common/artifact_payload.hpp
+    ${_gfx_src_dir}/common/backend_config.hpp.in
+    ${_gfx_src_dir}/common/constant_tensor_evaluator.hpp
+    ${_gfx_src_dir}/common/gfx_activation.hpp
+    ${_gfx_src_dir}/common/gfx_bias.hpp
+    ${_gfx_src_dir}/common/gfx_backend_utils.hpp
+    ${_gfx_src_dir}/common/gpu_backend.hpp
+    ${_gfx_src_dir}/common/gpu_device_profile.hpp
+    ${_gfx_src_dir}/common/gpu_dispatch_config.hpp
+    ${_gfx_src_dir}/common/gpu_parallelism_plan.hpp
+    ${_gfx_src_dir}/common/gpu_parallelism_profile.hpp
+    ${_gfx_src_dir}/common/gpu_stage_submit_policy.hpp
+    ${_gfx_src_dir}/common/interpolate_contract.hpp
+    ${_gfx_src_dir}/common/runtime_param_descriptor.hpp
+    ${_gfx_src_dir}/compiler/backend_registry.hpp
+    ${_gfx_src_dir}/compiler/backend_target.hpp
+    ${_gfx_src_dir}/compiler/cache_envelope.hpp
+    ${_gfx_src_dir}/compiler/cache_import.hpp
+    ${_gfx_src_dir}/compiler/cache_materialization_contract.hpp
+    ${_gfx_src_dir}/compiler/cache_repository.hpp
+    ${_gfx_src_dir}/compiler/executable_bundle.hpp
+    ${_gfx_src_dir}/compiler/gfx_compiler_service.hpp
+    ${_gfx_src_dir}/compiler/kernel_registry.hpp
+    ${_gfx_src_dir}/compiler/kernel_unit.hpp
+    ${_gfx_src_dir}/compiler/lowering_planner.hpp
+    ${_gfx_src_dir}/compiler/manifest.hpp
+    ${_gfx_src_dir}/compiler/memory_plan.hpp
+    ${_gfx_src_dir}/compiler/operation_legalizer.hpp
+    ${_gfx_src_dir}/compiler/operation_support.hpp
+    ${_gfx_src_dir}/compiler/pipeline_stage_builder.hpp
+    ${_gfx_src_dir}/compiler/pipeline_stage_fusion.hpp
+    ${_gfx_src_dir}/compiler/pipeline_stage_plan.hpp
+    ${_gfx_src_dir}/compiler/runtime_executable_descriptor_builder.hpp
+    ${_gfx_src_dir}/compiler/stage_compiler_policy.hpp
+    ${_gfx_src_dir}/compiler/stage_placement.hpp
+    ${_gfx_src_dir}/compiler/stage_policy.hpp
+    ${_gfx_src_dir}/compiler/static_backend_module.hpp
+    ${_gfx_src_dir}/compiler/tensor_layout.hpp
+)
+
+set(GFX_COMPILER_COMMON_PRIVATE_HEADERS
+    ${_gfx_src_dir}/compiler/cache_materialization_wire.hpp
+    ${_gfx_src_dir}/compiler/pipeline_stage_graph_snapshot.hpp
+    ${_gfx_src_dir}/compiler/pipeline_stage_materialization_draft.hpp
+    ${_gfx_src_dir}/compiler/pipeline_stage_runtime_descriptor_builder_detail.hpp
+)
+
+set(GFX_PLUGIN_SOURCES
+    ${_gfx_src_dir}/common/gfx_backend_utils.cpp
+    ${_gfx_src_dir}/plugin/compiled_model.cpp
+    ${_gfx_src_dir}/plugin/compiled_model_backend_resources.cpp
+    ${_gfx_src_dir}/plugin/gfx_device_info.cpp
+    ${_gfx_src_dir}/plugin/gfx_property_lists.cpp
+    ${_gfx_src_dir}/plugin/gfx_property_utils.cpp
+    ${_gfx_src_dir}/plugin/gfx_remote_utils.cpp
+    ${_gfx_src_dir}/plugin/infer_request_common.cpp
+    ${_gfx_src_dir}/plugin/infer_request_variable_state.cpp
+    ${_gfx_src_dir}/plugin/infer_io_utils.cpp
+    ${_gfx_src_dir}/plugin/plugin.cpp
+    ${_gfx_src_dir}/plugin/remote_context_support.cpp
+    ${_gfx_src_dir}/runtime/backend_runtime_provider.cpp
+    ${_gfx_src_dir}/transforms/gfx_layout_cleanup.cpp
+    ${_gfx_src_dir}/transforms/pipeline.cpp
+)
+
+set(GFX_PLUGIN_HEADERS
+    ${_gfx_src_dir}/common/gfx_activation.hpp
+    ${_gfx_src_dir}/common/gfx_bias.hpp
+    ${_gfx_src_dir}/common/gfx_backend_utils.hpp
+    ${_gfx_src_dir}/common/gpu_backend.hpp
+    ${_gfx_src_dir}/common/gpu_device_profile.hpp
+    ${_gfx_src_dir}/common/gpu_dispatch_config.hpp
+    ${_gfx_src_dir}/common/gpu_parallelism_plan.hpp
+    ${_gfx_src_dir}/plugin/gfx_device_info.hpp
+    ${_gfx_src_dir}/plugin/gfx_profiling_utils.hpp
+    ${_gfx_src_dir}/plugin/gfx_remote_utils.hpp
+    ${_gfx_src_dir}/plugin/gfx_property_utils.hpp
+    ${_gfx_src_dir}/plugin/gfx_property_lists.hpp
+    ${_gfx_src_dir}/plugin/infer_request_backend_access.hpp
+    ${_gfx_src_dir}/plugin/infer_request_state.hpp
+    ${_gfx_src_dir}/plugin/infer_request_variable_state.hpp
+    ${_gfx_src_dir}/plugin/compiled_model.hpp
+    ${_gfx_src_dir}/plugin/compiled_model_cache_contract.hpp
+    ${_gfx_src_dir}/plugin/infer_request.hpp
+    ${_gfx_src_dir}/plugin/remote_context_support.hpp
+    ${_gfx_src_dir}/transforms/gfx_layout_cleanup.hpp
+    ${_gfx_src_dir}/transforms/gfx_llm_ops.hpp
+    ${_gfx_src_dir}/transforms/pipeline.hpp
+    ${_gfx_src_dir}/../include/openvino/gfx_plugin/plugin.hpp
+    ${_gfx_src_dir}/../include/openvino/gfx_plugin/properties.hpp
+    ${_gfx_src_dir}/../include/openvino/gfx_plugin/profiling.hpp
+)
+
+set(GFX_BACKEND_MODULE_PROVIDER_HEADERS
+    ${_gfx_src_dir}/compiler/backend_module_provider.hpp
+)
+
+set(GFX_BACKEND_MODULE_PROVIDER_SOURCES
+    ${_gfx_src_dir}/backends/backend_module_provider.cpp
+)
+
+set(GFX_METAL_BACKEND_COMPILER_HEADERS
+    ${_gfx_src_dir}/backends/metal/compiler/metal_backend_module.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/apple_stage_pipeline.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/apple_vendor_descriptors.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/apple_mlir_stage_hooks.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/apple_mpsrt_const_tensor_sources.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/apple_mpsrt_conv_metadata.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/apple_mpsrt_matmul_metadata.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/apple_mpsrt_source_plan.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/metal_kernel_artifacts.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/metal_operation_support.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/metal_stage_placement.hpp
+)
+
+set(GFX_METAL_BACKEND_COMPILER_SOURCES
+    ${_gfx_src_dir}/backends/metal/compiler/metal_backend_module.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/apple_mpsrt_matmul_metadata.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/apple_mlir_stage_hooks.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/apple_stage_pipeline.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/apple_vendor_descriptors.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/metal_cache_payload_codec.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/metal_kernel_artifacts.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/metal_kernel_registry.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/metal_operation_support.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/metal_stage_placement.cpp
+)
+
+set(GFX_OPENCL_BACKEND_COMPILER_HEADERS
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_activation_kernel_unit.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_backend_module.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_conv_kernel_unit.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_eltwise_kernel_unit.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_interpolate_kernel_unit.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_artifacts.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_unit_catalog.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_operation_support.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_pool_kernel_unit.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_range_kernel_unit.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_reduction_kernel_unit.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_shapeof_kernel_unit.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_softmax_kernel_unit.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_tile_kernel_unit.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_stage_placement.hpp
+)
+
+set(GFX_OPENCL_BACKEND_COMPILER_SOURCES
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_activation_kernel_unit.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_activation_source_artifact.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_backend_module.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_conv_kernel_unit.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_conv_source_artifact.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_eltwise_kernel_unit.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_eltwise_source_artifact.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_interpolate_kernel_unit.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_interpolate_source_artifact.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_artifacts.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_registry.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_unit_catalog.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_operation_support.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_pool_kernel_unit.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_pool_source_artifact.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_range_kernel_unit.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_range_source_artifact.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_reduction_kernel_unit.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_reduction_source_artifact.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_shapeof_kernel_unit.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_softmax_kernel_unit.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_softmax_source_artifact.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_tile_kernel_unit.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_tile_source_artifact.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_stage_placement.cpp
+)
+
+set(GFX_RUNTIME_COMMON_HEADERS
+    ${_gfx_src_dir}/runtime/backend_request_state.hpp
+    ${_gfx_src_dir}/runtime/backend_runtime.hpp
+    ${_gfx_src_dir}/runtime/backend_runtime_provider.hpp
+    ${_gfx_src_dir}/runtime/backend_stage_factory.hpp
+    ${_gfx_src_dir}/runtime/descriptor_const_tensor_materializer.hpp
+    ${_gfx_src_dir}/runtime/executable_descriptor.hpp
+    ${_gfx_src_dir}/runtime/runtime_execution_plan.hpp
+    ${_gfx_src_dir}/runtime/runtime_session.hpp
+    ${_gfx_src_dir}/runtime/fused_output_lifetime_plan.hpp
+    ${_gfx_src_dir}/runtime/gfx_activation.hpp
+    ${_gfx_src_dir}/runtime/gfx_batchnorm.hpp
+    ${_gfx_src_dir}/runtime/fused_sequence_stage.hpp
+    ${_gfx_src_dir}/runtime/view_only_stage.hpp
+    ${_gfx_src_dir}/runtime/gpu_memory_ops.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_codegen_desc.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_custom_kernel_families.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_args.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_source.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_inputs.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_signature.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_runtime_shape_rule.hpp
+    ${_gfx_src_dir}/runtime/gfx_kernel_runtime_params.hpp
+    ${_gfx_src_dir}/runtime/gfx_kernel_runtime_params_core.hpp
+    ${_gfx_src_dir}/runtime/gfx_kernel_runtime_params_movement.hpp
+    ${_gfx_src_dir}/runtime/gfx_kernel_runtime_params_numeric.hpp
+    ${_gfx_src_dir}/runtime/gfx_kernel_runtime_params_scatter.hpp
+    ${_gfx_src_dir}/runtime/kernel_launch_plan.hpp
+    ${_gfx_src_dir}/runtime/gfx_profiler.hpp
+    ${_gfx_src_dir}/runtime/gfx_profiling_report.hpp
+    ${_gfx_src_dir}/runtime/gfx_profiling_trace_sink.hpp
+    ${_gfx_src_dir}/runtime/gfx_target_profile.hpp
+    ${_gfx_src_dir}/runtime/gpu_backend_base.hpp
+    ${_gfx_src_dir}/runtime/gpu_buffer.hpp
+    ${_gfx_src_dir}/runtime/gpu_buffer_pool.hpp
+    ${_gfx_src_dir}/runtime/gpu_stage.hpp
+    ${_gfx_src_dir}/runtime/execution_dispatcher.hpp
+    ${_gfx_src_dir}/runtime/immutable_gpu_buffer_cache.hpp
+    ${_gfx_src_dir}/runtime/gpu_tensor.hpp
+    ${_gfx_src_dir}/runtime/gpu_types.hpp
+    ${_gfx_src_dir}/runtime/infer_executor.hpp
+    ${_gfx_src_dir}/runtime/infer_pipeline.hpp
+    ${_gfx_src_dir}/runtime/infer_pipeline_state.hpp
+    ${_gfx_src_dir}/runtime/infer_submission.hpp
+    ${_gfx_src_dir}/runtime/gfx_stage_runtime_values.hpp
+    ${_gfx_src_dir}/runtime/runtime_output_memory_contract.hpp
+    ${_gfx_src_dir}/runtime/runtime_shape_materializer.hpp
+    ${_gfx_src_dir}/runtime/output_lifetime.hpp
+    ${_gfx_src_dir}/runtime/pipeline_stage_desc.hpp
+    ${_gfx_src_dir}/runtime/pipeline_stage_materializer.hpp
+    ${_gfx_src_dir}/runtime/pipeline_stage_plan.hpp
+    ${_gfx_src_dir}/runtime/tensor_binding_contract.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_codegen_backend.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_dispatch.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_manifest.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_plan.hpp
+    ${_gfx_src_dir}/runtime/gfx_logger.hpp
+    ${_gfx_src_dir}/runtime/gfx_op_utils.hpp
+    ${_gfx_src_dir}/runtime/gfx_parallelism.hpp
+    ${_gfx_src_dir}/runtime/gfx_remote_context.hpp
+    ${_gfx_src_dir}/runtime/gfx_remote_tensor.hpp
+    ${_gfx_src_dir}/runtime/gfx_tensor_utils.hpp
+    ${_gfx_src_dir}/runtime/stateful_execution.hpp
+    ${_gfx_src_dir}/runtime/stateful_stage.hpp
+    ${_gfx_src_dir}/runtime/stateful_variable_state.hpp
+)
+
+set(GFX_RUNTIME_COMMON_SOURCES
+    ${_gfx_src_dir}/runtime/descriptor_const_tensor_materializer.cpp
+    ${_gfx_src_dir}/runtime/executable_descriptor.cpp
+    ${_gfx_src_dir}/runtime/runtime_execution_plan.cpp
+    ${_gfx_src_dir}/runtime/runtime_session.cpp
+    ${_gfx_src_dir}/runtime/fused_output_lifetime_plan.cpp
+    ${_gfx_src_dir}/runtime/fused_sequence_stage.cpp
+    ${_gfx_src_dir}/runtime/view_only_stage.cpp
+    ${_gfx_src_dir}/runtime/gpu_memory_ops.cpp
+    ${_gfx_src_dir}/kernel_ir/gfx_custom_kernel_families.cpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_source.cpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_inputs.cpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.cpp
+    ${_gfx_src_dir}/kernel_ir/gfx_runtime_shape_rule.cpp
+    ${_gfx_src_dir}/runtime/execution_dispatcher.cpp
+    ${_gfx_src_dir}/runtime/immutable_gpu_buffer_cache.cpp
+    ${_gfx_src_dir}/runtime/memory_manager.cpp
+    ${_gfx_src_dir}/runtime/gfx_logger.cpp
+    ${_gfx_src_dir}/runtime/gfx_op_utils.cpp
+    ${_gfx_src_dir}/runtime/gfx_parallelism.cpp
+    ${_gfx_src_dir}/runtime/gfx_profiling_report.cpp
+    ${_gfx_src_dir}/runtime/gfx_profiling_trace_sink.cpp
+    ${_gfx_src_dir}/runtime/gfx_target_profile.cpp
+    ${_gfx_src_dir}/runtime/gfx_remote_context.cpp
+    ${_gfx_src_dir}/runtime/gfx_remote_tensor.cpp
+    ${_gfx_src_dir}/runtime/gfx_tensor_utils.cpp
+    ${_gfx_src_dir}/runtime/gfx_stage_runtime_values.cpp
+    ${_gfx_src_dir}/runtime/infer_executor.cpp
+    ${_gfx_src_dir}/runtime/infer_pipeline.cpp
+    ${_gfx_src_dir}/runtime/infer_submission.cpp
+    ${_gfx_src_dir}/runtime/runtime_output_memory_contract.cpp
+    ${_gfx_src_dir}/runtime/runtime_shape_materializer.cpp
+    ${_gfx_src_dir}/runtime/pipeline_stage_materializer.cpp
+    ${_gfx_src_dir}/runtime/stateful_execution.cpp
+    ${_gfx_src_dir}/runtime/stateful_stage.cpp
+    ${_gfx_src_dir}/runtime/tensor_binding_contract.cpp
+)
+
+set(GFX_OPENCL_KERNEL_ARTIFACT_HEADERS
+    ${_gfx_src_dir}/kernel_ir/gfx_opencl_source_artifacts.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/activation_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/activation_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/conv2d_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/conv2d_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_logical_bool_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_logical_bool_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_compare_select_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_compare_select_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/reduction_f32_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/reduction_f32_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/reduction_logical_bool_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/reduction_logical_bool_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f32_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f32_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f32_dynamic_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f32_dynamic_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_dynamic_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_dynamic_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_f32_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_f32_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_f16_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_f16_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f32_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f32_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f16_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f16_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/matmul_f32_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/matmul_f32_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/shapeof_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/shapeof_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/range_f32_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/range_f16_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/range_i64_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/range_i64_unit_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/range_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/tile_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/tile_kernel.hpp
+)
+
+set(GFX_OPENCL_KERNEL_ARTIFACT_SOURCES
+    ${_gfx_src_dir}/kernel_ir/gfx_opencl_source_artifacts.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/activation_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/conv2d_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_logical_bool_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_compare_select_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/reduction_f32_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/reduction_logical_bool_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f32_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f32_dynamic_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_dynamic_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_f32_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/pool2d_f16_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f32_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f16_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/matmul_f32_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/shapeof_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/range_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/tile_kernel.cpp
+)
+
+set(GFX_METAL_MPSRT_CONTRACT_HEADERS
+    ${_gfx_src_dir}/backends/metal/common/mpsrt/gfx_mpsrt_abi.hpp
+    ${_gfx_src_dir}/backends/metal/common/mpsrt/gfx_mpsrt_builder_plan.hpp
+    ${_gfx_src_dir}/backends/metal/common/mpsrt/gfx_mpsrt_kernel_manifest_adapter.hpp
+    ${_gfx_src_dir}/backends/metal/common/mpsrt/gfx_mpsrt_plan.hpp
+    ${_gfx_src_dir}/backends/metal/common/mpsrt/gfx_mpsrt_program.hpp
+    ${_gfx_src_dir}/backends/metal/common/mpsrt/gfx_mpsrt_storage_bridge.hpp
+    ${_gfx_src_dir}/backends/metal/common/mpsrt/gfx_mpsrt_vendor_artifact_payload.hpp
+    ${_gfx_src_dir}/backends/metal/common/mpsrt/gfx_mpsrt_vendor_contract.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/gfx_mpsrt_model.hpp
+)
+
+set(GFX_METAL_MPSRT_CONTRACT_SOURCES
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/gfx_mpsrt_model.cpp
+)
+
+set(GFX_MLIR_STAGE_SUPPORT_HEADERS
+    ${_gfx_src_dir}/mlir/gfx_backend_custom_kernel_adapter.hpp
+    ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.hpp
+    ${_gfx_src_dir}/mlir/gfx_mlir_kernel_metadata.hpp
+    ${_gfx_src_dir}/mlir/gfx_mlir_type_utils.hpp
+    ${_gfx_src_dir}/mlir/mlir_stage_backend_hooks.hpp
+    ${_gfx_src_dir}/mlir/gfx_mpsrt_dialect.hpp
+    ${_gfx_src_dir}/mlir/gfx_mpsrt_metadata.hpp
+    ${_gfx_src_dir}/mlir/gfx_mpsrt_ops.hpp
+    ${_gfx_src_dir}/mlir/gfx_mlir_debug.hpp
+    ${_gfx_src_dir}/mlir/gfx_stage_kernel_binding.hpp
+    ${_gfx_src_dir}/mlir/mlir_kernel_plan_utils.hpp
+    ${_gfx_src_dir}/mlir/mlir_stage.hpp
+    ${_gfx_src_dir}/mlir/mlir_support.hpp
+    ${_gfx_src_dir}/mlir/mlir_stage_runtime_value_bridge.hpp
+)
+
+set(GFX_MLIR_STAGE_SUPPORT_SOURCES
+    ${_gfx_src_dir}/mlir/gfx_backend_custom_kernel_adapter.cpp
+    ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.cpp
+    ${_gfx_src_dir}/mlir/mlir_stage_backend_hooks.cpp
+    ${_gfx_src_dir}/mlir/gfx_mpsrt_dialect.cpp
+    ${_gfx_src_dir}/mlir/gfx_mpsrt_ops.cpp
+    ${_gfx_src_dir}/mlir/mlir_stage.cpp
+    ${_gfx_src_dir}/mlir/mlir_support.cpp
+)
+
+set(GFX_METAL_MSL_COMPILER_HEADERS
+    ${_gfx_src_dir}/mlir/codegen_common.hpp
+    ${_gfx_src_dir}/mlir/index_expr_utils.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_activation.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_eltwise.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_reduction.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_ops.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_common.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_op_kinds.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_shape.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_slice_static.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_softmax.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_mps.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_matmul_metal.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_matmul_mpsrt.hpp
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/reduction_kernels.hpp
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/softmax_kernels.hpp
+)
+
+set(GFX_METAL_MSL_COMPILER_SOURCES
+    ${_gfx_src_dir}/mlir/batchnorm_codegen.cpp
+    ${_gfx_src_dir}/mlir/broadcast_codegen.cpp
+    ${_gfx_src_dir}/mlir/concat_codegen.cpp
+    ${_gfx_src_dir}/mlir/conv2d_codegen.cpp
+    ${_gfx_src_dir}/mlir/conv3d_codegen.cpp
+    ${_gfx_src_dir}/mlir/convert_codegen.cpp
+    ${_gfx_src_dir}/mlir/depth_to_space_codegen.cpp
+    ${_gfx_src_dir}/mlir/eltwise_codegen.cpp
+    ${_gfx_src_dir}/mlir/gather_codegen.cpp
+    ${_gfx_src_dir}/mlir/gather_elements_codegen.cpp
+    ${_gfx_src_dir}/mlir/gathernd_codegen.cpp
+    ${_gfx_src_dir}/mlir/interpolate_codegen.cpp
+    ${_gfx_src_dir}/mlir/matmul_codegen.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_activation.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_eltwise.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_binding.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_data_movement.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_concat_split.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_convert.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_elementwise.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_layout.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_reduction.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_shape.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_slice.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_slice_static.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_topk.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_dispatch.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_convolution.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_matmul.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_llm.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_softmax.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_unary.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_common.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_msl_op_kinds.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_apple_mps.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_attention.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_compressed_matmul.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_matmul_metal.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/msl_codegen_matmul_mpsrt.cpp
+    ${_gfx_src_dir}/mlir/pad_codegen.cpp
+    ${_gfx_src_dir}/mlir/range_codegen.cpp
+    ${_gfx_src_dir}/mlir/reduce_codegen.cpp
+    ${_gfx_src_dir}/mlir/reverse_codegen.cpp
+    ${_gfx_src_dir}/mlir/rms_codegen.cpp
+    ${_gfx_src_dir}/mlir/rope_codegen.cpp
+    ${_gfx_src_dir}/mlir/scatter_elements_update_codegen.cpp
+    ${_gfx_src_dir}/mlir/scatter_update_codegen.cpp
+    ${_gfx_src_dir}/mlir/scatter_nd_update_codegen.cpp
+    ${_gfx_src_dir}/mlir/select_codegen.cpp
+    ${_gfx_src_dir}/mlir/shapeof_codegen.cpp
+    ${_gfx_src_dir}/mlir/slice_generic_codegen.cpp
+    ${_gfx_src_dir}/mlir/softmax_codegen.cpp
+    ${_gfx_src_dir}/mlir/space_to_depth_codegen.cpp
+    ${_gfx_src_dir}/mlir/split_codegen.cpp
+    ${_gfx_src_dir}/mlir/tile_codegen.cpp
+    ${_gfx_src_dir}/mlir/topk_codegen.cpp
+    ${_gfx_src_dir}/mlir/transpose_codegen.cpp
+    ${_gfx_src_dir}/mlir/unary_codegen.cpp
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/reduction_kernels.cpp
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/softmax_kernels.cpp
+)
+
+set(GFX_RUNTIME_METAL_SOURCES
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_image_bridge_kernels.cpp
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_topk_kernels.cpp
+    ${_gfx_src_dir}/backends/metal/runtime/metal_command_encoder.mm
+    ${_gfx_src_dir}/backends/metal/runtime/memory_ops.mm
+    ${_gfx_src_dir}/backends/metal/runtime/metal_executor.cpp
+    ${_gfx_src_dir}/backends/metal/runtime/metal_runtime_kernel_loader.cpp
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt_vendor_primitive_stage.mm
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_context.mm
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_msl_kernel_loader.mm
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_request.mm
+    ${_gfx_src_dir}/backends/metal/runtime/gpu_memory.mm
+    ${_gfx_src_dir}/backends/metal/codegen/metal_compiler.mm
+    ${_gfx_src_dir}/backends/metal/codegen/metal_codegen_backend.mm
+    ${_gfx_src_dir}/backends/metal/runtime/dtype.cpp
+    ${_gfx_src_dir}/backends/metal/runtime/metal_memory.mm
+    ${_gfx_src_dir}/backends/metal/runtime/memory/allocator.mm
+    ${_gfx_src_dir}/backends/metal/runtime/memory/allocator_core.mm
+    ${_gfx_src_dir}/backends/metal/runtime/memory/const_cache.mm
+    ${_gfx_src_dir}/backends/metal/runtime/memory/device_caps.mm
+    ${_gfx_src_dir}/backends/metal/runtime/memory/heap_pool.mm
+    ${_gfx_src_dir}/backends/metal/runtime/memory/memory_session.mm
+    ${_gfx_src_dir}/backends/metal/runtime/memory/staging_pool.mm
+    ${_gfx_src_dir}/backends/metal/runtime/profiling/gpu_timestamps.mm
+    ${_gfx_src_dir}/backends/metal/runtime/profiling/profiler.mm
+    ${_gfx_src_dir}/backends/metal/runtime/profiling/profiling_report.cpp
+    ${_gfx_src_dir}/backends/metal/runtime/profiling/signpost_trace_sink.mm
+)
+
+set(GFX_RUNTIME_METAL_HEADERS
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_image_bridge_kernels.hpp
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_topk_kernels.hpp
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_buffer_to_image_f16.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_buffer_to_image_f32.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_image_to_buffer_f16.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_image_to_buffer_f32.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_topk_pack_u32_to_i64.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_topk_stable_i64_indices_f16.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_topk_stable_i64_indices_f32.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/reduction_f32_kernel.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/reduction_logical_bool_kernel.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/reduction_kernels.hpp
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/softmax_f32_kernel.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/softmax_f16_kernel.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/logsoftmax_f32_kernel.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/logsoftmax_f16_kernel.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/softmax_kernels.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/metal_command_encoder.hpp
+    ${_gfx_src_dir}/backends/metal/codegen/metal_compiler.hpp
+    ${_gfx_src_dir}/backends/metal/codegen/metal_codegen_backend.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/dtype.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/logger.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/metal_memory.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/op_utils.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/memory/allocator.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/memory/allocator_core.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/memory/buffer.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/memory/const_cache.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/memory/device_caps.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/memory/freelist.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/memory/heap_pool.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/memory/memory_session.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/memory/memory_stats.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/memory/staging_pool.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_context.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_msl_kernel_loader.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_request.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/profiling/gpu_timestamps.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/profiling/profiler.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/profiling/profiler_config.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/profiling/profiling_report.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/profiling/signpost_trace_sink.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/metal_executor.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/metal_runtime_kernel_loader.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt_vendor_primitive_stage.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/stage_factory.hpp
+)
+
+set(GFX_RUNTIME_OPENCL_SOURCES
+    ${_gfx_src_dir}/backends/opencl/runtime/opencl_api.cpp
+    ${_gfx_src_dir}/backends/opencl/runtime/opencl_buffer_manager.cpp
+    ${_gfx_src_dir}/backends/opencl/runtime/opencl_program_cache.cpp
+    ${_gfx_src_dir}/backends/opencl/runtime/opencl_runtime_bundle.cpp
+    ${_gfx_src_dir}/backends/opencl/runtime/opencl_runtime_kernel_loader.cpp
+    ${_gfx_src_dir}/backends/opencl/runtime/opencl_source_stage.cpp
+    ${_gfx_src_dir}/backends/opencl/runtime/memory_api.cpp
+    ${_gfx_src_dir}/backends/opencl/runtime/memory_ops.cpp
+)
+
+set(GFX_RUNTIME_OPENCL_HEADERS
+    ${_gfx_src_dir}/backends/opencl/runtime/opencl_api.hpp
+    ${_gfx_src_dir}/backends/opencl/runtime/opencl_buffer_manager.hpp
+    ${_gfx_src_dir}/backends/opencl/runtime/opencl_program_cache.hpp
+    ${_gfx_src_dir}/backends/opencl/runtime/opencl_runtime_bundle.hpp
+    ${_gfx_src_dir}/backends/opencl/runtime/opencl_runtime_kernel_loader.hpp
+    ${_gfx_src_dir}/backends/opencl/runtime/opencl_source_stage.hpp
+    ${_gfx_src_dir}/backends/opencl/runtime/memory_api.hpp
+    ${_gfx_src_dir}/backends/opencl/runtime/stage_factory.hpp
+)
+
+set(GFX_PLUGIN_METAL_SOURCES
+    ${_gfx_src_dir}/backends/metal/plugin/infer_request.mm
+    ${_gfx_src_dir}/backends/metal/plugin/infer_io_metal.mm
+    ${_gfx_src_dir}/backends/metal/plugin/compiled_model_backend.cpp
+    ${_gfx_src_dir}/backends/metal/plugin/remote_context.mm
+    ${_gfx_src_dir}/backends/metal/plugin/device_info.mm
+    ${_gfx_src_dir}/backends/metal/plugin/remote_tensor.mm
+)
+
+set(GFX_PLUGIN_METAL_STUB_SOURCES
+    ${_gfx_src_dir}/backends/metal/plugin/infer_request_stub.cpp
+    ${_gfx_src_dir}/backends/metal/plugin/compiled_model_backend_stub.cpp
+    ${_gfx_src_dir}/backends/metal/plugin/device_info_stub.cpp
+    ${_gfx_src_dir}/backends/metal/plugin/remote_context_stub.cpp
+    ${_gfx_src_dir}/backends/metal/plugin/remote_tensor_stub.cpp
+)
+
+set(GFX_PLUGIN_METAL_HEADERS
+    ${_gfx_src_dir}/backends/metal/plugin/metal_properties.hpp
+    ${_gfx_src_dir}/backends/metal/plugin/compiled_model_state.hpp
+)
+
+set(GFX_PLUGIN_OPENCL_SOURCES
+    ${_gfx_src_dir}/backends/opencl/plugin/infer_request.cpp
+    ${_gfx_src_dir}/backends/opencl/plugin/infer_io_opencl.cpp
+    ${_gfx_src_dir}/backends/opencl/plugin/compiled_model_backend.cpp
+    ${_gfx_src_dir}/backends/opencl/plugin/remote_context.cpp
+    ${_gfx_src_dir}/backends/opencl/plugin/remote_tensor.cpp
+)
+
+set(GFX_PLUGIN_OPENCL_STUB_SOURCES
+    ${_gfx_src_dir}/backends/opencl/plugin/infer_request_stub.cpp
+    ${_gfx_src_dir}/backends/opencl/plugin/compiled_model_backend_stub.cpp
+    ${_gfx_src_dir}/backends/opencl/plugin/remote_context_stub.cpp
+)
+
+set(GFX_PLUGIN_OPENCL_HEADERS
+    ${_gfx_src_dir}/backends/opencl/plugin/compiled_model_backend.hpp
+    ${_gfx_src_dir}/backends/opencl/plugin/compiled_model_state.hpp
+    ${_gfx_src_dir}/backends/opencl/plugin/infer_io_opencl.hpp
+    ${_gfx_src_dir}/backends/opencl/plugin/remote_tensor.hpp
+)
+
+set(GFX_HAS_METAL_SOURCES OFF)
+if(GFX_RUNTIME_METAL_SOURCES)
+    set(GFX_HAS_METAL_SOURCES ON)
+endif()
+
+set(GFX_HAS_OPENCL_SOURCES OFF)
+if(GFX_RUNTIME_OPENCL_SOURCES AND GFX_PLUGIN_OPENCL_SOURCES)
+    set(GFX_HAS_OPENCL_SOURCES ON)
+endif()
+
+unset(_gfx_src_dir)
