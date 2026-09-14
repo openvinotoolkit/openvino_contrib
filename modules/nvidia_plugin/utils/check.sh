@@ -3,40 +3,17 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-set -exuo pipefail
-
-if [[ $(type -P clang-format-12) ]]; then
-	ver=-12
-elif [[ $(type -P clang-format-11) ]]; then
-	ver=-11
-elif [[ $(type -P clang-format-10) ]]; then
-	ver=-10
-elif [[ $(type -P clang-format-9) ]]; then
-	ver=-9
-elif [[ $(type -P clang-format) ]]; then
-	ver=
-else
-	echo "no clang-format-10/clang-format-9/clang-format found in PATH"
-	exit 1
-fi
+set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-git diff --diff-filter=ACMR -U0 origin/master... | perl -ne '
-  if (m|^\+\+\+ b/(.*)|) {
-    $newname = $1;
-    if ($name =~ /^.+nvidia_plugin.+((\.cpp)|(\.hpp)|(\.h)|(\.cu)|(\.cuh))$/) {
-      print "clang-format'$ver'$lines -Werror -dry-run -style=file $name\n"
-    }
-    $name = $newname;
-    $lines = "";
-  }
-  if (m|^@@.*\+(\d+),(\d+)|) {
-    $to = $1 + $2;
-    $lines = "$lines -lines=$1:$to"
-  }
-  END {
-    if ($name =~ /^.+nvidia_plugin.+((\.cpp)|(\.hpp)|(\.h)|(\.cu)|(\.cuh))$/) {
-      print "clang-format'$ver'$lines -Werror -dry-run -style=file $name\n"
-    }
-  }' | parallel
+base_ref=${1:-master}
+formatter="$(command -v git-clang-format-18 || command -v git-clang-format || true)"
+binary="$(command -v clang-format-18 || command -v clang-format || true)"
+if [[ -z "$formatter" || -z "$binary" ]]; then
+	echo "clang-format is not available" >&2
+	exit 1
+fi
+
+"$formatter" --binary "$binary" "origin/${base_ref}" -- modules/nvidia_plugin
+git diff --exit-code -- modules/nvidia_plugin

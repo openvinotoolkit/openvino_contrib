@@ -42,6 +42,8 @@ const std::vector<std::regex>& disabled_test_patterns() {
             std::regex(R"(.*smoke_GroupConvolutionBias(Add|AddAdd)_2D_ExplicitPaddingSymmetric2.*FP16*.*)"),
             // Issue: 128924
             std::regex(R"(.*smoke_OVClassNetworkTestP/OVClassModelTestP.ImportModelWithNullContextThrows.*)"),
+            // Numerically unstable after enabling CI coverage on RTX 4090 (compute capability 8.9, CUDA 11.8).
+            std::regex(R"(.*smoke_SDPA_4D_f16.*Q=\[1\.4\.16\.32\].*)"),
 #ifdef _WIN32
             // CVS-63989
             std::regex(R"(.*ReferenceSigmoidLayerTest.*u64.*)")),

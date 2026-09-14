@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cstddef>
 #include <cuda/runtime.hpp>
 #include <cuda/stl/atomic.cuh>
 #include <cuda/stl/span.cuh>
@@ -18,14 +19,18 @@ class SpanTest : public testing::Test {
 
 namespace {
 
+// CUDA 11.8 generates an exit(1) host stub when a dynamic-extent Span is passed by value.
+// Keep it out of the kernel ABI and construct it on the device instead.
 template <typename T>
-__global__ void verify_extents(CUDA::Span<T> span) {
+__global__ void verify_extents(T* data, std::size_t size) {
+    CUDA::Span<T> span{data, size};
     assert(span.size() == 101);
     assert(blockDim.x == 101);
 }
 
 template <typename T>
-__global__ void assign(CUDA::Span<T> span) {
+__global__ void assign(T* data, std::size_t size) {
+    CUDA::Span<T> span{data, size};
     assert(span.size() == 101);
     assert(blockDim.x == 101);
     const size_t x = threadIdx.x;
@@ -33,7 +38,8 @@ __global__ void assign(CUDA::Span<T> span) {
 }
 
 template <typename T>
-__global__ void verify(CUDA::Span<T> span) {
+__global__ void verify(T* data, std::size_t size) {
+    CUDA::Span<T> span{data, size};
     assert(span.size() == 101);
     assert(blockDim.x == 101);
     const size_t x = threadIdx.x;
@@ -48,8 +54,7 @@ TEST_F(SpanTest, Span_VerifyExtents) {
 
     CUDA::Stream stream{};
     auto src = stream.malloc(SpanTestType::size_of(101));
-    auto span = SpanTestType(src.get(), 101);
-    verify_extents<<<1, 101, 0, stream.get()>>>(span);
+    verify_extents<<<1, 101, 0, stream.get()>>>(static_cast<int*>(src.get()), 101);
     ASSERT_NO_THROW(stream.synchronize());
 }
 
@@ -58,8 +63,7 @@ TEST_F(SpanTest, Span_Verify) {
 
     CUDA::Stream stream{};
     auto src = stream.malloc(SpanTestType::size_of(101));
-    auto span = SpanTestType(src.get(), 101);
-    assign<<<1, 101, 0, stream.get()>>>(span);
-    verify<<<1, 101, 0, stream.get()>>>(span);
+    assign<<<1, 101, 0, stream.get()>>>(static_cast<int*>(src.get()), 101);
+    verify<<<1, 101, 0, stream.get()>>>(static_cast<int*>(src.get()), 101);
     ASSERT_NO_THROW(stream.synchronize());
 }

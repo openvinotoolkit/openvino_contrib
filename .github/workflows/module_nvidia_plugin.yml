@@ -1,0 +1,294 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# NVIDIA owns this workflow. The repository orchestrator only decides whether
+# to call it; the complete build and test flow remains visible here.
+
+name: Module · NVIDIA plugin
+
+on:
+  workflow_call:
+    inputs:
+      nightly:
+        description: Run the extended test policy
+        type: boolean
+        default: false
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  OV_BRANCH: ${{ github.base_ref || github.event.merge_group.base_ref || github.ref_name }}
+
+jobs:
+  images:
+    name: Resolve OpenVINO images
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      branch: ${{ steps.images.outputs.branch }}
+      build: ${{ steps.images.outputs.build }}
+      style: ${{ steps.images.outputs.style }}
+    steps:
+      - name: Checkout OpenVINO image tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openvinotoolkit/openvino
+          ref: ${{ env.OV_BRANCH }}
+          sparse-checkout: .github/dockerfiles/docker_tag
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Resolve images
+        id: images
+        shell: bash
+        run: |
+          branch="${OV_BRANCH#refs/heads/}"
+          tag="$(<.github/dockerfiles/docker_tag)"
+          {
+            echo "branch=${branch}"
+            echo "build=openvinogithubactions.azurecr.io/ov_build/ubuntu_22_04_x64_nvidia:${tag}"
+            echo "style=openvinogithubactions.azurecr.io/ov_test/ubuntu_24_04_x64_code_style:${tag}"
+          } >> "$GITHUB_OUTPUT"
+
+  style:
+    name: Code style
+    needs: images
+    if: ${{ !inputs.nightly }}
+    runs-on: aks-linux-4-cores-16gb
+    timeout-minutes: 15
+    container:
+      image: ${{ needs.images.outputs.style }}
+      options: --user 1001
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check changed NVIDIA sources
+        run: modules/nvidia_plugin/utils/check.sh "${{ needs.images.outputs.branch }}"
+
+  build:
+    name: Build
+    needs: images
+    runs-on: aks-linux-16-cores-32gb
+    timeout-minutes: 40
+    container:
+      image: ${{ needs.images.outputs.build }}
+      volumes:
+        - /mount/build-artifacts:/mount/build-artifacts:ro
+    defaults:
+      run:
+        shell: bash
+    env:
+      CMAKE_BUILD_TYPE: Release
+      CMAKE_CUDA_COMPILER_LAUNCHER: sccache
+      CMAKE_CXX_COMPILER_LAUNCHER: sccache
+      CMAKE_C_COMPILER_LAUNCHER: sccache
+      OPENVINO_ARTIFACTS: openvino_artifacts
+      NVIDIA_BUILD_DIR: nvidia_build
+      NVIDIA_ARTIFACT: nvidia_artifact
+      SCCACHE_DIR: sccache
+      SCCACHE_CACHE_SIZE: 2G
+    steps:
+      - name: Checkout NVIDIA module
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: modules/nvidia_plugin
+          persist-credentials: false
+
+      - name: Checkout OpenVINO artifact action
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openvinotoolkit/openvino
+          ref: ${{ needs.images.outputs.branch }}
+          sparse-checkout: .github/actions
+          path: openvino_actions
+          persist-credentials: false
+
+      - name: Get prebuilt OpenVINO
+        uses: ./openvino_actions/.github/actions/restore_artifacts
+        with:
+          trigger_repo_sha: latest_available_commit
+          branch_name: ${{ needs.images.outputs.branch }}
+          event_name: push
+          to_restore: developer_package.tar.gz,openvino_tests.tar.gz
+          storage_root: /mount/build-artifacts
+          platform: ubuntu22_x86_64
+          target_dir: ${{ env.OPENVINO_ARTIFACTS }}
+
+      - name: Restore sccache
+        id: sccache
+        continue-on-error: true
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.SCCACHE_DIR }}
+          key: nvidia-ubuntu22-release-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            nvidia-ubuntu22-release-${{ github.ref_name }}-
+            nvidia-ubuntu22-release-master-
+
+      - name: Configure
+        run: |
+          source "${OPENVINO_ARTIFACTS}/openvino_package/setupvars.sh"
+          workspace="$(pwd -P)"
+          cmake -G 'Ninja Multi-Config' \
+            -DOpenVINODeveloperPackage_DIR="${workspace}/${OPENVINO_ARTIFACTS}/developer_package/cmake" \
+            -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}" \
+            -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF \
+            -DCMAKE_CUDA_FLAGS=--generate-line-info \
+            -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE="${workspace}/${NVIDIA_ARTIFACT}/bin" \
+            -DCMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE="${workspace}/${NVIDIA_ARTIFACT}/lib" \
+            -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE="${workspace}/${NVIDIA_BUILD_DIR}/lib" \
+            -DPLUGIN_DEFAULT_CONFIG=PROXY_CONFIGURATION_ALIAS:GPU \
+            -DENABLE_NVIDIA=ON \
+            -DENABLE_PLUGINS_XML=ON \
+            -S modules/nvidia_plugin \
+            -B "${NVIDIA_BUILD_DIR}"
+
+      - name: Build tests
+        run: |
+          sccache --zero-stats
+          cmake --build "${NVIDIA_BUILD_DIR}" \
+            --parallel "$(nproc)" \
+            --config "${CMAKE_BUILD_TYPE}" \
+            --verbose \
+            --target ov_nvidia_func_tests ov_nvidia_unit_tests
+
+      - name: Prepare test artifact
+        run: |
+          source "${OPENVINO_ARTIFACTS}/openvino_package/setupvars.sh"
+          python3 modules/nvidia_plugin/utils/prepare_ci_artifact.py \
+            --openvino-package "${OPENVINO_ARTIFACTS}/openvino_package" \
+            --artifact "${NVIDIA_ARTIFACT}" \
+            --runtime-plugins \
+              libopenvino_auto_plugin.so \
+              libopenvino_hetero_plugin.so \
+              libopenvino_auto_batch_plugin.so \
+            --frontends ir \
+            --executables ov_nvidia_func_tests ov_nvidia_unit_tests \
+            --extra-library "${OPENVINO_ARTIFACTS}/openvino_tests/tests/libopenvino_template_plugin.so"
+          cp modules/nvidia_plugin/utils/cuda-sanitizer.sh "${NVIDIA_ARTIFACT}/bin/"
+          du -sh "${NVIDIA_ARTIFACT}"
+
+      - name: Show sccache stats
+        if: ${{ always() }}
+        continue-on-error: true
+        run: sccache --show-stats
+
+      - name: Upload test artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nvidia_plugin_build
+          path: ${{ env.NVIDIA_ARTIFACT }}
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: 2
+          overwrite: true
+
+      - name: Stop sccache
+        if: ${{ always() }}
+        continue-on-error: true
+        run: sccache --stop-server
+
+      - name: Save sccache
+        if: >-
+          ${{
+            success() && github.ref_name == 'master' &&
+            steps.sccache.outputs.cache-hit != 'true'
+          }}
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.SCCACHE_DIR }}
+          key: ${{ steps.sccache.outputs.cache-primary-key }}
+
+  tests:
+    name: GPU tests
+    needs: build
+    runs-on:
+      group: nvidia-gpu
+      labels: RTX-4090
+    timeout-minutes: ${{ inputs.nightly && 300 || 60 }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      NVIDIA_ARTIFACT: ${{ github.workspace }}/nvidia_artifact
+      NVIDIA_RESULTS: ${{ github.workspace }}/nvidia_results
+      NVIDIA_TEST_IMAGE: >-
+        ${{
+          inputs.nightly &&
+          'nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04@sha256:bd746eb3b9953805ebe644847a227e218b5da775f47007c69930569a75c9ad7d' ||
+          'nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04@sha256:f6913f3c02f297877f6859d12ff330043c0be668fdad86868c29a239a5a82151'
+        }}
+    steps:
+      - name: Download test artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nvidia_plugin_build
+          path: ${{ env.NVIDIA_ARTIFACT }}
+
+      - name: Run GPU tests
+        run: |
+          mkdir -p "${NVIDIA_RESULTS}"
+          chmod +x "${NVIDIA_ARTIFACT}/bin/ov_nvidia_unit_tests" \
+            "${NVIDIA_ARTIFACT}/bin/ov_nvidia_func_tests" \
+            "${NVIDIA_ARTIFACT}/bin/cuda-sanitizer.sh"
+
+          container=(
+            docker run --rm
+            --user "$(id -u):$(id -g)"
+            --device=nvidia.com/gpu=all
+            --network=none
+            --read-only
+            --cap-drop=ALL
+            --security-opt=no-new-privileges
+            --pids-limit=4096
+            --tmpfs "/tmp:rw,nosuid,nodev,size=2g"
+            --shm-size=2g
+            --workdir /tmp
+            --mount "type=bind,src=${NVIDIA_ARTIFACT},dst=/artifact,readonly"
+            --mount "type=bind,src=${NVIDIA_RESULTS},dst=/results"
+            --env HOME=/tmp
+            --env LD_LIBRARY_PATH=/artifact/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
+            "${NVIDIA_TEST_IMAGE}"
+          )
+
+          "${container[@]}" nvidia-smi \
+            --query-gpu=name,driver_version,memory.total,compute_cap \
+            --format=csv
+
+          result=0
+          "${container[@]}" /artifact/bin/ov_nvidia_unit_tests \
+            --gtest_output=xml:/results/unit.xml || result=1
+
+          if ${{ inputs.nightly }}; then
+            "${container[@]}" /artifact/bin/ov_nvidia_func_tests \
+              --gtest_output=xml:/results/functional.xml || result=1
+            "${container[@]}" /artifact/bin/cuda-sanitizer.sh \
+              /artifact/bin/ov_nvidia_func_tests \
+              '--gtest_filter=*smoke*:-*dynamic*:*Dynamic*:smoke_GRU*:smoke_LSTM*:smoke_TensorIterator*:*ConvBiasFusion*:*smoke*OVExecGraphImportExportTest.importExportedIENetwork*:*smoke*OVClassBasicTestP.registerNewPluginNoThrows*:*smoke*OVHoldersTest.Orders*:*smoke*IEClassBasicTestP.registerNewPluginNoThrows*:*smoke*IEClassBasicTestP.smoke_registerPluginsXMLUnicodePath*' \
+              --gtest_output=xml:/results/sanitizer.xml || result=1
+          else
+            "${container[@]}" /artifact/bin/ov_nvidia_func_tests \
+              '--gtest_filter=*smoke*:-*dynamic*:*Dynamic*' \
+              --gtest_output=xml:/results/functional.xml || result=1
+          fi
+
+          exit "${result}"
+
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nvidia-test-results-${{ inputs.nightly && 'nightly' || 'pr' }}-${{ github.run_attempt }}
+          path: ${{ env.NVIDIA_RESULTS }}
+          if-no-files-found: warn
+          retention-days: 14

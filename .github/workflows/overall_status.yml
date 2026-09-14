@@ -1,0 +1,120 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# Stable entry point for independent module workflows. Each module is selected
+# by OpenVINO Smart CI and registered here explicitly.
+
+name: Contrib CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - 'releases/**'
+  merge_group:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      nightly:
+        description: Run extended/nightly module tests
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: >-
+    contrib-ci-${{ github.event_name }}-${{
+      github.event_name == 'push' && github.run_id ||
+      github.event.pull_request.number || github.event.merge_group.head_sha || github.ref
+    }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: read
+
+jobs:
+  Smart_CI:
+    name: Select affected modules
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      affected_components: ${{ steps.smart_ci.outputs.affected_components }}
+      skip_workflow: ${{ steps.smart_ci.outputs.skip_workflow }}
+    steps:
+      - name: Checkout module map
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .github/components.yml
+            .github/labeler.yml
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Checkout OpenVINO Smart CI
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openvinotoolkit/openvino
+          sparse-checkout: .github/actions/smart-ci
+          path: openvino
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: openvino/.github/actions/smart-ci/requirements.txt
+
+      - name: Install Smart CI dependencies
+        run: python -m pip install -r openvino/.github/actions/smart-ci/requirements.txt
+
+      - name: Get affected modules
+        id: smart_ci
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          revision=(-s "$GITHUB_SHA")
+          if [[ -n "$PR_NUMBER" ]]; then
+            revision=(--pr "$PR_NUMBER")
+          fi
+          python openvino/.github/actions/smart-ci/smart_ci.py \
+            "${revision[@]}" \
+            -r "$GITHUB_REPOSITORY" \
+            -f "$GITHUB_REF_NAME" \
+            -p 'category: (.*)' \
+            -c .github/components.yml \
+            -m openvino/.github/actions/smart-ci/components_schema.yml \
+            -l .github/labeler.yml
+
+  nvidia_plugin:
+    name: NVIDIA plugin
+    needs: Smart_CI
+    if: >-
+      ${{
+        needs.Smart_CI.outputs.skip_workflow != 'True' &&
+        fromJSON(needs.Smart_CI.outputs.affected_components).NVIDIA_plugin
+      }}
+    uses: ./.github/workflows/module_nvidia_plugin.yml
+    with:
+      nightly: ${{ github.event_name == 'schedule' || inputs.nightly == true }}
+
+  Overall_Status:
+    name: ci/gha_overall_status
+    if: ${{ always() }}
+    needs: [Smart_CI, nvidia_plugin]
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - name: Aggregate module results
+        if: >-
+          ${{
+            contains(needs.*.result, 'failure') ||
+            contains(needs.*.result, 'cancelled')
+          }}
+        run: exit 1

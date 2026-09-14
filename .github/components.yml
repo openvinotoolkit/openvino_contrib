@@ -1,0 +1,10 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# Dependencies used by OpenVINO Smart CI. Modules not listed here are treated
+# conservatively until they get their own workflow.
+CI:
+  revalidate: all
+
+NVIDIA_plugin:
+  revalidate: []
