@@ -1,0 +1,17 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# Only exact finding fingerprints may be listed here. Entries do not approve a license.
+baseline:
+  - finding_fingerprint: sha256:352ce150e14da218d7bb30efb9cf5c9547c4e2c370795586381f3310a0efa159
+    reason: existing vendored-source classification pending evidence review
+  - finding_fingerprint: sha256:58db16e2e17f79ebc7ae4b8134447dc39f06e76511174fb061a1b8f15dc40ab5
+    reason: existing vendored-source classification pending evidence review
+  - finding_fingerprint: sha256:6b94676d218214f25ae542c9c9d59559018278bbb15b1035a80ecadd24424180
+    reason: existing vendored-source classification pending evidence review
+  - finding_fingerprint: sha256:8bff9512641cf84ca8fe910dfd23841fd680954c152751ad82fb400614ccc496
+    reason: existing vendored-source classification pending evidence review
+  - finding_fingerprint: sha256:ad9a48cc63ceb66241df7c98c4c4a1dc56eab4d01b35a90eed37a2290cc39ff8
+    reason: existing vendored-source classification pending evidence review
+  - finding_fingerprint: sha256:e9f064e1ebb9c4fe5a2bb9835d736e361467eb90745705b790047648b3dea621
+    reason: existing vendored-source classification pending evidence review

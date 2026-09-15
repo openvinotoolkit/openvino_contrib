@@ -1,0 +1,92 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+name: License Compliance
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compliance:
+    name: Repository policy and notices
+    runs-on: ubuntu-22.04
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Create isolated Python environment
+        run: python3 -m venv .venv
+
+      - name: Install compliance tool
+        run: .venv/bin/python -m pip install ./tools/license_compliance
+
+      - name: Run offline unit tests
+        run: .venv/bin/python -m unittest discover -s tools/license_compliance/tests -v
+
+      - name: Evaluate license policy
+        shell: bash
+        run: |
+          discovery_args=()
+          if [[ -n "${BASE_SHA}" && -n "${HEAD_SHA}" ]]; then
+            discovery_args+=(--base-ref "${BASE_SHA}" --head-ref "${HEAD_SHA}")
+          fi
+          .venv/bin/ov-contrib-license check . \
+            --offline \
+            --fail-on FAIL \
+            --inventory-output license-inventory.json \
+            --report license-report.md \
+            --github-summary "${GITHUB_STEP_SUMMARY}" \
+            "${discovery_args[@]}"
+
+      - name: Reconcile third-party notices
+        run: |
+          .venv/bin/ov-contrib-license tpp check . \
+            --source-inventory license-inventory.json \
+            --offline \
+            --fail-on FAIL \
+            --report tpp-report.md \
+            --github-summary "${GITHUB_STEP_SUMMARY}"
+
+      - name: Audit the compliance toolchain
+        shell: bash
+        run: |
+          discovery_args=()
+          if [[ -n "${BASE_SHA}" && -n "${HEAD_SHA}" ]]; then
+            discovery_args+=(--base-ref "${BASE_SHA}" --head-ref "${HEAD_SHA}")
+          fi
+          .venv/bin/ov-contrib-license toolchain check . \
+            --fail-on FAIL \
+            --report toolchain-report.md \
+            --github-summary "${GITHUB_STEP_SUMMARY}" \
+            "${discovery_args[@]}"
+
+      - name: Generate SPDX SBOM
+        run: >-
+          .venv/bin/ov-contrib-license sbom .
+          --source-inventory license-inventory.json
+          --output openvino-contrib.spdx.json
+
+      - name: Upload compliance evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: license-compliance-evidence
+          if-no-files-found: warn
+          path: |
+            license-inventory.json
+            license-report.md
+            tpp-report.md
+            toolchain-report.md
+            openvino-contrib.spdx.json

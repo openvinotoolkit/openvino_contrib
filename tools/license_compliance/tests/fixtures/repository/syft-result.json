@@ -1,0 +1,17 @@
+{
+  "descriptor": {
+    "name": "syft",
+    "version": "1.30.0"
+  },
+  "artifacts": [
+    {
+      "id": "permissive-id",
+      "name": "permissive",
+      "version": "1.0.0",
+      "type": "generic",
+      "purl": "pkg:github/example/permissive@1.0.0",
+      "licenses": [{"value": "MIT", "spdxExpression": "MIT"}],
+      "locations": [{"path": "/lib/permissive.so"}]
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+allowed_license_classes:
+  - permissive
+allowed_explicit_licenses:
+  - Apache-2.0
+  - MIT
+  - BSD-2-Clause
+  - BSD-3-Clause
+  - ISC
+require_full_sha_for_github_actions: true
+
+# Curated bootstrap registry. Keys identify public source repositories or direct packages.
+actions:
+  actions/checkout: MIT
+  actions/setup-python: MIT
+  actions/setup-go: MIT
+  actions/setup-java: MIT
+  actions/stale: MIT
+  actions/labeler: MIT
+  actions/upload-artifact: MIT
+  actions/download-artifact: MIT
+  actions/cache: MIT
+  github/codeql-action: MIT
+  docker/setup-buildx-action: Apache-2.0
+  docker/login-action: Apache-2.0
+  docker/build-push-action: Apache-2.0
+  dorny/paths-filter: MIT
+  softprops/action-gh-release: MIT
+  axel-op/googlejavaformat-action: MIT
+  bdougie/take-action: MIT
+  crazy-max/ghaction-github-labeler: MIT
+  openvinotoolkit/openvino: Apache-2.0
+
+dependencies:
+  pyyaml: MIT
+  setuptools: MIT
+  tomli: MIT
+
+providers:
+  ort:
+    enabled: false
+    command: ort
+  license_eye:
+    enabled: false
+    command: license-eye
+  syft:
+    enabled: false
+    command: syft
+  scancode:
+    enabled: false
+    command: scancode
+
+forbidden_services:
+  - id: fossa.com
+    reason: proprietary SaaS cannot provide the authoritative verdict
+  - id: snyk.io
+    reason: proprietary SaaS cannot provide the authoritative verdict
+  - id: blackduck
+    reason: proprietary SaaS cannot provide the authoritative verdict
