@@ -1,0 +1,451 @@
+/*
+ * Copyright (C) 2018-2026 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+/*
+ * Portions derived from PyTorch3D (https://github.com/facebookresearch/pytorch3d).
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ *  * Redistributions of source code must retain the above copyright notice, this
+ *    list of conditions and the following disclaimer.
+ *
+ *  * Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the documentation
+ *    and/or other materials provided with the distribution.
+ *
+ *  * Neither the name Meta nor the names of its contributors may be used to
+ *    endorse or promote products derived from this software without specific
+ *    prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ * ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+// Point Cloud Operations Implementation for OpenVINO
+// CPU fallback implementations for all point cloud operations
+
+#include "pointcloud_ops.hpp"
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <numeric>
+#include <vector>
+
+namespace HGGDExtension {
+
+// ═══════════════════════════════════════════════════════════════════════════
+// KNNPointsSingle Implementation (GPU-compatible single output)
+// ═══════════════════════════════════════════════════════════════════════════
+
+KNNPointsSingle::KNNPointsSingle(const ov::Output<ov::Node>& p1,
+                                 const ov::Output<ov::Node>& p2,
+                                 int64_t k)
+    : Op({p1, p2}), m_k(k) {
+    constructor_validate_and_infer_types();
+}
+
+void KNNPointsSingle::validate_and_infer_types() {
+    const auto& p1_shape = get_input_partial_shape(0);
+    const auto& p2_shape = get_input_partial_shape(1);
+
+    NODE_VALIDATION_CHECK(this, p1_shape.rank().is_static() && p1_shape.rank().get_length() == 3,
+                          "p1 must be 3D [B, N1, 3]");
+    NODE_VALIDATION_CHECK(this, p2_shape.rank().is_static() && p2_shape.rank().get_length() == 3,
+                          "p2 must be 3D [B, N2, 3]");
+
+    // GPU kernel uses fixed private arrays of MAX_K=64; k > 64 is OOB on GPU
+    NODE_VALIDATION_CHECK(this, m_k <= 64,
+                          "k must be <= MAX_K (64) for the GPU kernel");
+
+    // K must not exceed source point count (partial_sort UB / OOB otherwise)
+    if (p2_shape[1].is_static()) {
+        NODE_VALIDATION_CHECK(this, m_k <= p2_shape[1].get_length(),
+                              "k must be <= N2 (source point count)");
+    }
+
+    // Output shape: [B, N1, K*2] - first K are dists, next K are indices
+    ov::PartialShape out_shape{p1_shape[0], p1_shape[1], m_k * 2};
+    set_output_type(0, ov::element::f32, out_shape);
+}
+
+std::shared_ptr<ov::Node> KNNPointsSingle::clone_with_new_inputs(
+    const ov::OutputVector& new_args) const {
+    return std::make_shared<KNNPointsSingle>(new_args.at(0), new_args.at(1), m_k);
+}
+
+bool KNNPointsSingle::visit_attributes(ov::AttributeVisitor& visitor) {
+    visitor.on_attribute("k", m_k);
+    return true;
+}
+
+bool KNNPointsSingle::evaluate(ov::TensorVector& outputs,
+                               const ov::TensorVector& inputs) const {
+    const float* p1 = inputs[0].data<float>();
+    const float* p2 = inputs[1].data<float>();
+    float* combined = outputs[0].data<float>();
+
+    const auto& p1_shape = inputs[0].get_shape();
+    const auto& p2_shape = inputs[1].get_shape();
+    const int64_t B = p1_shape[0];
+    const int64_t N1 = p1_shape[1];
+    const int64_t N2 = p2_shape[1];
+    const int64_t K = m_k;
+    const int64_t K2 = K * 2;
+
+    #pragma omp parallel for
+    for (int64_t b = 0; b < B; ++b) {
+        const float* p1_b = p1 + b * N1 * 3;
+        const float* p2_b = p2 + b * N2 * 3;
+        float* out_b = combined + b * N1 * K2;
+
+        std::vector<std::pair<float, int32_t>> dist_idx(N2);
+
+        for (int64_t i = 0; i < N1; ++i) {
+            const float qx = p1_b[i * 3 + 0];
+            const float qy = p1_b[i * 3 + 1];
+            const float qz = p1_b[i * 3 + 2];
+
+            for (int64_t j = 0; j < N2; ++j) {
+                const float dx = p2_b[j * 3 + 0] - qx;
+                const float dy = p2_b[j * 3 + 1] - qy;
+                const float dz = p2_b[j * 3 + 2] - qz;
+                dist_idx[j] = {dx*dx + dy*dy + dz*dz, static_cast<int32_t>(j)};
+            }
+
+            std::partial_sort(dist_idx.begin(), dist_idx.begin() + K, dist_idx.end());
+
+            // Combined output: [dists_0..dists_K-1, idx_0..idx_K-1]
+            for (int64_t k = 0; k < K; ++k) {
+                out_b[i * K2 + k] = dist_idx[k].first;           // Distance
+                out_b[i * K2 + K + k] = static_cast<float>(dist_idx[k].second);  // Index as float
+            }
+        }
+    }
+
+    return true;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BallQuerySingle Implementation (GPU-compatible single output)
+// ═══════════════════════════════════════════════════════════════════════════
+
+BallQuerySingle::BallQuerySingle(const ov::Output<ov::Node>& p1,
+                                 const ov::Output<ov::Node>& p2,
+                                 int64_t k,
+                                 float radius)
+    : Op({p1, p2}), m_k(k), m_radius(radius) {
+    constructor_validate_and_infer_types();
+}
+
+void BallQuerySingle::validate_and_infer_types() {
+    const auto& p1_shape = get_input_partial_shape(0);
+    const auto& p2_shape = get_input_partial_shape(1);
+
+    NODE_VALIDATION_CHECK(this, p1_shape.rank().is_static() && p1_shape.rank().get_length() == 3,
+                          "p1 must be 3D [B, N1, 3]");
+    NODE_VALIDATION_CHECK(this, p2_shape.rank().is_static() && p2_shape.rank().get_length() == 3,
+                          "p2 must be 3D [B, N2, 3]");
+
+    // GPU kernel uses fixed private arrays of MAX_K=64; k > 64 is OOB on GPU
+    NODE_VALIDATION_CHECK(this, m_k <= 64,
+                          "k must be <= MAX_K (64) for the GPU kernel");
+
+    // Output shape: [B, N1, K*2]
+    ov::PartialShape out_shape{p1_shape[0], p1_shape[1], m_k * 2};
+    set_output_type(0, ov::element::f32, out_shape);
+}
+
+std::shared_ptr<ov::Node> BallQuerySingle::clone_with_new_inputs(
+    const ov::OutputVector& new_args) const {
+    return std::make_shared<BallQuerySingle>(new_args.at(0), new_args.at(1), m_k, m_radius);
+}
+
+bool BallQuerySingle::visit_attributes(ov::AttributeVisitor& visitor) {
+    visitor.on_attribute("k", m_k);
+    visitor.on_attribute("radius", m_radius);
+    return true;
+}
+
+bool BallQuerySingle::evaluate(ov::TensorVector& outputs,
+                               const ov::TensorVector& inputs) const {
+    const float* p1 = inputs[0].data<float>();
+    const float* p2 = inputs[1].data<float>();
+    float* combined = outputs[0].data<float>();
+
+    const auto& p1_shape = inputs[0].get_shape();
+    const auto& p2_shape = inputs[1].get_shape();
+    const int64_t B = p1_shape[0];
+    const int64_t N1 = p1_shape[1];
+    const int64_t N2 = p2_shape[1];
+    const int64_t K = m_k;
+    const int64_t K2 = K * 2;
+    const float radius_sq = m_radius * m_radius;
+
+    #pragma omp parallel for
+    for (int64_t b = 0; b < B; ++b) {
+        const float* p1_b = p1 + b * N1 * 3;
+        const float* p2_b = p2 + b * N2 * 3;
+        float* out_b = combined + b * N1 * K2;
+
+        std::vector<std::pair<float, int32_t>> neighbors;
+        neighbors.reserve(N2);
+
+        for (int64_t i = 0; i < N1; ++i) {
+            const float qx = p1_b[i * 3 + 0];
+            const float qy = p1_b[i * 3 + 1];
+            const float qz = p1_b[i * 3 + 2];
+
+            neighbors.clear();
+
+            for (int64_t j = 0; j < N2; ++j) {
+                const float dx = p2_b[j * 3 + 0] - qx;
+                const float dy = p2_b[j * 3 + 1] - qy;
+                const float dz = p2_b[j * 3 + 2] - qz;
+                const float d2 = dx*dx + dy*dy + dz*dz;
+
+                if (d2 < radius_sq) {
+                    neighbors.emplace_back(d2, static_cast<int32_t>(j));
+                }
+            }
+
+            std::sort(neighbors.begin(), neighbors.end());
+
+            const int64_t valid_count = std::min(static_cast<int64_t>(neighbors.size()), K);
+            
+            // Combined output: [dists_0..dists_K-1, idx_0..idx_K-1]
+            for (int64_t k = 0; k < valid_count; ++k) {
+                out_b[i * K2 + k] = neighbors[k].first;
+                out_b[i * K2 + K + k] = static_cast<float>(neighbors[k].second);
+            }
+            for (int64_t k = valid_count; k < K; ++k) {
+                out_b[i * K2 + k] = -1.0f;
+                out_b[i * K2 + K + k] = -1.0f;
+            }
+        }
+    }
+
+    return true;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FPSSingle Implementation (GPU-compatible single output)
+// ═══════════════════════════════════════════════════════════════════════════
+
+FPSSingle::FPSSingle(const ov::Output<ov::Node>& points, int64_t k)
+    : Op({points}), m_k(k) {
+    constructor_validate_and_infer_types();
+}
+
+void FPSSingle::validate_and_infer_types() {
+    const auto& pts_shape = get_input_partial_shape(0);
+
+    NODE_VALIDATION_CHECK(this, pts_shape.rank().is_static() && pts_shape.rank().get_length() == 3,
+                          "points must be 3D [B, N, 3]");
+
+    // Output: [B, K, 4] - xyz + index
+    set_output_type(0, ov::element::f32, ov::PartialShape{pts_shape[0], m_k, 4});
+}
+
+std::shared_ptr<ov::Node> FPSSingle::clone_with_new_inputs(
+    const ov::OutputVector& new_args) const {
+    return std::make_shared<FPSSingle>(new_args.at(0), m_k);
+}
+
+bool FPSSingle::visit_attributes(ov::AttributeVisitor& visitor) {
+    visitor.on_attribute("k", m_k);
+    return true;
+}
+
+bool FPSSingle::evaluate(ov::TensorVector& outputs,
+                         const ov::TensorVector& inputs) const {
+    const float* points = inputs[0].data<float>();
+    float* combined = outputs[0].data<float>();
+
+    const auto& pts_shape = inputs[0].get_shape();
+    const int64_t B = pts_shape[0];
+    const int64_t N = pts_shape[1];
+    const int64_t K = m_k;
+
+    #pragma omp parallel for
+    for (int64_t b = 0; b < B; ++b) {
+        const float* pts_b = points + b * N * 3;
+        float* out_b = combined + b * K * 4;
+
+        std::vector<float> min_dists(N, std::numeric_limits<float>::max());
+        int64_t current = 0;
+
+        for (int64_t k = 0; k < K; ++k) {
+            // Store combined: xyz + index
+            out_b[k * 4 + 0] = pts_b[current * 3 + 0];
+            out_b[k * 4 + 1] = pts_b[current * 3 + 1];
+            out_b[k * 4 + 2] = pts_b[current * 3 + 2];
+            out_b[k * 4 + 3] = static_cast<float>(current);
+
+            if (k == K - 1) break;
+
+            const float cx = pts_b[current * 3 + 0];
+            const float cy = pts_b[current * 3 + 1];
+            const float cz = pts_b[current * 3 + 2];
+
+            float max_dist = -1.0f;
+            int64_t farthest = 0;
+
+            for (int64_t i = 0; i < N; ++i) {
+                const float dx = pts_b[i * 3 + 0] - cx;
+                const float dy = pts_b[i * 3 + 1] - cy;
+                const float dz = pts_b[i * 3 + 2] - cz;
+                const float d2 = dx*dx + dy*dy + dz*dz;
+
+                if (d2 < min_dists[i]) {
+                    min_dists[i] = d2;
+                }
+
+                if (min_dists[i] > max_dist) {
+                    max_dist = min_dists[i];
+                    farthest = i;
+                }
+            }
+
+            current = farthest;
+            min_dists[current] = -1.0f;
+        }
+    }
+
+    return true;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// FPSWithLengths - GPU-compatible with variable-length batch support
+// ════════════════════════════════════════════════════════════════════════════
+
+FPSWithLengths::FPSWithLengths(const ov::Output<ov::Node>& points,
+                               const ov::Output<ov::Node>& lengths,
+                               int64_t k)
+    : Op({points, lengths}), m_k(k) {
+    constructor_validate_and_infer_types();
+}
+
+void FPSWithLengths::validate_and_infer_types() {
+    const auto& pts_shape = get_input_partial_shape(0);
+    const auto& len_shape = get_input_partial_shape(1);
+
+    NODE_VALIDATION_CHECK(this, pts_shape.rank().is_static() && pts_shape.rank().get_length() == 3,
+                          "points must be 3D [B, N, 3]");
+    NODE_VALIDATION_CHECK(this, len_shape.rank().is_static() && len_shape.rank().get_length() == 1,
+                          "lengths must be 1D [B]");
+
+    // Output: [B, K, 4] - xyz + index
+    set_output_type(0, ov::element::f32, ov::PartialShape{pts_shape[0], m_k, 4});
+}
+
+std::shared_ptr<ov::Node> FPSWithLengths::clone_with_new_inputs(
+    const ov::OutputVector& new_args) const {
+    return std::make_shared<FPSWithLengths>(new_args.at(0), new_args.at(1), m_k);
+}
+
+bool FPSWithLengths::visit_attributes(ov::AttributeVisitor& visitor) {
+    visitor.on_attribute("k", m_k);
+    return true;
+}
+
+bool FPSWithLengths::evaluate(ov::TensorVector& outputs,
+                              const ov::TensorVector& inputs) const {
+    const float* points = inputs[0].data<float>();
+    const float* lengths_f = inputs[1].data<float>();
+    float* combined = outputs[0].data<float>();
+
+    const auto& pts_shape = inputs[0].get_shape();
+    const int64_t B = pts_shape[0];
+    const int64_t N = pts_shape[1];
+    const int64_t K = m_k;
+
+    #pragma omp parallel for
+    for (int64_t b = 0; b < B; ++b) {
+        const float* pts_b = points + b * N * 3;
+        float* out_b = combined + b * K * 4;
+        const int64_t valid_len = static_cast<int64_t>(lengths_f[b]);
+        const int64_t k_actual = std::min(K, valid_len);
+
+        if (valid_len <= 0) {
+            // No valid points - output zeros
+            for (int64_t k = 0; k < K; ++k) {
+                out_b[k * 4 + 0] = 0.0f;
+                out_b[k * 4 + 1] = 0.0f;
+                out_b[k * 4 + 2] = 0.0f;
+                out_b[k * 4 + 3] = 0.0f;
+            }
+            continue;
+        }
+
+        std::vector<float> min_dists(valid_len, std::numeric_limits<float>::max());
+        int64_t current = 0;
+
+        for (int64_t k = 0; k < k_actual; ++k) {
+            // Store combined: xyz + index
+            out_b[k * 4 + 0] = pts_b[current * 3 + 0];
+            out_b[k * 4 + 1] = pts_b[current * 3 + 1];
+            out_b[k * 4 + 2] = pts_b[current * 3 + 2];
+            out_b[k * 4 + 3] = static_cast<float>(current);
+
+            if (k == k_actual - 1) break;
+
+            const float cx = pts_b[current * 3 + 0];
+            const float cy = pts_b[current * 3 + 1];
+            const float cz = pts_b[current * 3 + 2];
+
+            float max_dist = -1.0f;
+            int64_t farthest = 0;
+
+            // Only iterate over valid points
+            for (int64_t i = 0; i < valid_len; ++i) {
+                const float dx = pts_b[i * 3 + 0] - cx;
+                const float dy = pts_b[i * 3 + 1] - cy;
+                const float dz = pts_b[i * 3 + 2] - cz;
+                const float d2 = dx*dx + dy*dy + dz*dz;
+
+                if (d2 < min_dists[i]) {
+                    min_dists[i] = d2;
+                }
+
+                if (min_dists[i] > max_dist) {
+                    max_dist = min_dists[i];
+                    farthest = i;
+                }
+            }
+
+            current = farthest;
+            min_dists[current] = -1.0f;
+        }
+
+        // Pad remaining with last valid point
+        if (k_actual < K && k_actual > 0) {
+            const float last_x = out_b[(k_actual - 1) * 4 + 0];
+            const float last_y = out_b[(k_actual - 1) * 4 + 1];
+            const float last_z = out_b[(k_actual - 1) * 4 + 2];
+            const float last_idx = out_b[(k_actual - 1) * 4 + 3];
+            for (int64_t k = k_actual; k < K; ++k) {
+                out_b[k * 4 + 0] = last_x;
+                out_b[k * 4 + 1] = last_y;
+                out_b[k * 4 + 2] = last_z;
+                out_b[k * 4 + 3] = last_idx;
+            }
+        }
+    }
+
+    return true;
+}
+
+}  // namespace HGGDExtension
