@@ -19,9 +19,8 @@ package genai
 #include "openvino/c/ov_common.h"
 #include <stdbool.h>
 
-typedef int (*callback_function)(const char*, void*);
-
-extern int goCallbackBridge(char* input, void* ptr);
+typedef ov_genai_streaming_status_e (*callback_function)(const char*, void*);
+extern ov_genai_streaming_status_e goCallbackBridge(char* input, void* ptr);
 
 static ov_status_e ov_genai_llm_pipeline_create_npu_output_2048(const char* models_path,
 																  const char* device,
@@ -399,7 +398,7 @@ func GetOvVersion() {
 }
 
 //export goCallbackBridge
-func goCallbackBridge(args *C.char, gen_result unsafe.Pointer) C.int {
+func goCallbackBridge(args *C.char, gen_result unsafe.Pointer) C.ov_genai_streaming_status_e { // <-- CORRECT RETURN TYPE
 	if args != nil {
 		// 将 unsafe.Pointer 转换回结构体指针
 		result := (*Sequence)(gen_result)
@@ -411,10 +410,10 @@ func goCallbackBridge(args *C.char, gen_result unsafe.Pointer) C.int {
 		// fmt.Printf("%s", goStr)
 		// os.Stdout.Sync()
 		FlushPending((*Sequence)(result))
-		return C.OV_GENAI_STREAMMING_STATUS_RUNNING
+		return C.OV_GENAI_STREAMING_STATUS_RUNNING // <-- CORRECTED TYPO (STREAMING)
 	} else {
 		fmt.Println("Callback executed with NULL message!")
-		return C.OV_GENAI_STREAMMING_STATUS_STOP
+		return C.OV_GENAI_STREAMING_STATUS_STOP // <-- CORRECTED TYPO (STREAMING)
 	}
 }
 
