@@ -11,7 +11,6 @@ on:
   push:
     branches:
       - master
-      - "an/**"
     paths:
       - "modules/openvino-notes/**"
       - ".github/workflows/openvino_notes.yml"
