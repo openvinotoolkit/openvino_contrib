@@ -1,0 +1,47 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+name: ov_sam6d
+channels:
+ - conda-forge
+ - pytorch
+ #- defaults
+dependencies:
+ - pip
+ - python==3.11.6
+ - pip:
+   - torch==2.5.0
+   - torchvision==0.20.0
+   - torchaudio==2.5.0
+   - fvcore
+   - torchmetrics
+   - blenderproc==2.6.1
+   - opencv-python
+   # ISM
+   - omegaconf
+   - ruamel.yaml
+   - hydra-colorlog
+   - hydra-core
+   - gdown
+   - pandas
+   - imageio
+   - pyrender
+   - pytorch-lightning
+   - pycocotools
+   - distinctipy
+  # Licensing notes:
+  # - segment-anything and DINOv2 are Apache-2.0 components.
+  # - FastSAM support uses ultralytics/YOLO code under AGPL-3.0 terms.
+   - git+https://github.com/facebookresearch/segment-anything.git  # SAM
+   - ultralytics==8.0.135  # FastSAM
+   # PEM
+   - timm
+   - gorilla-core==0.2.7.8
+   - trimesh==4.5.0
+   - gpustat==1.0.0
+   - imgaug
+   - einops
+   - onnx
+   - plyfile
+   - setuptools==81.0.0
+   - py-cpuinfo
