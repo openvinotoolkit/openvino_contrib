@@ -72,6 +72,10 @@
   color: "#d3d3d3"
   description: "OpenVINO training kit (modules/openvino_training_kit)"
 
+- name: "category: robotics"
+  color: "#d3d3d3"
+  description: "Robotics models module (modules/robotics)"
+
 - name: "dependencies"
   color: "#0366d6"
   description: "Pull requests that update a dependency file"

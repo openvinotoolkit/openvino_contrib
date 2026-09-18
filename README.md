@@ -26,6 +26,8 @@ This list gives an overview of all modules available inside the contrib reposito
 * [**3D**](./modules/3d): A collection of 3D vision models implemented with OpenVINO. Currently, it includes the following models:
   * [**PointPillars**](./modules/3d/pointPillars): Use OpenVINO to perform 3D object detection with PointPillars model.
   * [**CDPN**](./modules/3d/CDPN): Use OpenVINO to perform 6-DoF object pose estimation with CDPN model.
+* [**robotics**](./modules/robotics): A collection of models for robotics implemented with OpenVINO. Currently, it includes the following models:
+  * [**SAM3D-Objects**](./modules/robotics/openvino-sam3d-objects): OpenVINO supported implementation of the SAM3D-Objects model.
 
 ## How to build OpenVINO with extra modules
 You can build OpenVINO, so it will include the modules from this repository. Contrib modules are under constant development and it is recommended to use them alongside the master branch or latest releases of OpenVINO.
