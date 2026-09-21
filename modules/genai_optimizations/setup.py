@@ -19,10 +19,10 @@ EXTRAS_REQUIRE = {
 }
 
 INSTALL_REQUIRES = [
-    "torch==2.13.0",
-    "torchvision==0.28.0",
+    "torch==2.14.0",
+    "torchvision==0.29.0",
     "transformers>=4.48.0,<6",
-    "accelerate==1.14.0",
+    "accelerate==1.15.0",
     "wheel==0.48.0",
     # Install with limited build threads to avoid OOM (MAX_JOBS=4)
     (

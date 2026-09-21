@@ -1,12 +1,12 @@
 # Copyright (C) 2018-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-numpy==2.5.2
-openvino==2026.3.1
+numpy==2.5.3
+openvino==2026.4.0
 opencv-python-headless==5.0.0.93
-torch==2.13.0
+torch==2.14.0
 onnx==1.22.0
 setuptools==84.0.0
-nncf==3.3.0
+nncf==3.4.0
 shapely
 torchvision
