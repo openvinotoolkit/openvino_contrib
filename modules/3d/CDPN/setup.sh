@@ -46,8 +46,8 @@ done
 
 # 5. Install torch/torchvision from the XPU wheel index.
 python -m pip install --upgrade \
-  torch==2.10.0 \
-  torchvision==0.25.0 \
+  torch==2.14.0 \
+  torchvision==0.29.0 \
   --index-url https://download.pytorch.org/whl/xpu
 
 # 6. Install the remaining Python requirements.
