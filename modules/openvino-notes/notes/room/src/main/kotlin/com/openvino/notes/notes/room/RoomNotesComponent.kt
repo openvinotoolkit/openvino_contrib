@@ -415,33 +415,47 @@ private object WireCodec {
 
     private fun decodeContentV1(value: String): List<ContentItem> =
         lines(value).map { line ->
-            val fields = line.split('|')
+            val fields = splitFields(line)
+
             when (fields.firstOrNull()) {
-                "text" -> ContentItem.Text(
-                    ContentItemId(fields[1]),
-                    decode(fields[2]),
-                )
+                "text" -> {
+                    requireFieldCount(fields, 3)
+                    ContentItem.Text(
+                        ContentItemId(fields[1]),
+                        decode(fields[2]),
+                    )
+                }
 
-                "image" -> ContentItem.Image(
-                    ContentItemId(fields[1]),
-                    AttachmentId(fields[2]),
-                    decodeNullable(fields[3]),
-                )
+                "image" -> {
+                    requireFieldCount(fields, 4)
+                    ContentItem.Image(
+                        ContentItemId(fields[1]),
+                        AttachmentId(fields[2]),
+                        decodeNullable(fields[3]),
+                    )
+                }
 
-                "file" -> ContentItem.File(
-                    ContentItemId(fields[1]),
-                    AttachmentId(fields[2]),
-                )
+                "file" -> {
+                    requireFieldCount(fields, 3)
+                    ContentItem.File(
+                        ContentItemId(fields[1]),
+                        AttachmentId(fields[2]),
+                    )
+                }
 
-                "link" -> ContentItem.Link(
-                    ContentItemId(fields[1]),
-                    decode(fields[2]),
-                    decodeNullable(fields[3]),
-                )
+                "link" -> {
+                    requireFieldCount(fields, 4)
+                    ContentItem.Link(
+                        ContentItemId(fields[1]),
+                        decode(fields[2]),
+                        decodeNullable(fields[3]),
+                    )
+                }
 
                 else -> error("Unsupported content item")
             }
         }
+
 
     private fun decodeContentV2(value: String): List<ContentItem> =
         linesAfterMarker(value).map { line ->
@@ -509,7 +523,9 @@ private object WireCodec {
 
     private fun decodeAttachmentsV1(value: String): List<AttachmentMetadata> =
         lines(value).map { line ->
-            val fields = line.split('|')
+            val fields = splitFields(line)
+            requireFieldCount(fields, 6)
+
             AttachmentMetadata(
                 id = AttachmentId(fields[0]),
                 noteId = NoteId(fields[1]),

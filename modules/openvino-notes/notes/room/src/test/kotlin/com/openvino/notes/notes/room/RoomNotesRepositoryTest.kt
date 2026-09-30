@@ -362,4 +362,93 @@ class RoomNotesRepositoryTest {
             database.close()
         }
     }
+    @Test
+    fun `ambiguous v1 record fails without replacing original data`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val databaseName = "notes-room-v1-recovery-test"
+
+        context.deleteDatabase(databaseName)
+
+        val corruptedContent = "text|broken|identifier|Qm9keQ=="
+        val accountKey = AccountKey("account")
+        val noteId = NoteId("corrupted-note")
+
+        try {
+            var database = Room.databaseBuilder(
+                context,
+                NotesDatabase::class.java,
+                databaseName,
+            ).allowMainThreadQueries().build()
+
+            database.notesDao().upsert(
+                NoteEntity(
+                    accountKey = accountKey.value,
+                    id = noteId.value,
+                    title = "Corrupted",
+                    contentItems = corruptedContent,
+                    attachments = "",
+                    folderId = null,
+                    tags = "",
+                    isFavorite = false,
+                    summary = null,
+                    createdAtMillis = 0,
+                    updatedAtMillis = 0,
+                ),
+            )
+
+            database.close()
+
+            database = Room.databaseBuilder(
+                context,
+                NotesDatabase::class.java,
+                databaseName,
+            ).allowMainThreadQueries().build()
+
+            try {
+                val repository = RoomNotesRepository(
+                    database.notesDao(),
+                    FileAttachmentContentStore(
+                        context.cacheDir.resolve("notes-room-v1-recovery-test"),
+                        testDispatchers,
+                    ),
+                )
+
+                try {
+                    repository.find(accountKey, noteId)
+                    throw AssertionError("Ambiguous V1 record must fail")
+                } catch (_: IllegalArgumentException) {
+                }
+
+                assertEquals(
+                    corruptedContent,
+                    database.notesDao().find(
+                        accountKey.value,
+                        noteId.value,
+                    )!!.contentItems,
+                )
+            } finally {
+                database.close()
+            }
+
+            database = Room.databaseBuilder(
+                context,
+                NotesDatabase::class.java,
+                databaseName,
+            ).allowMainThreadQueries().build()
+
+            try {
+                assertEquals(
+                    corruptedContent,
+                    database.notesDao().find(
+                        accountKey.value,
+                        noteId.value,
+                    )!!.contentItems,
+                )
+            } finally {
+                database.close()
+            }
+        } finally {
+            context.deleteDatabase(databaseName)
+        }
+    }
 }
