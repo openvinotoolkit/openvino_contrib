@@ -26,6 +26,7 @@ import java.time.Instant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertArrayEquals
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -251,6 +252,112 @@ class RoomNotesRepositoryTest {
                 ),
             )
             assertEquals(note, repository.find(accountKey, noteId))
+        } finally {
+            database.close()
+        }
+    }
+    @Test
+    fun `newly written wire values use v2 marker`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val database = Room.inMemoryDatabaseBuilder(
+            context,
+            NotesDatabase::class.java,
+        ).allowMainThreadQueries().build()
+
+        try {
+            val repository = RoomNotesRepository(
+                database.notesDao(),
+                FileAttachmentContentStore(
+                    context.cacheDir.resolve("notes-room-v2-test"),
+                    testDispatchers,
+                ),
+            )
+
+            val accountKey = AccountKey("account")
+            val noteId = NoteId("note")
+
+            repository.save(
+                Note(
+                    id = noteId,
+                    accountKey = accountKey,
+                    title = "Title",
+                    contentItems = listOf(
+                        ContentItem.Text(ContentItemId("body"), "Body"),
+                    ),
+                    attachments = listOf(
+                        AttachmentMetadata(
+                            AttachmentId("attachment"),
+                            noteId,
+                            ContentItemId("body"),
+                            "file.txt",
+                            "text/plain",
+                            10,
+                        ),
+                    ),
+                    tags = setOf(NoteTag("work")),
+                    isFavorite = false,
+                    summary = "Summary",
+                    createdAt = Instant.EPOCH,
+                    updatedAt = Instant.EPOCH,
+                ),
+            )
+
+            val entity = database.notesDao().find(
+                accountKey.value,
+                noteId.value,
+            )
+
+            assertTrue(entity!!.contentItems.startsWith("v2:\n"))
+            assertTrue(entity.attachments.startsWith("v2:\n"))
+            assertTrue(entity.tags.startsWith("v2:\n"))
+        } finally {
+            database.close()
+        }
+    }
+    @Test
+    fun `v2 preserves nullable string fields`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val database = Room.inMemoryDatabaseBuilder(
+            context,
+            NotesDatabase::class.java,
+        ).allowMainThreadQueries().build()
+
+        try {
+            val repository = RoomNotesRepository(
+                database.notesDao(),
+                FileAttachmentContentStore(
+                    context.cacheDir.resolve("notes-room-v2-null-test"),
+                    testDispatchers,
+                ),
+            )
+
+            val note = Note(
+                id = NoteId("note"),
+                accountKey = AccountKey("account"),
+                title = "Title",
+                contentItems = listOf(
+                    ContentItem.Image(
+                        ContentItemId("image"),
+                        AttachmentId("attachment"),
+                        null,
+                    ),
+                    ContentItem.Link(
+                        ContentItemId("link"),
+                        "https://example.com",
+                        null,
+                    ),
+                ),
+                attachments = emptyList(),
+                tags = emptySet(),
+                isFavorite = false,
+                summary = null,
+                createdAt = Instant.EPOCH,
+                updatedAt = Instant.EPOCH,
+            )
+
+            repository.save(note)
+
+            assertEquals(note, repository.find(note.accountKey, note.id))
         } finally {
             database.close()
         }
