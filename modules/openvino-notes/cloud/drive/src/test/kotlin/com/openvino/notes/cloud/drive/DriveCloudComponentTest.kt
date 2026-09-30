@@ -14,22 +14,37 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class DriveCloudComponentTest {
-    @Test fun `initial discovery and resumable transfer expose typed unavailable outcomes`() = runTest {
-        val component = DriveCloudComponent.create(FakeIdentityService())
-        val accountKey = AccountKey("account")
+    @Test fun `initial discovery and resumable transfer expose typed unavailable outcomes`() =
+        runTest {
+            val component = DriveCloudComponent.create(FakeIdentityService())
+            val accountKey = AccountKey("account")
 
-        assertFailureCode(RemoteErrorCode.SIGNED_OUT, component.objectStore.list(accountKey))
-        assertFailureCode(RemoteErrorCode.SIGNED_OUT, component.changeFeed.startCursor(accountKey))
-        assertFailureCode(
-            RemoteErrorCode.SIGNED_OUT,
-            component.transferClient.startUpload(
-                accountKey,
-                UploadDescriptor(RemoteObjectId("media"), "image.jpg", "image/jpeg", 1024),
-            ),
-        )
-    }
+            assertFailureCode(RemoteErrorCode.SIGNED_OUT, component.objectStore.list(accountKey))
+            assertFailureCode(RemoteErrorCode.SIGNED_OUT, component.changeFeed.startCursor(accountKey))
+            assertFailureCode(
+                RemoteErrorCode.SIGNED_OUT,
+                component.transferClient.startUpload(
+                    accountKey,
+                    UploadDescriptor(RemoteObjectId("media"), "image.jpg", "image/jpeg", 1024),
+                ),
+            )
+        }
 
-    private fun assertFailureCode(expected: RemoteErrorCode, outcome: RemoteOutcome<*>) {
+    @Test fun `drive passes account key to token provider`() =
+        runTest {
+            val fake = FakeIdentityService()
+            val component = DriveCloudComponent.create(fake)
+            val accountKey = AccountKey("account-x")
+
+            component.objectStore.list(accountKey)
+
+            assertEquals(accountKey, fake.lastRequestedAccountKey)
+        }
+
+    private fun assertFailureCode(
+        expected: RemoteErrorCode,
+        outcome: RemoteOutcome<*>,
+    ) {
         assertEquals(expected, (outcome as RemoteOutcome.Failure).error.code)
     }
 }
