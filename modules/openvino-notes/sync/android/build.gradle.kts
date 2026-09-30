@@ -1,0 +1,40 @@
+// Copyright (C) 2018-2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
+plugins {
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.ksp)
+}
+
+val roomSchemaDirectory = layout.projectDirectory.dir("schemas")
+
+android {
+    namespace = "com.openvino.notes.sync.android"
+    compileSdk { version = release(37) }
+    defaultConfig { minSdk = 33 }
+    testOptions { unitTests.isIncludeAndroidResources = true }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+ksp {
+    arg("room.schemaLocation", roomSchemaDirectory.asFile.path)
+}
+
+dependencies {
+    implementation(project(":sync:api"))
+    implementation(project(":kernel"))
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    implementation(libs.kotlinx.coroutines.android)
+    ksp(libs.androidx.room.compiler)
+    testImplementation(libs.androidx.work.testing)
+    testImplementation(libs.androidx.room.testing)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+}
