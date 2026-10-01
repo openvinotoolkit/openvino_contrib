@@ -8,11 +8,11 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "@langchain/langgraph": "^1.4.8",
+    "@langchain/langgraph": "^1.4.14",
     "https-proxy-agent": "^9.1.0",
-    "langchain": "^1.5.3",
+    "langchain": "^1.5.11",
     "openvino-langchain": "file:..",
-    "zod": "^4.4.3"
+    "zod": "^4.6.2"
   },
   "author": "",
   "license": "Apache-2.0",

@@ -24,6 +24,7 @@ This list gives an overview of all modules available inside the contrib reposito
 * [**OpenVino BEVFusion**](./modules/openvino_bevfusion): OpenVino supported implementation of the BEVFusion model.
 * [**OpenVINO HGGD**](./modules/openvino_hggd): OpenVINO-accelerated HGGD grasp detection using custom GPU point cloud extensions.
 * [**OpenVINO FlashOCC**](./modules/openvino_flashocc): OpenVINO-supported FlashOCC export, inference, and benchmarking pipeline for 3D occupancy prediction.
+* [**OpenVINO Notes**](./modules/openvino-notes): Modular Android notes application foundation with local storage, Compose UI, and adapter contracts for Google identity, Drive sync, and OpenVINO assistance.
 * [**3D**](./modules/3d): A collection of 3D vision models implemented with OpenVINO. Currently, it includes the following models:
   * [**PointPillars**](./modules/3d/pointPillars): Use OpenVINO to perform 3D object detection with PointPillars model.
   * [**CDPN**](./modules/3d/CDPN): Use OpenVINO to perform 6-DoF object pose estimation with CDPN model.
@@ -51,6 +52,7 @@ Additional build instructions are available for the following modules:
 * [**custom_operations**](./modules/custom_operations/README.md)
 * [**ollama_OpenVINO**](./modules/ollama_openvino)
 * [**openvino-langchain**](./modules/openvino-langchain): LangChain.js integrations for OpenVINO™
+* [**OpenVINO Notes**](./modules/openvino-notes/README.md#build-and-test): Standalone Android Gradle build, prerequisites, architecture checks, and unit tests.
 * [**OpenVino BEVFusion**](./modules/openvino_bevfusion): Check the [INSTRUCTIONS](./modules/openvino_bevfusion/EXPORT_AND_INFERENCE_GUIDE.md) for detailed usage and build instructions.
 * [**OpenVino HGGD**](./modules/openvino_hggd): Check the [INSTRUCTIONS](./modules/openvino_hggd/README.md) for detailed usage and build instructions.
 * [**OpenVINO FlashOCC**](./modules/openvino_flashocc): Check the [INSTRUCTIONS](./modules/openvino_flashocc/EXPORT_AND_INFERENCE_GUIDE.md) for detailed usage and build instructions.

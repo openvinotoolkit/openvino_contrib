@@ -59,6 +59,10 @@
 - changed-files:
   - any-glob-to-any-file: 'modules/nvidia_plugin/**/*'
 
+'category: OpenVINO Notes':
+- changed-files:
+  - any-glob-to-any-file: 'modules/openvino-notes/**/*'
+
 'category: Ollama':
 - changed-files:
   - any-glob-to-any-file: 'modules/ollama_openvino/**/*'
