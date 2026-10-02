@@ -31,6 +31,10 @@
 - changed-files:
   - any-glob-to-any-file: 'modules/openvino_flashocc/**/*'
 
+'category: hggd':
+- changed-files:
+  - any-glob-to-any-file: 'modules/openvino_hggd/**/*'
+
 'category: custom operations':
 - changed-files:
   - any-glob-to-any-file: 'modules/custom_operations/**/*'
