@@ -369,58 +369,242 @@ private fun OutboxEntity.toApi(): LocalNoteChange {
 }
 
 private object WireCodec {
+    private const val VERSION_2_MARKER = "v2:"
     private val encoder = Base64.getUrlEncoder().withoutPadding()
     private val decoder = Base64.getUrlDecoder()
 
-    fun encodeContent(items: List<ContentItem>): String = items.joinToString("\n") { item ->
-        when (item) {
-            is ContentItem.Text -> listOf("text", item.id.value, encode(item.text)).joinToString("|")
-            is ContentItem.Image -> listOf("image", item.id.value, item.attachmentId.value, encodeNullable(item.caption)).joinToString("|")
-            is ContentItem.File -> listOf("file", item.id.value, item.attachmentId.value).joinToString("|")
-            is ContentItem.Link -> listOf("link", item.id.value, encode(item.url), encodeNullable(item.label)).joinToString("|")
+    fun encodeContent(items: List<ContentItem>): String {
+        if (items.isEmpty()) return VERSION_2_MARKER
+        return buildString {
+            append(VERSION_2_MARKER)
+            items.forEach { item ->
+                append('\n')
+                when (item) {
+                    is ContentItem.Text -> listOf(
+                        "text",
+                        encodeString(item.id.value),
+                        encodeString(item.text),
+                    )
+
+                    is ContentItem.Image -> listOf(
+                        "image",
+                        encodeString(item.id.value),
+                        encodeString(item.attachmentId.value),
+                        encodeNullableString(item.caption),
+                    )
+
+                    is ContentItem.File -> listOf(
+                        "file",
+                        encodeString(item.id.value),
+                        encodeString(item.attachmentId.value),
+                    )
+
+                    is ContentItem.Link -> listOf(
+                        "link",
+                        encodeString(item.id.value),
+                        encodeString(item.url),
+                        encodeNullableString(item.label),
+                    )
+                }.joinTo(this, "|")
+            }
         }
     }
 
-    fun decodeContent(value: String): List<ContentItem> = lines(value).map { line ->
-        val fields = line.split('|')
-        when (fields.firstOrNull()) {
-            "text" -> ContentItem.Text(ContentItemId(fields[1]), decode(fields[2]))
-            "image" -> ContentItem.Image(ContentItemId(fields[1]), AttachmentId(fields[2]), decodeNullable(fields[3]))
-            "file" -> ContentItem.File(ContentItemId(fields[1]), AttachmentId(fields[2]))
-            "link" -> ContentItem.Link(ContentItemId(fields[1]), decode(fields[2]), decodeNullable(fields[3]))
-            else -> error("Unsupported content item")
+    fun decodeContent(value: String): List<ContentItem> =
+        if (isVersion2(value)) decodeContentV2(value) else decodeContentV1(value)
+
+    private fun decodeContentV1(value: String): List<ContentItem> =
+        lines(value).map { line ->
+            val fields = line.split('|')
+            when (fields.firstOrNull()) {
+                "text" -> ContentItem.Text(
+                    ContentItemId(fields[1]),
+                    decode(fields[2]),
+                )
+
+                "image" -> ContentItem.Image(
+                    ContentItemId(fields[1]),
+                    AttachmentId(fields[2]),
+                    decodeNullable(fields[3]),
+                )
+
+                "file" -> ContentItem.File(
+                    ContentItemId(fields[1]),
+                    AttachmentId(fields[2]),
+                )
+
+                "link" -> ContentItem.Link(
+                    ContentItemId(fields[1]),
+                    decode(fields[2]),
+                    decodeNullable(fields[3]),
+                )
+
+                else -> error("Unsupported content item")
+            }
+        }
+
+    private fun decodeContentV2(value: String): List<ContentItem> =
+        linesAfterMarker(value).map { line ->
+            val fields = splitFields(line)
+
+            when (fields.firstOrNull()) {
+                "text" -> {
+                    requireFieldCount(fields, 3)
+                    ContentItem.Text(
+                        id = ContentItemId(decodeString(fields[1])),
+                        text = decodeString(fields[2]),
+                    )
+                }
+
+                "image" -> {
+                    requireFieldCount(fields, 4)
+                    ContentItem.Image(
+                        id = ContentItemId(decodeString(fields[1])),
+                        attachmentId = AttachmentId(decodeString(fields[2])),
+                        caption = decodeNullableString(fields[3]),
+                    )
+                }
+
+                "file" -> {
+                    requireFieldCount(fields, 3)
+                    ContentItem.File(
+                        id = ContentItemId(decodeString(fields[1])),
+                        attachmentId = AttachmentId(decodeString(fields[2])),
+                    )
+                }
+
+                "link" -> {
+                    requireFieldCount(fields, 4)
+                    ContentItem.Link(
+                        id = ContentItemId(decodeString(fields[1])),
+                        url = decodeString(fields[2]),
+                        label = decodeNullableString(fields[3]),
+                    )
+                }
+
+                else -> error("Unsupported content item")
+            }
+        }
+
+    fun encodeAttachments(items: List<AttachmentMetadata>): String {
+        if (items.isEmpty()) return VERSION_2_MARKER
+        return buildString {
+            append(VERSION_2_MARKER)
+            items.forEach { item ->
+                append('\n')
+                listOf(
+                    encodeString(item.id.value),
+                    encodeString(item.noteId.value),
+                    encodeString(item.contentItemId.value),
+                    encodeString(item.displayName),
+                    encodeString(item.mediaType),
+                    item.sizeBytes.toString(),
+                ).joinTo(this, "|")
+            }
         }
     }
 
-    fun encodeAttachments(items: List<AttachmentMetadata>): String = items.joinToString("\n") { item ->
-        listOf(
-            item.id.value,
-            item.noteId.value,
-            item.contentItemId.value,
-            encode(item.displayName),
-            encode(item.mediaType),
-            item.sizeBytes.toString(),
-        ).joinToString("|")
+    fun decodeAttachments(value: String): List<AttachmentMetadata> =
+        if (isVersion2(value)) decodeAttachmentsV2(value) else decodeAttachmentsV1(value)
+
+    private fun decodeAttachmentsV1(value: String): List<AttachmentMetadata> =
+        lines(value).map { line ->
+            val fields = line.split('|')
+            AttachmentMetadata(
+                id = AttachmentId(fields[0]),
+                noteId = NoteId(fields[1]),
+                contentItemId = ContentItemId(fields[2]),
+                displayName = decode(fields[3]),
+                mediaType = decode(fields[4]),
+                sizeBytes = fields[5].toLong(),
+            )
+        }
+
+    private fun decodeAttachmentsV2(value: String): List<AttachmentMetadata> =
+        linesAfterMarker(value).map { line ->
+            val fields = splitFields(line)
+            requireFieldCount(fields, 6)
+            AttachmentMetadata(
+                id = AttachmentId(decodeString(fields[0])),
+                noteId = NoteId(decodeString(fields[1])),
+                contentItemId = ContentItemId(decodeString(fields[2])),
+                displayName = decodeString(fields[3]),
+                mediaType = decodeString(fields[4]),
+                sizeBytes = decodeLong(fields[5]),
+            )
+        }
+
+    fun encodeTags(tags: Set<NoteTag>): String {
+        if (tags.isEmpty()) return VERSION_2_MARKER
+        return buildString {
+            append(VERSION_2_MARKER)
+            tags.map(NoteTag::value)
+                .sorted()
+                .forEach {
+                    append('\n')
+                    append(encodeString(it))
+                }
+        }
     }
 
-    fun decodeAttachments(value: String): List<AttachmentMetadata> = lines(value).map { line ->
-        val fields = line.split('|')
-        AttachmentMetadata(
-            id = AttachmentId(fields[0]),
-            noteId = NoteId(fields[1]),
-            contentItemId = ContentItemId(fields[2]),
-            displayName = decode(fields[3]),
-            mediaType = decode(fields[4]),
-            sizeBytes = fields[5].toLong(),
-        )
+    fun decodeTags(value: String): Set<NoteTag> =
+        if (isVersion2(value)) decodeTagsV2(value) else decodeTagsV1(value)
+
+    private fun decodeTagsV1(value: String): Set<NoteTag> =
+        lines(value).map { NoteTag(decode(it)) }.toSet()
+
+    private fun decodeTagsV2(value: String): Set<NoteTag> =
+        linesAfterMarker(value)
+            .map { NoteTag(decodeString(it)) }
+            .toSet()
+
+    private fun isVersion2(value: String): Boolean =
+        value == VERSION_2_MARKER || value.startsWith("$VERSION_2_MARKER\n")
+
+    private fun lines(value: String): List<String> =
+        if (value.isEmpty()) emptyList() else value.split('\n')
+
+    private fun linesAfterMarker(value: String): List<String> =
+        if (value == VERSION_2_MARKER) {
+            emptyList()
+        } else {
+            value.removePrefix("$VERSION_2_MARKER\n").split('\n')
+        }
+
+    private fun splitFields(line: String): List<String> =
+        line.split('|')
+
+    private fun requireFieldCount(fields: List<String>, expected: Int) {
+        require(fields.size == expected) {
+            "Expected $expected fields, got ${fields.size}"
+        }
     }
 
-    fun encodeTags(tags: Set<NoteTag>): String = tags.map(NoteTag::value).sorted().joinToString("\n", transform = ::encode)
-    fun decodeTags(value: String): Set<NoteTag> = lines(value).map { NoteTag(decode(it)) }.toSet()
+    private fun encodeString(value: String): String =
+        encoder.encodeToString(value.toByteArray(StandardCharsets.UTF_8))
 
-    private fun lines(value: String): List<String> = if (value.isEmpty()) emptyList() else value.split('\n')
-    private fun encode(value: String): String = encoder.encodeToString(value.toByteArray(StandardCharsets.UTF_8))
-    private fun decode(value: String): String = String(decoder.decode(value), StandardCharsets.UTF_8)
-    private fun encodeNullable(value: String?): String = value?.let { "+${encode(it)}" } ?: "-"
-    private fun decodeNullable(value: String): String? = if (value == "-") null else decode(value.removePrefix("+"))
+    private fun decodeString(value: String): String =
+        String(decoder.decode(value), StandardCharsets.UTF_8)
+
+    private fun encodeNullableString(value: String?): String =
+        value?.let { "+${encodeString(it)}" } ?: "-"
+
+    private fun decodeNullableString(value: String): String? =
+        if (value == "-") null
+        else {
+            require(value.startsWith("+")) { "Invalid nullable string" }
+            decodeString(value.removePrefix("+"))
+        }
+
+    private fun decodeLong(value: String): Long =
+        value.toLong()
+
+    private fun encode(value: String): String =
+        encoder.encodeToString(value.toByteArray(StandardCharsets.UTF_8))
+
+    private fun decode(value: String): String =
+        String(decoder.decode(value), StandardCharsets.UTF_8)
+
+    private fun decodeNullable(value: String): String? =
+        if (value == "-") null else decode(value.removePrefix("+"))
 }
