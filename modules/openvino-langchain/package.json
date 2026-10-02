@@ -37,7 +37,7 @@
     "@swc/jest": "^0.2.29",
     "@tsconfig/recommended": "^1.0.8",
     "@types/node": "^26.1.1",
-    "dotenv": "^17.4.2",
+    "dotenv": "^18.0.3",
     "eslint": "^10.7.0",
     "jest": "^30.4.2",
     "jiti": "^2.4.2",
