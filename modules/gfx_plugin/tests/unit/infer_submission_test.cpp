@@ -1,0 +1,853 @@
+// Copyright (C) 2025 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+
+#include <gtest/gtest.h>
+
+#include <limits>
+#include <memory>
+#include <string>
+
+#include "runtime/infer_submission.hpp"
+#include "runtime/gpu_tensor.hpp"
+
+namespace ov {
+namespace gfx_plugin {
+namespace {
+
+class FakeStage final : public GpuStage {
+public:
+    explicit FakeStage(GpuStageSubmitPolicy policy = {}, std::string type = "Fake")
+        : m_policy(policy), m_type(std::move(type)) {}
+
+    void init(GpuBufferManager*) override {}
+    void prepare_runtime_handle(GpuBufferManager*) override {}
+
+    void execute(GpuCommandBufferHandle) override {
+        ++execute_count;
+    }
+
+    void set_inputs(const std::vector<GpuTensor*>& inputs) override {
+        set_inputs_count = inputs.size();
+    }
+
+    void set_output(GpuTensor*) override {}
+
+    void on_command_buffer_complete() override {
+        ++completion_count;
+    }
+
+    const std::string& name() const override {
+        static const std::string kName = "FakeStage";
+        return kName;
+    }
+
+    const std::string& type() const override {
+        return m_type;
+    }
+
+    GpuStageSubmitPolicy submit_policy() const override {
+        return m_policy;
+    }
+
+    std::unique_ptr<GpuStage> clone() const override {
+        return std::make_unique<FakeStage>(m_policy, m_type);
+    }
+
+    size_t execute_count = 0;
+    size_t completion_count = 0;
+    size_t set_inputs_count = 0;
+
+private:
+    GpuStageSubmitPolicy m_policy;
+    std::string m_type;
+};
+
+class FakeSubmissionSession final : public TrackedInferSubmissionSession {
+public:
+    explicit FakeSubmissionSession(bool incremental_submit) : m_incremental_submit(incremental_submit) {}
+
+    bool supports_incremental_submit() const override {
+        return m_incremental_submit;
+    }
+
+    size_t submit_count() const {
+        return m_submit_count;
+    }
+
+    size_t finish_count() const {
+        return m_finish_count;
+    }
+
+    const std::vector<bool>& continue_recording_flags() const {
+        return m_continue_recording_flags;
+    }
+
+protected:
+    GpuCommandBufferHandle begin_recording_impl() override {
+        ++m_begin_count;
+        return reinterpret_cast<GpuCommandBufferHandle>(m_begin_count);
+    }
+
+    void submit_recorded_impl(GpuCommandBufferHandle, bool continue_recording) override {
+        ++m_submit_count;
+        m_continue_recording_flags.push_back(continue_recording);
+    }
+
+    void finish_impl() override {
+        ++m_finish_count;
+    }
+
+private:
+    bool m_incremental_submit = true;
+    size_t m_begin_count = 0;
+    size_t m_submit_count = 0;
+    size_t m_finish_count = 0;
+    std::vector<bool> m_continue_recording_flags;
+};
+
+class FakeSingleFlightSubmissionSession final : public SingleFlightInferSubmissionSession {
+public:
+    size_t prepare_count() const {
+        return m_prepare_count;
+    }
+
+    size_t submit_count() const {
+        return m_submit_count;
+    }
+
+    size_t finish_count() const {
+        return m_finish_count;
+    }
+
+    const std::vector<bool>& continue_recording_flags() const {
+        return m_continue_recording_flags;
+    }
+
+protected:
+    void prepare_submission_slot() override {
+        ++m_prepare_count;
+    }
+
+    GpuCommandBufferHandle begin_recording_on_slot() override {
+        ++m_begin_count;
+        return reinterpret_cast<GpuCommandBufferHandle>(m_begin_count);
+    }
+
+    void submit_recorded_on_slot(GpuCommandBufferHandle, bool continue_recording) override {
+        ++m_submit_count;
+        m_continue_recording_flags.push_back(continue_recording);
+    }
+
+    void finish_submission_slot() override {
+        ++m_finish_count;
+    }
+
+private:
+    size_t m_prepare_count = 0;
+    size_t m_begin_count = 0;
+    size_t m_submit_count = 0;
+    size_t m_finish_count = 0;
+    std::vector<bool> m_continue_recording_flags;
+};
+
+class FakeRotatingSubmissionSession final : public RotatingSlotInferSubmissionSession {
+public:
+    explicit FakeRotatingSubmissionSession(size_t slot_count)
+        : RotatingSlotInferSubmissionSession(slot_count) {}
+
+    const std::vector<size_t>& begin_slots() const {
+        return m_begin_slots;
+    }
+
+    const std::vector<size_t>& submit_slots() const {
+        return m_submit_slots;
+    }
+
+    const std::vector<bool>& continue_recording_flags() const {
+        return m_continue_recording_flags;
+    }
+
+    size_t finish_count() const {
+        return m_finish_count;
+    }
+
+protected:
+    GpuCommandBufferHandle begin_recording_on_slot(size_t slot_index) override {
+        m_begin_slots.push_back(slot_index);
+        return reinterpret_cast<GpuCommandBufferHandle>(slot_index + 1);
+    }
+
+    void submit_recorded_on_slot(size_t slot_index,
+                                 GpuCommandBufferHandle,
+                                 bool continue_recording) override {
+        m_submit_slots.push_back(slot_index);
+        m_continue_recording_flags.push_back(continue_recording);
+    }
+
+    void finish_submission_slots() override {
+        ++m_finish_count;
+    }
+
+private:
+    std::vector<size_t> m_begin_slots;
+    std::vector<size_t> m_submit_slots;
+    std::vector<bool> m_continue_recording_flags;
+    size_t m_finish_count = 0;
+};
+
+std::shared_ptr<RuntimeSession> make_submission_contract_session(
+    size_t stage_count,
+    std::vector<uint32_t> stage_weights = {},
+    std::vector<uint64_t> macs_estimates = {},
+    std::vector<bool> dependency_boundaries = {}) {
+    auto descriptor = std::make_shared<RuntimeExecutableDescriptor>();
+    descriptor->target_fingerprint = "test-submission-target";
+    descriptor->stages.reserve(stage_count);
+    for (size_t i = 0; i < stage_count; ++i) {
+        RuntimeStageExecutableDescriptor stage;
+        stage.stage_index = i;
+        stage.stage_record_key = i + 1u;
+        stage.manifest_ref = "test-manifest-ref-" + std::to_string(i);
+        stage.abi_fingerprint = "test-abi-" + std::to_string(i);
+        stage.artifact_key = "test-artifact-" + std::to_string(i);
+        stage.backend_domain = "test-backend";
+        stage.kernel_id = "test-kernel-" + std::to_string(i);
+        stage.op_family = "test-op";
+        stage.stage_name = "test-stage-" + std::to_string(i);
+        stage.runtime_shape_rule = "static_or_descriptor";
+        stage.submission_stage_weight =
+            i < stage_weights.size() ? stage_weights[i] : 1u;
+        stage.submission_macs_estimate =
+            i < macs_estimates.size() ? macs_estimates[i] : 0u;
+        stage.submission_dependency_boundary =
+            i < dependency_boundaries.size() ? dependency_boundaries[i] : false;
+        descriptor->stages.push_back(std::move(stage));
+    }
+    return std::make_shared<RuntimeSession>(std::move(descriptor));
+}
+
+void attach_submission_contract_session(
+    std::vector<InferStage>& pipeline,
+    const std::shared_ptr<RuntimeSession>& session) {
+    ASSERT_EQ(pipeline.size(), session->stage_count());
+    for (size_t i = 0; i < pipeline.size(); ++i) {
+        pipeline[i].runtime_session = session;
+        pipeline[i].runtime_stage_index = i;
+    }
+}
+
+void apply_opencl_wide_submission_hints(InferSubmissionTuningCaps& caps) {
+    const uint32_t simd = std::max<uint32_t>(
+        1u, std::max(caps.preferred_simd_width, caps.subgroup_size));
+    caps.max_slots_hint = 6u;
+    caps.stages_per_slot_hint = simd >= 64u ? 72u : 56u;
+}
+
+void apply_opencl_constrained_extreme_submission_hints(
+    InferSubmissionTuningCaps& caps) {
+    const uint32_t simd = std::max<uint32_t>(
+        1u, std::max(caps.preferred_simd_width, caps.subgroup_size));
+    const size_t stages_per_slot = simd >= 64u ? 64u : 48u;
+    caps.extremely_deep_source_stage_floor =
+        stages_per_slot + stages_per_slot / 2u;
+    caps.extremely_deep_source_output_floor =
+        (simd >= 64u ? 96u : 64u) * 1024u * 1024u;
+    caps.extremely_deep_source_mac_floor =
+        (simd >= 64u ? 8ull : 4ull) * 1000ull * 1000ull * 1000ull;
+    caps.extremely_deep_dependency_extension_budget_num = 5u;
+    caps.extremely_deep_dependency_extension_budget_den = 4u;
+}
+
+PipelineStageDesc::InputLink descriptor_stage_output_input(size_t stage_index,
+                                                           size_t output_port = 0) {
+    PipelineStageDesc::InputLink link;
+    link.source_ref.kind = PipelineStageTensorRefKind::StageOutput;
+    link.source_ref.index = stage_index;
+    link.source_ref.port = output_port;
+    return link;
+}
+
+TEST(InferSubmissionTest, IncrementalSubmitNotifiesOnlySubmittedStages) {
+    std::vector<InferStage> pipeline;
+    pipeline.emplace_back();
+    pipeline.emplace_back();
+    pipeline.emplace_back();
+    auto* stage0 = new FakeStage();
+    auto* stage1 = new FakeStage(GpuStageSubmitPolicy{.weight = 1, .isolate = true});
+    auto* stage2 = new FakeStage();
+    pipeline[0].stage.reset(stage0);
+    pipeline[1].stage.reset(stage1);
+    pipeline[2].stage.reset(stage2);
+
+    FakeSubmissionSession submission(/*incremental_submit=*/true);
+    InferSubmissionConfig config;
+    config.max_stages_per_submit = std::numeric_limits<size_t>::max();
+    config.max_output_bytes_per_submit = std::numeric_limits<size_t>::max();
+
+    execute_pipeline_with_submission(
+        pipeline,
+        [](size_t) -> GpuTensor* {
+            return nullptr;
+        },
+        submission,
+        config);
+
+    EXPECT_EQ(submission.submit_count(), 2u);
+    ASSERT_EQ(submission.continue_recording_flags().size(), 2u);
+    EXPECT_TRUE(submission.continue_recording_flags()[0]);
+    EXPECT_FALSE(submission.continue_recording_flags()[1]);
+    EXPECT_EQ(submission.finish_count(), 1u);
+    EXPECT_EQ(stage0->execute_count, 1u);
+    EXPECT_EQ(stage1->execute_count, 1u);
+    EXPECT_EQ(stage2->execute_count, 1u);
+    EXPECT_EQ(stage0->completion_count, 1u);
+    EXPECT_EQ(stage1->completion_count, 1u);
+    EXPECT_EQ(stage2->completion_count, 1u);
+}
+
+TEST(InferSubmissionTest, NonIncrementalSubmitDefersFlushUntilFinish) {
+    std::vector<InferStage> pipeline;
+    pipeline.emplace_back();
+    pipeline.emplace_back();
+    auto* stage0 = new FakeStage();
+    auto* stage1 = new FakeStage();
+    pipeline[0].stage.reset(stage0);
+    pipeline[1].stage.reset(stage1);
+
+    FakeSubmissionSession submission(/*incremental_submit=*/false);
+    InferSubmissionConfig config;
+    config.max_stages_per_submit = 1;
+    config.max_output_bytes_per_submit = std::numeric_limits<size_t>::max();
+
+    execute_pipeline_with_submission(
+        pipeline,
+        [](size_t) -> GpuTensor* {
+            return nullptr;
+        },
+        submission,
+        config);
+
+    EXPECT_EQ(submission.submit_count(), 1u);
+    ASSERT_EQ(submission.continue_recording_flags().size(), 1u);
+    EXPECT_FALSE(submission.continue_recording_flags()[0]);
+    EXPECT_EQ(submission.finish_count(), 1u);
+    EXPECT_EQ(stage0->execute_count, 1u);
+    EXPECT_EQ(stage1->execute_count, 1u);
+    EXPECT_EQ(stage0->completion_count, 1u);
+    EXPECT_EQ(stage1->completion_count, 1u);
+}
+
+TEST(InferSubmissionTest, SingleFlightSessionReusesPreparedSlotAcrossRecordingWindows) {
+    std::vector<InferStage> pipeline;
+    pipeline.emplace_back();
+    pipeline.emplace_back();
+    auto* stage0 = new FakeStage(GpuStageSubmitPolicy{.weight = 1, .isolate = true});
+    auto* stage1 = new FakeStage();
+    pipeline[0].stage.reset(stage0);
+    pipeline[1].stage.reset(stage1);
+
+    FakeSingleFlightSubmissionSession submission;
+    InferSubmissionConfig config;
+    config.max_stages_per_submit = std::numeric_limits<size_t>::max();
+    config.max_output_bytes_per_submit = std::numeric_limits<size_t>::max();
+
+    execute_pipeline_with_submission(
+        pipeline,
+        [](size_t) -> GpuTensor* {
+            return nullptr;
+        },
+        submission,
+        config);
+
+    EXPECT_EQ(submission.prepare_count(), 1u);
+    EXPECT_EQ(submission.submit_count(), 1u);
+    EXPECT_EQ(submission.finish_count(), 1u);
+    ASSERT_EQ(submission.continue_recording_flags().size(), 1u);
+    EXPECT_FALSE(submission.continue_recording_flags()[0]);
+}
+
+TEST(InferSubmissionTest, RotatingSessionAdvancesAcrossSubmissionWindowsWithoutReusingHotSlot) {
+    std::vector<InferStage> pipeline;
+    pipeline.emplace_back();
+    pipeline.emplace_back();
+    pipeline.emplace_back();
+    auto* stage0 = new FakeStage(GpuStageSubmitPolicy{.weight = 1, .isolate = true});
+    auto* stage1 = new FakeStage(GpuStageSubmitPolicy{.weight = 1, .isolate = true});
+    auto* stage2 = new FakeStage();
+    pipeline[0].stage.reset(stage0);
+    pipeline[1].stage.reset(stage1);
+    pipeline[2].stage.reset(stage2);
+
+    FakeRotatingSubmissionSession submission(/*slot_count=*/3);
+    InferSubmissionConfig config;
+    config.max_stages_per_submit = std::numeric_limits<size_t>::max();
+    config.max_output_bytes_per_submit = std::numeric_limits<size_t>::max();
+
+    execute_pipeline_with_submission(
+        pipeline,
+        [](size_t) -> GpuTensor* {
+            return nullptr;
+        },
+        submission,
+        config);
+
+    EXPECT_EQ(submission.begin_slots(), (std::vector<size_t>{0u, 1u}));
+    EXPECT_EQ(submission.submit_slots(), (std::vector<size_t>{0u, 1u}));
+    ASSERT_EQ(submission.continue_recording_flags().size(), 2u);
+    EXPECT_TRUE(submission.continue_recording_flags()[0]);
+    EXPECT_FALSE(submission.continue_recording_flags()[1]);
+    EXPECT_EQ(submission.finish_count(), 1u);
+}
+
+TEST(InferSubmissionTest, FinalRecordHookCanAppendWorkBeforeLastSubmit) {
+    std::vector<InferStage> pipeline;
+    FakeSubmissionSession submission(/*incremental_submit=*/true);
+    InferSubmissionConfig config;
+    config.max_stages_per_submit = std::numeric_limits<size_t>::max();
+    config.max_output_bytes_per_submit = std::numeric_limits<size_t>::max();
+
+    size_t final_hook_calls = 0;
+    GpuCommandBufferHandle final_command_buffer = nullptr;
+
+    execute_pipeline_with_submission(
+        pipeline,
+        [](size_t) -> GpuTensor* {
+            return nullptr;
+        },
+        submission,
+        config,
+        nullptr,
+        nullptr,
+        {},
+        [&](GpuCommandBufferHandle command_buffer) {
+            ++final_hook_calls;
+            final_command_buffer = command_buffer;
+            InferSubmissionExtraWork extra_work{};
+            extra_work.weight = 1;
+            extra_work.output_bytes = 128u;
+            return extra_work;
+        });
+
+    EXPECT_EQ(final_hook_calls, 1u);
+    EXPECT_NE(final_command_buffer, nullptr);
+    EXPECT_EQ(submission.submit_count(), 1u);
+    ASSERT_EQ(submission.continue_recording_flags().size(), 1u);
+    EXPECT_FALSE(submission.continue_recording_flags()[0]);
+    EXPECT_EQ(submission.finish_count(), 1u);
+}
+
+TEST(InferSubmissionTest, DisabledIncrementalSubmitIgnoresIsolateFlushes) {
+    std::vector<InferStage> pipeline;
+    pipeline.emplace_back();
+    pipeline.emplace_back();
+    auto* stage0 = new FakeStage(GpuStageSubmitPolicy{.weight = 1, .isolate = true});
+    auto* stage1 = new FakeStage();
+    pipeline[0].stage.reset(stage0);
+    pipeline[1].stage.reset(stage1);
+
+    FakeSubmissionSession submission(/*incremental_submit=*/true);
+    InferSubmissionConfig config;
+    config.max_stages_per_submit = std::numeric_limits<size_t>::max();
+    config.max_output_bytes_per_submit = std::numeric_limits<size_t>::max();
+    config.allow_incremental_submit = false;
+
+    execute_pipeline_with_submission(
+        pipeline,
+        [](size_t) -> GpuTensor* {
+            return nullptr;
+        },
+        submission,
+        config);
+
+    EXPECT_EQ(submission.submit_count(), 1u);
+    ASSERT_EQ(submission.continue_recording_flags().size(), 1u);
+    EXPECT_FALSE(submission.continue_recording_flags()[0]);
+    EXPECT_EQ(stage0->completion_count, 1u);
+    EXPECT_EQ(stage1->completion_count, 1u);
+}
+
+TEST(InferSubmissionTest, SubmissionFlushesBeforeRecordingStageThatWouldExceedWindowBudget) {
+    std::vector<InferStage> pipeline;
+    pipeline.emplace_back();
+    pipeline.emplace_back();
+    auto* stage0 = new FakeStage(GpuStageSubmitPolicy{.weight = 2});
+    auto* stage1 = new FakeStage(GpuStageSubmitPolicy{.weight = 2});
+    pipeline[0].stage.reset(stage0);
+    pipeline[1].stage.reset(stage1);
+
+    FakeSubmissionSession submission(/*incremental_submit=*/true);
+    InferSubmissionConfig config;
+    config.max_stages_per_submit = 3;
+    config.max_output_bytes_per_submit = std::numeric_limits<size_t>::max();
+    config.max_macs_per_submit = std::numeric_limits<uint64_t>::max();
+
+    execute_pipeline_with_submission(
+        pipeline,
+        [](size_t) -> GpuTensor* {
+            return nullptr;
+        },
+        submission,
+        config);
+
+    EXPECT_EQ(submission.submit_count(), 2u);
+    ASSERT_EQ(submission.continue_recording_flags().size(), 2u);
+    EXPECT_TRUE(submission.continue_recording_flags()[0]);
+    EXPECT_FALSE(submission.continue_recording_flags()[1]);
+    EXPECT_EQ(stage0->completion_count, 1u);
+    EXPECT_EQ(stage1->completion_count, 1u);
+}
+
+TEST(InferSubmissionTest, SubmissionUsesDescriptorOwnedStageWeight) {
+    std::vector<InferStage> pipeline;
+    pipeline.emplace_back();
+    pipeline.emplace_back();
+    auto* stage0 = new FakeStage(GpuStageSubmitPolicy{.weight = 1});
+    auto* stage1 = new FakeStage(GpuStageSubmitPolicy{.weight = 1});
+    pipeline[0].stage.reset(stage0);
+    pipeline[1].stage.reset(stage1);
+    attach_submission_contract_session(
+        pipeline, make_submission_contract_session(
+                      pipeline.size(), /*stage_weights=*/{2u, 2u}));
+
+    FakeSubmissionSession submission(/*incremental_submit=*/true);
+    InferSubmissionConfig config;
+    config.max_stages_per_submit = 3;
+    config.max_output_bytes_per_submit = std::numeric_limits<size_t>::max();
+    config.max_macs_per_submit = std::numeric_limits<uint64_t>::max();
+
+    execute_pipeline_with_submission(
+        pipeline,
+        [](size_t) -> GpuTensor* {
+            return nullptr;
+        },
+        submission,
+        config);
+
+    EXPECT_EQ(submission.submit_count(), 2u);
+    ASSERT_EQ(submission.continue_recording_flags().size(), 2u);
+    EXPECT_TRUE(submission.continue_recording_flags()[0]);
+    EXPECT_FALSE(submission.continue_recording_flags()[1]);
+}
+
+TEST(InferSubmissionTest, SubmissionUsesDescriptorOwnedMacEstimate) {
+    std::vector<InferStage> pipeline;
+    pipeline.emplace_back();
+    pipeline.emplace_back();
+    auto* stage0 = new FakeStage();
+    auto* stage1 = new FakeStage();
+    pipeline[0].stage.reset(stage0);
+    pipeline[1].stage.reset(stage1);
+    attach_submission_contract_session(
+        pipeline, make_submission_contract_session(
+                      pipeline.size(),
+                      /*stage_weights=*/{},
+                      /*macs_estimates=*/{10u, 10u}));
+
+    FakeSubmissionSession submission(/*incremental_submit=*/true);
+    InferSubmissionConfig config;
+    config.max_stages_per_submit = std::numeric_limits<size_t>::max();
+    config.max_output_bytes_per_submit = std::numeric_limits<size_t>::max();
+    config.max_macs_per_submit = 15u;
+
+    execute_pipeline_with_submission(
+        pipeline,
+        [](size_t) -> GpuTensor* {
+            return nullptr;
+        },
+        submission,
+        config);
+
+    EXPECT_EQ(submission.submit_count(), 2u);
+    ASSERT_EQ(submission.continue_recording_flags().size(), 2u);
+    EXPECT_TRUE(submission.continue_recording_flags()[0]);
+    EXPECT_FALSE(submission.continue_recording_flags()[1]);
+}
+
+TEST(InferSubmissionTest, SubmissionKeepsDescriptorProducerConsumerAcrossSoftBudgetBoundary) {
+    std::vector<InferStage> pipeline;
+    pipeline.emplace_back();
+    pipeline.emplace_back();
+    auto* stage0 = new FakeStage(GpuStageSubmitPolicy{.weight = 2});
+    auto* stage1 = new FakeStage(GpuStageSubmitPolicy{.weight = 2});
+    pipeline[0].stage.reset(stage0);
+    pipeline[0].outputs.push_back(std::make_unique<GpuTensor>());
+    pipeline[1].stage.reset(stage1);
+    pipeline[1].inputs.push_back(descriptor_stage_output_input(0));
+
+    FakeSubmissionSession submission(/*incremental_submit=*/true);
+    InferSubmissionConfig config;
+    config.max_stages_per_submit = 3;
+    config.max_output_bytes_per_submit = std::numeric_limits<size_t>::max();
+    config.max_macs_per_submit = std::numeric_limits<uint64_t>::max();
+
+    execute_pipeline_with_submission(
+        pipeline,
+        [](size_t) -> GpuTensor* {
+            return nullptr;
+        },
+        submission,
+        config);
+
+    EXPECT_EQ(submission.submit_count(), 1u);
+    ASSERT_EQ(submission.continue_recording_flags().size(), 1u);
+    EXPECT_FALSE(submission.continue_recording_flags()[0]);
+    EXPECT_EQ(stage0->completion_count, 1u);
+    EXPECT_EQ(stage1->completion_count, 1u);
+}
+
+TEST(InferSubmissionTest, SubmissionDoesNotExtendSoftBudgetAcrossLayoutBoundary) {
+    std::vector<InferStage> pipeline;
+    pipeline.emplace_back();
+    pipeline.emplace_back();
+    auto* stage0 = new FakeStage(GpuStageSubmitPolicy{.weight = 2});
+    auto* stage1 = new FakeStage(GpuStageSubmitPolicy{.weight = 2});
+    pipeline[0].stage.reset(stage0);
+    pipeline[0].outputs.push_back(std::make_unique<GpuTensor>());
+    pipeline[1].stage.reset(stage1);
+    pipeline[1].inputs.push_back(descriptor_stage_output_input(0));
+    attach_submission_contract_session(
+        pipeline, make_submission_contract_session(
+                      pipeline.size(),
+                      /*stage_weights=*/{2u, 2u},
+                      /*macs_estimates=*/{},
+                      /*dependency_boundaries=*/{false, true}));
+
+    FakeSubmissionSession submission(/*incremental_submit=*/true);
+    InferSubmissionConfig config;
+    config.max_stages_per_submit = 3;
+    config.max_output_bytes_per_submit = std::numeric_limits<size_t>::max();
+    config.max_macs_per_submit = std::numeric_limits<uint64_t>::max();
+
+    execute_pipeline_with_submission(
+        pipeline,
+        [](size_t) -> GpuTensor* {
+            return nullptr;
+        },
+        submission,
+        config);
+
+    EXPECT_EQ(submission.submit_count(), 2u);
+    ASSERT_EQ(submission.continue_recording_flags().size(), 2u);
+    EXPECT_TRUE(submission.continue_recording_flags()[0]);
+    EXPECT_FALSE(submission.continue_recording_flags()[1]);
+}
+
+TEST(InferSubmissionTest, SubmissionHoldsBudgetReachedProducerForDirectConsumerOnly) {
+    std::vector<InferStage> pipeline;
+    pipeline.emplace_back();
+    pipeline.emplace_back();
+    pipeline.emplace_back();
+    auto* stage0 = new FakeStage(GpuStageSubmitPolicy{.weight = 3});
+    auto* stage1 = new FakeStage(GpuStageSubmitPolicy{.weight = 2});
+    auto* stage2 = new FakeStage(GpuStageSubmitPolicy{.weight = 1});
+    pipeline[0].stage.reset(stage0);
+    pipeline[0].outputs.push_back(std::make_unique<GpuTensor>());
+    pipeline[1].stage.reset(stage1);
+    pipeline[1].inputs.push_back(descriptor_stage_output_input(0));
+    pipeline[2].stage.reset(stage2);
+
+    FakeSubmissionSession submission(/*incremental_submit=*/true);
+    InferSubmissionConfig config;
+    config.max_stages_per_submit = 3;
+    config.max_output_bytes_per_submit = std::numeric_limits<size_t>::max();
+    config.max_macs_per_submit = std::numeric_limits<uint64_t>::max();
+
+    execute_pipeline_with_submission(
+        pipeline,
+        [](size_t) -> GpuTensor* {
+            return nullptr;
+        },
+        submission,
+        config);
+
+    EXPECT_EQ(submission.submit_count(), 2u);
+    ASSERT_EQ(submission.continue_recording_flags().size(), 2u);
+    EXPECT_TRUE(submission.continue_recording_flags()[0]);
+    EXPECT_FALSE(submission.continue_recording_flags()[1]);
+    EXPECT_EQ(stage0->completion_count, 1u);
+    EXPECT_EQ(stage1->completion_count, 1u);
+    EXPECT_EQ(stage2->completion_count, 1u);
+}
+
+TEST(InferSubmissionTest, SubmissionDoesNotHoldBudgetReachedLayoutBoundaryForDirectConsumer) {
+    std::vector<InferStage> pipeline;
+    pipeline.emplace_back();
+    pipeline.emplace_back();
+    auto* stage0 = new FakeStage(GpuStageSubmitPolicy{.weight = 3});
+    auto* stage1 = new FakeStage(GpuStageSubmitPolicy{.weight = 1});
+    pipeline[0].stage.reset(stage0);
+    pipeline[0].outputs.push_back(std::make_unique<GpuTensor>());
+    pipeline[1].stage.reset(stage1);
+    pipeline[1].inputs.push_back(descriptor_stage_output_input(0));
+    attach_submission_contract_session(
+        pipeline, make_submission_contract_session(
+                      pipeline.size(),
+                      /*stage_weights=*/{3u, 1u},
+                      /*macs_estimates=*/{},
+                      /*dependency_boundaries=*/{true, false}));
+
+    FakeSubmissionSession submission(/*incremental_submit=*/true);
+    InferSubmissionConfig config;
+    config.max_stages_per_submit = 3;
+    config.max_output_bytes_per_submit = std::numeric_limits<size_t>::max();
+    config.max_macs_per_submit = std::numeric_limits<uint64_t>::max();
+
+    execute_pipeline_with_submission(
+        pipeline,
+        [](size_t) -> GpuTensor* {
+            return nullptr;
+        },
+        submission,
+        config);
+
+    EXPECT_EQ(submission.submit_count(), 2u);
+    ASSERT_EQ(submission.continue_recording_flags().size(), 2u);
+    EXPECT_TRUE(submission.continue_recording_flags()[0]);
+    EXPECT_FALSE(submission.continue_recording_flags()[1]);
+}
+
+TEST(InferSubmissionTest, SubmissionDoesNotExtendDirectDependencyPastConfiguredBudgetCap) {
+    std::vector<InferStage> pipeline;
+    pipeline.emplace_back();
+    pipeline.emplace_back();
+    auto* stage0 = new FakeStage(GpuStageSubmitPolicy{.weight = 10});
+    auto* stage1 = new FakeStage(GpuStageSubmitPolicy{.weight = 3});
+    pipeline[0].stage.reset(stage0);
+    pipeline[0].outputs.push_back(std::make_unique<GpuTensor>());
+    pipeline[1].stage.reset(stage1);
+    pipeline[1].inputs.push_back(descriptor_stage_output_input(0));
+
+    FakeSubmissionSession submission(/*incremental_submit=*/true);
+    InferSubmissionConfig config;
+    config.max_stages_per_submit = 10;
+    config.max_output_bytes_per_submit = std::numeric_limits<size_t>::max();
+    config.max_macs_per_submit = std::numeric_limits<uint64_t>::max();
+    config.dependency_extension_budget_num = 5;
+    config.dependency_extension_budget_den = 4;
+
+    execute_pipeline_with_submission(
+        pipeline,
+        [](size_t) -> GpuTensor* {
+            return nullptr;
+        },
+        submission,
+        config);
+
+    EXPECT_EQ(submission.submit_count(), 2u);
+    ASSERT_EQ(submission.continue_recording_flags().size(), 2u);
+    EXPECT_TRUE(submission.continue_recording_flags()[0]);
+    EXPECT_FALSE(submission.continue_recording_flags()[1]);
+    EXPECT_EQ(stage0->completion_count, 1u);
+    EXPECT_EQ(stage1->completion_count, 1u);
+}
+
+TEST(InferSubmissionTest, SubmissionTuningUsesMultipleSlotsForDeepIncrementalPipelines) {
+    InferSubmissionTuningCaps caps{};
+    caps.preferred_simd_width = 64u;
+    caps.subgroup_size = 64u;
+    caps.max_total_threads_per_group = 1024u;
+    caps.supports_incremental_submit = true;
+    apply_opencl_wide_submission_hints(caps);
+
+    const auto tuning = select_infer_submission_tuning(caps, /*stage_count=*/192u);
+
+    EXPECT_GE(tuning.slot_count, 2u);
+    EXPECT_GE(tuning.config.max_stages_per_submit, 1u);
+}
+
+TEST(InferSubmissionTest, SubmissionTuningWidensWindowBudgetWhenMultipleSlotsAreAvailable) {
+    InferSubmissionTuningCaps caps{};
+    caps.preferred_simd_width = 32u;
+    caps.subgroup_size = 32u;
+    caps.max_total_threads_per_group = 256u;
+    caps.supports_incremental_submit = true;
+
+    const auto tuning = select_infer_submission_tuning(caps, /*stage_count=*/192u);
+
+    EXPECT_GT(tuning.slot_count, 1u);
+    EXPECT_GT(tuning.config.max_stages_per_submit, 12u);
+    EXPECT_GT(tuning.config.max_output_bytes_per_submit, 32u * 1024u * 1024u);
+    EXPECT_GT(tuning.config.max_macs_per_submit,
+              4ull * 1000ull * 1000ull * 1000ull);
+}
+
+TEST(InferSubmissionTest, SubmissionTuningKeepsBoundedWindowsForExtremelyDeepOpenClPipelines) {
+    InferSubmissionTuningCaps caps{};
+    caps.preferred_simd_width = 64u;
+    caps.subgroup_size = 64u;
+    caps.max_total_threads_per_group = 1024u;
+    caps.supports_incremental_submit = true;
+    apply_opencl_wide_submission_hints(caps);
+
+    const auto tuning = select_infer_submission_tuning(caps, /*stage_count=*/390u);
+
+    EXPECT_GT(tuning.slot_count, 1u);
+    EXPECT_LT(tuning.config.max_stages_per_submit, 390u);
+    EXPECT_LT(tuning.config.max_output_bytes_per_submit,
+              std::numeric_limits<size_t>::max() / 8u);
+    EXPECT_TRUE(tuning.config.allow_incremental_submit);
+}
+
+TEST(InferSubmissionTest, SubmissionTuningAvoidsTinyWindowsForConstrainedDeepOpenClPipelines) {
+    InferSubmissionTuningCaps caps{};
+    caps.preferred_simd_width = 16u;
+    caps.subgroup_size = 16u;
+    caps.max_total_threads_per_group = 256u;
+    caps.supports_incremental_submit = true;
+    apply_opencl_constrained_extreme_submission_hints(caps);
+
+    const auto tuning = select_infer_submission_tuning(caps, /*stage_count=*/517u);
+
+    EXPECT_GT(tuning.slot_count, 1u);
+    EXPECT_GE(tuning.config.max_stages_per_submit, 96u);
+    EXPECT_GE(tuning.config.max_output_bytes_per_submit, 96u * 1024u * 1024u);
+    EXPECT_EQ(tuning.config.dependency_extension_budget_num, 5u);
+    EXPECT_EQ(tuning.config.dependency_extension_budget_den, 4u);
+    EXPECT_LT(tuning.config.max_output_bytes_per_submit,
+              std::numeric_limits<size_t>::max() / 8u);
+    EXPECT_TRUE(tuning.config.allow_incremental_submit);
+}
+
+TEST(InferSubmissionTest, SubmissionTuningDerivesBroadcomBudgetFromCommonConstrainedProfile) {
+    InferSubmissionTuningCaps caps{};
+    caps.preferred_simd_width = 16u;
+    caps.subgroup_size = 16u;
+    caps.max_total_threads_per_group = 256u;
+    caps.supports_incremental_submit = true;
+    apply_opencl_constrained_extreme_submission_hints(caps);
+
+    const auto generic_tuning = select_infer_submission_tuning(caps, /*stage_count=*/517u);
+    caps.mac_budget_scale_num = 2u;
+    caps.mac_budget_scale_den = 3u;
+    const auto broadcom_tuning = select_infer_submission_tuning(caps, /*stage_count=*/517u);
+
+    EXPECT_EQ(broadcom_tuning.slot_count, generic_tuning.slot_count);
+    EXPECT_EQ(broadcom_tuning.config.max_stages_per_submit,
+              generic_tuning.config.max_stages_per_submit);
+    EXPECT_EQ(broadcom_tuning.config.max_output_bytes_per_submit,
+              generic_tuning.config.max_output_bytes_per_submit);
+    EXPECT_LT(broadcom_tuning.config.max_macs_per_submit,
+              generic_tuning.config.max_macs_per_submit);
+    EXPECT_GT(broadcom_tuning.config.max_macs_per_submit,
+              4ull * 1000ull * 1000ull * 1000ull);
+}
+
+TEST(InferSubmissionTest, SubmissionTuningKeepsSingleSlotWithoutIncrementalSubmit) {
+    InferSubmissionTuningCaps caps{};
+    caps.preferred_simd_width = 32u;
+    caps.subgroup_size = 32u;
+    caps.max_total_threads_per_group = 512u;
+    caps.supports_incremental_submit = false;
+
+    const auto tuning = select_infer_submission_tuning(caps, /*stage_count=*/390u);
+
+    EXPECT_EQ(tuning.slot_count, 1u);
+    EXPECT_EQ(tuning.config.max_stages_per_submit, 390u);
+    EXPECT_GT(tuning.config.max_macs_per_submit,
+              1000ull * 1000ull * 1000ull * 1000ull);
+}
+
+}  // namespace
+}  // namespace gfx_plugin
+}  // namespace ov

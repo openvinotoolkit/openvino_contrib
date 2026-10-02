@@ -1,0 +1,17 @@
+// Copyright (C) 2025 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+// Generated from @GFX_KERNEL_INPUT@
+#pragma once
+
+namespace ov {
+namespace gfx_plugin {
+namespace detail {
+
+inline constexpr const char @GFX_KERNEL_SYMBOL@[] = R"__GFX_KERNEL__(
+@GFX_KERNEL_SOURCE@
+)__GFX_KERNEL__";
+
+}  // namespace detail
+}  // namespace gfx_plugin
+}  // namespace ov

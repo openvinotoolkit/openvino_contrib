@@ -1,0 +1,23 @@
+set(_gfx_android_runtime_sources "@_gfx_android_runtime_sources@")
+
+if(NOT DEFINED GFX_ANDROID_RUNTIME_DEST OR GFX_ANDROID_RUNTIME_DEST STREQUAL "")
+    message(FATAL_ERROR "GFX Android runtime bundle requires GFX_ANDROID_RUNTIME_DEST")
+endif()
+
+file(MAKE_DIRECTORY "${GFX_ANDROID_RUNTIME_DEST}")
+
+foreach(_gfx_android_runtime_src IN LISTS _gfx_android_runtime_sources)
+    if(NOT EXISTS "${_gfx_android_runtime_src}")
+        message(WARNING "GFX Android runtime dependency missing: ${_gfx_android_runtime_src}")
+        continue()
+    endif()
+
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "${_gfx_android_runtime_src}"
+                "${GFX_ANDROID_RUNTIME_DEST}"
+        RESULT_VARIABLE _gfx_android_runtime_copy_status)
+    if(NOT _gfx_android_runtime_copy_status EQUAL 0)
+        message(FATAL_ERROR "Failed to copy Android runtime dependency ${_gfx_android_runtime_src}")
+    endif()
+endforeach()
