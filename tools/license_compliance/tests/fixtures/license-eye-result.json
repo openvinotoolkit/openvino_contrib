@@ -1,0 +1,8 @@
+{
+  "version": "0.6.0",
+  "header": {
+    "valid": ["src/good.py"],
+    "invalid": ["src/missing.py"],
+    "ignored": ["vendor/imported.c"]
+  }
+}

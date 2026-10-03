@@ -1,0 +1,26 @@
+{
+  "descriptor": {
+    "name": "syft",
+    "version": "1.30.0"
+  },
+  "artifacts": [
+    {
+      "id": "expected-id",
+      "name": "expected-runtime",
+      "version": "1.0.0",
+      "type": "python",
+      "purl": "pkg:pypi/expected-runtime@1.0.0",
+      "licenses": [{"value": "MIT", "spdxExpression": "MIT"}],
+      "locations": [{"path": "/site-packages/expected_runtime.py"}]
+    },
+    {
+      "id": "unknown-id",
+      "name": "artifact-only",
+      "version": "2.0.0",
+      "type": "python",
+      "purl": "pkg:pypi/artifact-only@2.0.0",
+      "licenses": [{"value": "Apache-2.0", "spdxExpression": "Apache-2.0"}],
+      "locations": [{"path": "/site-packages/artifact_only.py"}]
+    }
+  ]
+}
