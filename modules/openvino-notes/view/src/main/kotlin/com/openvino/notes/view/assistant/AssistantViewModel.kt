@@ -15,7 +15,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-data class AssistantUiState(val running: Boolean = false, val status: String = "Select an AI operation")
+data class AssistantUiState(
+    val running: Boolean = false,
+    val status: String = "Assistant features are currently unavailable",
+    val isAvailable: Boolean = false,
+    val unavailableReason: String? = "OpenVINO model assets are not configured",
+)
 
 sealed interface AssistantUiAction {
     data class Summarize(val noteId: NoteId) : AssistantUiAction
@@ -33,21 +38,41 @@ class AssistantViewModel(private val assistant: NoteAssistant) : ViewModel() {
 
     fun onAction(action: AssistantUiAction) {
         viewModelScope.launch {
-            mutableState.value = AssistantUiState(running = true, status = "Running")
+            mutableState.value = mutableState.value.copy(running = true, status = "Running")
             val outcome = when (action) {
                 is AssistantUiAction.Summarize -> assistant.summarize(action.noteId)
                 is AssistantUiAction.SuggestTextTags -> assistant.suggestTextTags(action.noteId)
                 is AssistantUiAction.Rewrite -> assistant.rewrite(action.noteId, action.contentItemId, action.style)
             }
-            mutableState.value = AssistantUiState(status = outcome.displayText())
+            mutableState.value = when (outcome) {
+                is SuggestionOutcome.Unavailable -> AssistantUiState(
+                    running = false,
+                    status = outcome.reason,
+                    isAvailable = false,
+                    unavailableReason = outcome.reason,
+                )
+                is SuggestionOutcome.Ready -> AssistantUiState(
+                    running = false,
+                    status = "Suggestion ready",
+                    isAvailable = true,
+                    unavailableReason = null,
+                )
+                is SuggestionOutcome.InvalidTarget -> AssistantUiState(
+                    running = false,
+                    status = outcome.reason,
+                    isAvailable = mutableState.value.isAvailable,
+                )
+                SuggestionOutcome.NoteNotFound -> AssistantUiState(
+                    running = false,
+                    status = "Note not found",
+                    isAvailable = mutableState.value.isAvailable,
+                )
+                is SuggestionOutcome.Failed -> AssistantUiState(
+                    running = false,
+                    status = "Assistant failed: ${outcome.code}",
+                    isAvailable = false,
+                )
+            }
         }
     }
-}
-
-private fun SuggestionOutcome.displayText(): String = when (this) {
-    is SuggestionOutcome.Ready -> "Suggestion ready"
-    SuggestionOutcome.NoteNotFound -> "Note not found"
-    is SuggestionOutcome.InvalidTarget -> reason
-    is SuggestionOutcome.Unavailable -> reason
-    is SuggestionOutcome.Failed -> "Assistant failed: $code"
 }
