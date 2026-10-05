@@ -25,8 +25,6 @@ The EXTNN model (cdpn_stage3_extnn.xml/bin) contains:
 
 The E2E model (cdpn_stage3_e2e.xml/bin) additionally contains:
   - CdpnPreprocess   - image crop + resize + normalise (fused custom op)
-  - CdpnCoordDenorm  - coordinate denormalisation (custom op)
-  - CdpnTransDecode  - translation head decoding (custom op)
   - CdpnPnpSolve     - DLT PnP + RANSAC (custom op)
   - Pose composition - [R|T] concat via standard opset
   Full CPU or full GPU execution - zero host-side compute in the E2E path.
@@ -43,7 +41,7 @@ Usage:
 
     # Standalone test (E2E model with extension):
     python ov_infer.py --model checkpoints/cdpn_stage3_e2e.xml \
-        --extension ov_plugins/build/cdpn_cpu/cdpn_cpu_extension.so \
+        --extension ov_plugins/build/cdpn_extension.so \
         --dataset_dir dataset/lm_full --gpu
 """
 
@@ -52,8 +50,10 @@ from __future__ import absolute_import, division, print_function
 import os
 import sys
 import argparse
-import numpy as np
+
 import cv2
+import numpy as np
+import openvino as ov
 
 # make lib/ importable
 _cur = os.path.dirname(os.path.abspath(__file__))
@@ -81,14 +81,16 @@ class CdpnOVInference:
     camera_matrix : np.ndarray or None
         3x3 camera intrinsics. Defaults to LINEMOD K.
     extension_path : str or None
-        Path to the CDPN extension .so (e.g. cdpn_cpu_extension.so).
+        Path to the CDPN extension .so (e.g. cdpn_extension.so).
         Required for E2E models.
+    inference_precision : str
+        GPU inference precision hint: 'f32', 'f16', or 'none'. Ignored on CPU.
     """
 
     def __init__(self, model_path, obj_info,
                  device='CPU', camera_matrix=None,
-                 extension_path=None):
-        import openvino as ov
+                 extension_path=None,
+                 inference_precision='f32'):
 
         self.device = device
         self.obj_info = obj_info
@@ -130,15 +132,34 @@ class CdpnOVInference:
                     gpu_config))
 
         if device == 'GPU':
-            # Force FP32 inference precision on GPU
-            config[ov.properties.hint.inference_precision()] = ov.Type.f32
-            print('[CdpnOVInference] GPU: forcing FP32 inference precision')
+            precision_key = inference_precision.lower()
+            if precision_key in ('f32', 'fp32'):
+                config[ov.properties.hint.inference_precision()] = ov.Type.f32
+                print('[CdpnOVInference] GPU: using FP32 inference precision')
+            elif precision_key in ('f16', 'fp16'):
+                config[ov.properties.hint.inference_precision()] = ov.Type.f16
+                print('[CdpnOVInference] GPU: using FP16 inference precision')
+            elif precision_key in ('none', 'auto'):
+                print('[CdpnOVInference] GPU: using plugin default inference precision')
+            else:
+                raise ValueError('Unsupported GPU inference precision: {}'.format(
+                    inference_precision))
 
         print('[CdpnOVInference] OpenVINO {} - device: {}'.format(
             ov.__version__, device))
 
         self.model = self.core.read_model(model_path)
+
+        self.int8_quantization_points = sum(1 for op in self.model.get_ordered_ops()
+            if op.get_type_name() == 'FakeQuantize')
+        if self.int8_quantization_points:
+            print('[CdpnOVInference] Model contains {} INT8 quantization points'.format(
+                self.int8_quantization_points))
+
         self.compiled = self.core.compile_model(self.model, device, config)
+
+        # One reusable request per instance; not thread-safe, use one instance per thread.
+        self._infer_request = self.compiled.create_infer_request()
 
         # Detect model type by checking output names
         output_names = set()
@@ -189,14 +210,13 @@ class CdpnOVInference:
             'pose_trans'     : (3, 4) pose [R_pnp | T_trans]
             'R'              : (3, 3) rotation from PnP
             'T_pnp'          : (3,)   translation from PnP
-            'T_trans'        : (3,)   translation from trans head (EXTNN)
+            'T_trans'        : (3,)   translation from trans head
             'pred_coor'      : (3, 64, 64) denormalised coordinate maps
             'pred_conf'      : (64, 64) confidence map
             'num_corres'     : int, #correspondences sent to PnP
             'pnp_success'    : bool
         """
         assert len(rgb_list) == len(box_list) == len(obj_list)
-        num_samples = len(rgb_list)
 
         # E2E path: entire pipeline in the graph including PnP
         if self.model_type == 'e2e':
@@ -257,7 +277,7 @@ class CdpnOVInference:
 
 
     def _preprocess_batch(self, rgb_list, box_list):
-        """Preprocess a batch -> stacked numpy array."""
+        """Preprocess a batch."""
         inps, centers, scales, boxes = [], [], [], []
         for rgb, box in zip(rgb_list, box_list):
             inp, crop_center, crop_scale, box_arr = self._preprocess_single(rgb, box)
@@ -312,7 +332,7 @@ class CdpnOVInference:
             bwh_batch[idx, 0, 0]  = bbox_whs[idx]
             camK_batch[idx, 0, 0] = cam_K_arr
 
-        ov_out = self.compiled({
+        ov_out = self._infer_request.infer({
             'image': img_batch,
             'bbox': bbox_batch,
             'obj_extents': ext_batch,
@@ -396,7 +416,7 @@ class CdpnOVInference:
             bwh_batch[idx, 0, 0] = bbox_whs[idx]
             camK_batch[idx, 0, 0] = cam_K_arr
 
-        ov_out = self.compiled({
+        ov_out = self._infer_request.infer({
             'image': img_batch,
             'bbox': bbox_batch,
             'obj_extents': ext_batch,
@@ -462,7 +482,7 @@ class CdpnOVInference:
             rgb_list, box_list)
 
         # Step 2: Single batched OV forward
-        ov_res = self.compiled(inp_batch)
+        ov_res = self._infer_request.infer(inp_batch)
 
         raw_rot_all = ov_res[0]
         raw_trans_all = ov_res[1]
@@ -682,6 +702,11 @@ def main():
                         help='Max samples per object (0 = all)')
     parser.add_argument('--extension', type=str, default=None,
                         help='Path to CDPN extension .so')
+    parser.add_argument('--infer_precision', type=str, default='f32',
+                        choices=('f32', 'f16', 'none'),
+                        help='GPU inference precision hint (default: f32)')
+    parser.add_argument('--int8_nn', action='store_true', default=False,
+                        help='Require an INT8 NN-only model')
     args = parser.parse_args()
 
     if args.gpu:
@@ -706,7 +731,25 @@ def main():
         obj_info=obj_info,
         device=device,
         extension_path=args.extension,
+        inference_precision=args.infer_precision,
     )
+
+    if args.int8_nn:
+        if infer.model_type != 'nn_only':
+            raise RuntimeError('--int8_nn expects a NN model, detected {}'.format(
+                infer.model_type))
+
+        # An INT8 NN-only export carries a fixed number of INT8 quantization
+        # points. The model matches only when its count equals that number.
+        EXPECTED_INT8_QUANTIZATION_POINTS = 57
+        if infer.int8_quantization_points != EXPECTED_INT8_QUANTIZATION_POINTS:
+            raise RuntimeError(
+                '--int8_nn expects an INT8 model with {} quantization points, '
+                'found {}. The model does not match the expected INT8 export.'.format(
+                    EXPECTED_INT8_QUANTIZATION_POINTS, infer.int8_quantization_points))
+
+        print('INT8 NN accuracy check: {} INT8 quantization points'.format(
+            infer.int8_quantization_points))
 
     # 3. Determine which objects to test
     if args.obj_name and args.obj_name.lower() != 'all':
