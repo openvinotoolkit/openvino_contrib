@@ -10,7 +10,7 @@
   "dependencies": {
     "@langchain/langgraph": "^1.4.18",
     "https-proxy-agent": "^9.1.0",
-    "langchain": "^1.5.12",
+    "langchain": "^1.5.15",
     "openvino-langchain": "file:..",
     "zod": "^4.6.5"
   },
