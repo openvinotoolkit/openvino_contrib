@@ -1,8 +1,9 @@
-__pycache__
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 build/
-*.egg-info
-*.so
-*_logs*
-tmp/
-results/
-.idea
+pretrained/
+
+# Ignore generated files
+*_generated.*
+pp_custom_gpu_kernels.xml
