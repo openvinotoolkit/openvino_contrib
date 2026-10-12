@@ -39,5 +39,60 @@ class ResumableTransferContractTest {
         assertArrayEquals(byteArrayOf(1, 2, 3, 4), store.get(accountKey, objectId).value().bytes)
     }
 
+    @Test fun `resume upload returns active state with correct offset`() = runTest {
+        val store = FakeRemoteStore()
+        val accountKey = AccountKey("account")
+        val session = store.startUpload(
+            accountKey,
+            UploadDescriptor(RemoteObjectId("media"), "image.jpg", "image/jpeg", sizeBytes = 4),
+        ).value()
+
+        store.uploadChunk(
+            accountKey,
+            session.id,
+            UploadChunk(offset = 0, bytes = byteArrayOf(1, 2), final = false),
+        )
+
+        val state = store.resumeUpload(accountKey, session.id).value()
+        val active = state as ResumableUploadState.Active
+        assertEquals(2L, active.session.nextOffset)
+    }
+
+    @Test fun `resume upload returns completed state when upload already finished`() = runTest {
+        val store = FakeRemoteStore()
+        val accountKey = AccountKey("account")
+        val objectId = RemoteObjectId("media")
+        val session = store.startUpload(
+            accountKey,
+            UploadDescriptor(objectId, "image.jpg", "image/jpeg", sizeBytes = 4),
+        ).value()
+
+        store.uploadChunk(
+            accountKey,
+            session.id,
+            UploadChunk(offset = 0, bytes = byteArrayOf(1, 2, 3, 4), final = true),
+        )
+
+        val state = store.resumeUpload(accountKey, session.id).value()
+        val completed = state as ResumableUploadState.Completed
+        assertEquals(objectId, completed.metadata.id)
+        assertEquals(RemoteRevision("1"), completed.metadata.revision)
+    }
+
+    @Test fun `resume upload returns expired state when session expired`() = runTest {
+        val store = FakeRemoteStore()
+        val accountKey = AccountKey("account")
+        val session = store.startUpload(
+            accountKey,
+            UploadDescriptor(RemoteObjectId("media"), "image.jpg", "image/jpeg", sizeBytes = 4),
+        ).value()
+
+        store.expireSession(session.id)
+
+        val state = store.resumeUpload(accountKey, session.id).value()
+        val expired = state as ResumableUploadState.Expired
+        assertEquals(session.id, expired.session.id)
+    }
+
     private fun <T> RemoteOutcome<T>.value(): T = (this as RemoteOutcome.Success<T>).value
 }
