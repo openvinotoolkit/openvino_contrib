@@ -369,6 +369,7 @@ private fun OutboxEntity.toApi(): LocalNoteChange {
 }
 
 private object WireCodec {
+    private const val VERSION_2_MARKER = "v2:"
     private val encoder = Base64.getUrlEncoder().withoutPadding()
     private val decoder = Base64.getUrlDecoder()
 
@@ -381,7 +382,10 @@ private object WireCodec {
         }
     }
 
-    fun decodeContent(value: String): List<ContentItem> = lines(value).map { line ->
+    fun decodeContent(value: String): List<ContentItem> =
+        if (isVersion2(value)) decodeContentV2(value) else decodeContentV1(value)
+
+    private fun decodeContentV1(value: String): List<ContentItem> = lines(value).map { line ->
         val fields = line.split('|')
         when (fields.firstOrNull()) {
             "text" -> ContentItem.Text(ContentItemId(fields[1]), decode(fields[2]))
@@ -391,6 +395,9 @@ private object WireCodec {
             else -> error("Unsupported content item")
         }
     }
+
+    private fun decodeContentV2(value: String): List<ContentItem> =
+        error("V2 content format is not implemented")
 
     fun encodeAttachments(items: List<AttachmentMetadata>): String = items.joinToString("\n") { item ->
         listOf(
@@ -403,7 +410,10 @@ private object WireCodec {
         ).joinToString("|")
     }
 
-    fun decodeAttachments(value: String): List<AttachmentMetadata> = lines(value).map { line ->
+    fun decodeAttachments(value: String): List<AttachmentMetadata> =
+        if (isVersion2(value)) decodeAttachmentsV2(value) else decodeAttachmentsV1(value)
+
+    private fun decodeAttachmentsV1(value: String): List<AttachmentMetadata> = lines(value).map { line ->
         val fields = line.split('|')
         AttachmentMetadata(
             id = AttachmentId(fields[0]),
@@ -415,12 +425,36 @@ private object WireCodec {
         )
     }
 
-    fun encodeTags(tags: Set<NoteTag>): String = tags.map(NoteTag::value).sorted().joinToString("\n", transform = ::encode)
-    fun decodeTags(value: String): Set<NoteTag> = lines(value).map { NoteTag(decode(it)) }.toSet()
+    private fun decodeAttachmentsV2(value: String): List<AttachmentMetadata> =
+        error("V2 attachments format is not implemented")
 
-    private fun lines(value: String): List<String> = if (value.isEmpty()) emptyList() else value.split('\n')
-    private fun encode(value: String): String = encoder.encodeToString(value.toByteArray(StandardCharsets.UTF_8))
-    private fun decode(value: String): String = String(decoder.decode(value), StandardCharsets.UTF_8)
-    private fun encodeNullable(value: String?): String = value?.let { "+${encode(it)}" } ?: "-"
-    private fun decodeNullable(value: String): String? = if (value == "-") null else decode(value.removePrefix("+"))
+    fun encodeTags(tags: Set<NoteTag>): String =
+        tags.map(NoteTag::value).sorted().joinToString("\n", transform = ::encode)
+
+    fun decodeTags(value: String): Set<NoteTag> =
+        if (isVersion2(value)) decodeTagsV2(value) else decodeTagsV1(value)
+
+    private fun decodeTagsV1(value: String): Set<NoteTag> =
+        lines(value).map { NoteTag(decode(it)) }.toSet()
+
+    private fun decodeTagsV2(value: String): Set<NoteTag> =
+        error("V2 tags format is not implemented")
+
+    private fun isVersion2(value: String): Boolean =
+        value == VERSION_2_MARKER || value.startsWith("$VERSION_2_MARKER\n")
+
+    private fun lines(value: String): List<String> =
+        if (value.isEmpty()) emptyList() else value.split('\n')
+
+    private fun encode(value: String): String =
+        encoder.encodeToString(value.toByteArray(StandardCharsets.UTF_8))
+
+    private fun decode(value: String): String =
+        String(decoder.decode(value), StandardCharsets.UTF_8)
+
+    private fun encodeNullable(value: String?): String =
+        value?.let { "+${encode(it)}" } ?: "-"
+
+    private fun decodeNullable(value: String): String? =
+        if (value == "-") null else decode(value.removePrefix("+"))
 }
