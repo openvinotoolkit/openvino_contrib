@@ -14,7 +14,9 @@ import com.openvino.notes.cloud.api.RemoteObjectId
 import com.openvino.notes.cloud.api.RemoteObjectMetadata
 import com.openvino.notes.cloud.api.RemoteObjectStore
 import com.openvino.notes.cloud.api.RemoteOutcome
+import com.openvino.notes.cloud.api.RemoteByteSink
 import com.openvino.notes.cloud.api.ResumableTransferClient
+import com.openvino.notes.cloud.api.ResumableUploadState
 import com.openvino.notes.cloud.api.TransferSessionId
 import com.openvino.notes.cloud.api.UploadChunk
 import com.openvino.notes.cloud.api.UploadChunkOutcome
@@ -64,8 +66,7 @@ internal class DriveRemoteStore(
     override suspend fun resumeUpload(
         accountKey: AccountKey,
         sessionId: TransferSessionId,
-    ): RemoteOutcome<UploadSession> = unavailable()
-
+    ): RemoteOutcome<ResumableUploadState> = unavailable()
     override suspend fun uploadChunk(
         accountKey: AccountKey,
         sessionId: TransferSessionId,
