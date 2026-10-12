@@ -83,6 +83,7 @@ class FakeRemoteStore :
                 TransferSessionId("fake-upload-${++nextUploadId}"),
                 descriptor.objectId,
                 nextOffset = 0,
+                expiresAt = Instant.now().plusSeconds(3600),
             )
         uploads[session.id] = FakeUpload(accountKey, descriptor, expectedRevision, session)
         return RemoteOutcome.Success(session)
@@ -91,12 +92,22 @@ class FakeRemoteStore :
     override suspend fun resumeUpload(
         accountKey: AccountKey,
         sessionId: TransferSessionId,
-    ): RemoteOutcome<UploadSession> =
-        uploads[sessionId]
-            ?.takeIf { it.accountKey == accountKey }
-            ?.session
-            ?.let { RemoteOutcome.Success(it) }
-            ?: notFound("fake.upload_session_not_found")
+    ): RemoteOutcome<ResumableUploadState> {
+        val upload = uploads[sessionId]?.takeIf { it.accountKey == accountKey }
+            ?: return notFound("fake.upload_session_not_found")
+
+        val expiresAt = upload.session.expiresAt
+        if (expiresAt != null && Instant.now().isAfter(expiresAt) || upload.isExpired) {
+            return RemoteOutcome.Success(ResumableUploadState.Expired(upload.session))
+        }
+
+        val metadata = upload.completedMetadata
+        if (metadata != null) {
+            return RemoteOutcome.Success(ResumableUploadState.Completed(metadata))
+        }
+
+        return RemoteOutcome.Success(ResumableUploadState.Active(upload.session))
+    }
 
     override suspend fun uploadChunk(
         accountKey: AccountKey,
@@ -130,7 +141,7 @@ class FakeRemoteStore :
             }
 
             is RemoteOutcome.Success -> {
-                uploads.remove(sessionId)
+                upload.completedMetadata = outcome.value
                 RemoteOutcome.Success(UploadChunkOutcome.Completed(outcome.value))
             }
         }
@@ -177,8 +188,14 @@ class FakeRemoteStore :
         val descriptor: UploadDescriptor,
         val expectedRevision: RemoteRevision?,
         var session: UploadSession,
+        var completedMetadata: RemoteObjectMetadata? = null,
+        var isExpired: Boolean = false,
         val content: ByteArrayOutputStream = ByteArrayOutputStream(),
     )
+
+    fun expireSession(sessionId: TransferSessionId) {
+        uploads[sessionId]?.isExpired = true
+    }
 
     private companion object {
         const val TRANSFER_CHUNK_BYTES = 64 * 1024
