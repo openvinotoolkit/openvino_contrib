@@ -220,4 +220,39 @@ class RoomNotesRepositoryTest {
             root.deleteRecursively()
         }
     }
+    @Test fun `v1 wire format remains readable`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val database = Room.inMemoryDatabaseBuilder(context, NotesDatabase::class.java).allowMainThreadQueries().build()
+        try {
+            val repository = RoomNotesRepository(
+                database.notesDao(),
+                FileAttachmentContentStore(context.cacheDir.resolve("notes-room-v1-test"), testDispatchers),
+            )
+            val accountKey = AccountKey("account")
+            val noteId = NoteId("note")
+            val note = Note(
+                noteId, accountKey, "Title",
+                listOf(
+                    ContentItem.Text(ContentItemId("body"), "Body"),
+                    ContentItem.Image(ContentItemId("image"), AttachmentId("attachment"), "Caption"),
+                    ContentItem.File(ContentItemId("file"), AttachmentId("attachment-2")),
+                    ContentItem.Link(ContentItemId("link"), "https://example.com", "Example"),
+                ),
+                listOf(AttachmentMetadata(AttachmentId("attachment"), noteId, ContentItemId("image"), "image.png", "image/png", 123)),
+                tags = setOf(NoteTag("important"), NoteTag("work"), NoteTag("v2")),
+                isFavorite = true, summary = "Summary", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH,
+            )
+            database.notesDao().upsert(
+                NoteEntity(
+                    accountKey.value, noteId.value, note.title,
+                    "text|body|Qm9keQ==\nimage|image|attachment|+Q2FwdGlvbg==\nfile|file|attachment-2\nlink|link|aHR0cHM6Ly9leGFtcGxlLmNvbQ==|+RXhhbXBsZQ==",
+                    "attachment|note|image|aW1hZ2UucG5n|aW1hZ2UvcG5n|123",
+                    null, "aW1wb3J0YW50\nd29yaw==\ndjI=", true, "Summary", 0L, 0L,
+                ),
+            )
+            assertEquals(note, repository.find(accountKey, noteId))
+        } finally {
+            database.close()
+        }
+    }
 }
