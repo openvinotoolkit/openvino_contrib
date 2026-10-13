@@ -8,9 +8,9 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "@langchain/langgraph": "^1.4.18",
+    "@langchain/langgraph": "^1.4.21",
     "https-proxy-agent": "^9.1.0",
-    "langchain": "^1.5.15",
+    "langchain": "^1.5.16",
     "openvino-langchain": "file:..",
     "zod": "^4.6.5"
   },
