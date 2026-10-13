@@ -36,6 +36,7 @@ class FakeIdentityService(
         lastRequestedAccountKey = accountKey
         return when {
             currentAccountKey() == null -> AccessTokenOutcome.SignedOut
+            currentAccountKey() != accountKey -> AccessTokenOutcome.Failed("identity.account_mismatch")
             driveAuthorizationState.value != DriveAuthorizationState.AUTHORIZED -> AccessTokenOutcome.NotAuthorized
             else -> AccessTokenOutcome.Available("fake-token")
         }
