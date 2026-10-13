@@ -34,6 +34,8 @@ import com.openvino.notes.notes.api.port.RemoteApplyResult
 import com.openvino.notes.notes.api.port.RemoteNoteChange
 import com.openvino.notes.notes.api.port.RemoteRevision
 import java.io.File
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.util.Base64
@@ -564,12 +566,17 @@ private object WireCodec {
     private fun lines(value: String): List<String> =
         if (value.isEmpty()) emptyList() else value.split('\n')
 
-    private fun linesAfterMarker(value: String): List<String> =
-        if (value == VERSION_2_MARKER) {
-            emptyList()
-        } else {
-            value.removePrefix("$VERSION_2_MARKER\n").split('\n')
+    private fun linesAfterMarker(value: String): List<String> {
+        if (value == VERSION_2_MARKER || value == "$VERSION_2_MARKER\n") {
+            return emptyList()
         }
+        val payload = value.removePrefix("$VERSION_2_MARKER\n")
+        val lines = payload.split('\n')
+        require(lines.none { it.isEmpty() }) {
+            "Empty records are not allowed in v2"
+        }
+        return lines
+    }
 
     private fun splitFields(line: String): List<String> =
         line.split('|')
@@ -583,8 +590,14 @@ private object WireCodec {
     private fun encodeString(value: String): String =
         encoder.encodeToString(value.toByteArray(StandardCharsets.UTF_8))
 
-    private fun decodeString(value: String): String =
-        String(decoder.decode(value), StandardCharsets.UTF_8)
+    private fun decodeString(value: String): String {
+        val bytes = decoder.decode(value)
+        val utf8Decoder = StandardCharsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+
+        return utf8Decoder.decode(ByteBuffer.wrap(bytes)).toString()
+    }
 
     private fun encodeNullableString(value: String?): String =
         value?.let { "+${encodeString(it)}" } ?: "-"

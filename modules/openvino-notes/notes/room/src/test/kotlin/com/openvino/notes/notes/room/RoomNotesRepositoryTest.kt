@@ -314,8 +314,7 @@ class RoomNotesRepositoryTest {
             database.close()
         }
     }
-    @Test
-    fun `v2 preserves nullable string fields`() = runTest {
+    @Test fun `v2 rejects malformed UTF-8`() = runTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val database = Room.inMemoryDatabaseBuilder(
             context,
@@ -326,28 +325,154 @@ class RoomNotesRepositoryTest {
             val repository = RoomNotesRepository(
                 database.notesDao(),
                 FileAttachmentContentStore(
-                    context.cacheDir.resolve("notes-room-v2-null-test"),
+                    context.cacheDir.resolve("notes-room-v2-invalid-utf8-test"),
                     testDispatchers,
                 ),
             )
 
+            val accountKey = AccountKey("account")
+            val noteId = NoteId("note")
+            // "wyg" decodes to bytes that are not a valid UTF-8 sequence.
+            database.notesDao().upsert(
+                NoteEntity(
+                    accountKey = accountKey.value,
+                    id = noteId.value,
+                    title = "Title",
+                    contentItems = "v2:\ntext|Ym9keQ|wyg",
+                    attachments = "v2:",
+                    folderId = null,
+                    tags = "v2:",
+                    isFavorite = false,
+                    summary = null,
+                    createdAtMillis = 0L,
+                    updatedAtMillis = 0L,
+                ),
+            )
+
+            try {
+                repository.find(accountKey, noteId)
+                throw AssertionError("Malformed UTF-8 must be rejected")
+            } catch (_: java.nio.charset.CharacterCodingException) {
+                // Expected: invalid UTF-8 must not be silently replaced.
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test fun `v2 round trips unicode separators and newlines in every field`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val database = Room.inMemoryDatabaseBuilder(
+            context,
+            NotesDatabase::class.java,
+        ).allowMainThreadQueries().build()
+
+        try {
+            val repository = RoomNotesRepository(
+                database.notesDao(),
+                FileAttachmentContentStore(
+                    context.cacheDir.resolve("notes-room-v2-unicode-test"),
+                    testDispatchers,
+                ),
+            )
+
+            val accountKey = AccountKey("account")
+            val noteId = NoteId("note")
+            // Everything that could break the native format: separator, newline,
+            // surrogate pair, non-ASCII, control character.
+            val nasty = "a|b\nc \u00e9 \uD83D\uDE00 \u0000"
+            val nastyId = "id|with\nnewline"
+
             val note = Note(
-                id = NoteId("note"),
-                accountKey = AccountKey("account"),
+                id = noteId,
+                accountKey = accountKey,
+                title = nasty,
+                contentItems = listOf(
+                    ContentItem.Text(ContentItemId(nastyId), nasty),
+                    ContentItem.Image(
+                        ContentItemId("image-$nastyId"),
+                        AttachmentId("attachment-$nastyId"),
+                        nasty,
+                    ),
+                    ContentItem.File(
+                        ContentItemId("file-$nastyId"),
+                        AttachmentId("attachment-2-$nastyId"),
+                    ),
+                    ContentItem.Link(
+                        ContentItemId("link-$nastyId"),
+                        "https://example.com/$nastyId?q=$nasty",
+                        nasty,
+                    ),
+                ),
+                attachments = listOf(
+                    AttachmentMetadata(
+                        AttachmentId("attachment-$nastyId"),
+                        noteId,
+                        ContentItemId("image-$nastyId"),
+                        "file|name\n$nasty.txt",
+                        "text/plain; charset=$nasty",
+                        42L,
+                    ),
+                ),
+                tags = setOf(NoteTag(nasty), NoteTag("tag|with\npipe")),
+                isFavorite = false,
+                summary = nasty,
+                createdAt = Instant.EPOCH,
+                updatedAt = Instant.EPOCH,
+            )
+
+            repository.save(note)
+            assertEquals(note, repository.find(accountKey, noteId))
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test fun `v2 distinguishes empty string from null in nullable fields`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val database = Room.inMemoryDatabaseBuilder(
+            context,
+            NotesDatabase::class.java,
+        ).allowMainThreadQueries().build()
+
+        try {
+            val repository = RoomNotesRepository(
+                database.notesDao(),
+                FileAttachmentContentStore(
+                    context.cacheDir.resolve("notes-room-v2-empty-string-test"),
+                    testDispatchers,
+                ),
+            )
+
+            val accountKey = AccountKey("account")
+            val noteId = NoteId("note")
+
+            val note = Note(
+                id = noteId,
+                accountKey = accountKey,
                 title = "Title",
                 contentItems = listOf(
                     ContentItem.Image(
-                        ContentItemId("image"),
-                        AttachmentId("attachment"),
+                        ContentItemId("image-null"),
+                        AttachmentId("attachment-1"),
                         null,
                     ),
+                    ContentItem.Image(
+                        ContentItemId("image-empty"),
+                        AttachmentId("attachment-2"),
+                        "",
+                    ),
                     ContentItem.Link(
-                        ContentItemId("link"),
+                        ContentItemId("link-null"),
                         "https://example.com",
                         null,
                     ),
+                    ContentItem.Link(
+                        ContentItemId("link-empty"),
+                        "https://example.com",
+                        "",
+                    ),
                 ),
-                attachments = emptyList(),
                 tags = emptySet(),
                 isFavorite = false,
                 summary = null,
@@ -356,8 +481,150 @@ class RoomNotesRepositoryTest {
             )
 
             repository.save(note)
+            val restored = repository.find(accountKey, noteId)!!
 
-            assertEquals(note, repository.find(note.accountKey, note.id))
+            // The difference between null and "" must survive a round trip.
+            assertEquals(null, (restored.contentItems[0] as ContentItem.Image).caption)
+            assertEquals("", (restored.contentItems[1] as ContentItem.Image).caption)
+            assertEquals(null, (restored.contentItems[2] as ContentItem.Link).label)
+            assertEquals("", (restored.contentItems[3] as ContentItem.Link).label)
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test fun `v2 marker with trailing newline decodes to empty collections`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val database = Room.inMemoryDatabaseBuilder(
+            context,
+            NotesDatabase::class.java,
+        ).allowMainThreadQueries().build()
+
+        try {
+            val repository = RoomNotesRepository(
+                database.notesDao(),
+                FileAttachmentContentStore(
+                    context.cacheDir.resolve("notes-room-v2-empty-test"),
+                    testDispatchers,
+                ),
+            )
+
+            val accountKey = AccountKey("account")
+            val noteId = NoteId("note")
+            // Regression: "v2:\n" used to crash content/attachments decoding
+            // and to produce {NoteTag("")} for tags. It must now yield empty
+            // collections in all three cases.
+            database.notesDao().upsert(
+                NoteEntity(
+                    accountKey = accountKey.value,
+                    id = noteId.value,
+                    title = "Title",
+                    contentItems = "v2:\n",
+                    attachments = "v2:\n",
+                    folderId = null,
+                    tags = "v2:\n",
+                    isFavorite = false,
+                    summary = null,
+                    createdAtMillis = 0L,
+                    updatedAtMillis = 0L,
+                ),
+            )
+
+            val note = repository.find(accountKey, noteId)!!
+            assertEquals(emptyList<ContentItem>(), note.contentItems)
+            assertEquals(emptyList<AttachmentMetadata>(), note.attachments)
+            assertEquals(emptySet<NoteTag>(), note.tags)
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test fun `v2 survives database close and reopen`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val databaseFile = context.getDatabasePath("reopen-test.db")
+        databaseFile.delete()
+
+        // First open: write a note with nasty identifiers.
+        var database = Room.databaseBuilder(context, NotesDatabase::class.java, "reopen-test.db")
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val repository = RoomNotesRepository(
+                database.notesDao(),
+                FileAttachmentContentStore(context.cacheDir.resolve("notes-room-reopen-test"), testDispatchers),
+            )
+            val note = Note(
+                id = NoteId("note|with\nnewline"),
+                accountKey = AccountKey("account"),
+                title = "Title|with\nseparator",
+                contentItems = listOf(ContentItem.Text(ContentItemId("body|id"), "Body")),
+                tags = setOf(NoteTag("tag|with\npipe")),
+                isFavorite = false,
+                summary = null,
+                createdAt = Instant.EPOCH,
+                updatedAt = Instant.EPOCH,
+            )
+            repository.save(note)
+        } finally {
+            database.close()
+        }
+
+        // Second open: verify the note is still readable and intact.
+        database = Room.databaseBuilder(context, NotesDatabase::class.java, "reopen-test.db")
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val repository = RoomNotesRepository(
+                database.notesDao(),
+                FileAttachmentContentStore(context.cacheDir.resolve("notes-room-reopen-test"), testDispatchers),
+            )
+            val restored = repository.find(AccountKey("account"), NoteId("note|with\nnewline"))
+            assertEquals("Title|with\nseparator", restored?.title)
+            assertEquals(setOf(NoteTag("tag|with\npipe")), restored?.tags)
+        } finally {
+            database.close()
+            databaseFile.delete()
+        }
+    }
+
+    @Test fun `v2 rejects empty line between records`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val database = Room.inMemoryDatabaseBuilder(context, NotesDatabase::class.java)
+            .allowMainThreadQueries().build()
+
+        try {
+            val repository = RoomNotesRepository(
+                database.notesDao(),
+                FileAttachmentContentStore(
+                    context.cacheDir.resolve("notes-room-v2-empty-line-test"),
+                    testDispatchers,
+                ),
+            )
+
+            val accountKey = AccountKey("account")
+            val noteId = NoteId("note")
+            database.notesDao().upsert(
+                NoteEntity(
+                    accountKey = accountKey.value,
+                    id = noteId.value,
+                    title = "Title",
+                    contentItems = "v2:\ntext|Ym9keQ|Ym9keQ\n\ntext|Ym9keQ|Ym9keQ",
+                    attachments = "v2:",
+                    folderId = null,
+                    tags = "v2:",
+                    isFavorite = false,
+                    summary = null,
+                    createdAtMillis = 0L,
+                    updatedAtMillis = 0L,
+                ),
+            )
+
+            try {
+                repository.find(accountKey, noteId)
+                throw AssertionError("Empty line between records must be rejected")
+            } catch (_: IllegalArgumentException) {
+                // Expected.
+            }
         } finally {
             database.close()
         }
