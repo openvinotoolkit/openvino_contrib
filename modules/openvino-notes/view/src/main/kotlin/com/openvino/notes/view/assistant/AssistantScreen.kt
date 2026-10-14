@@ -7,7 +7,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,11 +28,52 @@ fun AssistantScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     Column(
-        modifier.fillMaxSize().padding(padding).padding(24.dp),
+        modifier
+            .fillMaxSize()
+            .padding(padding)
+            .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text("Assistant", style = MaterialTheme.typography.headlineMedium)
         Text("Summary, text tags, rewrite, and image tags require OpenVINO model assets.")
-        Text(state.status)
+
+        val reason = state.unavailableReason
+        if (reason != null) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Unavailable: $reason",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(16.dp),
+                )
+            }
+        }
+
+        Text(
+            text = "Status: ${state.status}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.outline,
+        )
+
+        Button(
+            onClick = { /* Action Call */ },
+            enabled = state.isAvailable && !state.running,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(if (state.isAvailable) "Summarize Note" else "Summarize (Unavailable)")
+        }
+
+        Button(
+            onClick = { /* Action Call */ },
+            enabled = state.isAvailable && !state.running,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(if (state.isAvailable) "Suggest Tags" else "Suggest Tags (Unavailable)")
+        }
     }
 }
