@@ -14,7 +14,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun NoteEditorScreen(state: NoteEditorUiState, onAction: (NoteEditorUiAction) -> Unit) {
+fun NoteEditorScreen(
+    state: NoteEditorUiState,
+    onAction: (NoteEditorUiAction) -> Unit,
+) {
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         OutlinedTextField(state.title, { onAction(NoteEditorUiAction.ChangeTitle(it)) }, label = { Text("Title") })
         OutlinedTextField(state.text, { onAction(NoteEditorUiAction.ChangeText(it)) }, label = { Text("Text") })
