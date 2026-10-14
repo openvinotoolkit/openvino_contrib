@@ -78,7 +78,7 @@ java -classpath gradle/wrapper/gradle-wrapper.jar \
   --project-cache-dir "$OPENVINO_NOTES_STATE_ROOT/project-cache" \
   -PopenvinoNotesBuildRoot="$OPENVINO_NOTES_STATE_ROOT/gradle" \
   -Pkotlin.project.persistent.dir="$OPENVINO_NOTES_STATE_ROOT/kotlin-project" \
-  checkArchitecture test testDebugUnitTest :app:assembleDebug
+  checkArchitecture lint test testDebugUnitTest :app:assembleDebug
 ```
 
 The default ABI is `arm64-v8a`. For an x86_64 emulator or the CI-equivalent

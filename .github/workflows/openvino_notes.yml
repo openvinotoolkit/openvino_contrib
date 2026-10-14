@@ -68,7 +68,7 @@ jobs:
       - name: Install Android API 37
         run: sdkmanager --sdk_root="$ANDROID_SDK_ROOT" "platform-tools" "platforms;android-37.0" "build-tools;36.0.0"
 
-      - name: Run architecture, unit, and build gates
+      - name: Run architecture, lint, unit, and build gates
         working-directory: modules/openvino-notes
         run: |
           java -classpath gradle/wrapper/gradle-wrapper.jar \
@@ -76,7 +76,7 @@ jobs:
             --project-cache-dir "$OPENVINO_NOTES_STATE_ROOT/project-cache" \
             -PopenvinoNotesBuildRoot="$OPENVINO_NOTES_STATE_ROOT/gradle" \
             -Pkotlin.project.persistent.dir="$OPENVINO_NOTES_STATE_ROOT/kotlin-project" \
-            checkArchitecture test testDebugUnitTest :app:assembleDebug \
+            checkArchitecture lint test testDebugUnitTest :app:assembleDebug \
             -PopenvinoAndroidAbi=x86_64
 
       - name: Upload failure reports
