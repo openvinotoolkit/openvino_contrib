@@ -33,6 +33,8 @@ androidx-compose-ui = { module = "androidx.compose.ui:ui" }
 androidx-compose-foundation = { module = "androidx.compose.foundation:foundation" }
 androidx-compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
 androidx-compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+androidx-compose-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
+androidx-compose-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
 androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }

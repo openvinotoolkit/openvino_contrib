@@ -15,6 +15,7 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    testOptions { unitTests.isIncludeAndroidResources = true }
 }
 
 dependencies {
@@ -32,6 +33,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.ui.tooling.preview)
     debugImplementation(libs.androidx.compose.ui.tooling)
+    debugImplementation(libs.androidx.compose.test.manifest)
     testImplementation(testFixtures(project(":notes:api")))
     testImplementation(testFixtures(project(":identity:api")))
     testImplementation(testFixtures(project(":sync:api")))
@@ -39,4 +41,8 @@ dependencies {
     testImplementation(testFixtures(project(":settings:api")))
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.test.ext.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.compose.test.junit4)
 }
