@@ -30,13 +30,24 @@ data class NoteEditorUiState(
 )
 
 sealed interface NoteEditorUiAction {
-    data class Load(val noteId: NoteId) : NoteEditorUiAction
-    data class ChangeTitle(val value: String) : NoteEditorUiAction
-    data class ChangeText(val value: String) : NoteEditorUiAction
+    data class Load(
+        val noteId: NoteId,
+    ) : NoteEditorUiAction
+
+    data class ChangeTitle(
+        val value: String,
+    ) : NoteEditorUiAction
+
+    data class ChangeText(
+        val value: String,
+    ) : NoteEditorUiAction
+
     data object Save : NoteEditorUiAction
 }
 
-class NoteEditorViewModel(private val notes: NotesService) : ViewModel() {
+class NoteEditorViewModel(
+    private val notes: NotesService,
+) : ViewModel() {
     private val mutableState = MutableStateFlow(NoteEditorUiState())
     val state: StateFlow<NoteEditorUiState> = mutableState.asStateFlow()
 
@@ -52,11 +63,12 @@ class NoteEditorViewModel(private val notes: NotesService) : ViewModel() {
     private fun load(noteId: NoteId) {
         viewModelScope.launch {
             val note = notes.get(noteId)
-            mutableState.value = if (note == null) {
-                NoteEditorUiState(error = "Note not found")
-            } else {
-                note.toEditorState()
-            }
+            mutableState.value =
+                if (note == null) {
+                    NoteEditorUiState(error = "Note not found")
+                } else {
+                    note.toEditorState()
+                }
         }
     }
 
@@ -65,19 +77,21 @@ class NoteEditorViewModel(private val notes: NotesService) : ViewModel() {
             val snapshot = state.value
             mutableState.value = snapshot.copy(saving = true, error = null)
             val content = snapshot.updatedContentItems()
-            val outcome = snapshot.noteId?.let { noteId ->
-                notes.update(
-                    UpdateNoteCommand(
-                        noteId,
-                        title = FieldUpdate.Set(snapshot.title),
-                        contentItems = FieldUpdate.Set(content),
-                    ),
-                )
-            } ?: notes.create(NoteDraft(snapshot.title, content))
-            mutableState.value = when (outcome) {
-                is NoteMutationOutcome.Saved -> outcome.note.toEditorState()
-                else -> snapshot.copy(saving = false, error = "Unable to save note")
-            }
+            val outcome =
+                snapshot.noteId?.let { noteId ->
+                    notes.update(
+                        UpdateNoteCommand(
+                            noteId,
+                            title = FieldUpdate.Set(snapshot.title),
+                            contentItems = FieldUpdate.Set(content),
+                        ),
+                    )
+                } ?: notes.create(NoteDraft(snapshot.title, content))
+            mutableState.value =
+                when (outcome) {
+                    is NoteMutationOutcome.Saved -> outcome.note.toEditorState()
+                    else -> snapshot.copy(saving = false, error = "Unable to save note")
+                }
         }
     }
 }
@@ -102,8 +116,9 @@ private fun NoteEditorUiState.updatedContentItems(): List<ContentItem> {
     }
     if (text.isEmpty()) return contentItems
     val usedIds = contentItems.map(ContentItem::id).toSet()
-    val newId = generateSequence(0) { it + 1 }
-        .map { suffix -> ContentItemId(if (suffix == 0) "editor-body" else "editor-body-$suffix") }
-        .first { it !in usedIds }
+    val newId =
+        generateSequence(0) { it + 1 }
+            .map { suffix -> ContentItemId(if (suffix == 0) "editor-body" else "editor-body-$suffix") }
+            .first { it !in usedIds }
     return contentItems + ContentItem.Text(newId, text)
 }

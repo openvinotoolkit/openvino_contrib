@@ -4,6 +4,8 @@
 [versions]
 agp = "9.2.0"
 kotlin = "2.3.21"
+ktlint = "1.8.0"
+ktlintGradle = "14.2.0"
 ksp = "2.3.7"
 coroutines = "1.11.0"
 coreKtx = "1.18.0"
@@ -54,5 +56,6 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlintGradle" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 

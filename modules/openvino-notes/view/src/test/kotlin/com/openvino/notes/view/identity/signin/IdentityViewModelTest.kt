@@ -3,8 +3,8 @@
 
 package com.openvino.notes.view.identity.signin
 
-import com.openvino.notes.identity.api.FakeIdentityService
 import com.openvino.notes.identity.api.AuthenticationState
+import com.openvino.notes.identity.api.FakeIdentityService
 import com.openvino.notes.view.app.AppUiEffect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -12,19 +12,21 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class IdentityViewModelTest {
-    @Test fun `initialization is represented as neutral loading state`() = runTest {
-        val viewModel = IdentityViewModel(FakeIdentityService(AuthenticationState.Initializing))
+    @Test fun `initialization is represented as neutral loading state`() =
+        runTest {
+            val viewModel = IdentityViewModel(FakeIdentityService(AuthenticationState.Initializing))
 
-        assertEquals(true, viewModel.uiState.value.initializing)
-    }
+            assertEquals(true, viewModel.uiState.value.initializing)
+        }
 
-    @Test fun `sign in and authorization are separate one shot effects`() = runTest {
-        val viewModel = IdentityViewModel(FakeIdentityService())
+    @Test fun `sign in and authorization are separate one shot effects`() =
+        runTest {
+            val viewModel = IdentityViewModel(FakeIdentityService())
 
-        viewModel.signIn()
-        assertEquals(AppUiEffect.LaunchGoogleSignIn, viewModel.effects.first())
+            viewModel.signIn()
+            assertEquals(AppUiEffect.LaunchGoogleSignIn, viewModel.effects.first())
 
-        viewModel.authorizeDrive()
-        assertEquals(AppUiEffect.LaunchGoogleDriveAuthorization, viewModel.effects.first())
-    }
+            viewModel.authorizeDrive()
+            assertEquals(AppUiEffect.LaunchGoogleDriveAuthorization, viewModel.effects.first())
+        }
 }

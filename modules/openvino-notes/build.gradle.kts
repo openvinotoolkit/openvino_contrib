@@ -12,7 +12,21 @@ plugins {
     alias(libs.plugins.android.library) apply false
     alias(libs.plugins.kotlin.jvm) apply false
     alias(libs.plugins.kotlin.compose) apply false
+    alias(libs.plugins.ktlint)
     alias(libs.plugins.ksp) apply false
+}
+
+val ktlintVersion = libs.versions.ktlint.get()
+extensions.configure<org.jlleitschuh.gradle.ktlint.KtlintExtension> {
+    version.set(ktlintVersion)
+    filter {
+        exclude("**/*.gradle.kts")
+    }
+}
+tasks.matching {
+    it.name == "ktlintKotlinScriptCheck" || it.name == "ktlintKotlinScriptFormat"
+}.configureEach {
+    enabled = false
 }
 
 val workspaceBuildRoot = (
@@ -22,6 +36,19 @@ val workspaceBuildRoot = (
 layout.buildDirectory.set(workspaceBuildRoot.resolve("root"))
 
 subprojects {
+    apply(plugin = "org.jlleitschuh.gradle.ktlint")
+    extensions.configure<org.jlleitschuh.gradle.ktlint.KtlintExtension> {
+        version.set(ktlintVersion)
+        filter {
+            exclude("**/*.gradle.kts")
+        }
+    }
+    tasks.matching {
+        it.name == "ktlintKotlinScriptCheck" || it.name == "ktlintKotlinScriptFormat"
+    }.configureEach {
+        enabled = false
+    }
+
     val relativeProjectPath = path.removePrefix(":").replace(':', '/')
     layout.buildDirectory.set(workspaceBuildRoot.resolve(relativeProjectPath))
 
