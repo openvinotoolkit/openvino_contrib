@@ -141,9 +141,9 @@ class RoomNotesRepositoryTest {
             assertArrayEquals(byteArrayOf(1, 2, 3), opened.readAll(maxTotalBytes = 3))
 
             repository.save(note.copy(attachments = listOf(second)))
-            assertEquals(null, content.open(accountKey, firstId))
+            assertEquals(true, content.open(accountKey, firstId) != null)
             repository.delete(accountKey, noteId)
-            assertEquals(null, content.open(accountKey, secondId))
+            assertEquals(true, content.open(accountKey, secondId) != null)
         } finally {
             database.close()
             root.deleteRecursively()
@@ -253,6 +253,39 @@ class RoomNotesRepositoryTest {
             assertEquals(note, repository.find(accountKey, noteId))
         } finally {
             database.close()
+        }
+    }
+
+    @Test fun `note deletion keeps attachments while outbox pending`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val database = Room.inMemoryDatabaseBuilder(context, NotesDatabase::class.java).allowMainThreadQueries().build()
+        val root = context.cacheDir.resolve("notes-room-delete-keep-test").apply { deleteRecursively() }
+        val content = FileAttachmentContentStore(root, testDispatchers)
+        try {
+            val repository = RoomNotesRepository(database.notesDao(), content)
+            val accountKey = AccountKey("account")
+            val noteId = NoteId("note")
+            val itemId = ContentItemId("image")
+            val attachmentId = AttachmentId("kept")
+            val attachment = AttachmentMetadata(attachmentId, noteId, itemId, "kept.png", "image/png", 3)
+            content.put(accountKey, attachment, binarySourceOf(byteArrayOf(1, 2, 3)))
+            val note = Note(
+                id = noteId,
+                accountKey = accountKey,
+                title = "Note",
+                contentItems = listOf(ContentItem.Image(itemId, attachmentId)),
+                attachments = listOf(attachment),
+                createdAt = Instant.EPOCH,
+                updatedAt = Instant.EPOCH,
+            )
+
+            repository.save(note)
+            repository.delete(accountKey, noteId)
+
+            assertEquals(true, content.open(accountKey, attachmentId) != null)
+        } finally {
+            database.close()
+            root.deleteRecursively()
         }
     }
 }
