@@ -141,9 +141,9 @@ class RoomNotesRepositoryTest {
             assertArrayEquals(byteArrayOf(1, 2, 3), opened.readAll(maxTotalBytes = 3))
 
             repository.save(note.copy(attachments = listOf(second)))
-            assertEquals(null, content.open(accountKey, firstId))
+            assertEquals(true, content.open(accountKey, firstId) != null)
             repository.delete(accountKey, noteId)
-            assertEquals(null, content.open(accountKey, secondId))
+            assertEquals(true, content.open(accountKey, secondId) != null)
         } finally {
             database.close()
             root.deleteRecursively()
@@ -253,6 +253,117 @@ class RoomNotesRepositoryTest {
             assertEquals(note, repository.find(accountKey, noteId))
         } finally {
             database.close()
+        }
+    }
+
+    @Test fun `note deletion keeps attachments while outbox pending`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val database = Room.inMemoryDatabaseBuilder(context, NotesDatabase::class.java).allowMainThreadQueries().build()
+        val root = context.cacheDir.resolve("notes-room-delete-keep-test").apply { deleteRecursively() }
+        val content = FileAttachmentContentStore(root, testDispatchers)
+        try {
+            val repository = RoomNotesRepository(database.notesDao(), content)
+            val accountKey = AccountKey("account")
+            val noteId = NoteId("note")
+            val itemId = ContentItemId("image")
+            val attachmentId = AttachmentId("kept")
+            val attachment = AttachmentMetadata(attachmentId, noteId, itemId, "kept.png", "image/png", 3)
+            content.put(accountKey, attachment, binarySourceOf(byteArrayOf(1, 2, 3)))
+            val note = Note(
+                id = noteId,
+                accountKey = accountKey,
+                title = "Note",
+                contentItems = listOf(ContentItem.Image(itemId, attachmentId)),
+                attachments = listOf(attachment),
+                createdAt = Instant.EPOCH,
+                updatedAt = Instant.EPOCH,
+            )
+
+            repository.save(note)
+            repository.delete(accountKey, noteId)
+
+            assertEquals(true, content.open(accountKey, attachmentId) != null)
+        } finally {
+            database.close()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun `attachment deleted when outbox is empty`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val database = Room.inMemoryDatabaseBuilder(context, NotesDatabase::class.java).allowMainThreadQueries().build()
+        val root = context.cacheDir.resolve("notes-room-outbox-clean-test").apply { deleteRecursively() }
+        val content = FileAttachmentContentStore(root, testDispatchers)
+        try {
+            val repository = RoomNotesRepository(database.notesDao(), content)
+            val accountKey = AccountKey("account")
+            val noteId = NoteId("note")
+            val itemId = ContentItemId("image")
+            val attachmentId = AttachmentId("cleanable")
+            val attachment = AttachmentMetadata(attachmentId, noteId, itemId, "cleanable.png", "image/png", 3)
+            content.put(accountKey, attachment, binarySourceOf(byteArrayOf(1, 2, 3)))
+            val note = Note(
+                id = noteId,
+                accountKey = accountKey,
+                title = "Note",
+                contentItems = listOf(ContentItem.Image(itemId, attachmentId)),
+                attachments = listOf(attachment),
+                createdAt = Instant.EPOCH,
+                updatedAt = Instant.EPOCH,
+            )
+
+            repository.save(note)
+            val pendingIds = repository.pendingChanges(accountKey).map { it.changeId }.toSet()
+            repository.acknowledge(accountKey, pendingIds)
+            repository.save(note.copy(attachments = emptyList(), contentItems = emptyList()))
+
+            assertEquals(null, content.open(accountKey, attachmentId))
+        } finally {
+            database.close()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun `cleaning account A does not touch account B attachments`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val database = Room.inMemoryDatabaseBuilder(context, NotesDatabase::class.java).allowMainThreadQueries().build()
+        val root = context.cacheDir.resolve("notes-room-account-isolation-test").apply { deleteRecursively() }
+        val content = FileAttachmentContentStore(root, testDispatchers)
+        try {
+            val repository = RoomNotesRepository(database.notesDao(), content)
+            val accountA = AccountKey("account-a")
+            val accountB = AccountKey("account-b")
+            val noteAId = NoteId("note-a")
+            val noteBId = NoteId("note-b")
+            val itemId = ContentItemId("image")
+            val attachmentAId = AttachmentId("attachment-a")
+            val attachmentBId = AttachmentId("attachment-b")
+            val attachmentA = AttachmentMetadata(attachmentAId, noteAId, itemId, "a.png", "image/png", 3)
+            val attachmentB = AttachmentMetadata(attachmentBId, noteBId, itemId, "b.png", "image/png", 3)
+            content.put(accountA, attachmentA, binarySourceOf(byteArrayOf(1, 2, 3)))
+            content.put(accountB, attachmentB, binarySourceOf(byteArrayOf(4, 5, 6)))
+            val noteA = Note(
+                id = noteAId, accountKey = accountA, title = "A",
+                contentItems = listOf(ContentItem.Image(itemId, attachmentAId)),
+                attachments = listOf(attachmentA),
+                createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH,
+            )
+            val noteB = Note(
+                id = noteBId, accountKey = accountB, title = "B",
+                contentItems = listOf(ContentItem.Image(itemId, attachmentBId)),
+                attachments = listOf(attachmentB),
+                createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH,
+            )
+
+            repository.save(noteA)
+            repository.save(noteB)
+            repository.delete(accountA, noteAId)
+
+            assertEquals(true, content.open(accountA, attachmentAId) != null)
+            assertEquals(true, content.open(accountB, attachmentBId) != null)
+        } finally {
+            database.close()
+            root.deleteRecursively()
         }
     }
 }

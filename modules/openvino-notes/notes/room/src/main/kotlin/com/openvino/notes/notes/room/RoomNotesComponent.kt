@@ -116,6 +116,17 @@ internal interface NotesDao {
     @Query("DELETE FROM note_outbox WHERE accountKey = :accountKey AND changeId IN (:changeIds)")
     suspend fun acknowledge(accountKey: String, changeIds: Set<String>)
 
+    @Query("""
+    SELECT EXISTS(
+        SELECT 1 FROM notes
+        WHERE accountKey = :accountKey AND attachments LIKE '%' || :attachmentId || '%'
+        UNION ALL
+        SELECT 1 FROM note_outbox
+        WHERE accountKey = :accountKey AND attachments LIKE '%' || :attachmentId || '%'
+    )
+""")
+    suspend fun hasAttachmentReferences(accountKey: String, attachmentId: String): Boolean
+
     @Transaction
     suspend fun saveLocally(note: NoteEntity, outbox: OutboxEntity) {
         upsert(note)
@@ -182,7 +193,11 @@ internal class RoomNotesRepository(
         previous?.attachments
             ?.map(AttachmentMetadata::id)
             ?.filter { previousId -> note.attachments.none { it.id == previousId } }
-            ?.forEach { attachmentContent.delete(note.accountKey, it) }
+            ?.forEach { orphanId ->
+                if (!dao.hasAttachmentReferences(note.accountKey.value, orphanId.value)) {
+                    attachmentContent.delete(note.accountKey, orphanId)
+                }
+            }
     }
 
     override suspend fun delete(accountKey: AccountKey, id: NoteId): Boolean {
@@ -207,7 +222,13 @@ internal class RoomNotesRepository(
                 createdAtMillis = null,
             ),
         )
-        if (removed) previous?.attachments?.forEach { attachmentContent.delete(accountKey, it.id) }
+        if (removed) {
+            previous?.attachments?.forEach { att ->
+                if (!dao.hasAttachmentReferences(accountKey.value, att.id.value)) {
+                    attachmentContent.delete(accountKey, att.id)
+                }
+            }
+        }
         return removed
     }
 
@@ -241,7 +262,11 @@ internal class RoomNotesRepository(
             previous?.attachments
                 ?.map(AttachmentMetadata::id)
                 ?.filter { previousId -> change.note.attachments.none { it.id == previousId } }
-                ?.forEach { attachmentContent.delete(accountKey, it) }
+                ?.forEach { orphanId ->
+                    if (!dao.hasAttachmentReferences(accountKey.value, orphanId.value)) {
+                        attachmentContent.delete(accountKey, orphanId)
+                    }
+                }
             RemoteApplyResult.Applied(change.note.id, change.revision)
         } else {
             RemoteApplyResult.Conflict(change.note.id, localRevision(accountKey, change.note.id), change.revision)
@@ -254,7 +279,11 @@ internal class RoomNotesRepository(
     ): RemoteApplyResult {
         val previous = dao.find(accountKey.value, change.noteId.value)?.toApi()
         return if (dao.applyRemoteTombstone(accountKey.value, change.noteId.value, change.revision.value)) {
-            previous?.attachments?.forEach { attachmentContent.delete(accountKey, it.id) }
+            previous?.attachments?.forEach { att ->
+                if (!dao.hasAttachmentReferences(accountKey.value, att.id.value)) {
+                    attachmentContent.delete(accountKey, att.id)
+                }
+            }
             RemoteApplyResult.TombstoneApplied(change.noteId, change.revision)
         } else {
             RemoteApplyResult.Conflict(change.noteId, localRevision(accountKey, change.noteId), change.revision)
