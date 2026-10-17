@@ -28,6 +28,10 @@
   color: "#d3d3d3"
   description: "OpenVINO FlashOCC module (modules/openvino_flashocc)"
 
+- name: "category: hggd"
+  color: "#d3d3d3"
+  description: "OpenVINO HGGD module (modules/openvino_hggd)"
+
 - name: "category: build"
   color: "#d3d3d3"
   description: "OpenVINO cmake script / infra"
