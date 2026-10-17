@@ -1,0 +1,49 @@
+// Copyright (C) 2025 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+#pragma once
+
+#include <cstddef>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "openvino/core/model.hpp"
+#include "common/gfx_activation.hpp"
+#include "runtime/gfx_batchnorm.hpp"
+#include "common/gfx_bias.hpp"
+
+namespace ov {
+namespace gfx_plugin {
+
+struct FusionConfig {
+    bool enable_fusion = true;
+    bool debug_dump_ir = false;
+    bool enable_attention_fusion = true;
+    bool enable_vendor_attention_fusion = false;
+    bool enable_conv_activation_fusion = true;
+    bool enable_conv_swish_fusion = true;
+};
+
+struct FusionGroup {
+    std::vector<size_t> node_indices;
+    std::optional<ActivationKind> activation;
+    float activation_alpha = 0.0f;
+    std::optional<ActivationKind> input_activation;
+    float input_activation_alpha = 0.0f;
+    size_t input_activation_input = 0;
+    std::optional<BiasParams> bias;
+    std::optional<BatchNormParams> batchnorm;
+    std::string kind;  // e.g. "ConvRelu"
+};
+
+struct FusionPlan {
+    std::vector<FusionGroup> groups;
+};
+
+FusionPlan build_fusion_plan(const std::shared_ptr<const ov::Model>& model,
+                             const FusionConfig& config);
+
+}  // namespace gfx_plugin
+}  // namespace ov

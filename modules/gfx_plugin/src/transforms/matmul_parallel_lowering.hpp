@@ -1,0 +1,14 @@
+// Copyright (C) 2025 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+#pragma once
+
+#include "mlir/IR/BuiltinOps.h"
+
+namespace ov {
+namespace gfx_plugin {
+
+void run_matmul_parallel_lowering(mlir::ModuleOp module);
+
+}  // namespace gfx_plugin
+}  // namespace ov

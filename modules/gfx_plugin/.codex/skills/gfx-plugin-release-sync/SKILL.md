@@ -1,0 +1,97 @@
+---
+name: gfx-plugin-release-sync
+description: Use when a GFX plugin task reaches commit, push, branch, or PR stage and the same plugin change set must be provided both in openvino_contrib/modules/gfx_plugin and in the mirrored ov-ext-labs/gfx-plugin repository.
+---
+
+# GFX Plugin Release Sync
+
+This skill is for commit/push/release workflow on the mirrored GFX plugin repositories.
+
+## Use This Skill When
+
+- The user asks to commit, push, or prepare a PR for `gfx_plugin`.
+- A completed plugin change must be published in both repositories.
+- The task mentions the mirror repository `https://github.com/ov-ext-labs/gfx-plugin`.
+
+## Mirrored Publication Rule
+
+Unless the user explicitly says otherwise, treat dual publication as required:
+
+1. `openvino_contrib/modules/gfx_plugin`
+2. `ov-ext-labs/gfx-plugin` on the verified mirror publication branch
+
+The intended plugin content should stay identical across both publication targets.
+
+## Workflow
+
+### 1. Confirm scope locally
+
+- Check tracked modifications in `modules/gfx_plugin`.
+- Exclude local-use artifacts such as:
+  - `AGENTS.md`
+  - `__pycache__/`
+  - `.DS_Store`
+  - backup files such as `*.backup`
+  - local reports, JSON dumps, temporary files, and machine-local helper outputs
+- If the plugin tree lacks repo-local ignore rules for generic junk, add them as part of the publication cleanup instead of staging the junk itself.
+
+### 2. Build the staged set intentionally
+
+- Stage only the plugin code and documentation that belong to the change.
+- Verify the cached set before commit.
+- For docs/security publication tasks, do not run build or test targets unless
+  the user explicitly requests them. Prefer `git diff --check`, security grep,
+  and staged diff review for this workflow.
+
+### 3. Commit clearly
+
+- Use the commit message requested by the user when one is provided; otherwise
+  use a concise external-review-friendly subject.
+- Keep commit scope coherent.
+- Mention docs in the same commit when they were updated to match behavior.
+
+### 4. Push to both publication targets
+
+- Push the `openvino_contrib` PR branch explicitly. For the current public PR
+  flow this is usually `allnes:an/gfx-plugin`.
+- Then apply the same plugin change set to the mirrored `ov-ext-labs/gfx-plugin`
+  repository.
+- Check the mirror heads before pushing. Prefer `an/gfx-plugin` when that
+  branch exists for the current publication flow. Push to `main` only after
+  verifying that `main` is the intended mirror target and the history is
+  compatible.
+- Require a fast-forward or otherwise compatible history. Do not force push
+  unless the user explicitly authorizes that exact operation.
+- If submodules are part of the change set, keep path mapping explicit:
+  `openvino_contrib` uses `modules/gfx_plugin/third_party/...`, while the
+  mirror root uses `third_party/...`. Stage submodule gitlinks and `.gitmodules`
+  deliberately in both repositories.
+
+If the mirrored repository is not present locally, first discover whether:
+
+- there is a local clone elsewhere on disk
+- a second remote should be added
+- branch mapping must be resolved
+
+Do not silently skip the mirror step when the task clearly reached publish stage. Surface the missing local mirror or missing branch mapping.
+
+## Commit Hygiene
+
+- Never include `AGENTS.md`.
+- Never include local profiling artifacts, compare outputs, caches, or platform staging directories.
+- Keep commit messages understandable to external reviewers.
+
+## PR Guidance
+
+When asked for PR text:
+
+- describe the plugin behavior change, not just filenames
+- mention affected backend(s)
+- mention test coverage or docs sync
+- frame the module as `GFX` OpenVINO plugin code, not a generic helper patch
+
+## Output Expectations
+
+- Report the final commit hash or hashes.
+- State what was intentionally excluded from the commit.
+- If mirror publication could not be completed, say exactly what was missing.
