@@ -1,0 +1,58 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# These are OpenVINO Contrib project-policy inputs, not universal legal conclusions.
+rules:
+  - id: LIC-UNKNOWN-DISTRIBUTED-001
+    when:
+      license_class: unknown
+      distribution: DISTRIBUTED
+    decision: FAIL
+  - id: LIC-UNKNOWN-001
+    when:
+      license_class: unknown
+    decision: REVIEW
+  - id: LIC-STRONG-COPYLEFT-DISTRIBUTED-001
+    when:
+      license_class: strong_copyleft
+      relationship:
+        - STATIC_LINK
+        - VENDORED_SOURCE
+        - BUNDLED_BINARY
+      distribution: DISTRIBUTED
+    decision: FAIL
+  - id: LIC-STRONG-COPYLEFT-BUILD-001
+    when:
+      license_class: strong_copyleft
+      relationship:
+        - BUILD_TOOL
+        - CODE_GENERATOR
+        - TEST_ONLY
+        - DEV_ONLY
+      distribution: NOT_DISTRIBUTED
+    decision: PASS
+  - id: LIC-STRONG-COPYLEFT-001
+    when:
+      license_class: strong_copyleft
+    decision: REVIEW
+  - id: LIC-WEAK-COPYLEFT-BUILD-001
+    when:
+      license_class: weak_copyleft
+      relationship:
+        - BUILD_TOOL
+        - CODE_GENERATOR
+        - TEST_ONLY
+        - DEV_ONLY
+      distribution: NOT_DISTRIBUTED
+    decision: PASS
+  - id: LIC-WEAK-COPYLEFT-001
+    when:
+      license_class: weak_copyleft
+    decision: REVIEW
+  - id: LIC-PERMISSIVE-001
+    when:
+      license_class: permissive
+    decision: PASS
+  - id: LIC-UNCLASSIFIED-001
+    when: {}
+    decision: REVIEW

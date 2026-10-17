@@ -1,0 +1,21 @@
+{
+  "ort_version": "50.0.0",
+  "analyzer": {
+    "result": {
+      "packages": [
+        {
+          "id": {
+            "type": "PyPI",
+            "namespace": "",
+            "name": "example-runtime",
+            "version": "1.2.3"
+          },
+          "purl": "pkg:pypi/example-runtime@1.2.3",
+          "declared_licenses_processed": {
+            "spdx_expression": "MIT OR Apache-2.0"
+          }
+        }
+      ]
+    }
+  }
+}

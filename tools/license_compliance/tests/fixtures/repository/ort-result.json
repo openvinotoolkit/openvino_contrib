@@ -1,0 +1,21 @@
+{
+  "ort_version": "50.0.0",
+  "analyzer": {
+    "result": {
+      "packages": [
+        {
+          "id": {
+            "type": "Generic",
+            "namespace": "example",
+            "name": "permissive",
+            "version": "1.0.0"
+          },
+          "purl": "pkg:github/example/permissive@1.0.0",
+          "declared_licenses_processed": {
+            "spdx_expression": "MIT"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openvinotoolkit.org/schemas/openvino-contrib-license-inventory-v1.json",
+  "title": "OpenVINO Contrib license discovery inventory",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "repository",
+    "components",
+    "discoveries",
+    "findings",
+    "providers"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "repository": {
+      "type": "object",
+      "required": ["path", "revision", "base_ref", "head_ref", "impacted_scopes"],
+      "properties": {
+        "path": {"type": "string"},
+        "revision": {"type": ["string", "null"]},
+        "base_ref": {"type": ["string", "null"]},
+        "head_ref": {"type": ["string", "null"]},
+        "impacted_scopes": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": false
+    },
+    "components": {"type": "array", "items": {"$ref": "#/$defs/component"}},
+    "discoveries": {"type": "array", "items": {"$ref": "#/$defs/discovery"}},
+    "findings": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+    "providers": {"type": "array", "items": {"$ref": "#/$defs/provider"}}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "required": ["kind", "source", "path", "value", "confidence", "details"],
+      "properties": {
+        "kind": {"type": "string"},
+        "source": {"type": "string"},
+        "path": {"type": ["string", "null"]},
+        "value": {"type": ["string", "null"]},
+        "confidence": {"enum": ["HIGH", "MEDIUM", "LOW"]},
+        "details": {"type": "object", "additionalProperties": {"type": "string"}}
+      },
+      "additionalProperties": false
+    },
+    "component": {
+      "type": "object",
+      "required": [
+        "id", "name", "version", "module", "paths", "declared_license",
+        "detected_licenses", "relationships", "evidence", "distribution", "obligations", "details"
+      ],
+      "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "version": {"type": ["string", "null"]},
+        "module": {"type": ["string", "null"]},
+        "paths": {"type": "array", "items": {"type": "string"}},
+        "declared_license": {"type": ["string", "null"]},
+        "detected_licenses": {"type": "array", "items": {"type": "string"}},
+        "relationships": {"type": "array", "items": {"type": "string"}},
+        "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
+        "distribution": {"enum": ["DISTRIBUTED", "NOT_DISTRIBUTED", "UNKNOWN"]},
+        "obligations": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "RETAIN_COPYRIGHT", "RETAIN_LICENSE_TEXT", "RETAIN_NOTICE",
+              "MARK_MODIFICATIONS", "PROVIDE_SOURCE", "PROVIDE_SOURCE_OFFER",
+              "SEPARATE_LICENSE_TERMS", "NO_TRADEDOWN", "MANUAL_REVIEW"
+            ]
+          }
+        },
+        "details": {"type": "object", "additionalProperties": {"type": "string"}}
+      },
+      "additionalProperties": false
+    },
+    "discovery": {
+      "type": "object",
+      "required": ["kind", "path", "module", "ecosystem", "details"],
+      "properties": {
+        "kind": {"type": "string"},
+        "path": {"type": "string"},
+        "module": {"type": ["string", "null"]},
+        "ecosystem": {"type": ["string", "null"]},
+        "details": {"type": "object", "additionalProperties": {"type": "string"}}
+      },
+      "additionalProperties": false
+    },
+    "finding": {
+      "type": "object",
+      "required": [
+        "id", "code", "severity", "decision", "component_id", "message",
+        "evidence", "remediation", "suppressed", "suppression_reason"
+      ],
+      "properties": {
+        "id": {"type": "string"},
+        "code": {"type": "string"},
+        "severity": {"enum": ["INFO", "WARNING", "ERROR"]},
+        "decision": {"enum": ["PASS", "REVIEW", "FAIL"]},
+        "component_id": {"type": ["string", "null"]},
+        "message": {"type": "string"},
+        "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
+        "remediation": {"type": "array", "items": {"type": "string"}},
+        "suppressed": {"type": "boolean"},
+        "suppression_reason": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "provider": {
+      "type": "object",
+      "required": ["name", "version", "status"],
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"},
+        "status": {"enum": ["SUCCESS", "FAILED", "SKIPPED"]}
+      },
+      "additionalProperties": false
+    }
+  }
+}
