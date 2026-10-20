@@ -6,6 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
     <application
         android:name=".OpenVinoNotesApplication"
+        android:allowBackup="false"
         android:icon="@drawable/ic_launcher"
         android:label="OpenVINO Notes"
         android:supportsRtl="true"
