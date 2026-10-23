@@ -7,7 +7,10 @@ import com.openvino.notes.kernel.AccountKey
 import java.io.ByteArrayOutputStream
 import java.time.Instant
 
-class FakeRemoteStore : RemoteObjectStore, RemoteChangeFeed, ResumableTransferClient {
+class FakeRemoteStore :
+    RemoteObjectStore,
+    RemoteChangeFeed,
+    ResumableTransferClient {
     val objects = linkedMapOf<Pair<AccountKey, RemoteObjectId>, RemoteObject>()
     private val revisions = mutableMapOf<Pair<AccountKey, RemoteObjectId>, Long>()
     private val uploads = mutableMapOf<TransferSessionId, FakeUpload>()
@@ -15,11 +18,12 @@ class FakeRemoteStore : RemoteObjectStore, RemoteChangeFeed, ResumableTransferCl
     var changeOutcome: RemoteOutcome<RemoteChangePage> = RemoteOutcome.Success(RemoteChangePage(emptyList(), null))
     var startCursorOutcome: RemoteOutcome<RemoteCursor> = RemoteOutcome.Success(RemoteCursor("0"))
 
-    override suspend fun list(accountKey: AccountKey): RemoteOutcome<List<RemoteObjectMetadata>> = RemoteOutcome.Success(
-        objects.filterKeys { it.first == accountKey }.map { (key, value) ->
-            value.metadata(RemoteRevision(revisions.getValue(key).toString()))
-        },
-    )
+    override suspend fun list(accountKey: AccountKey): RemoteOutcome<List<RemoteObjectMetadata>> =
+        RemoteOutcome.Success(
+            objects.filterKeys { it.first == accountKey }.map { (key, value) ->
+                value.metadata(RemoteRevision(revisions.getValue(key).toString()))
+            },
+        )
 
     override suspend fun put(
         accountKey: AccountKey,
@@ -37,7 +41,10 @@ class FakeRemoteStore : RemoteObjectStore, RemoteChangeFeed, ResumableTransferCl
         return RemoteOutcome.Success(objectValue.metadata(RemoteRevision(revision.toString())))
     }
 
-    override suspend fun get(accountKey: AccountKey, id: RemoteObjectId): RemoteOutcome<RemoteObject> =
+    override suspend fun get(
+        accountKey: AccountKey,
+        id: RemoteObjectId,
+    ): RemoteOutcome<RemoteObject> =
         objects[accountKey to id]?.let { RemoteOutcome.Success(it) }
             ?: RemoteOutcome.Failure(RemoteError(RemoteErrorCode.NOT_FOUND, "fake.not_found"))
 
@@ -51,8 +58,9 @@ class FakeRemoteStore : RemoteObjectStore, RemoteChangeFeed, ResumableTransferCl
         if (expectedRevision != null && expectedRevision.value != current?.toString()) {
             return conflict()
         }
-        val objectValue = objects.remove(key)
-            ?: return RemoteOutcome.Failure(RemoteError(RemoteErrorCode.NOT_FOUND, "fake.not_found"))
+        val objectValue =
+            objects.remove(key)
+                ?: return RemoteOutcome.Failure(RemoteError(RemoteErrorCode.NOT_FOUND, "fake.not_found"))
         val revision = (current ?: 0L) + 1L
         revisions[key] = revision
         return RemoteOutcome.Success(objectValue.metadata(RemoteRevision(revision.toString()), deleted = true))
@@ -60,18 +68,22 @@ class FakeRemoteStore : RemoteObjectStore, RemoteChangeFeed, ResumableTransferCl
 
     override suspend fun startCursor(accountKey: AccountKey): RemoteOutcome<RemoteCursor> = startCursorOutcome
 
-    override suspend fun changes(accountKey: AccountKey, cursor: RemoteCursor): RemoteOutcome<RemoteChangePage> = changeOutcome
+    override suspend fun changes(
+        accountKey: AccountKey,
+        cursor: RemoteCursor,
+    ): RemoteOutcome<RemoteChangePage> = changeOutcome
 
     override suspend fun startUpload(
         accountKey: AccountKey,
         descriptor: UploadDescriptor,
         expectedRevision: RemoteRevision?,
     ): RemoteOutcome<UploadSession> {
-        val session = UploadSession(
-            TransferSessionId("fake-upload-${++nextUploadId}"),
-            descriptor.objectId,
-            nextOffset = 0,
-        )
+        val session =
+            UploadSession(
+                TransferSessionId("fake-upload-${++nextUploadId}"),
+                descriptor.objectId,
+                nextOffset = 0,
+            )
         uploads[session.id] = FakeUpload(accountKey, descriptor, expectedRevision, session)
         return RemoteOutcome.Success(session)
     }
@@ -79,19 +91,21 @@ class FakeRemoteStore : RemoteObjectStore, RemoteChangeFeed, ResumableTransferCl
     override suspend fun resumeUpload(
         accountKey: AccountKey,
         sessionId: TransferSessionId,
-    ): RemoteOutcome<UploadSession> = uploads[sessionId]
-        ?.takeIf { it.accountKey == accountKey }
-        ?.session
-        ?.let { RemoteOutcome.Success(it) }
-        ?: notFound("fake.upload_session_not_found")
+    ): RemoteOutcome<UploadSession> =
+        uploads[sessionId]
+            ?.takeIf { it.accountKey == accountKey }
+            ?.session
+            ?.let { RemoteOutcome.Success(it) }
+            ?: notFound("fake.upload_session_not_found")
 
     override suspend fun uploadChunk(
         accountKey: AccountKey,
         sessionId: TransferSessionId,
         chunk: UploadChunk,
     ): RemoteOutcome<UploadChunkOutcome> {
-        val upload = uploads[sessionId]?.takeIf { it.accountKey == accountKey }
-            ?: return notFound("fake.upload_session_not_found")
+        val upload =
+            uploads[sessionId]?.takeIf { it.accountKey == accountKey }
+                ?: return notFound("fake.upload_session_not_found")
         if (chunk.offset != upload.session.nextOffset) return invalidTransfer("fake.upload_offset_mismatch")
         if (chunk.bytes.size.toLong() > upload.descriptor.sizeBytes - chunk.offset) {
             return invalidTransfer("fake.upload_exceeds_declared_size")
@@ -102,15 +116,19 @@ class FakeRemoteStore : RemoteObjectStore, RemoteChangeFeed, ResumableTransferCl
         if (upload.session.nextOffset != upload.descriptor.sizeBytes) {
             return invalidTransfer("fake.upload_incomplete")
         }
-        val objectValue = RemoteObject(
-            id = upload.descriptor.objectId,
-            name = upload.descriptor.name,
-            mediaType = upload.descriptor.mediaType,
-            modifiedAt = Instant.now(),
-            bytes = upload.content.toByteArray(),
-        )
+        val objectValue =
+            RemoteObject(
+                id = upload.descriptor.objectId,
+                name = upload.descriptor.name,
+                mediaType = upload.descriptor.mediaType,
+                modifiedAt = Instant.now(),
+                bytes = upload.content.toByteArray(),
+            )
         return when (val outcome = put(accountKey, objectValue, upload.expectedRevision)) {
-            is RemoteOutcome.Failure -> outcome
+            is RemoteOutcome.Failure -> {
+                outcome
+            }
+
             is RemoteOutcome.Success -> {
                 uploads.remove(sessionId)
                 RemoteOutcome.Success(UploadChunkOutcome.Completed(outcome.value))
@@ -123,8 +141,9 @@ class FakeRemoteStore : RemoteObjectStore, RemoteChangeFeed, ResumableTransferCl
         id: RemoteObjectId,
         sink: RemoteByteSink,
     ): RemoteOutcome<RemoteObjectMetadata> {
-        val value = objects[accountKey to id]
-            ?: return RemoteOutcome.Failure(RemoteError(RemoteErrorCode.NOT_FOUND, "fake.not_found"))
+        val value =
+            objects[accountKey to id]
+                ?: return RemoteOutcome.Failure(RemoteError(RemoteErrorCode.NOT_FOUND, "fake.not_found"))
         var offset = 0
         while (offset < value.bytes.size) {
             val end = minOf(value.bytes.size, offset + TRANSFER_CHUNK_BYTES)
@@ -134,16 +153,17 @@ class FakeRemoteStore : RemoteObjectStore, RemoteChangeFeed, ResumableTransferCl
         return RemoteOutcome.Success(value.metadata(RemoteRevision(revisions.getValue(accountKey to id).toString())))
     }
 
-    private fun conflict(): RemoteOutcome.Failure =
-        RemoteOutcome.Failure(RemoteError(RemoteErrorCode.CONFLICT, "fake.revision_conflict"))
+    private fun conflict(): RemoteOutcome.Failure = RemoteOutcome.Failure(RemoteError(RemoteErrorCode.CONFLICT, "fake.revision_conflict"))
 
-    private fun notFound(code: String): RemoteOutcome.Failure =
-        RemoteOutcome.Failure(RemoteError(RemoteErrorCode.NOT_FOUND, code))
+    private fun notFound(code: String): RemoteOutcome.Failure = RemoteOutcome.Failure(RemoteError(RemoteErrorCode.NOT_FOUND, code))
 
     private fun invalidTransfer(code: String): RemoteOutcome.Failure =
         RemoteOutcome.Failure(RemoteError(RemoteErrorCode.INVALID_RESPONSE, code))
 
-    private fun RemoteObject.metadata(revision: RemoteRevision, deleted: Boolean = false) = RemoteObjectMetadata(
+    private fun RemoteObject.metadata(
+        revision: RemoteRevision,
+        deleted: Boolean = false,
+    ) = RemoteObjectMetadata(
         id = id,
         name = name,
         mediaType = mediaType,
