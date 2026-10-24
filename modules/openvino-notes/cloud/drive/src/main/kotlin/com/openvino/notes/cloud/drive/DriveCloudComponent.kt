@@ -14,7 +14,6 @@ import com.openvino.notes.cloud.api.RemoteObjectId
 import com.openvino.notes.cloud.api.RemoteObjectMetadata
 import com.openvino.notes.cloud.api.RemoteObjectStore
 import com.openvino.notes.cloud.api.RemoteOutcome
-import com.openvino.notes.cloud.api.RemoteByteSink
 import com.openvino.notes.cloud.api.ResumableTransferClient
 import com.openvino.notes.cloud.api.ResumableUploadState
 import com.openvino.notes.cloud.api.TransferSessionId
