@@ -96,8 +96,7 @@ class FakeRemoteStore :
         val upload = uploads[sessionId]?.takeIf { it.accountKey == accountKey }
             ?: return notFound("fake.upload_session_not_found")
 
-        val expiresAt = upload.session.expiresAt
-        if (expiresAt != null && Instant.now().isAfter(expiresAt) || upload.isExpired) {
+        if (upload.isSessionExpired) {
             return RemoteOutcome.Success(ResumableUploadState.Expired(upload.session))
         }
 
@@ -114,9 +113,18 @@ class FakeRemoteStore :
         sessionId: TransferSessionId,
         chunk: UploadChunk,
     ): RemoteOutcome<UploadChunkOutcome> {
-        val upload =
-            uploads[sessionId]?.takeIf { it.accountKey == accountKey }
-                ?: return notFound("fake.upload_session_not_found")
+        val upload = uploads[sessionId]?.takeIf { it.accountKey == accountKey }
+            ?: return notFound("fake.upload_session_not_found")
+
+        if (upload.isSessionExpired) {
+            return RemoteOutcome.Failure(RemoteError(RemoteErrorCode.NOT_AUTHORIZED, "Session expired"))
+        }
+
+        val completed = upload.completedMetadata
+        if (completed != null) {
+            return RemoteOutcome.Success(UploadChunkOutcome.Completed(completed))
+        }
+
         if (chunk.offset != upload.session.nextOffset) return invalidTransfer("fake.upload_offset_mismatch")
         if (chunk.bytes.size.toLong() > upload.descriptor.sizeBytes - chunk.offset) {
             return invalidTransfer("fake.upload_exceeds_declared_size")
@@ -189,12 +197,16 @@ class FakeRemoteStore :
         val expectedRevision: RemoteRevision?,
         var session: UploadSession,
         var completedMetadata: RemoteObjectMetadata? = null,
-        var isExpired: Boolean = false,
         val content: ByteArrayOutputStream = ByteArrayOutputStream(),
-    )
+    ) {
+        val isSessionExpired: Boolean
+            get() = session.expiresAt?.let { Instant.now().isAfter(it) } == true
+    }
 
     fun expireSession(sessionId: TransferSessionId) {
-        uploads[sessionId]?.isExpired = true
+        uploads[sessionId]?.let { upload ->
+            upload.session = upload.session.copy(expiresAt = Instant.now().minusSeconds(60))
+        }
     }
 
     private companion object {
