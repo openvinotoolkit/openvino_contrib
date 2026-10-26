@@ -95,6 +95,20 @@ Install it on a connected target with:
   "$OPENVINO_NOTES_STATE_ROOT/gradle/app/outputs/apk/debug/app-debug.apk"
 ```
 
+## Gradle Dependency Verification
+
+Gradle verifies SHA-256 hashes in `gradle/verification-metadata.xml`. Regenerate
+and review them after dependency changes:
+
+```sh
+java -classpath gradle/wrapper/gradle-wrapper.jar \
+  org.gradle.wrapper.GradleWrapperMain \
+  --project-cache-dir "$OPENVINO_NOTES_STATE_ROOT/project-cache" \
+  -PopenvinoNotesBuildRoot="$OPENVINO_NOTES_STATE_ROOT/gradle" \
+  -Pkotlin.project.persistent.dir="$OPENVINO_NOTES_STATE_ROOT/kotlin-project" \
+  --write-verification-metadata sha256 help
+```
+
 ## Development Rules
 
 - Use `com.openvino.notes` as the base package, Android namespace, and application identifier.
