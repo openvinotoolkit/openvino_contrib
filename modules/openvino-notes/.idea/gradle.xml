@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="GradleMigrationSettings" migrationVersion="1" />
+  <component name="GradleSettings">
+    <option name="linkedExternalProjectsSettings">
+      <GradleProjectSettings>
+        <option name="testRunner" value="CHOOSE_PER_TEST" />
+        <option name="externalProjectPath" value="$PROJECT_DIR$" />
+        <option name="modules">
+          <set>
+            <option value="$PROJECT_DIR$" />
+            <option value="$PROJECT_DIR$/ai" />
+            <option value="$PROJECT_DIR$/ai/image-api" />
+            <option value="$PROJECT_DIR$/ai/image-openvino" />
+            <option value="$PROJECT_DIR$/ai/text-api" />
+            <option value="$PROJECT_DIR$/ai/text-openvino" />
+            <option value="$PROJECT_DIR$/app" />
+            <option value="$PROJECT_DIR$/assistant" />
+            <option value="$PROJECT_DIR$/assistant/api" />
+            <option value="$PROJECT_DIR$/assistant/core" />
+            <option value="$PROJECT_DIR$/cloud" />
+            <option value="$PROJECT_DIR$/cloud/api" />
+            <option value="$PROJECT_DIR$/cloud/drive" />
+            <option value="$PROJECT_DIR$/identity" />
+            <option value="$PROJECT_DIR$/identity/api" />
+            <option value="$PROJECT_DIR$/identity/google" />
+            <option value="$PROJECT_DIR$/kernel" />
+            <option value="$PROJECT_DIR$/notes" />
+            <option value="$PROJECT_DIR$/notes/api" />
+            <option value="$PROJECT_DIR$/notes/core" />
+            <option value="$PROJECT_DIR$/notes/room" />
+            <option value="$PROJECT_DIR$/settings" />
+            <option value="$PROJECT_DIR$/settings/api" />
+            <option value="$PROJECT_DIR$/settings/datastore" />
+            <option value="$PROJECT_DIR$/sync" />
+            <option value="$PROJECT_DIR$/sync/android" />
+            <option value="$PROJECT_DIR$/sync/api" />
+            <option value="$PROJECT_DIR$/sync/core" />
+            <option value="$PROJECT_DIR$/view" />
+          </set>
+        </option>
+      </GradleProjectSettings>
+    </option>
+  </component>
+</project>

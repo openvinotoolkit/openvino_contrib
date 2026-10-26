@@ -19,10 +19,10 @@ import com.openvino.notes.notes.api.port.LocalChangeKind
 import com.openvino.notes.notes.api.port.LocalFolderChange
 import com.openvino.notes.notes.api.port.RemoteFolderChange
 import com.openvino.notes.notes.api.port.RemoteRevision
-import java.time.Instant
-import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.time.Instant
+import java.util.UUID
 
 @Entity(tableName = "folders", primaryKeys = ["accountKey", "id"])
 internal data class FolderEntity(
@@ -58,10 +58,16 @@ internal interface FolderDao {
     fun observe(accountKey: String): Flow<List<FolderEntity>>
 
     @Query("SELECT * FROM folders WHERE accountKey = :accountKey AND id = :id")
-    suspend fun find(accountKey: String, id: String): FolderEntity?
+    suspend fun find(
+        accountKey: String,
+        id: String,
+    ): FolderEntity?
 
     @Query("SELECT * FROM folders WHERE accountKey = :accountKey AND name = :name COLLATE NOCASE LIMIT 1")
-    suspend fun findByName(accountKey: String, name: String): FolderEntity?
+    suspend fun findByName(
+        accountKey: String,
+        name: String,
+    ): FolderEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: FolderEntity)
@@ -73,31 +79,56 @@ internal interface FolderDao {
     suspend fun saveRevision(entity: FolderRemoteRevisionEntity)
 
     @Query("SELECT * FROM folder_remote_revision WHERE accountKey = :accountKey AND folderId = :folderId")
-    suspend fun revision(accountKey: String, folderId: String): FolderRemoteRevisionEntity?
+    suspend fun revision(
+        accountKey: String,
+        folderId: String,
+    ): FolderRemoteRevisionEntity?
 
     @Query("DELETE FROM folders WHERE accountKey = :accountKey AND id = :id")
-    suspend fun deleteFolder(accountKey: String, id: String): Int
+    suspend fun deleteFolder(
+        accountKey: String,
+        id: String,
+    ): Int
 
     @Query("SELECT COUNT(*) FROM notes WHERE accountKey = :accountKey AND folderId = :folderId")
-    suspend fun noteCount(accountKey: String, folderId: String): Int
+    suspend fun noteCount(
+        accountKey: String,
+        folderId: String,
+    ): Int
 
     @Query("SELECT COUNT(*) FROM folder_outbox WHERE accountKey = :accountKey AND folderId = :folderId")
-    suspend fun pendingCount(accountKey: String, folderId: String): Int
+    suspend fun pendingCount(
+        accountKey: String,
+        folderId: String,
+    ): Int
 
     @Query("SELECT * FROM folder_outbox WHERE accountKey = :accountKey ORDER BY changedAtMillis LIMIT :limit")
-    suspend fun pending(accountKey: String, limit: Int): List<FolderOutboxEntity>
+    suspend fun pending(
+        accountKey: String,
+        limit: Int,
+    ): List<FolderOutboxEntity>
 
     @Query("DELETE FROM folder_outbox WHERE accountKey = :accountKey AND changeId IN (:changeIds)")
-    suspend fun acknowledge(accountKey: String, changeIds: Set<String>)
+    suspend fun acknowledge(
+        accountKey: String,
+        changeIds: Set<String>,
+    )
 
     @Transaction
-    suspend fun saveLocally(folder: FolderEntity, outbox: FolderOutboxEntity) {
+    suspend fun saveLocally(
+        folder: FolderEntity,
+        outbox: FolderOutboxEntity,
+    ) {
         upsert(folder)
         addOutbox(outbox.copy(baseRevision = revision(folder.accountKey, folder.id)?.revision))
     }
 
     @Transaction
-    suspend fun deleteLocally(accountKey: String, id: String, outbox: FolderOutboxEntity): Boolean {
+    suspend fun deleteLocally(
+        accountKey: String,
+        id: String,
+        outbox: FolderOutboxEntity,
+    ): Boolean {
         if (noteCount(accountKey, id) > 0) return false
         val removed = deleteFolder(accountKey, id) > 0
         if (removed) addOutbox(outbox.copy(baseRevision = revision(accountKey, id)?.revision))
@@ -105,7 +136,10 @@ internal interface FolderDao {
     }
 
     @Transaction
-    suspend fun applyRemoteUpsert(folder: FolderEntity, remoteRevision: String): Boolean {
+    suspend fun applyRemoteUpsert(
+        folder: FolderEntity,
+        remoteRevision: String,
+    ): Boolean {
         if (pendingCount(folder.accountKey, folder.id) > 0) return false
         upsert(folder)
         saveRevision(FolderRemoteRevisionEntity(folder.accountKey, folder.id, remoteRevision))
@@ -113,7 +147,11 @@ internal interface FolderDao {
     }
 
     @Transaction
-    suspend fun applyRemoteTombstone(accountKey: String, folderId: String, remoteRevision: String): Boolean {
+    suspend fun applyRemoteTombstone(
+        accountKey: String,
+        folderId: String,
+        remoteRevision: String,
+    ): Boolean {
         if (pendingCount(accountKey, folderId) > 0 || noteCount(accountKey, folderId) > 0) return false
         deleteFolder(accountKey, folderId)
         saveRevision(FolderRemoteRevisionEntity(accountKey, folderId, remoteRevision))
@@ -121,55 +159,80 @@ internal interface FolderDao {
     }
 }
 
-internal class RoomFolderRepository(private val dao: FolderDao) : FolderRepository, FolderSyncPort {
+internal class RoomFolderRepository(
+    private val dao: FolderDao,
+) : FolderRepository,
+    FolderSyncPort {
     override fun observe(accountKey: AccountKey): Flow<List<Folder>> =
         dao.observe(accountKey.value).map { entities -> entities.map(FolderEntity::toApi) }
 
-    override suspend fun find(accountKey: AccountKey, id: FolderId): Folder? =
-        dao.find(accountKey.value, id.value)?.toApi()
+    override suspend fun find(
+        accountKey: AccountKey,
+        id: FolderId,
+    ): Folder? = dao.find(accountKey.value, id.value)?.toApi()
 
-    override suspend fun findByName(accountKey: AccountKey, name: String): Folder? =
-        dao.findByName(accountKey.value, name)?.toApi()
+    override suspend fun findByName(
+        accountKey: AccountKey,
+        name: String,
+    ): Folder? = dao.findByName(accountKey.value, name)?.toApi()
 
     override suspend fun save(folder: Folder) {
         dao.saveLocally(folder.toEntity(), folder.toOutbox(LocalChangeKind.UPSERT))
     }
 
-    override suspend fun delete(accountKey: AccountKey, id: FolderId): Boolean = dao.deleteLocally(
-        accountKey.value,
-        id.value,
-        FolderOutboxEntity(
-            accountKey = accountKey.value,
-            changeId = UUID.randomUUID().toString(),
-            folderId = id.value,
-            kind = LocalChangeKind.DELETE.name,
-            baseRevision = null,
-            changedAtMillis = System.currentTimeMillis(),
-            name = null,
-            createdAtMillis = null,
-        ),
-    )
+    override suspend fun delete(
+        accountKey: AccountKey,
+        id: FolderId,
+    ): Boolean =
+        dao.deleteLocally(
+            accountKey.value,
+            id.value,
+            FolderOutboxEntity(
+                accountKey = accountKey.value,
+                changeId = UUID.randomUUID().toString(),
+                folderId = id.value,
+                kind = LocalChangeKind.DELETE.name,
+                baseRevision = null,
+                changedAtMillis = System.currentTimeMillis(),
+                name = null,
+                createdAtMillis = null,
+            ),
+        )
 
-    override suspend fun pendingFolderChanges(accountKey: AccountKey, limit: Int): List<LocalFolderChange> =
-        dao.pending(accountKey.value, limit).map(FolderOutboxEntity::toApi)
+    override suspend fun pendingFolderChanges(
+        accountKey: AccountKey,
+        limit: Int,
+    ): List<LocalFolderChange> = dao.pending(accountKey.value, limit).map(FolderOutboxEntity::toApi)
 
-    override suspend fun acknowledgeFolderChanges(accountKey: AccountKey, changeIds: Set<String>) {
+    override suspend fun acknowledgeFolderChanges(
+        accountKey: AccountKey,
+        changeIds: Set<String>,
+    ) {
         if (changeIds.isNotEmpty()) dao.acknowledge(accountKey.value, changeIds)
     }
 
     override suspend fun applyRemoteFolders(
         accountKey: AccountKey,
         changes: List<RemoteFolderChange>,
-    ): List<FolderRemoteApplyResult> = changes.map { change ->
-        when (change) {
-            is RemoteFolderChange.Malformed -> FolderRemoteApplyResult.RejectedMalformed(
-                change.folderId,
-                change.diagnosticCode,
-            )
-            is RemoteFolderChange.Upsert -> applyUpsert(accountKey, change)
-            is RemoteFolderChange.Tombstone -> applyTombstone(accountKey, change)
+    ): List<FolderRemoteApplyResult> =
+        changes.map { change ->
+            when (change) {
+                is RemoteFolderChange.Malformed -> {
+                    FolderRemoteApplyResult.RejectedMalformed(
+                        change.folderId,
+                        change.diagnosticCode,
+                    )
+                }
+
+                is RemoteFolderChange.Upsert -> {
+                    applyUpsert(accountKey, change)
+                }
+
+                is RemoteFolderChange.Tombstone -> {
+                    applyTombstone(accountKey, change)
+                }
+            }
         }
-    }
 
     private suspend fun applyUpsert(
         accountKey: AccountKey,
@@ -192,62 +255,69 @@ internal class RoomFolderRepository(private val dao: FolderDao) : FolderReposito
     private suspend fun applyTombstone(
         accountKey: AccountKey,
         change: RemoteFolderChange.Tombstone,
-    ): FolderRemoteApplyResult = if (
-        dao.applyRemoteTombstone(accountKey.value, change.folderId.value, change.revision.value)
-    ) {
-        FolderRemoteApplyResult.TombstoneApplied(change.folderId, change.revision)
-    } else {
-        FolderRemoteApplyResult.Conflict(
-            change.folderId,
-            localRevision(accountKey, change.folderId),
-            change.revision,
-        )
-    }
+    ): FolderRemoteApplyResult =
+        if (
+            dao.applyRemoteTombstone(accountKey.value, change.folderId.value, change.revision.value)
+        ) {
+            FolderRemoteApplyResult.TombstoneApplied(change.folderId, change.revision)
+        } else {
+            FolderRemoteApplyResult.Conflict(
+                change.folderId,
+                localRevision(accountKey, change.folderId),
+                change.revision,
+            )
+        }
 
-    private suspend fun localRevision(accountKey: AccountKey, folderId: FolderId): RemoteRevision? =
-        dao.revision(accountKey.value, folderId.value)?.revision?.let(::RemoteRevision)
+    private suspend fun localRevision(
+        accountKey: AccountKey,
+        folderId: FolderId,
+    ): RemoteRevision? = dao.revision(accountKey.value, folderId.value)?.revision?.let(::RemoteRevision)
 }
 
-private fun Folder.toEntity() = FolderEntity(
-    accountKey = accountKey.value,
-    id = id.value,
-    name = name,
-    createdAtMillis = createdAt.toEpochMilli(),
-    updatedAtMillis = updatedAt.toEpochMilli(),
-)
+private fun Folder.toEntity() =
+    FolderEntity(
+        accountKey = accountKey.value,
+        id = id.value,
+        name = name,
+        createdAtMillis = createdAt.toEpochMilli(),
+        updatedAtMillis = updatedAt.toEpochMilli(),
+    )
 
-private fun FolderEntity.toApi() = Folder(
-    id = FolderId(id),
-    accountKey = AccountKey(accountKey),
-    name = name,
-    createdAt = Instant.ofEpochMilli(createdAtMillis),
-    updatedAt = Instant.ofEpochMilli(updatedAtMillis),
-)
+private fun FolderEntity.toApi() =
+    Folder(
+        id = FolderId(id),
+        accountKey = AccountKey(accountKey),
+        name = name,
+        createdAt = Instant.ofEpochMilli(createdAtMillis),
+        updatedAt = Instant.ofEpochMilli(updatedAtMillis),
+    )
 
-private fun Folder.toOutbox(kind: LocalChangeKind) = FolderOutboxEntity(
-    accountKey = accountKey.value,
-    changeId = UUID.randomUUID().toString(),
-    folderId = id.value,
-    kind = kind.name,
-    baseRevision = null,
-    changedAtMillis = updatedAt.toEpochMilli(),
-    name = name,
-    createdAtMillis = createdAt.toEpochMilli(),
-)
+private fun Folder.toOutbox(kind: LocalChangeKind) =
+    FolderOutboxEntity(
+        accountKey = accountKey.value,
+        changeId = UUID.randomUUID().toString(),
+        folderId = id.value,
+        kind = kind.name,
+        baseRevision = null,
+        changedAtMillis = updatedAt.toEpochMilli(),
+        name = name,
+        createdAtMillis = createdAt.toEpochMilli(),
+    )
 
 private fun FolderOutboxEntity.toApi(): LocalFolderChange {
     val changeKind = LocalChangeKind.valueOf(kind)
-    val folder = if (changeKind == LocalChangeKind.UPSERT) {
-        Folder(
-            id = FolderId(folderId),
-            accountKey = AccountKey(accountKey),
-            name = requireNotNull(name),
-            createdAt = Instant.ofEpochMilli(requireNotNull(createdAtMillis)),
-            updatedAt = Instant.ofEpochMilli(changedAtMillis),
-        )
-    } else {
-        null
-    }
+    val folder =
+        if (changeKind == LocalChangeKind.UPSERT) {
+            Folder(
+                id = FolderId(folderId),
+                accountKey = AccountKey(accountKey),
+                name = requireNotNull(name),
+                createdAt = Instant.ofEpochMilli(requireNotNull(createdAtMillis)),
+                updatedAt = Instant.ofEpochMilli(changedAtMillis),
+            )
+        } else {
+            null
+        }
     return LocalFolderChange(
         changeId = changeId,
         accountKey = AccountKey(accountKey),
