@@ -18,7 +18,7 @@ setup(
     include_package_data=True,
     install_requires=[
         "scikit-learn==1.7.2",
-        "scikit-learn-intelex==2026.1.0",
+        "scikit-learn-intelex==2026.2.0",
         "torch>=1.12.0",
         "openvino>=2023.0",
         "nncf>=2.7.0",
@@ -31,8 +31,8 @@ setup(
             "intel_extension_for_pytorch>=2.1.0"  # For CPU (Linux/Windows)
         ],
         "ipex-xpu": [
-            "torch==2.13.0",
-            "torchvision==0.28.0", 
+            "torch==2.14.1",
+            "torchvision==0.29.1", 
             "torchaudio==2.11.0",
             "intel-extension-for-pytorch==2.8.0"  # For XPU (Windows Intel GPU)
         ],
