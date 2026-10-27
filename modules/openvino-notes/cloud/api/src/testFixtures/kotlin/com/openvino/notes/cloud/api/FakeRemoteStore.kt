@@ -93,8 +93,9 @@ class FakeRemoteStore :
         accountKey: AccountKey,
         sessionId: TransferSessionId,
     ): RemoteOutcome<ResumableUploadState> {
-        val upload = uploads[sessionId]?.takeIf { it.accountKey == accountKey }
-            ?: return notFound("fake.upload_session_not_found")
+        val upload =
+            uploads[sessionId]?.takeIf { it.accountKey == accountKey }
+                ?: return notFound("fake.upload_session_not_found")
 
         if (upload.isSessionExpired) {
             return RemoteOutcome.Success(ResumableUploadState.Expired(upload.session))
@@ -113,8 +114,9 @@ class FakeRemoteStore :
         sessionId: TransferSessionId,
         chunk: UploadChunk,
     ): RemoteOutcome<UploadChunkOutcome> {
-        val upload = uploads[sessionId]?.takeIf { it.accountKey == accountKey }
-            ?: return notFound("fake.upload_session_not_found")
+        val upload =
+            uploads[sessionId]?.takeIf { it.accountKey == accountKey }
+                ?: return notFound("fake.upload_session_not_found")
 
         if (upload.isSessionExpired) {
             return RemoteOutcome.Failure(RemoteError(RemoteErrorCode.NOT_AUTHORIZED, "Session expired"))
