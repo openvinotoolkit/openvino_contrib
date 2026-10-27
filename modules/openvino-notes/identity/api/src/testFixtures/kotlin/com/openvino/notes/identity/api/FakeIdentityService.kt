@@ -11,7 +11,8 @@ import kotlinx.coroutines.flow.StateFlow
 
 class FakeIdentityService(
     initialAuthentication: AuthenticationState = AuthenticationState.SignedOut,
-) : IdentityService, AccessTokenProvider {
+) : IdentityService,
+    AccessTokenProvider {
     private val mutableAuthentication = MutableStateFlow(initialAuthentication)
     private val mutableDriveAuthorization = MutableStateFlow(DriveAuthorizationState.NOT_AUTHORIZED)
 
@@ -20,20 +21,23 @@ class FakeIdentityService(
     var invalidatedAccessTokens: Int = 0
         private set
 
-    override fun currentAccountKey(): AccountKey? =
-        (authenticationState.value as? AuthenticationState.SignedIn)?.session?.accountKey
+    override fun currentAccountKey(): AccountKey? = (authenticationState.value as? AuthenticationState.SignedIn)?.session?.accountKey
 
     override suspend fun signOut(): IdentityOutcome {
         mutableAuthentication.value = AuthenticationState.SignedOut
         mutableDriveAuthorization.value = DriveAuthorizationState.NOT_AUTHORIZED
         return IdentityOutcome.Completed
     }
+
     override suspend fun disconnect(): IdentityOutcome = signOut()
-    override suspend fun accessToken(): AccessTokenOutcome = when {
-        currentAccountKey() == null -> AccessTokenOutcome.SignedOut
-        driveAuthorizationState.value != DriveAuthorizationState.AUTHORIZED -> AccessTokenOutcome.NotAuthorized
-        else -> AccessTokenOutcome.Available("fake-token")
-    }
+
+    override suspend fun accessToken(): AccessTokenOutcome =
+        when {
+            currentAccountKey() == null -> AccessTokenOutcome.SignedOut
+            driveAuthorizationState.value != DriveAuthorizationState.AUTHORIZED -> AccessTokenOutcome.NotAuthorized
+            else -> AccessTokenOutcome.Available("fake-token")
+        }
+
     override suspend fun invalidateAccessToken() {
         invalidatedAccessTokens += 1
     }

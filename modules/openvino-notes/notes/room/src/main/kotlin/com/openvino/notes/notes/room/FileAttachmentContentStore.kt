@@ -10,15 +10,15 @@ import com.openvino.notes.notes.api.AttachmentMetadata
 import com.openvino.notes.notes.api.port.AttachmentContentConflictException
 import com.openvino.notes.notes.api.port.AttachmentContentPort
 import com.openvino.notes.notes.api.port.BinarySource
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.withContext
 
 internal class FileAttachmentContentStore(
     private val root: File,
@@ -71,17 +71,24 @@ internal class FileAttachmentContentStore(
         Unit
     }
 
-    override suspend fun open(accountKey: AccountKey, attachmentId: AttachmentId): BinarySource? =
+    override suspend fun open(
+        accountKey: AccountKey,
+        attachmentId: AttachmentId,
+    ): BinarySource? =
         withContext(dispatchers.io) {
             val file = contentFile(accountKey, attachmentId)
             if (file.isFile) FileBinarySource(file, dispatchers) else null
         }
 
-    override suspend fun delete(accountKey: AccountKey, attachmentId: AttachmentId): Boolean =
-        withContext(dispatchers.io) { contentFile(accountKey, attachmentId).delete() }
+    override suspend fun delete(
+        accountKey: AccountKey,
+        attachmentId: AttachmentId,
+    ): Boolean = withContext(dispatchers.io) { contentFile(accountKey, attachmentId).delete() }
 
-    private fun contentFile(accountKey: AccountKey, attachmentId: AttachmentId): File =
-        root.resolve(accountKey.value.sha256()).resolve("${attachmentId.value.sha256()}.bin")
+    private fun contentFile(
+        accountKey: AccountKey,
+        attachmentId: AttachmentId,
+    ): File = root.resolve(accountKey.value.sha256()).resolve("${attachmentId.value.sha256()}.bin")
 
     private suspend fun requireSameContent(
         existing: File,
@@ -100,25 +107,31 @@ private class FileBinarySource(
     private val dispatchers: AppDispatchers,
     override val sizeBytes: Long = file.length(),
 ) : BinarySource {
-    override suspend fun read(offset: Long, maxBytes: Int): ByteArray = withContext(dispatchers.io) {
-        require(offset >= 0) { "offset must not be negative" }
-        require(maxBytes > 0) { "maxBytes must be positive" }
-        currentCoroutineContext().ensureActive()
-        if (offset >= sizeBytes) return@withContext byteArrayOf()
-        val requested = minOf(maxBytes.toLong(), sizeBytes - offset).toInt()
-        RandomAccessFile(file, "r").use { input ->
-            input.seek(offset)
-            val buffer = ByteArray(requested)
-            val count = input.read(buffer)
-            check(count > 0) { "Attachment file ended before its declared size" }
-            if (count == buffer.size) buffer else buffer.copyOf(count)
+    override suspend fun read(
+        offset: Long,
+        maxBytes: Int,
+    ): ByteArray =
+        withContext(dispatchers.io) {
+            require(offset >= 0) { "offset must not be negative" }
+            require(maxBytes > 0) { "maxBytes must be positive" }
+            currentCoroutineContext().ensureActive()
+            if (offset >= sizeBytes) return@withContext byteArrayOf()
+            val requested = minOf(maxBytes.toLong(), sizeBytes - offset).toInt()
+            RandomAccessFile(file, "r").use { input ->
+                input.seek(offset)
+                val buffer = ByteArray(requested)
+                val count = input.read(buffer)
+                check(count > 0) { "Attachment file ended before its declared size" }
+                if (count == buffer.size) buffer else buffer.copyOf(count)
+            }
         }
-    }
 }
 
-private fun String.sha256(): String = MessageDigest.getInstance("SHA-256")
-    .digest(toByteArray(Charsets.UTF_8))
-    .joinToString("") { byte -> "%02x".format(byte) }
+private fun String.sha256(): String =
+    MessageDigest
+        .getInstance("SHA-256")
+        .digest(toByteArray(Charsets.UTF_8))
+        .joinToString("") { byte -> "%02x".format(byte) }
 
 private suspend fun File.sha256Bytes(): ByteArray {
     val digest = MessageDigest.getInstance(CONTENT_DIGEST_ALGORITHM)

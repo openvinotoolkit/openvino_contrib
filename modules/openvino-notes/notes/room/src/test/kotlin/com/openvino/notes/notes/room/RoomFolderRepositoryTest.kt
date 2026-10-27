@@ -12,7 +12,6 @@ import com.openvino.notes.notes.api.FolderId
 import com.openvino.notes.notes.api.port.FolderRemoteApplyResult
 import com.openvino.notes.notes.api.port.RemoteFolderChange
 import com.openvino.notes.notes.api.port.RemoteRevision
-import java.time.Instant
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -20,64 +19,68 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.time.Instant
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class RoomFolderRepositoryTest {
-    @Test fun `local folder lifecycle writes outbox changes`() = runTest {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val database = Room.inMemoryDatabaseBuilder(context, NotesDatabase::class.java).allowMainThreadQueries().build()
-        try {
-            val repository = RoomFolderRepository(database.folderDao())
-            val folder = folder()
+    @Test fun `local folder lifecycle writes outbox changes`() =
+        runTest {
+            val context = ApplicationProvider.getApplicationContext<Context>()
+            val database = Room.inMemoryDatabaseBuilder(context, NotesDatabase::class.java).allowMainThreadQueries().build()
+            try {
+                val repository = RoomFolderRepository(database.folderDao())
+                val folder = folder()
 
-            repository.save(folder)
+                repository.save(folder)
 
-            assertEquals(listOf(folder), repository.observe(folder.accountKey).first())
-            assertEquals(folder, repository.findByName(folder.accountKey, "PROJECTS"))
-            assertEquals(listOf(folder), repository.pendingFolderChanges(folder.accountKey).map { it.payload })
-            assertEquals(true, repository.delete(folder.accountKey, folder.id))
-            assertEquals(null, repository.find(folder.accountKey, folder.id))
-            assertEquals(2, repository.pendingFolderChanges(folder.accountKey).size)
-        } finally {
-            database.close()
+                assertEquals(listOf(folder), repository.observe(folder.accountKey).first())
+                assertEquals(folder, repository.findByName(folder.accountKey, "PROJECTS"))
+                assertEquals(listOf(folder), repository.pendingFolderChanges(folder.accountKey).map { it.payload })
+                assertEquals(true, repository.delete(folder.accountKey, folder.id))
+                assertEquals(null, repository.find(folder.accountKey, folder.id))
+                assertEquals(2, repository.pendingFolderChanges(folder.accountKey).size)
+            } finally {
+                database.close()
+            }
         }
-    }
 
-    @Test fun `remote folder changes apply without creating local outbox entries`() = runTest {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val database = Room.inMemoryDatabaseBuilder(context, NotesDatabase::class.java).allowMainThreadQueries().build()
-        try {
-            val repository = RoomFolderRepository(database.folderDao())
-            val folder = folder()
-            val revision1 = RemoteRevision("1")
-            val revision2 = RemoteRevision("2")
+    @Test fun `remote folder changes apply without creating local outbox entries`() =
+        runTest {
+            val context = ApplicationProvider.getApplicationContext<Context>()
+            val database = Room.inMemoryDatabaseBuilder(context, NotesDatabase::class.java).allowMainThreadQueries().build()
+            try {
+                val repository = RoomFolderRepository(database.folderDao())
+                val folder = folder()
+                val revision1 = RemoteRevision("1")
+                val revision2 = RemoteRevision("2")
 
-            assertEquals(
-                listOf(FolderRemoteApplyResult.Applied(folder.id, revision1)),
-                repository.applyRemoteFolders(
-                    folder.accountKey,
-                    listOf(RemoteFolderChange.Upsert(folder, null, revision1)),
-                ),
-            )
-            assertEquals(emptyList<FolderId>(), repository.pendingFolderChanges(folder.accountKey).map { it.folderId })
-            assertEquals(
-                listOf(FolderRemoteApplyResult.TombstoneApplied(folder.id, revision2)),
-                repository.applyRemoteFolders(
-                    folder.accountKey,
-                    listOf(RemoteFolderChange.Tombstone(folder.id, revision2)),
-                ),
-            )
-        } finally {
-            database.close()
+                assertEquals(
+                    listOf(FolderRemoteApplyResult.Applied(folder.id, revision1)),
+                    repository.applyRemoteFolders(
+                        folder.accountKey,
+                        listOf(RemoteFolderChange.Upsert(folder, null, revision1)),
+                    ),
+                )
+                assertEquals(emptyList<FolderId>(), repository.pendingFolderChanges(folder.accountKey).map { it.folderId })
+                assertEquals(
+                    listOf(FolderRemoteApplyResult.TombstoneApplied(folder.id, revision2)),
+                    repository.applyRemoteFolders(
+                        folder.accountKey,
+                        listOf(RemoteFolderChange.Tombstone(folder.id, revision2)),
+                    ),
+                )
+            } finally {
+                database.close()
+            }
         }
-    }
 
-    private fun folder() = Folder(
-        id = FolderId("folder"),
-        accountKey = AccountKey("account"),
-        name = "Projects",
-        createdAt = Instant.EPOCH,
-        updatedAt = Instant.EPOCH,
-    )
+    private fun folder() =
+        Folder(
+            id = FolderId("folder"),
+            accountKey = AccountKey("account"),
+            name = "Projects",
+            createdAt = Instant.EPOCH,
+            updatedAt = Instant.EPOCH,
+        )
 }

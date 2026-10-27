@@ -6,16 +6,30 @@ package com.openvino.notes.cloud.api
 import com.openvino.notes.kernel.AccountKey
 import java.time.Instant
 
-@JvmInline value class RemoteObjectId(val value: String)
-@JvmInline value class RemoteCursor(val value: String)
-@JvmInline value class RemoteRevision(val value: String)
+@JvmInline value class RemoteObjectId(
+    val value: String,
+)
+
+@JvmInline value class RemoteCursor(
+    val value: String,
+)
+
+@JvmInline value class RemoteRevision(
+    val value: String,
+)
 
 /** Sensitive resumable-upload capability. Its string representation never exposes the underlying value. */
-class TransferSessionId(val value: String) {
-    init { require(value.isNotBlank()) { "Transfer session ID must not be blank" } }
+class TransferSessionId(
+    val value: String,
+) {
+    init {
+        require(value.isNotBlank()) { "Transfer session ID must not be blank" }
+    }
 
     override fun equals(other: Any?): Boolean = other is TransferSessionId && value == other.value
+
     override fun hashCode(): Int = value.hashCode()
+
     override fun toString(): String = "TransferSessionId(**redacted**)"
 }
 
@@ -26,9 +40,10 @@ data class RemoteObject(
     val modifiedAt: Instant,
     val bytes: ByteArray,
 ) {
-    override fun equals(other: Any?): Boolean = other is RemoteObject &&
-        id == other.id && name == other.name && mediaType == other.mediaType &&
-        modifiedAt == other.modifiedAt && bytes.contentEquals(other.bytes)
+    override fun equals(other: Any?): Boolean =
+        other is RemoteObject &&
+            id == other.id && name == other.name && mediaType == other.mediaType &&
+            modifiedAt == other.modifiedAt && bytes.contentEquals(other.bytes)
 
     override fun hashCode(): Int {
         var result = id.hashCode()
@@ -64,11 +79,20 @@ enum class RemoteErrorCode {
     INVALID_CURSOR,
     INVALID_RESPONSE,
 }
-data class RemoteError(val code: RemoteErrorCode, val diagnosticCode: String)
+
+data class RemoteError(
+    val code: RemoteErrorCode,
+    val diagnosticCode: String,
+)
 
 sealed interface RemoteOutcome<out T> {
-    data class Success<T>(val value: T) : RemoteOutcome<T>
-    data class Failure(val error: RemoteError) : RemoteOutcome<Nothing>
+    data class Success<T>(
+        val value: T,
+    ) : RemoteOutcome<T>
+
+    data class Failure(
+        val error: RemoteError,
+    ) : RemoteOutcome<Nothing>
 }
 
 interface RemoteObjectStore {
@@ -80,7 +104,10 @@ interface RemoteObjectStore {
         expectedRevision: RemoteRevision? = null,
     ): RemoteOutcome<RemoteObjectMetadata>
 
-    suspend fun get(accountKey: AccountKey, id: RemoteObjectId): RemoteOutcome<RemoteObject>
+    suspend fun get(
+        accountKey: AccountKey,
+        id: RemoteObjectId,
+    ): RemoteOutcome<RemoteObject>
 
     suspend fun delete(
         accountKey: AccountKey,
@@ -91,7 +118,11 @@ interface RemoteObjectStore {
 
 interface RemoteChangeFeed {
     suspend fun startCursor(accountKey: AccountKey): RemoteOutcome<RemoteCursor>
-    suspend fun changes(accountKey: AccountKey, cursor: RemoteCursor): RemoteOutcome<RemoteChangePage>
+
+    suspend fun changes(
+        accountKey: AccountKey,
+        cursor: RemoteCursor,
+    ): RemoteOutcome<RemoteChangePage>
 }
 
 data class UploadDescriptor(
@@ -113,21 +144,35 @@ data class UploadSession(
     val nextOffset: Long,
     val expiresAt: Instant? = null,
 ) {
-    init { require(nextOffset >= 0) { "Upload offset must not be negative" } }
+    init {
+        require(nextOffset >= 0) { "Upload offset must not be negative" }
+    }
 }
 
-class UploadChunk(val offset: Long, val bytes: ByteArray, val final: Boolean) {
-    init { require(offset >= 0) { "Upload chunk offset must not be negative" } }
+class UploadChunk(
+    val offset: Long,
+    val bytes: ByteArray,
+    val final: Boolean,
+) {
+    init {
+        require(offset >= 0) { "Upload chunk offset must not be negative" }
+    }
 
-    override fun equals(other: Any?): Boolean = other is UploadChunk &&
-        offset == other.offset && final == other.final && bytes.contentEquals(other.bytes)
+    override fun equals(other: Any?): Boolean =
+        other is UploadChunk &&
+            offset == other.offset && final == other.final && bytes.contentEquals(other.bytes)
 
     override fun hashCode(): Int = 31 * (31 * offset.hashCode() + bytes.contentHashCode()) + final.hashCode()
 }
 
 sealed interface UploadChunkOutcome {
-    data class InProgress(val session: UploadSession) : UploadChunkOutcome
-    data class Completed(val metadata: RemoteObjectMetadata) : UploadChunkOutcome
+    data class InProgress(
+        val session: UploadSession,
+    ) : UploadChunkOutcome
+
+    data class Completed(
+        val metadata: RemoteObjectMetadata,
+    ) : UploadChunkOutcome
 }
 
 fun interface RemoteByteSink {
@@ -142,7 +187,11 @@ interface ResumableTransferClient {
         expectedRevision: RemoteRevision? = null,
     ): RemoteOutcome<UploadSession>
 
-    suspend fun resumeUpload(accountKey: AccountKey, sessionId: TransferSessionId): RemoteOutcome<UploadSession>
+    suspend fun resumeUpload(
+        accountKey: AccountKey,
+        sessionId: TransferSessionId,
+    ): RemoteOutcome<UploadSession>
+
     suspend fun uploadChunk(
         accountKey: AccountKey,
         sessionId: TransferSessionId,

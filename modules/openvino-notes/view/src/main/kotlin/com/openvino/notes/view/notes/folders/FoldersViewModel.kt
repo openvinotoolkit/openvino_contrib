@@ -15,18 +15,33 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-data class FoldersState(val folders: List<Folder> = emptyList())
+data class FoldersState(
+    val folders: List<Folder> = emptyList(),
+)
 
 sealed interface FoldersAction {
-    data class Create(val name: String) : FoldersAction
-    data class Rename(val id: FolderId, val name: String) : FoldersAction
-    data class Delete(val id: FolderId) : FoldersAction
+    data class Create(
+        val name: String,
+    ) : FoldersAction
+
+    data class Rename(
+        val id: FolderId,
+        val name: String,
+    ) : FoldersAction
+
+    data class Delete(
+        val id: FolderId,
+    ) : FoldersAction
 }
 
-class FoldersViewModel(private val folders: FolderService) : ViewModel() {
-    val state: StateFlow<FoldersState> = folders.observeFolders()
-        .map(::FoldersState)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FoldersState())
+class FoldersViewModel(
+    private val folders: FolderService,
+) : ViewModel() {
+    val state: StateFlow<FoldersState> =
+        folders
+            .observeFolders()
+            .map(::FoldersState)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FoldersState())
 
     fun onAction(action: FoldersAction) {
         viewModelScope.launch {
