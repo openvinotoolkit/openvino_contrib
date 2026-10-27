@@ -30,6 +30,16 @@ class DriveCloudComponentTest {
             )
         }
 
+    @Test fun `snapshot read exposes typed unavailable outcome`() =
+        runTest {
+            val component = DriveCloudComponent.create(FakeIdentityService())
+            val accountKey = AccountKey("account")
+            assertFailureCode(
+                RemoteErrorCode.SIGNED_OUT,
+                component.objectStore.getSnapshot(accountKey, RemoteObjectId("media")),
+            )
+        }
+
     private fun assertFailureCode(
         expected: RemoteErrorCode,
         outcome: RemoteOutcome<*>,

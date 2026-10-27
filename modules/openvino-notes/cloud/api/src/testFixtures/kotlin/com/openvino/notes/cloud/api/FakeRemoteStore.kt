@@ -18,6 +18,9 @@ class FakeRemoteStore :
     var changeOutcome: RemoteOutcome<RemoteChangePage> = RemoteOutcome.Success(RemoteChangePage(emptyList(), null))
     var startCursorOutcome: RemoteOutcome<RemoteCursor> = RemoteOutcome.Success(RemoteCursor("0"))
 
+    /** Test hook: runs between reading metadata and streaming content in [getSnapshot]. */
+    var betweenMetadataAndContent: (suspend () -> Unit)? = null
+
     override suspend fun list(accountKey: AccountKey): RemoteOutcome<List<RemoteObjectMetadata>> =
         RemoteOutcome.Success(
             objects.filterKeys { it.first == accountKey }.map { (key, value) ->
@@ -47,6 +50,37 @@ class FakeRemoteStore :
     ): RemoteOutcome<RemoteObject> =
         objects[accountKey to id]?.let { RemoteOutcome.Success(it) }
             ?: RemoteOutcome.Failure(RemoteError(RemoteErrorCode.NOT_FOUND, "fake.not_found"))
+
+    override suspend fun getSnapshot(
+        accountKey: AccountKey,
+        id: RemoteObjectId,
+    ): RemoteOutcome<RemoteSnapshot> {
+        val key = accountKey to id
+        val value = objects[key]
+            ?: return RemoteOutcome.Failure(RemoteError(RemoteErrorCode.NOT_FOUND, "fake.not_found"))
+        val revision1 = revisions.getValue(key).toString()
+
+        betweenMetadataAndContent?.invoke()
+
+        val revision2 = revisions[key]?.toString()
+        if (revision2 != revision1) return conflict()
+
+        val current = objects[key]
+            ?: return RemoteOutcome.Failure(RemoteError(RemoteErrorCode.NOT_FOUND, "fake.not_found"))
+        if (!current.bytes.contentEquals(value.bytes)) return conflict()
+
+        val metadata = current.metadata(RemoteRevision(revision1))
+        return RemoteOutcome.Success(
+            RemoteSnapshot(metadata) { sink ->
+                var offset = 0
+                while (offset < current.bytes.size) {
+                    val end = minOf(current.bytes.size, offset + TRANSFER_CHUNK_BYTES)
+                    sink.write(current.bytes.copyOfRange(offset, end))
+                    offset = end
+                }
+            },
+        )
+    }
 
     override suspend fun delete(
         accountKey: AccountKey,
