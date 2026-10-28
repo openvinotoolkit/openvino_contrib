@@ -3,3 +3,4 @@
 
 .gradle
 **/build/
+/src/main/native/resources_list.txt
