@@ -98,7 +98,8 @@ Install it on a connected target with:
 ## Gradle Dependency Verification
 
 Gradle verifies SHA-256 hashes in `gradle/verification-metadata.xml`. Regenerate
-and review them after dependency changes:
+and review them after dependency changes. Use the CI task set so Gradle resolves
+build-time dependencies as well as the plugin classpath:
 
 ```sh
 java -classpath gradle/wrapper/gradle-wrapper.jar \
@@ -106,7 +107,9 @@ java -classpath gradle/wrapper/gradle-wrapper.jar \
   --project-cache-dir "$OPENVINO_NOTES_STATE_ROOT/project-cache" \
   -PopenvinoNotesBuildRoot="$OPENVINO_NOTES_STATE_ROOT/gradle" \
   -Pkotlin.project.persistent.dir="$OPENVINO_NOTES_STATE_ROOT/kotlin-project" \
-  --write-verification-metadata sha256 help
+  --write-verification-metadata sha256 \
+  checkArchitecture lint ktlintCheck test testDebugUnitTest :app:assembleDebug \
+  -PopenvinoAndroidAbi=x86_64
 ```
 
 ## Development Rules
