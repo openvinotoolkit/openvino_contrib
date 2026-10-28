@@ -178,14 +178,30 @@ class FakeNotesService(
     initial: List<Note> = emptyList(),
 ) : NotesService {
     private val notes = MutableStateFlow(initial)
+    var createOutcome: NoteMutationOutcome? = null
+    val currentNotes: List<Note> get() = notes.value
 
     override fun observeNotes(): Flow<List<Note>> = notes
 
     override suspend fun get(id: NoteId): Note? = notes.value.firstOrNull { it.id == id }
-
-    override suspend fun create(draft: NoteDraft): NoteMutationOutcome =
-        NoteMutationOutcome.Invalid("fake", "create outcome not configured")
-
+    override suspend fun create(draft: NoteDraft): NoteMutationOutcome {
+        val configured = createOutcome
+        if (configured != null) return configured
+        val created = Note(
+            id = NoteId("fake-note-${notes.value.size + 1}"),
+            accountKey = AccountKey("fake-account"),
+            title = draft.title,
+            contentItems = draft.contentItems,
+            attachments = draft.attachments,
+            folderId = draft.folderId,
+            tags = draft.tags,
+            isFavorite = draft.isFavorite,
+            createdAt = java.time.Instant.EPOCH,
+            updatedAt = java.time.Instant.EPOCH,
+        )
+        notes.value = notes.value + created
+        return NoteMutationOutcome.Saved(created)
+    }
     override suspend fun update(command: UpdateNoteCommand): NoteMutationOutcome {
         val current = get(command.id) ?: return NoteMutationOutcome.NotFound
         val updated =
@@ -211,6 +227,35 @@ class FakeNotesService(
     fun emit(values: List<Note>) {
         notes.value = values
     }
+}
+
+class FakeFolderService(initial: List<Folder> = emptyList()) : FolderService {
+    private val folders = MutableStateFlow(initial)
+    override fun observeFolders(): Flow<List<Folder>> = folders
+    override suspend fun getFolder(id: FolderId): Folder? = folders.value.firstOrNull { it.id == id }
+    override suspend fun createFolder(draft: FolderDraft): FolderMutationOutcome {
+        val created = Folder(
+            id = FolderId("fake-folder-${folders.value.size + 1}"),
+            accountKey = AccountKey("fake-account"),
+            name = draft.name,
+            createdAt = java.time.Instant.EPOCH,
+            updatedAt = java.time.Instant.EPOCH,
+        )
+        folders.value = folders.value + created
+        return FolderMutationOutcome.Saved(created)
+    }
+    override suspend fun renameFolder(id: FolderId, name: String): FolderMutationOutcome {
+        val current = getFolder(id) ?: return FolderMutationOutcome.NotFound
+        val updated = current.copy(name = name)
+        folders.value = folders.value.map { if (it.id == id) updated else it }
+        return FolderMutationOutcome.Saved(updated)
+    }
+    override suspend fun deleteFolder(id: FolderId): FolderMutationOutcome {
+        val existed = folders.value.any { it.id == id }
+        folders.value = folders.value.filterNot { it.id == id }
+        return if (existed) FolderMutationOutcome.Deleted else FolderMutationOutcome.NotFound
+    }
+    override suspend fun moveNote(noteId: NoteId, folderId: FolderId?): MoveNoteOutcome = MoveNoteOutcome.Invalid("not configured")
 }
 
 @Suppress("UNCHECKED_CAST")
