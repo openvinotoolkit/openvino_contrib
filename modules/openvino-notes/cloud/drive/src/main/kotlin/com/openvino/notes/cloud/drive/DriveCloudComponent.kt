@@ -66,6 +66,7 @@ internal class DriveRemoteStore(
         accountKey: AccountKey,
         sessionId: TransferSessionId,
     ): RemoteOutcome<ResumableUploadState> = unavailable()
+
     override suspend fun uploadChunk(
         accountKey: AccountKey,
         sessionId: TransferSessionId,
