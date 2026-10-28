@@ -199,19 +199,19 @@ nvidia-smi --query-gpu=compute_cap --format=csv
 
 ## Python package
 
-Python package could be built using `wheel/setup.py` file provided in nvidia_plugin folder.
+The Python package can be built using the PyPA `build` frontend.
 
 ### Prerequisites
-Run the following commands as prerequisites to `setup.py`:
+Set `OPENVINO_HOME` to use an existing OpenVINO source tree. Otherwise, the build downloads OpenVINO automatically.
 ```bash
-export OPENVINO_HOME=<OPENVINO_HOME_DIR> # If not provided, setup.py will download openvino automatically
-python3 -m pip install wheel
+export OPENVINO_HOME=<OPENVINO_HOME_DIR> # Optional: use an existing OpenVINO source tree
+python3 -m pip install -r ./wheel/requirements-dev.txt
 ```
 
 ### Building the package
-To build it, use simply the following command:
+To build the wheel:
 ```bash
-python3 ./wheel/setup.py bdist_wheel
+python3 -m build --wheel --no-isolation ./wheel
 ```
 
 ### Installing the package
