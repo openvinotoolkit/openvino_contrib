@@ -17,30 +17,45 @@ data class UserSession(
 
 sealed interface AuthenticationState {
     data object Initializing : AuthenticationState
+
     data object SignedOut : AuthenticationState
-    data class SignedIn(val session: UserSession) : AuthenticationState
+
+    data class SignedIn(
+        val session: UserSession,
+    ) : AuthenticationState
 }
 
 enum class DriveAuthorizationState { NOT_AUTHORIZED, AUTHORIZED }
 
 sealed interface IdentityOutcome {
     data object Completed : IdentityOutcome
+
     data object Cancelled : IdentityOutcome
-    data class NotConfigured(val reason: String) : IdentityOutcome
-    data class Failed(val code: String) : IdentityOutcome
+
+    data class NotConfigured(
+        val reason: String,
+    ) : IdentityOutcome
+
+    data class Failed(
+        val code: String,
+    ) : IdentityOutcome
 }
 
 interface SessionReader : AccountScope {
     val authenticationState: StateFlow<AuthenticationState>
     override val activeAccountKey: Flow<AccountKey?>
-        get() = authenticationState.map { state ->
-            (state as? AuthenticationState.SignedIn)?.session?.accountKey
-        }
+        get() =
+            authenticationState.map { state ->
+                (state as? AuthenticationState.SignedIn)?.session?.accountKey
+            }
+
     override fun currentAccountKey(): AccountKey?
 }
 
 interface IdentityService : SessionReader {
     val driveAuthorizationState: StateFlow<DriveAuthorizationState>
+
     suspend fun signOut(): IdentityOutcome
+
     suspend fun disconnect(): IdentityOutcome
 }

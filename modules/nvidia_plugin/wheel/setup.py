@@ -27,9 +27,8 @@ from decouple import config
 from distutils import log
 from typing import Optional
 
-import wheel.vendored.packaging.tags as tags
-import wheel.vendored.packaging.tags
-from wheel.bdist_wheel import bdist_wheel
+from packaging import tags
+from setuptools.command.bdist_wheel import bdist_wheel, get_abi_tag
 
 # defuse_stdlib provide patched version of xml.etree.ElementTree which allows to use objects from xml.etree.ElementTree
 # in a safe manner without including unsafe xml.etree.ElementTree
@@ -505,7 +504,7 @@ class InstallLib(install_lib):
 
     def install_openvino_package(self):
         py_tag=tags.interpreter_name() + tags.interpreter_version()
-        abi_tag=bdist_wheel.get_abi_tag()
+        abi_tag=get_abi_tag()
         platform_tag=get_platform_tag()
         git_commits=get_command_output([self.git_exec, 'rev-list', '--count', '--first-parent', 'HEAD'],
                                         cwd=OPENVINO_SRC_DIR,

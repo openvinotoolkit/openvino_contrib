@@ -3,8 +3,8 @@
 
 package com.openvino.notes.sync.core
 
-import com.openvino.notes.kernel.AppLogger
 import com.openvino.notes.kernel.AccountKey
+import com.openvino.notes.kernel.AppLogger
 import com.openvino.notes.kernel.DiagnosticEvent
 import com.openvino.notes.kernel.DiagnosticLevel
 import com.openvino.notes.sync.api.SyncBlockReason
@@ -23,23 +23,31 @@ import kotlinx.coroutines.flow.StateFlow
  * Honest placeholder until a remote-first, revision-aware replication engine is implemented.
  * It deliberately performs no local or remote mutations.
  */
-class DisabledSyncService(private val logger: AppLogger) : SyncService, SyncExecutor {
-    private val mutableState = MutableStateFlow(
-        SyncState(
-            phase = SyncPhase.BLOCKED,
-            diagnosticCode = NOT_CONFIGURED_CODE,
-        ),
-    )
+class DisabledSyncService(
+    private val logger: AppLogger,
+) : SyncService,
+    SyncExecutor {
+    private val mutableState =
+        MutableStateFlow(
+            SyncState(
+                phase = SyncPhase.BLOCKED,
+                diagnosticCode = NOT_CONFIGURED_CODE,
+            ),
+        )
     override val state: StateFlow<SyncState> = mutableState
 
-    override suspend fun execute(accountKey: AccountKey, reason: SyncReason): SyncOutcome = sync(reason)
+    override suspend fun execute(
+        accountKey: AccountKey,
+        reason: SyncReason,
+    ): SyncOutcome = sync(reason)
 
     override suspend fun sync(reason: SyncReason): SyncOutcome {
-        mutableState.value = SyncState(
-            phase = SyncPhase.BLOCKED,
-            lastReason = reason,
-            diagnosticCode = NOT_CONFIGURED_CODE,
-        )
+        mutableState.value =
+            SyncState(
+                phase = SyncPhase.BLOCKED,
+                lastReason = reason,
+                diagnosticCode = NOT_CONFIGURED_CODE,
+            )
         logger.log(
             DiagnosticEvent(
                 code = NOT_CONFIGURED_CODE,
