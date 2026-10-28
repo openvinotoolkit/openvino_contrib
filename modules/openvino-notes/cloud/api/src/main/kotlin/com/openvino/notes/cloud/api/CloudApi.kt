@@ -63,6 +63,16 @@ data class RemoteObjectMetadata(
     val deleted: Boolean = false,
 )
 
+class RemoteSnapshot(
+    val metadata: RemoteObjectMetadata,
+    private val content: suspend (RemoteByteSink) -> Unit,
+) {
+    val id: RemoteObjectId get() = metadata.id
+    val revision: RemoteRevision get() = metadata.revision
+
+    suspend fun streamTo(sink: RemoteByteSink) = content(sink)
+}
+
 data class RemoteChangePage(
     val changes: List<RemoteObjectMetadata>,
     val nextCursor: RemoteCursor?,
@@ -108,6 +118,11 @@ interface RemoteObjectStore {
         accountKey: AccountKey,
         id: RemoteObjectId,
     ): RemoteOutcome<RemoteObject>
+
+    suspend fun getSnapshot(
+        accountKey: AccountKey,
+        id: RemoteObjectId,
+    ): RemoteOutcome<RemoteSnapshot>
 
     suspend fun delete(
         accountKey: AccountKey,
