@@ -1173,7 +1173,7 @@ def optimize_full_detection_topk(output_dir: Path):
     full_detection_original.xml.
     """
     import openvino as ov
-    from openvino.runtime import opset13 as opset
+    from openvino import opset13 as opset
 
     xml_path = output_dir / 'full_detection.xml'
     if not xml_path.exists():
