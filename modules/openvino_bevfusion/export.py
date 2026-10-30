@@ -699,14 +699,18 @@ def build_transfusion_head(state_dict, prefixes):
         def forward(self, query, key, query_pos, key_pos):
             qpe = self.self_posembed(query_pos)
             kpe = self.cross_posembed(key_pos)
+            # Unlike a standard DETR decoder layer, TransFusion also encodes
+            # the *value* with the positional embedding -- see the explicit
+            # notes in projects/BEVFusion/bevfusion/transformer.py, which pass
+            # `value=query + query_pos` and `value=key + key_pos`.
             q = (query + qpe).permute(2, 0, 1)
-            v_s = query.permute(2, 0, 1)
+            v_s = (query + qpe).permute(2, 0, 1)
             q2, _ = self.self_attn(q, q, v_s)
             query2 = query + q2.permute(1, 2, 0)
             query2 = self.norm1(query2.permute(0, 2, 1)).permute(0, 2, 1)
             q = (query2 + qpe).permute(2, 0, 1)
             k = (key + kpe).permute(2, 0, 1)
-            v = key.permute(2, 0, 1)
+            v = (key + kpe).permute(2, 0, 1)
             q2, _ = self.multihead_attn(q, k, v)
             query2 = query2 + q2.permute(1, 2, 0)
             query2 = self.norm2(query2.permute(0, 2, 1)).permute(0, 2, 1)
