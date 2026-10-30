@@ -38,6 +38,7 @@ import argparse
 import json
 import os
 import pickle
+import re
 import sys
 from pathlib import Path
 
@@ -644,6 +645,32 @@ def build_decoder(state_dict, prefixes):
 # 6. TransFusion Detection Head
 # ============================================================================
 
+# Buffers computed at construction time rather than read from the checkpoint.
+TRANSFUSION_COMPUTED_BUFFERS = {'bev_pos'}
+
+# The checkpoint stores the decoder layer with mmcv BaseTransformerLayer naming
+# (mmdet's DetrTransformerDecoderLayer), while the module below is written with
+# plain torch.nn names. Without this mapping every decoder tensor is skipped.
+TRANSFUSION_KEY_PATTERNS = (
+    (r'^decoder\.(\d+)\.self_attn\.attn\.', r'decoder.\1.self_attn.'),
+    (r'^decoder\.(\d+)\.cross_attn\.attn\.', r'decoder.\1.multihead_attn.'),
+    (r'^decoder\.(\d+)\.ffn\.layers\.0\.0\.', r'decoder.\1.linear1.'),
+    (r'^decoder\.(\d+)\.ffn\.layers\.1\.', r'decoder.\1.linear2.'),
+    (r'^decoder\.(\d+)\.norms\.0\.', r'decoder.\1.norm1.'),
+    (r'^decoder\.(\d+)\.norms\.1\.', r'decoder.\1.norm2.'),
+    (r'^decoder\.(\d+)\.norms\.2\.', r'decoder.\1.norm3.'),
+)
+
+
+def remap_transfusion_key(key):
+    """Translate a checkpoint head key into this module's parameter name."""
+    for pattern, replacement in TRANSFUSION_KEY_PATTERNS:
+        new_key, count = re.subn(pattern, replacement, key)
+        if count:
+            return new_key
+    return key
+
+
 def build_transfusion_head(state_dict, prefixes):
     """Build TransFusion detection head from checkpoint weights."""
 
@@ -791,13 +818,25 @@ def build_transfusion_head(state_dict, prefixes):
     loaded = 0
     for k, v in state_dict.items():
         if k.startswith(prefix):
-            mk = k[len(prefix):]
+            mk = remap_transfusion_key(k[len(prefix):])
             if mk in model_dict and model_dict[mk].shape == v.shape:
                 model_dict[mk] = v
                 loaded += 1
     head.load_state_dict(model_dict)
     head.eval()
     print(f"  TransFusion head: loaded {loaded} weights")
+
+    # Every parameter must come from the checkpoint. Anything left behind keeps
+    # its random init and silently destroys accuracy -- which is exactly how the
+    # decoder layer went unnoticed (all 18 of its tensors are named differently
+    # in the checkpoint), leaving the head unable to score above ~0.001.
+    assigned = {remap_transfusion_key(k[len(prefix):])
+                for k in state_dict if k.startswith(prefix)}
+    missing = sorted(set(model_dict) - assigned - TRANSFUSION_COMPUTED_BUFFERS)
+    if missing:
+        raise RuntimeError(
+            f"TransFusion head: {len(missing)} parameters were not found in the "
+            f"checkpoint and would keep their random initialization: {missing}")
     return head
 
 
