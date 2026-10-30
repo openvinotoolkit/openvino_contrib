@@ -1371,7 +1371,11 @@ def main():
     else:
         print(f"\n[A1] Camera Backbone + Neck (SwinT + FPN)")
         cam_model = CameraBackboneNeck()
-        load_camera_backbone_neck_weights(cam_model, state, prefixes)
+        if not load_camera_backbone_neck_weights(cam_model, state, prefixes):
+            raise RuntimeError(
+                "Camera backbone+neck has parameters missing from the checkpoint; "
+                "they would keep their random initialization (see the missing/"
+                "unexpected counts above)")
         cam_model.eval()
 
     dummy_img = torch.randn(1, 3, 256, 704)
