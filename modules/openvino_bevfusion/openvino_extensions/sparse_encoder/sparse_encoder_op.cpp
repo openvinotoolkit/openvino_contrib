@@ -33,6 +33,20 @@
 namespace BEVFusionExtension {
 
 // ============================================================
+// Diagnostic output
+//
+// The op runs inside host applications (e.g. a GStreamer pipeline) whose
+// stdout is not ours to write to, so timing, kernel selection and benchmark
+// messages are only printed when BEVFUSION_VERBOSE is set. Errors still go
+// to stderr unconditionally.
+// ============================================================
+static std::ostream& log_out() {
+    static std::ostream null_stream(nullptr);
+    static const bool verbose = std::getenv("BEVFUSION_VERBOSE") != nullptr;
+    return verbose ? std::cout : null_stream;
+}
+
+// ============================================================
 // Stage dumping (debug)
 //
 // Set BEVFUSION_DUMP_DIR to write each layer's output features and
@@ -257,7 +271,7 @@ static void dump_stage(const char* tag, cl_mem feat, int N, int C,
     f.write(reinterpret_cast<const char*>(hdr), sizeof(hdr));
     f.write(reinterpret_cast<const char*>(coords), (size_t)N * 4 * sizeof(int32_t));
     f.write(reinterpret_cast<const char*>(full.data()), full.size() * sizeof(float));
-    std::cout << "[sparse_encoder_ext] dumped " << tag << " N=" << N
+    log_out() << "[sparse_encoder_ext] dumped " << tag << " N=" << N
               << " C=" << C << std::endl;
 }
 
@@ -356,7 +370,7 @@ static void init_opencl() {
             // Optional fused kernel (write directly to BEV layout)
             g_sparse_to_bev_fp16_kernel = clCreateKernel(g_program, "sparse_to_bev_fp16", &err);
             if (err != CL_SUCCESS) {
-                std::cout << "[sparse_encoder] sparse_to_bev_fp16 not found, using fallback" << std::endl;
+                log_out() << "[sparse_encoder] sparse_to_bev_fp16 not found, using fallback" << std::endl;
                 g_sparse_to_bev_fp16_kernel = nullptr;
             }
             // FP16 output variant (half the BEV readback bandwidth)
@@ -368,62 +382,62 @@ static void init_opencl() {
             // Fused BN+ReLU+F32→F16 kernel
             g_fused_bn_relu_f16_kernel = clCreateKernel(g_program, "fused_bn_relu_f16", &err);
             if (err != CL_SUCCESS) {
-                std::cout << "[sparse_encoder] fused_bn_relu_f16 not found, using fallback" << std::endl;
+                log_out() << "[sparse_encoder] fused_bn_relu_f16 not found, using fallback" << std::endl;
                 g_fused_bn_relu_f16_kernel = nullptr;
             }
 
             // Compact GPU hash table kernels (for GPU neighbor map building)
             g_build_hash_compact_kernel = clCreateKernel(g_program, "build_hash_table_compact", &err);
             if (err != CL_SUCCESS) {
-                std::cout << "[sparse_encoder] build_hash_table_compact not found" << std::endl;
+                log_out() << "[sparse_encoder] build_hash_table_compact not found" << std::endl;
                 g_build_hash_compact_kernel = nullptr;
             }
             g_build_nmap_compact_kernel = clCreateKernel(g_program, "build_neighbor_map_compact", &err);
             if (err != CL_SUCCESS) {
-                std::cout << "[sparse_encoder] build_neighbor_map_compact not found" << std::endl;
+                log_out() << "[sparse_encoder] build_neighbor_map_compact not found" << std::endl;
                 g_build_nmap_compact_kernel = nullptr;
             }
 
             // SLM v2 kernels
             g_subm_conv_fp16_slm_v2_kernel = clCreateKernel(g_program, "subm_conv_fp16_slm_v2", &err);
             if (err != CL_SUCCESS) {
-                std::cout << "[sparse_encoder] subm_conv_fp16_slm_v2 not found" << std::endl;
+                log_out() << "[sparse_encoder] subm_conv_fp16_slm_v2 not found" << std::endl;
                 g_subm_conv_fp16_slm_v2_kernel = nullptr;
             }
             g_subm_conv_fp16_slm_v2_w8_kernel = clCreateKernel(g_program, "subm_conv_fp16_slm_v2_w8", &err);
             if (err != CL_SUCCESS) {
-                std::cout << "[sparse_encoder] subm_conv_fp16_slm_v2_w8 not found" << std::endl;
+                log_out() << "[sparse_encoder] subm_conv_fp16_slm_v2_w8 not found" << std::endl;
                 g_subm_conv_fp16_slm_v2_w8_kernel = nullptr;
             }
             g_subm_conv_fp16_mv4_kernel = clCreateKernel(g_program, "subm_conv_fp16_mv4", &err);
             if (err != CL_SUCCESS) {
-                std::cout << "[sparse_encoder] subm_conv_fp16_mv4 not found" << std::endl;
+                log_out() << "[sparse_encoder] subm_conv_fp16_mv4 not found" << std::endl;
                 g_subm_conv_fp16_mv4_kernel = nullptr;
             }
 
             // Strided conv with precomputed neighbor map
             g_build_strided_nmap_kernel = clCreateKernel(g_program, "build_strided_nmap", &err);
             if (err != CL_SUCCESS) {
-                std::cout << "[sparse_encoder] build_strided_nmap not found" << std::endl;
+                log_out() << "[sparse_encoder] build_strided_nmap not found" << std::endl;
                 g_build_strided_nmap_kernel = nullptr;
             }
             g_strided_conv_nmap_fp16_kernel = clCreateKernel(g_program, "strided_conv_nmap_fp16", &err);
             if (err != CL_SUCCESS) {
-                std::cout << "[sparse_encoder] strided_conv_nmap_fp16 not found" << std::endl;
+                log_out() << "[sparse_encoder] strided_conv_nmap_fp16 not found" << std::endl;
                 g_strided_conv_nmap_fp16_kernel = nullptr;
             }
 
             // NEW: DPAS/XMX kernels
             g_subm_conv_fp16_dpas_kernel = clCreateKernel(g_program, "subm_conv_fp16_dpas", &err);
             if (err != CL_SUCCESS) {
-                std::cout << "[sparse_encoder] subm_conv_fp16_dpas not found (XMX not available)" << std::endl;
+                log_out() << "[sparse_encoder] subm_conv_fp16_dpas not found (XMX not available)" << std::endl;
                 g_subm_conv_fp16_dpas_kernel = nullptr;
             } else {
                 // DPAS kernel compiled but may not work on all GPUs
                 // Verified: 0xb0b0 (32 EU Xe-LPG) reports XMX but lacks functional units
                 // Disable DPAS until we can verify correctness at runtime
                 g_use_dpas = false;
-                std::cout << "[sparse_encoder] DPAS kernel compiled (disabled: verification needed)" << std::endl;
+                log_out() << "[sparse_encoder] DPAS kernel compiled (disabled: verification needed)" << std::endl;
             }
             g_subm_conv_fp16_dpas_resadd_kernel = clCreateKernel(g_program, "subm_conv_fp16_dpas_resadd", &err);
             if (err != CL_SUCCESS) {
@@ -433,63 +447,63 @@ static void init_opencl() {
             // NEW: Optimized FP16 fast kernel
             g_subm_conv_fp16_fast_kernel = clCreateKernel(g_program, "subm_conv_fp16_fast", &err);
             if (err != CL_SUCCESS) {
-                std::cout << "[sparse_encoder] subm_conv_fp16_fast not found" << std::endl;
+                log_out() << "[sparse_encoder] subm_conv_fp16_fast not found" << std::endl;
                 g_subm_conv_fp16_fast_kernel = nullptr;
             }
 
             // NEW: FP16 lite kernel (FP16 accum, no preloading)
             g_subm_conv_fp16_lite_kernel = clCreateKernel(g_program, "subm_conv_fp16_lite", &err);
             if (err != CL_SUCCESS) {
-                std::cout << "[sparse_encoder] subm_conv_fp16_lite not found" << std::endl;
+                log_out() << "[sparse_encoder] subm_conv_fp16_lite not found" << std::endl;
                 g_subm_conv_fp16_lite_kernel = nullptr;
             }
 
             // NEW: Morton-ordered kernel
             g_subm_conv_fp16_morton_kernel = clCreateKernel(g_program, "subm_conv_fp16_morton", &err);
             if (err != CL_SUCCESS) {
-                std::cout << "[sparse_encoder] subm_conv_fp16_morton not found" << std::endl;
+                log_out() << "[sparse_encoder] subm_conv_fp16_morton not found" << std::endl;
                 g_subm_conv_fp16_morton_kernel = nullptr;
             }
 
             // NEW: Feature permutation kernel
             g_permute_features_fp16_kernel = clCreateKernel(g_program, "permute_features_fp16", &err);
             if (err != CL_SUCCESS) {
-                std::cout << "[sparse_encoder] permute_features_fp16 not found" << std::endl;
+                log_out() << "[sparse_encoder] permute_features_fp16 not found" << std::endl;
                 g_permute_features_fp16_kernel = nullptr;
             }
 
             // NEW: Transposed-weight kernels
             g_subm_conv_fp16_w4t_kernel = clCreateKernel(g_program, "subm_conv_fp16_w4t", &err);
             if (err != CL_SUCCESS) {
-                std::cout << "[sparse_encoder] subm_conv_fp16_w4t not found" << std::endl;
+                log_out() << "[sparse_encoder] subm_conv_fp16_w4t not found" << std::endl;
                 g_subm_conv_fp16_w4t_kernel = nullptr;
             }
             g_subm_conv_fp16_w8t_kernel = clCreateKernel(g_program, "subm_conv_fp16_w8t", &err);
             if (err != CL_SUCCESS) {
-                std::cout << "[sparse_encoder] subm_conv_fp16_w8t not found" << std::endl;
+                log_out() << "[sparse_encoder] subm_conv_fp16_w8t not found" << std::endl;
                 g_subm_conv_fp16_w8t_kernel = nullptr;
             }
 
             // NEW: Optimized lite8 and fused residual kernels
             g_subm_conv_fp16_lite8_kernel = clCreateKernel(g_program, "subm_conv_fp16_lite8", &err);
             if (err != CL_SUCCESS) {
-                std::cout << "[sparse_encoder] subm_conv_fp16_lite8 not found" << std::endl;
+                log_out() << "[sparse_encoder] subm_conv_fp16_lite8 not found" << std::endl;
                 g_subm_conv_fp16_lite8_kernel = nullptr;
             }
             g_subm_conv_fp16_lite_resadd_kernel = clCreateKernel(g_program, "subm_conv_fp16_lite_resadd", &err);
             if (err != CL_SUCCESS) {
-                std::cout << "[sparse_encoder] subm_conv_fp16_lite_resadd not found" << std::endl;
+                log_out() << "[sparse_encoder] subm_conv_fp16_lite_resadd not found" << std::endl;
                 g_subm_conv_fp16_lite_resadd_kernel = nullptr;
             }
             g_subm_conv_fp16_lite8_resadd_kernel = clCreateKernel(g_program, "subm_conv_fp16_lite8_resadd", &err);
             if (err != CL_SUCCESS) {
-                std::cout << "[sparse_encoder] subm_conv_fp16_lite8_resadd not found" << std::endl;
+                log_out() << "[sparse_encoder] subm_conv_fp16_lite8_resadd not found" << std::endl;
                 g_subm_conv_fp16_lite8_resadd_kernel = nullptr;
             }
 
             char name[256];
             clGetDeviceInfo(d, CL_DEVICE_NAME, sizeof(name), name, nullptr);
-            std::cout << "[sparse_encoder_ext] Using: " << name << std::endl;
+            log_out() << "[sparse_encoder_ext] Using: " << name << std::endl;
             return;
         }
     }
@@ -1034,11 +1048,11 @@ static void run_subm_conv(
                 CL_CHECK(clFinish(g_queue));
                 double ms = std::chrono::duration<double, std::milli>(
                     std::chrono::high_resolution_clock::now() - t0).count() / RUNS;
-                std::cout << "[subm_bench] " << Cin << "x" << Cout << " N=" << N
+                log_out() << "[subm_bench] " << Cin << "x" << Cout << " N=" << N
                           << " " << name << ": " << ms << " ms" << std::endl;
                 return ms;
             } catch (const std::exception& e) {
-                std::cout << "[subm_bench] " << name << " FAILED: " << e.what() << std::endl;
+                log_out() << "[subm_bench] " << name << " FAILED: " << e.what() << std::endl;
                 return 1e30;
             }
         };
@@ -1071,7 +1085,7 @@ static void run_subm_conv(
         g_best_kernel[cw_idx] = 1; // mark as benchmarked
         g_best_kernel_type[cw_idx] = best_type;
         g_best_kernel_idx[cw_idx] = best_idx;
-        std::cout << "[subm_bench] BEST for " << Cin << "x" << Cout
+        log_out() << "[subm_bench] BEST for " << Cin << "x" << Cout
                   << ": type=" << best_type << " idx=" << best_idx
                   << " (" << best_ms << " ms)" << std::endl;
     }
@@ -1184,7 +1198,7 @@ static void pre_upload_weights(const float* params, const int* w_offsets, const 
         CL_CHECK(clerr);
     }
     g_weights_uploaded = true;
-    std::cout << "[sparse_encoder_ext] Pre-uploaded weights for " << NUM_LAYERS << " layers" << std::endl;
+    log_out() << "[sparse_encoder_ext] Pre-uploaded weights for " << NUM_LAYERS << " layers" << std::endl;
 
     // ── DPAS weight packing: convert [num_k, C_in, C_out] to VNNI format ──
     // VNNI for FP16 k16: weights_packed[k][ci_tile][co_tile][8][16] as uint
@@ -1205,7 +1219,7 @@ static void pre_upload_weights(const float* params, const int* w_offsets, const 
     //   which is: data[0..15], data[16..31], ..., data[112..127]
     //   = columns of our 8×16 matrix
     if (g_use_dpas) {
-        std::cout << "[sparse_encoder_ext] Packing weights for DPAS..." << std::endl;
+        log_out() << "[sparse_encoder_ext] Packing weights for DPAS..." << std::endl;
         for (int i = 0; i < NUM_LAYERS; i++) {
             int num_k = LAYERS[i].num_k;
             int C_in = LAYERS[i].C_in;
@@ -1267,7 +1281,7 @@ static void pre_upload_weights(const float* params, const int* w_offsets, const 
                                                       pb, packed.data(), &clerr);
             CL_CHECK(clerr);
         }
-        std::cout << "[sparse_encoder_ext] DPAS weight packing done" << std::endl;
+        log_out() << "[sparse_encoder_ext] DPAS weight packing done" << std::endl;
     }
 
     // ── Transposed weight packing ──
@@ -1881,13 +1895,13 @@ bool SparseEncoderOp::evaluate(
 
     g_call_count++;
     if (g_call_count <= 5 || g_call_count % 20 == 0) {
-        std::cout << "[sparse_encoder_ext] " << elapsed << " ms, N=" << N
+        log_out() << "[sparse_encoder_ext] " << elapsed << " ms, N=" << N
                   << " -> N_out=" << cur_N
                   << " | precomp=" << ms_precomp << " subm=" << ms_subm
                   << " sgpu=" << ms_sgpu
                   << " s2d=" << ms_s2d << std::endl;
         if (do_section_timing) {
-            std::cout << "[SECTION_PROFILE] upload=" << sec_upload
+            log_out() << "[SECTION_PROFILE] upload=" << sec_upload
                       << " conv0=" << sec_conv0
                       << " lv0=" << sec_level[0]
                       << " st0=" << sec_strided[0]
