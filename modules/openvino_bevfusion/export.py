@@ -868,7 +868,12 @@ class CameraEncoderMerged(nn.Module):
     def forward(self, images, depth_maps):
         cam_feats = self.backbone_neck(images)       # [B,256,32,88]
         depth_feats = self.dtransform(depth_maps)     # [B,64,32,88]
-        combined = torch.cat([cam_feats, depth_feats], dim=1)  # [B,320,32,88]
+        # Depth features come FIRST: depthnet's leading conv is trained with
+        # input channels [0:64] = dtransform output and [64:320] = image
+        # features. See DepthLSSTransform.get_cam_feats in the reference
+        # implementation, which does torch.cat([d, x], dim=1). Swapping these
+        # scrambles every input channel and flattens the depth softmax.
+        combined = torch.cat([depth_feats, cam_feats], dim=1)  # [B,320,32,88]
         daf = self.depthnet(combined)                 # [B,198,32,88]
         depth_logits = daf[:, :D_BINS]                # [B,118,32,88]
         context_feats = daf[:, D_BINS:]               # [B,80,32,88]
