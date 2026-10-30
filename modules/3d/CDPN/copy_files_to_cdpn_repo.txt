@@ -1,0 +1,18 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+ov_export.py
+ov_infer.py
+ov_plugins/build.sh
+ov_plugins/cdpn_cpu/include/cdpn_pnp_solve.hpp
+ov_plugins/cdpn_cpu/include/cdpn_preprocess.hpp
+ov_plugins/cdpn_cpu/src/cdpn_pnp_solve.cpp
+ov_plugins/cdpn_cpu/src/cdpn_preprocess.cpp
+ov_plugins/cdpn_cpu/src/ov_extension.cpp
+ov_plugins/cdpn_gpu/cdpn_custom_gpu_kernels.xml
+ov_plugins/cdpn_gpu/src/kernel_selector/cl_kernels/cdpn_pnp_solve_gpu.cl
+ov_plugins/cdpn_gpu/src/kernel_selector/cl_kernels/cdpn_preprocess_gpu.cl
+ov_plugins/CMakeLists.txt
+xpu_infer.py
+OV_README.md
+requirements.txt
