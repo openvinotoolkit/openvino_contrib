@@ -576,7 +576,11 @@ static const LayerDesc LAYERS[] = {
     {1, 64, 64,  27, 3,3,3, 1,1,1, 0,0,0},
     {1, 64, 64,  27, 3,3,3, 1,1,1, 0,0,0},
     {1, 64, 64,  27, 3,3,3, 1,1,1, 0,0,0},
-    {2, 64, 128, 27, 3,3,3, 2,2,2, 1,1,1},  // ds2
+    // ds2 uses z-padding 0, not 1: the config's encoder_paddings[2] is
+    // (0, 0, (1,1,0)), so the strided conv of stage 3 pads (px,py,pz)=(1,1,0).
+    // With pz=1 this level becomes Z=6 instead of Z=5, which shifts every
+    // feature into the wrong z slice (and contradicts the level comment below).
+    {2, 64, 128, 27, 3,3,3, 2,2,2, 1,1,0},  // ds2
     // encoder_layer3 (no downsample)
     {1, 128, 128, 27, 3,3,3, 1,1,1, 0,0,0},
     {1, 128, 128, 27, 3,3,3, 1,1,1, 0,0,0},
