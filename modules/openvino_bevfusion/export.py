@@ -689,7 +689,7 @@ def build_decoder(state_dict, prefixes):
 # ============================================================================
 
 # Buffers computed at construction time rather than read from the checkpoint.
-TRANSFUSION_COMPUTED_BUFFERS = {'bev_pos'}
+TRANSFUSION_COMPUTED_BUFFERS = {'bev_pos', 'nms_interior', 'nms_exempt_class'}
 
 # The checkpoint stores the decoder layer with mmcv BaseTransformerLayer naming
 # (mmdet's DetrTransformerDecoderLayer), while the module below is written with
@@ -812,6 +812,13 @@ def build_transfusion_head(state_dict, prefixes):
             batch_y = batch_y + 0.5
             coord = torch.cat([batch_x[None], batch_y[None]], dim=0)[None]
             self.register_buffer('bev_pos', coord.view(1, 2, -1).permute(0, 2, 1))
+            pad = self.nks // 2
+            interior = torch.zeros(1, 1, xs, ys)
+            interior[:, :, pad:xs - pad, pad:ys - pad] = 1.0
+            self.register_buffer('nms_interior', interior)
+            exempt = torch.zeros(1, self.nc, 1, 1)
+            exempt[:, 8:10] = 1.0
+            self.register_buffer('nms_exempt_class', exempt)
 
         def forward(self, bev_features):
             B = bev_features.shape[0]
@@ -821,16 +828,22 @@ def build_transfusion_head(state_dict, prefixes):
             x = F.relu(x)
             dense_heatmap = self.heatmap_head[1](x)
             heatmap = dense_heatmap.detach().sigmoid()
-            pad = self.nks // 2
-            local_max = torch.zeros_like(heatmap)
-            local_max_inner = F.max_pool2d(heatmap, kernel_size=self.nks, stride=1,
-                                           padding=0)
-            local_max[:, :, pad:(-pad), pad:(-pad)] = local_max_inner
-            local_max[:, 8] = F.max_pool2d(heatmap[:, 8:9], kernel_size=1, stride=1,
-                                           padding=0)[:, 0]
-            local_max[:, 9] = F.max_pool2d(heatmap[:, 9:10], kernel_size=1, stride=1,
-                                           padding=0)[:, 0]
-            heatmap = heatmap * (heatmap == local_max)
+            # Local-max suppression, as in the reference: a cell survives if it
+            # is the maximum of its nks x nks window; cells in the outer
+            # nks//2 border never survive (the reference compares them against
+            # a zero-filled local_max, and sigmoid is never 0); classes 8 and 9
+            # (pedestrian, traffic_cone) use a 1x1 window, i.e. no suppression.
+            #
+            # The reference builds local_max with slice assignments into a
+            # zeros_like() tensor. Those export as ScatterNDUpdate, which the
+            # OpenVINO GPU plugin computes incorrectly in this graph (seen on
+            # 2025.4 and 2026.3: the queries are then taken from the BEV corner
+            # and every score is ~0). Express the same result with masks only.
+            pooled = F.max_pool2d(heatmap, kernel_size=self.nks, stride=1,
+                                  padding=self.nks // 2)
+            keep = (heatmap == pooled).float() * self.nms_interior
+            keep = torch.maximum(keep, self.nms_exempt_class)
+            heatmap = heatmap * keep
             feat_flat = fusion_feat.view(B, self.hc, -1)
             hm_flat = heatmap.view(B, self.nc, -1)
             hm_all = hm_flat.view(B, -1)
