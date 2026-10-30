@@ -62,7 +62,7 @@ if(OpenMP_CXX_FOUND)
     message(STATUS "OpenMP enabled for neighbor map construction")
 endif()
 
-target_compile_options(${TARGET_NAME} PRIVATE -O3 -march=native)
+target_compile_options(${TARGET_NAME} PRIVATE -O3)
 
 install(TARGETS ${TARGET_NAME} LIBRARY DESTINATION lib RUNTIME DESTINATION lib)
 install(FILES sparse_conv.cl DESTINATION lib)
