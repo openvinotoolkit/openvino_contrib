@@ -216,19 +216,35 @@ class PatchMerging(nn.Module):
         self.norm = nn.LayerNorm(4 * in_channels)
 
     def forward(self, x, H, W):
+        """Merge 2x2 neighbourhoods, in mmcv PatchMerging's channel order.
+
+        mmcv implements this with nn.Unfold(kernel_size=2, stride=2), whose
+        output channel index is ``c * 4 + ky * 2 + kx`` -- the four merged
+        positions are interleaved *within* each input channel. The original
+        Swin implementation instead concatenates whole channel blocks per
+        offset (``cat([x[0::2,0::2], x[1::2,0::2], x[0::2,1::2], x[1::2,1::2]])``).
+        The checkpoint was trained through mmcv (convert_weights=True), so its
+        ``reduction`` Linear expects the Unfold order; using the original order
+        permutes every input to that layer.
+
+        Reproduced with slice+stack rather than nn.Unfold, which has poor
+        ONNX/OpenVINO support.
+        """
         B, L, C = x.shape
-        x = x.view(B, H, W, C)
-        pad_h = H % 2
-        pad_w = W % 2
-        if pad_h or pad_w:
-            x = F.pad(x, (0, 0, 0, pad_w, 0, pad_h))
-        x0 = x[:, 0::2, 0::2, :]
-        x1 = x[:, 1::2, 0::2, :]
-        x2 = x[:, 0::2, 1::2, :]
-        x3 = x[:, 1::2, 1::2, :]
-        x = torch.cat([x0, x1, x2, x3], -1)
-        _, new_H, new_W, _ = x.shape
-        x = x.view(B, -1, 4 * C)
+        x = x.view(B, H, W, C).permute(0, 3, 1, 2)      # B, C, H, W
+        if H % 2 or W % 2:
+            # mmcv's AdaptivePadding uses padding='corner' (bottom/right).
+            x = F.pad(x, (0, W % 2, 0, H % 2))
+        new_H, new_W = x.shape[2] // 2, x.shape[3] // 2
+
+        x = torch.stack([x[:, :, 0::2, 0::2],           # ky=0, kx=0
+                         x[:, :, 0::2, 1::2],           # ky=0, kx=1
+                         x[:, :, 1::2, 0::2],           # ky=1, kx=0
+                         x[:, :, 1::2, 1::2]],          # ky=1, kx=1
+                        dim=2)                          # B, C, 4, new_H, new_W
+        x = x.reshape(B, 4 * C, new_H, new_W)           # channel = c*4 + ky*2 + kx
+        x = x.flatten(2).transpose(1, 2)                # B, new_H*new_W, 4C
+
         x = self.norm(x)
         x = self.reduction(x)
         return x, new_H, new_W
