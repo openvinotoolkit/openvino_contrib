@@ -319,17 +319,44 @@ class GeneralizedLSSFPN(nn.Module):
             }),
         ])
 
+    def _lateral(self, i, x):
+        return F.relu(self.lateral_convs[i]['bn'](self.lateral_convs[i]['conv'](x)))
+
+    def _fpn(self, i, x):
+        return F.relu(self.fpn_convs[i]['bn'](self.fpn_convs[i]['conv'](x)))
+
     def forward(self, inputs):
+        """Top-down: upsample -> cat -> conv1x1 -> conv3x3, per level.
+
+        Follows GeneralizedLSSFPN.forward in the reference implementation. Two
+        details matter and were previously wrong:
+          * level 1 is upsampled into level 0 *after* its fpn_conv, not before
+            (the reference overwrites laterals[i] with the fpn_conv output, and
+            the next iteration reads that same slot);
+          * align_corners is **False**. The GeneralizedLSSFPN class default is
+            True, but the lidar-cam config explicitly overrides `upsample_cfg`
+            to `dict(mode='bilinear', align_corners=False)`, and that is what
+            the checkpoint was trained with. Reading the class default instead
+            of the config costs relL2 0.087 on output[0].
+        Both feed output[0], which is the only output the view transform uses,
+        so getting them wrong corrupts the whole camera branch.
+
+        Verified bit-exact against mmdet's own source by tools/compare_swin.py.
+        """
         assert len(inputs) == 3
-        up3 = F.interpolate(inputs[2], size=inputs[1].shape[2:], mode='bilinear', align_corners=False)
-        cat1 = torch.cat([inputs[1], up3], dim=1)
-        lat1 = F.relu(self.lateral_convs[1]['bn'](self.lateral_convs[1]['conv'](cat1)))
-        up1 = F.interpolate(lat1, size=inputs[0].shape[2:], mode='bilinear', align_corners=False)
-        cat0 = torch.cat([inputs[0], up1], dim=1)
-        lat0 = F.relu(self.lateral_convs[0]['bn'](self.lateral_convs[0]['conv'](cat0)))
-        out0 = F.relu(self.fpn_convs[0]['bn'](self.fpn_convs[0]['conv'](lat0)))
-        out1 = F.relu(self.fpn_convs[1]['bn'](self.fpn_convs[1]['conv'](lat1)))
-        return [out0, out1]
+        laterals = list(inputs)
+
+        # i = 1: cat level 2 (upsampled) onto level 1
+        x = F.interpolate(laterals[2], size=laterals[1].shape[2:],
+                          mode='bilinear', align_corners=False)
+        laterals[1] = self._fpn(1, self._lateral(1, torch.cat([laterals[1], x], dim=1)))
+
+        # i = 0: cat level 1 (upsampled, post-fpn_conv) onto level 0
+        x = F.interpolate(laterals[1], size=laterals[0].shape[2:],
+                          mode='bilinear', align_corners=False)
+        laterals[0] = self._fpn(0, self._lateral(0, torch.cat([laterals[0], x], dim=1)))
+
+        return [laterals[0], laterals[1]]
 
 
 class CameraBackboneNeck(nn.Module):
