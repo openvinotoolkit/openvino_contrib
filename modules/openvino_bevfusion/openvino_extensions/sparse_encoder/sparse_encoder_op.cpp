@@ -14,6 +14,8 @@
 #include <openvino/core/shape.hpp>
 
 #include <CL/cl.h>
+#include <dlfcn.h>
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
 #include <cstring>
@@ -29,6 +31,45 @@
 #endif
 
 namespace BEVFusionExtension {
+
+// ============================================================
+// Stage dumping (debug)
+//
+// Set BEVFUSION_DUMP_DIR to write each layer's output features and
+// coordinates, so they can be diffed against a reference implementation
+// (see tools/sparse_encoder_ref.py). Off unless the variable is set.
+// File format: int32 N, int32 C, then N*4 int32 coords, then N*C float32.
+// ============================================================
+static const char* dump_dir() {
+    static const char* dir = std::getenv("BEVFUSION_DUMP_DIR");
+    return dir;
+}
+
+static void dump_stage(const char* tag, cl_mem feat, int N, int C,
+                       const int* coords);
+
+// ============================================================
+// Kernel source location
+// ============================================================
+
+// Directory holding this shared object, so the .cl kernel can be found next to
+// it wherever the library is installed.
+static std::string shared_object_dir() {
+    Dl_info info{};
+    if (dladdr(reinterpret_cast<const void*>(&shared_object_dir), &info) == 0 || !info.dli_fname)
+        return ".";
+    std::string path(info.dli_fname);
+    auto pos = path.find_last_of('/');
+    return pos == std::string::npos ? std::string(".") : path.substr(0, pos);
+}
+
+// Directory of this source file, baked in at compile time. Only valid when
+// running from the tree the library was built in; kept as a last resort.
+static std::string source_dir_at_build_time() {
+    std::string path(__FILE__);
+    auto pos = path.find_last_of("/\\");
+    return pos == std::string::npos ? std::string(".") : path.substr(0, pos);
+}
 
 // ============================================================
 // OpenCL State (lazy-initialized, thread-safe)
@@ -178,6 +219,48 @@ static void upload(cl_mem buf, const void* data, size_t sz) {
     CL_CHECK(clEnqueueWriteBuffer(g_queue, buf, CL_FALSE, 0, sz, data, 0, nullptr, nullptr));
 }
 
+// Read back an FP16 feature buffer and write it next to its coordinates.
+static void dump_stage(const char* tag, cl_mem feat, int N, int C,
+                       const int* coords) {
+    const char* dir = dump_dir();
+    if (!dir || N <= 0 || C <= 0)
+        return;
+
+    CL_CHECK(clFinish(g_queue));
+    std::vector<uint16_t> half((size_t)N * C);
+    CL_CHECK(clEnqueueReadBuffer(g_queue, feat, CL_TRUE, 0,
+                                 half.size() * sizeof(uint16_t), half.data(),
+                                 0, nullptr, nullptr));
+
+    std::vector<float> full(half.size());
+    for (size_t i = 0; i < half.size(); i++) {
+        uint16_t h = half[i];
+        uint32_t sign = ((uint32_t)h & 0x8000) << 16;
+        uint32_t exp_bits = (h >> 10) & 0x1F;
+        uint32_t mant = h & 0x3FF;
+        uint32_t f;
+        if (exp_bits == 0) {
+            f = sign;  // zero / subnormal -> zero, matching the s2d kernel
+        } else {
+            f = sign | ((exp_bits + 112) << 23) | (mant << 13);
+        }
+        std::memcpy(&full[i], &f, 4);
+    }
+
+    std::string path = std::string(dir) + "/" + tag + ".bin";
+    std::ofstream f(path, std::ios::binary);
+    if (!f) {
+        std::cerr << "[sparse_encoder_ext] cannot write " << path << std::endl;
+        return;
+    }
+    int32_t hdr[2] = {N, C};
+    f.write(reinterpret_cast<const char*>(hdr), sizeof(hdr));
+    f.write(reinterpret_cast<const char*>(coords), (size_t)N * 4 * sizeof(int32_t));
+    f.write(reinterpret_cast<const char*>(full.data()), full.size() * sizeof(float));
+    std::cout << "[sparse_encoder_ext] dumped " << tag << " N=" << N
+              << " C=" << C << std::endl;
+}
+
 static void gpu_f32_to_f16(cl_mem f32, cl_mem f16, int total) {
     CL_CHECK(clSetKernelArg(g_float_to_half_kernel, 0, sizeof(cl_mem), &f32));
     CL_CHECK(clSetKernelArg(g_float_to_half_kernel, 1, sizeof(cl_mem), &f16));
@@ -214,20 +297,19 @@ static void init_opencl() {
             g_queue = clCreateCommandQueue(g_context, g_device, 0, &err);
             CL_CHECK(err);
 
-            // Find kernel source (try multiple paths, including relative to this source file)
+            // Find kernel source. The __FILE__ path only exists on the machine
+            // that compiled this library, so an installed/relocated .so has to
+            // locate the kernel next to itself (or be told where to look).
             std::string src;
-            // Derive directory of this source file at compile time
-            std::string this_dir = std::string(__FILE__);
-            {
-                auto pos = this_dir.find_last_of("/\\");
-                if (pos != std::string::npos) this_dir = this_dir.substr(0, pos);
-                else this_dir = ".";
-            }
-            for (const auto& path : {
-                (this_dir + "/sparse_conv.cl"),
-                // std::string("openvino_extensions/sparse_encoder/sparse_conv_fused.cl"),
-                // std::string("bevfusion/kernels/sparse_conv/sparse_conv_fused.cl")
-            }) {
+            std::vector<std::string> candidates;
+            if (const char* dir = std::getenv("BEVFUSION_KERNEL_DIR"))
+                candidates.push_back(std::string(dir) + "/sparse_conv.cl");
+            candidates.push_back(shared_object_dir() + "/sparse_conv.cl");
+            candidates.push_back(source_dir_at_build_time() + "/sparse_conv.cl");
+
+            std::string tried;
+            for (const auto& path : candidates) {
+                tried += (tried.empty() ? "" : ", ") + path;
                 std::ifstream f(path);
                 if (f.is_open()) {
                     std::ostringstream ss;
@@ -237,7 +319,8 @@ static void init_opencl() {
                 }
             }
             if (src.empty())
-                throw std::runtime_error("Cannot find sparse_conv.cl");
+                throw std::runtime_error("Cannot find sparse_conv.cl (tried: " + tried +
+                                         "). Set BEVFUSION_KERNEL_DIR to the directory holding it.");
 
             const char* sp = src.c_str();
             size_t sl = src.size();
@@ -1367,6 +1450,7 @@ bool SparseEncoderOp::evaluate(
         run_subm_conv(cur_feat, alt_feat, cur_N, cur_C, Cout, 1, 0);
         std::swap(cur_feat, alt_feat);
         cur_C = Cout;
+        dump_stage("L00_conv_input", cur_feat, cur_N, cur_C, levels[0].coords_ptr);
         if (do_section_timing) {
             CL_CHECK(clFinish(g_queue));
             sec_conv0 = std::chrono::duration<double, std::milli>(
@@ -1438,6 +1522,11 @@ bool SparseEncoderOp::evaluate(
             cur_C = Cout;
             ms_subm += std::chrono::duration<double, std::milli>(
                 std::chrono::high_resolution_clock::now() - t0).count();
+            if (dump_dir()) {
+                char tag[64];
+                snprintf(tag, sizeof(tag), "L%02d_res", li);
+                dump_stage(tag, cur_feat, cur_N, cur_C, levels[cur_level].coords_ptr);
+            }
             li += 2;
             
             // Section timing after residual block
@@ -1707,6 +1796,13 @@ bool SparseEncoderOp::evaluate(
                 t_sec = std::chrono::high_resolution_clock::now();
             }
 
+            if (dump_dir()) {
+                char tag[64];
+                snprintf(tag, sizeof(tag), "L%02d_%s", li,
+                         L.type == 3 ? "conv_out" : "downsample");
+                dump_stage(tag, cur_feat, cur_N, cur_C,
+                           strided_precomp[strided_idx].out_coords.data());
+            }
             strided_idx++;
             li++;
         }
