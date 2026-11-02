@@ -12,21 +12,9 @@
 # category: labels map to modules under modules/ (see .github/labeler.yml).
 # 'build' and 'CI' are path-based (cmake / infra) rather than module-based.
 
-- name: "category: 3D"
-  color: "#d3d3d3"
-  description: "3D models module (modules/3d)"
-
 - name: "category: android demos"
   color: "#d3d3d3"
   description: "OpenVINO Android demos (modules/android_demos)"
-
-- name: "category: BEVFusion"
-  color: "#d3d3d3"
-  description: "OpenVINO BEVFusion module (modules/openvino_bevfusion)"
-
-- name: "category: FlashOCC"
-  color: "#d3d3d3"
-  description: "OpenVINO FlashOCC module (modules/openvino_flashocc)"
 
 - name: "category: build"
   color: "#d3d3d3"
@@ -67,6 +55,10 @@
 - name: "category: Ollama"
   color: "#d3d3d3"
   description: "OpenVINO integration with Ollama (modules/ollama_openvino)"
+
+- name: "category: robotics"
+  color: "#d3d3d3"
+  description: "Robotics model catalog (modules/robotics)"
 
 - name: "category: Token Merging"
   color: "#d3d3d3"
