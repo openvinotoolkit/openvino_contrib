@@ -18,6 +18,8 @@ header:
 
   paths-ignore:
     - 'LICENSE'
+    # Gradle-generated dependency verification metadata, not source file.
+    - 'modules/openvino-notes/gradle/verification-metadata.xml'
     # JSON files do not support comments, not a source file.
     - '**/*.json'
     # Sample document content used by the RAG example, not a source file.

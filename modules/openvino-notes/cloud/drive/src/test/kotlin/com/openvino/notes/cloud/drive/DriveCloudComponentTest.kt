@@ -8,6 +8,8 @@ import com.openvino.notes.cloud.api.RemoteObjectId
 import com.openvino.notes.cloud.api.RemoteOutcome
 import com.openvino.notes.cloud.api.UploadDescriptor
 import com.openvino.notes.identity.api.FakeIdentityService
+import com.openvino.notes.identity.api.UserSession
+import com.openvino.notes.identity.api.port.AccessTokenOutcome
 import com.openvino.notes.kernel.AccountKey
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -28,6 +30,29 @@ class DriveCloudComponentTest {
                     UploadDescriptor(RemoteObjectId("media"), "image.jpg", "image/jpeg", 1024),
                 ),
             )
+        }
+
+    @Test fun `drive passes account key to token provider`() =
+        runTest {
+            val fake = FakeIdentityService()
+            val component = DriveCloudComponent.create(fake)
+            val accountKey = AccountKey("account-x")
+
+            component.objectStore.list(accountKey)
+
+            assertEquals(accountKey, fake.lastRequestedAccountKey)
+        }
+
+    @Test fun `request for different account returns account mismatch`() =
+        runTest {
+            val fake = FakeIdentityService()
+            val accountB = AccountKey("account-b")
+            fake.setSession(UserSession(accountB, "B", "b@example.test"))
+            fake.setDriveAuthorized(true)
+
+            val outcome = fake.accessToken(AccountKey("account-a"))
+
+            assertEquals(AccessTokenOutcome.Failed("identity.account_mismatch"), outcome)
         }
 
     private fun assertFailureCode(
