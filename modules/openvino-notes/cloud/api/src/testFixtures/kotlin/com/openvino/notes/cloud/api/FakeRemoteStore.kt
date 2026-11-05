@@ -83,6 +83,7 @@ class FakeRemoteStore :
                 TransferSessionId("fake-upload-${++nextUploadId}"),
                 descriptor.objectId,
                 nextOffset = 0,
+                expiresAt = Instant.now().plusSeconds(3600),
             )
         uploads[session.id] = FakeUpload(accountKey, descriptor, expectedRevision, session)
         return RemoteOutcome.Success(session)
@@ -91,12 +92,22 @@ class FakeRemoteStore :
     override suspend fun resumeUpload(
         accountKey: AccountKey,
         sessionId: TransferSessionId,
-    ): RemoteOutcome<UploadSession> =
-        uploads[sessionId]
-            ?.takeIf { it.accountKey == accountKey }
-            ?.session
-            ?.let { RemoteOutcome.Success(it) }
-            ?: notFound("fake.upload_session_not_found")
+    ): RemoteOutcome<ResumableUploadState> {
+        val upload =
+            uploads[sessionId]?.takeIf { it.accountKey == accountKey }
+                ?: return notFound("fake.upload_session_not_found")
+
+        if (upload.isSessionExpired) {
+            return RemoteOutcome.Success(ResumableUploadState.Expired(upload.session))
+        }
+
+        val metadata = upload.completedMetadata
+        if (metadata != null) {
+            return RemoteOutcome.Success(ResumableUploadState.Completed(metadata))
+        }
+
+        return RemoteOutcome.Success(ResumableUploadState.Active(upload.session))
+    }
 
     override suspend fun uploadChunk(
         accountKey: AccountKey,
@@ -106,6 +117,16 @@ class FakeRemoteStore :
         val upload =
             uploads[sessionId]?.takeIf { it.accountKey == accountKey }
                 ?: return notFound("fake.upload_session_not_found")
+
+        if (upload.isSessionExpired) {
+            return RemoteOutcome.Failure(RemoteError(RemoteErrorCode.NOT_AUTHORIZED, "Session expired"))
+        }
+
+        val completed = upload.completedMetadata
+        if (completed != null) {
+            return RemoteOutcome.Success(UploadChunkOutcome.Completed(completed))
+        }
+
         if (chunk.offset != upload.session.nextOffset) return invalidTransfer("fake.upload_offset_mismatch")
         if (chunk.bytes.size.toLong() > upload.descriptor.sizeBytes - chunk.offset) {
             return invalidTransfer("fake.upload_exceeds_declared_size")
@@ -130,7 +151,7 @@ class FakeRemoteStore :
             }
 
             is RemoteOutcome.Success -> {
-                uploads.remove(sessionId)
+                upload.completedMetadata = outcome.value
                 RemoteOutcome.Success(UploadChunkOutcome.Completed(outcome.value))
             }
         }
@@ -177,8 +198,18 @@ class FakeRemoteStore :
         val descriptor: UploadDescriptor,
         val expectedRevision: RemoteRevision?,
         var session: UploadSession,
+        var completedMetadata: RemoteObjectMetadata? = null,
         val content: ByteArrayOutputStream = ByteArrayOutputStream(),
-    )
+    ) {
+        val isSessionExpired: Boolean
+            get() = session.expiresAt?.let { Instant.now().isAfter(it) } == true
+    }
+
+    fun expireSession(sessionId: TransferSessionId) {
+        uploads[sessionId]?.let { upload ->
+            upload.session = upload.session.copy(expiresAt = Instant.now().minusSeconds(60))
+        }
+    }
 
     private companion object {
         const val TRANSFER_CHUNK_BYTES = 64 * 1024
