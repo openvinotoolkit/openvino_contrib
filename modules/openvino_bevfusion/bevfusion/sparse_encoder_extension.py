@@ -87,8 +87,20 @@ def _fuse_bn(weights_dir: Path, w_name: str, b_name: str,
 
 
 def _reformat_weight(weight: np.ndarray) -> np.ndarray:
-    """Reshape [k0, k1, k2, C_in, C_out] → flat [num_k * C_in * C_out]."""
-    return weight.reshape(-1).astype(np.float32)
+    """Reshape a checkpoint sparse-conv weight to what the kernels expect.
+
+    The mmdetection3d/spconv checkpoint stores these as
+    ``[C_out, k0, k1, k2, C_in]``, while the OpenCL kernels index their weight
+    buffer as ``[num_k, C_in, C_out]``. The two differ by moving the output
+    channel from the front to the back, so a bare ``reshape(-1)`` scrambles
+    every tap/channel and silently produces plausible-looking but wrong
+    features (it cost the whole encoder its accuracy: cosine similarity 0.68
+    against spconv at the very first layer).
+    """
+    if weight.ndim != 5:
+        raise ValueError(f'expected a 5-D sparse conv weight, got {weight.shape}')
+    reordered = weight.transpose(1, 2, 3, 4, 0)   # -> [k0, k1, k2, C_in, C_out]
+    return np.ascontiguousarray(reordered).reshape(-1).astype(np.float32)
 
 
 def pack_sparse_encoder_weights(weights_dir: str) -> np.ndarray:

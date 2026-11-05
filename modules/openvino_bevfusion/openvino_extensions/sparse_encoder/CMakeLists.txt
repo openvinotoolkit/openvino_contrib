@@ -46,15 +46,23 @@ find_package(OpenMP)
 
 set(TARGET_NAME "openvino_sparse_encoder_extension")
 add_library(${TARGET_NAME} MODULE sparse_encoder_op.cpp ov_extension.cpp)
-target_link_libraries(${TARGET_NAME} PRIVATE openvino::runtime ${OpenCL_LIBRARY})
+target_link_libraries(${TARGET_NAME} PRIVATE openvino::runtime ${OpenCL_LIBRARY} ${CMAKE_DL_LIBS})
 target_include_directories(${TARGET_NAME} PRIVATE ${OpenCL_INCLUDE_DIR})
+
+# The op locates sparse_conv.cl next to its own .so at runtime (see
+# shared_object_dir() in sparse_encoder_op.cpp), so keep a copy beside it.
+add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/sparse_conv.cl"
+            "$<TARGET_FILE_DIR:${TARGET_NAME}>/sparse_conv.cl"
+    COMMENT "Copying sparse_conv.cl next to the extension library")
 
 if(OpenMP_CXX_FOUND)
     target_link_libraries(${TARGET_NAME} PRIVATE OpenMP::OpenMP_CXX)
     message(STATUS "OpenMP enabled for neighbor map construction")
 endif()
 
-target_compile_options(${TARGET_NAME} PRIVATE -O3 -march=native)
+target_compile_options(${TARGET_NAME} PRIVATE -O3)
 
 install(TARGETS ${TARGET_NAME} LIBRARY DESTINATION lib RUNTIME DESTINATION lib)
 install(FILES sparse_conv.cl DESTINATION lib)

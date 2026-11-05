@@ -643,7 +643,7 @@ class BEVFusionInference:
             if has_b6_dt and has_b6_dn:
                 dt_res = self._infer('vtransform_dtransform_b6', [depth_maps])
                 df = list(dt_res.values())[0]
-                combined = np.concatenate([cam_feats, df], axis=1)
+                combined = np.concatenate([df, cam_feats], axis=1)
                 dn_res = self._infer('vtransform_depthnet_b6', [combined])
                 daf = list(dn_res.values())[0]
                 dl, cf = daf[:, :D], daf[:, D:]
@@ -652,7 +652,7 @@ class BEVFusionInference:
                 for i in range(6):
                     dt_res = self._infer('vtransform_dtransform', [depth_maps[i:i+1]])
                     df = list(dt_res.values())[0]
-                    combined = np.concatenate([cam_feats[i:i+1], df], axis=1)
+                    combined = np.concatenate([df, cam_feats[i:i+1]], axis=1)
                     dn_res = self._infer('vtransform_depthnet', [combined])
                     daf = list(dn_res.values())[0]
                     dl_l.append(daf[0, :D])
