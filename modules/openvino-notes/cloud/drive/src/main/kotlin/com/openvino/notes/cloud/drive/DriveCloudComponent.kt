@@ -23,6 +23,7 @@ import com.openvino.notes.cloud.api.UploadSession
 import com.openvino.notes.identity.api.port.AccessTokenOutcome
 import com.openvino.notes.identity.api.port.AccessTokenProvider
 import com.openvino.notes.kernel.AccountKey
+import com.openvino.notes.cloud.api.RemoteSnapshot
 
 internal class DriveRemoteStore(
     private val tokens: AccessTokenProvider,
@@ -41,6 +42,11 @@ internal class DriveRemoteStore(
         accountKey: AccountKey,
         id: RemoteObjectId,
     ): RemoteOutcome<RemoteObject> = unavailable(accountKey)
+
+    override suspend fun getSnapshot(
+        accountKey: AccountKey,
+        id: RemoteObjectId,
+    ): RemoteOutcome<RemoteSnapshot> = unavailable()
 
     override suspend fun delete(
         accountKey: AccountKey,
