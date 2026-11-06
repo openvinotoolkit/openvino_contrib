@@ -216,7 +216,8 @@ class CdpnOVInference:
             'num_corres'     : int, #correspondences sent to PnP
             'pnp_success'    : bool
         """
-        assert len(rgb_list) == len(box_list) == len(obj_list)
+        if not len(rgb_list) == len(box_list) == len(obj_list):
+            raise ValueError('rgb_list, box_list and obj_list must have the same length')
 
         # E2E path: entire pipeline in the graph including PnP
         if self.model_type == 'e2e':
@@ -236,7 +237,7 @@ class CdpnOVInference:
 
     @staticmethod
     def _model_uses_cdpn_custom_ops(model_path):
-        import xml.etree.ElementTree as ET
+        import defusedxml.ElementTree as ET
         custom_ops = {
             'CdpnPreprocess',
             'CdpnPnpSolve',
