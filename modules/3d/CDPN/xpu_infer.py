@@ -135,7 +135,8 @@ class CdpnXpuInference:
             'pred_trans_raw' : (3,) raw trans head output
             'num_corres'     : int, #correspondences sent to PnP
         """
-        assert len(rgb_list) == len(box_list) == len(obj_list)
+        if not len(rgb_list) == len(box_list) == len(obj_list):
+            raise ValueError('rgb_list, box_list and obj_list must have the same length')
         num_samples = len(rgb_list)
 
         # preprocess
