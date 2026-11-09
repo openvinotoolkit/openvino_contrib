@@ -7,22 +7,22 @@ from setuptools import find_packages, setup
 
 EXTRAS_REQUIRE = {
     "benchmarks": [
-        "datasets==5.0.1",
+        "datasets==5.1.0",
         "rouge==1.0.1",
         "scikit-learn>=1.7",
         "thefuzz",
         "bitsandbytes==0.50.2",
         "protobuf",
-        "sentencepiece==0.2.2",
+        "sentencepiece==0.2.3",
         "math-verify[antlr4_13_2]==0.9.0",
     ],
 }
 
 INSTALL_REQUIRES = [
-    "torch==2.13.0",
-    "torchvision==0.28.0",
+    "torch==2.14.1",
+    "torchvision==0.29.2",
     "transformers>=4.48.0,<6",
-    "accelerate==1.14.0",
+    "accelerate==1.15.0",
     "wheel==0.48.0",
     # Install with limited build threads to avoid OOM (MAX_JOBS=4)
     (
