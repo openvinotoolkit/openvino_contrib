@@ -18,14 +18,16 @@ header:
 
   paths-ignore:
     - 'LICENSE'
+    # Gradle-generated dependency verification metadata, not source file.
+    - 'modules/openvino-notes/gradle/verification-metadata.xml'
     # JSON files do not support comments, not a source file.
     - '**/*.json'
     # Sample document content used by the RAG example, not a source file.
     - 'modules/openvino-langchain/sample/data/document_sample.txt'
     # Third-party PointPillars fork; keep original upstream notices intact.
     - 'modules/3d/pointPillars/**'
-    # Third-party CDPN_ICCV2019_ZhigangLi fork; keep original upstream notices intact.
-    - 'modules/3d/CDPN/**'
+    # Third-party CDPN_ICCV2019_ZhigangLi clone at runtime.
+    - 'modules/3d/CDPN/cdpn_repo/**'
     # Third-party Ollama tree with vendored llama.cpp/ggml; keep upstream notices intact.
     - 'modules/ollama_openvino/**'
     # Third-party license inventory, not a source file.

@@ -1,10 +1,12 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 # CDPN Dependencies
-torch==2.13.0
-torchvision==0.28.0 --index-url https://download.pytorch.org/whl/xpu
 openvino==2026.3.1
-numpy==2.5.2
+numpy==2.4.6
 opencv-python==5.0.0.93
 scipy==1.18.1
+nncf==3.2.0
 
 # Config & IO
 PyYAML==6.0.3
