@@ -54,7 +54,7 @@ Additional build instructions are available for the following modules:
 * [**OpenVINO Notes**](./modules/openvino-notes/README.md#build-and-test): Standalone Android Gradle build, prerequisites, architecture checks, and unit tests.
 * **robotics**:
   * [**BEVFusion**](./modules/robotics/BEVFusion): Check the [INSTRUCTIONS](./modules/robotics/BEVFusion/EXPORT_AND_INFERENCE_GUIDE.md) for detailed usage and build instructions.
-  * [**CDPN**](./modules/robotics/CDPN): Check the [README](./modules/robotics/CDPN/README.md) for detailed usage and build instructions.
+  * [**CDPN**](./modules/robotics/CDPN): Check the [README](./modules/robotics/CDPN/OV_README.md) for detailed usage and build instructions.
   * [**FlashOCC**](./modules/robotics/FlashOCC): Check the [INSTRUCTIONS](./modules/robotics/FlashOCC/EXPORT_AND_INFERENCE_GUIDE.md) for detailed usage and build instructions.
   * [**PointPillars**](./modules/robotics/PointPillars): Check the [README](./modules/robotics/PointPillars/README.md) for detailed usage and build instructions.
 
