@@ -31,7 +31,7 @@ It clones the upstream CDPN repo (pinned to commit `625f9a8`), applies `cdpn_cha
 <summary>Manual steps (equivalent to setup.sh)</summary>
 
 ```bash
-# in openvino_contrib/modules/3d/CDPN/
+# in openvino_contrib/modules/robotics/CDPN/
 git clone https://github.com/LZGMatrix/CDPN_ICCV2019_ZhigangLi cdpn_repo
 cd cdpn_repo
 git checkout 625f9a8
