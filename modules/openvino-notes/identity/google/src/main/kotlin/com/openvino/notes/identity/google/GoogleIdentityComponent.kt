@@ -163,7 +163,7 @@ internal class GoogleIdentityService :
     }
 
     override suspend fun signOut(): IdentityOutcome {
-        sessionGeneration.incrementAndGet() // Инвалидируем все текущие запросы
+        sessionGeneration.incrementAndGet() // Invalidate current operations
         currentAccountKey()?.let { invalidateAccessToken(it) }
         authentication.value = AuthenticationState.SignedOut
         driveAuthorization.value = DriveAuthorizationState.NOT_AUTHORIZED
