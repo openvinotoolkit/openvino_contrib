@@ -99,7 +99,7 @@ internal class GoogleIdentityService :
         result: GoogleSignInResult,
         context: OperationContext,
     ): IdentityOutcome {
-        // Отбрасываем, если поколение сессии изменилось (например, был выход)
+        // Discard if the session generation has changed (e.g., a logout occurred)
         if (context.generation != sessionGeneration.get()) {
             return IdentityOutcome.Failed("identity.stale_operation")
         }
