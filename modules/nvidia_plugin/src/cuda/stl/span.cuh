@@ -64,27 +64,27 @@ public:
     /**
      * @brief Returns pointer to data
      */
-    __device__ T *data() const { return ptr_; }
+    __host__ __device__ T *data() const { return ptr_; }
 
     /**
      * @brief Returns number of data that referred by Span class
      */
-    __device__ std::size_t size() const { return size_; }
+    __host__ __device__ std::size_t size() const { return size_; }
 
     /**
      * @brief Returns begin iterator
      */
-    __device__ iterator begin() const { return ptr_; }
+    __host__ __device__ iterator begin() const { return ptr_; }
 
     /**
      * @brief Returns end iterator
      */
-    __device__ iterator end() const { return ptr_ + size_; }
+    __host__ __device__ iterator end() const { return ptr_ + size_; }
 
     /**
      * @brief Returns size in bytes
      */
-    __device__ std::size_t size_bytes() const { return sizeof(T) * size_; }
+    __host__ __device__ std::size_t size_bytes() const { return sizeof(T) * size_; }
 
     /**
      * Returns size_of Vector in bytes

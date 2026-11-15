@@ -64,6 +64,10 @@ protected:
         if (precision == ov::element::f16) {
             abs_threshold = 0.025;
             rel_threshold = 0.025;
+            // Compute the reference in f32. The default SDPA input range [0, 8) yields attention
+            // scores up to ~150, where f16 rounding in the reference itself flips near-tied softmax
+            // weights and makes the f16 reference deviate from the exact result by > 0.1.
+            convert_precisions.insert({ov::element::f16, ov::element::f32});
         }
     }
 };
