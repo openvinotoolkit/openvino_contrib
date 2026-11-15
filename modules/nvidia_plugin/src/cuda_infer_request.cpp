@@ -186,6 +186,8 @@ void CudaInferRequest::start_pipeline(const ThreadContext& threadContext) {
     } catch (...) {
         // TODO:
         // Log error once logger is available
+        // Some layers may have updated their device KV caches without the host write-back.
+        paged_attention_context_.mark_desynced();
         memory_proxy_.reset();
         throw;
     }
@@ -194,8 +196,17 @@ void CudaInferRequest::start_pipeline(const ThreadContext& threadContext) {
 void CudaInferRequest::wait_pipeline(const ThreadContext& threadContext) {
     OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, _profilingTask[PerfStages::WaitPipeline])
     executionDelegator_->start_stage();
-    // TODO: probably all time will be spent in synchonize, out of reach of ThrowIfCanceled
-    threadContext.stream().synchronize();
+    try {
+        // Write the KV cache blocks updated by PagedAttention back to GenAI's host tensors.
+        // This must complete before infer() returns: GenAI reads them on its next schedule().
+        paged_attention_context_.flush(threadContext.stream());
+        // TODO: probably all time will be spent in synchonize, out of reach of ThrowIfCanceled
+        threadContext.stream().synchronize();
+    } catch (...) {
+        paged_attention_context_.mark_desynced();
+        memory_proxy_.reset();
+        throw;
+    }
     memory_proxy_.reset();
     executionDelegator_->stop_stage(PerfStages::WaitPipeline);
 }
