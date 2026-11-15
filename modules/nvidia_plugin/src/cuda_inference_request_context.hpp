@@ -12,6 +12,7 @@
 #include "cuda_tensor_mapping_context.hpp"
 #include "cuda_thread_context.hpp"
 #include "cuda_variable_context.hpp"
+#include "cuda_paged_attention_context.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -88,6 +89,15 @@ public:
         return *variable_context_;
     }
 
+    // Per-request persistent paged KV caches for PagedAttentionExtension. Set by
+    // CudaInferRequest before execution; absent for models without PagedAttention.
+    void setPagedAttentionContext(PagedAttentionContext& ctx) { paged_attention_context_ = &ctx; }
+    [[nodiscard]] bool hasPagedAttentionContext() const { return paged_attention_context_ != nullptr; }
+    [[nodiscard]] PagedAttentionContext& getPagedAttentionContext() const {
+        OPENVINO_ASSERT(paged_attention_context_, "PagedAttentionContext is not set");
+        return *paged_attention_context_;
+    }
+
 private:
     const ThreadContext& threadContext;
     CancellationToken& token;
@@ -99,6 +109,7 @@ private:
     DynamicOperationCache& dynamic_op_cache_;
     DynamicBufferContext dynamic_buffer_context_;
     CudaVariableContext* variable_context_ = nullptr;
+    PagedAttentionContext* paged_attention_context_ = nullptr;
 };
 
 }  // namespace nvidia_gpu
