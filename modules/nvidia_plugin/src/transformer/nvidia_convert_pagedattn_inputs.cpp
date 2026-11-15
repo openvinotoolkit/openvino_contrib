@@ -35,6 +35,15 @@ bool ConvertPagedAttnInputs::run_on_model(const std::shared_ptr<ov::Model>& mode
         const auto num_v_heads = static_cast<ov::Dimension::value_type>(rt.at("num_v_heads").as<std::size_t>());
         const auto v_head_size = static_cast<ov::Dimension::value_type>(rt.at("v_head_size").as<std::size_t>());
 
+        // `dynamic` = keep the model's precision: the cache must match the query (input 0).
+        ov::element::Type precision = cache_precision_;
+        if (precision.is_dynamic()) {
+            precision = pa->get_input_element_type(0);
+            if (precision.is_dynamic()) {
+                precision = ov::element::f32;
+            }
+        }
+
         // input 3 = key_cache.N, input 4 = value_cache.N (both v0::Parameter).
         const auto specialize = [&](std::size_t input_idx, ov::Dimension::value_type heads,
                                     ov::Dimension::value_type head_size) {
@@ -43,7 +52,7 @@ bool ConvertPagedAttnInputs::run_on_model(const std::shared_ptr<ov::Model>& mode
                 return;
             }
             param->set_partial_shape(ov::PartialShape{ov::Dimension::dynamic(), heads, block_size, head_size});
-            param->set_element_type(cache_precision_);
+            param->set_element_type(precision);
             changed = true;
         };
         specialize(3, num_k_heads, k_head_size);

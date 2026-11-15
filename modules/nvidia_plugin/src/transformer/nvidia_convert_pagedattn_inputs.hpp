@@ -16,7 +16,8 @@ namespace ov::nvidia_gpu::pass {
  * dynamic rank-4 shape and dynamic element type. The plugin cannot allocate those, and
  * GenAI's cache manager needs static [1..3] dims to size cache blocks. This pass sets
  * each cache Parameter to `[-1, num_heads, block_size, head_size]` (dims from the PA
- * op's rt_info geometry) with the given cache precision.
+ * op's rt_info geometry) with the given cache precision (`dynamic`: the precision of
+ * the PagedAttention query, i.e. the model's own precision).
  *
  * Mirrors ov::pass::ConvertPagedAttnInputs; block_size defaults to 32 (the value
  * GenAI uses for non-"GPU" devices, which the "NVIDIA" plugin is).
