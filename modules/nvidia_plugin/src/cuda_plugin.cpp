@@ -90,9 +90,11 @@ std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(const std::shared_ptr<
                 return ov::is_type<ov::op::PagedAttentionExtension>(n);
             });
         if (has_paged_attention) {
+            // The cache must have the precision of the attention inputs. With an explicit
+            // inference precision the model is converted to it; with `dynamic` it keeps its own
+            // precision, which ConvertPagedAttnInputs then takes from each PagedAttention query.
             auto cache_precision = full_config.get_inference_precision();
-            if (cache_precision == ov::element::dynamic ||
-                (cache_precision == ov::element::f16 && !isHalfSupported(device))) {
+            if (cache_precision == ov::element::f16 && !isHalfSupported(device)) {
                 cache_precision = ov::element::f32;
             }
             ov::pass::Manager pa_manager;
