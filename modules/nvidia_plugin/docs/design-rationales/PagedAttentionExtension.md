@@ -1,6 +1,6 @@
 # Native PagedAttentionExtension for the OpenVINO NVIDIA (CUDA) Plugin — Implementation Design
 
-Status: design / RFC
+Status: M0–M2 implemented; M3–M5 planned
 Owner: NVIDIA plugin
 Target repo: `modules/nvidia_plugin`
 References cited inline as `path:line`. OpenVINO core = `.../OpenVINO`, genai = `.../openvino.genai`, plugin = `modules/nvidia_plugin`.
@@ -198,10 +198,20 @@ All 25 inputs arrive as **ordinary graph tensors** — no special I/O plumbing. 
 ### 4.5 KV cache in the memory model (the core problem)
 The cache is huge, mutable, persistent across steps, and **owned by genai as a host `ov::Tensor`** that genai resizes/copies/evicts itself. Naively, `key_cache.N` being a Parameter means generic `ParameterOp::Execute` would `upload()` multi-GB host→device every step and discard PA's device writes (`parameter.cpp:32`). Must special-case.
 
-**MVP decision — persistent device cache keyed by cache-input identity, sync only touched blocks:**
-1. Detect inputs whose Parameter friendly name begins `key_cache.`/`value_cache.` and **exclude from generic ParameterOp upload**. Allocate a **persistent device buffer once** per cache tensor (`num_blocks*num_kv_heads*32*head_size*elt`), analogous to how `CudaVariableState` keeps a persistent device buffer, keyed off input-tensor identity.
-2. genai only calls `set_tensor` on (re)allocation → upload-on-change: full H2D only when the bound host tensor pointer/shape changes.
-3. **Coherence with genai host-side `copy_blocks`/eviction:** after Kernel A writes new blocks, DMA **only the touched physical blocks** D2H into genai's host tensor; when genai mutates the host cache between steps, re-upload affected blocks H2D. Start coarse ("download-all-written-blocks after each step"), refine to a dirty-block set.
+**Implemented (M2) — the host tensor is the source of truth, the device keeps a persistent mirror** (`src/cuda_paged_attention_context.hpp`):
+
+On NVIDIA, genai allocates the caches as plain host tensors (its remote-tensor path is gated on device names containing "GPU"). Outside the model genai modifies them in exactly two places (genai `continuous_batching/scheduler.hpp`, `Scheduler::schedule()`, both before `infer()`):
+- **growth** (`CacheManager::allocate_cache_if_needed`): a bigger tensor is allocated, the old contents are copied into its leading blocks, and it is bound with `set_tensor`. With the default `SchedulerConfig` (`cache_size == 0 && num_kv_blocks == 0`) this happens repeatedly, by 8 blocks at a time;
+- **copy-on-write** (`CacheManager::copy_blocks`, beam search / parallel sampling / prefix caching): a shared, partially filled last block is copied into a new block, which becomes the sequence's last block and is appended to in the same step.
+
+Coherence invariant: *after every infer, every slot written by PagedAttention is identical on host and device.* It is maintained by:
+1. **No generic upload.** A cache Parameter consumed only by PagedAttention inputs 3/4 registers a 1-byte placeholder with its shape instead of uploading the whole cache every infer.
+2. **`bind()`** each infer: the device mirror is keyed by the cache-input BufferID; on growth it is reallocated (geometrically) and the old contents are copied device-to-device (the host copy genai made equals them by the invariant). The replaced buffer is released only after the stream is synchronized. A new or desynchronized mirror is seeded with a full upload.
+3. **Refresh before write.** Each block a step appends to at a non-zero in-block offset is re-uploaded from the host before `reshape_and_cache`: it may be a copy-on-write destination. The rule is stateless (it does not try to know whether genai copied), which is the only safe choice because block ids are recycled without the plugin seeing it. A block written from offset 0 needs no refresh.
+4. **Write-through.** Every block written by a step is downloaded back to the host tensor. The downloads are deferred to `CudaInferRequest::wait_pipeline` (after all kernels are enqueued, before the stream is synchronized), so they neither stall kernel launches nor let `infer()` return before the host is up to date.
+5. **Failure handling.** If an infer throws or is cancelled after some layers updated their mirrors, the context is marked desynchronized and every mirror is re-seeded from the host on the next bind.
+
+Per step this transfers only the touched blocks (decode: one block per sequence per layer in each direction) instead of the whole cache. It relies on genai's write pattern above (verified at genai 933d76c); a future genai change that writes other blocks outside the model would need a matching refresh rule.
 
 **Phase 4 (clean, zero-copy):** implement `create_context`/`get_default_context` + NVIDIA `RemoteTensor`/`RemoteContext`, make genai's `all_gpu_device` path fire so the cache is allocated directly in device memory — eliminates host↔device copies. Deferred.
 
@@ -238,9 +248,9 @@ Add `NvidiaConvertPagedAttnInputs`, mirroring OpenVINO `convert_pagedattn_inputs
 
 **M0 — Plumbing (compiles, no math).** Register op, whitelist, cache-shape pass, SDPA guard. Execute is a stub validating 25 inputs and asserting 13–24 empty. Success: a GenAI-transformed GPT-2 model *compiles* on NVIDIA.
 
-**M1 — MVP single-sequence correctness.** Kernel A (f16/f32 write) + Kernel B v1. Persistent device cache with download-after-write coherence. scale + causal + GQA. Success: one sequence, prefill+decode, matches CPU-REF; GPT-2 greedy matches CPU plugin.
+**M1 — MVP single-sequence correctness.** ✅ Kernel A (f16/f32 write) + Kernel B v1. Persistent device cache (device-only: no host coherence yet). scale + causal + GQA. Success: one sequence, prefill+decode, matches CPU-REF; GPT-2 greedy matches CPU plugin.
 
-**M2 — Batched / mixed / continuous batching.** Row→subseq map; mixed prefill+decode; multi-subsequence block-table; block-copy/eviction coherence. Success: genai continuous batching with concurrent sequences; prefix caching.
+**M2 — Batched / mixed / continuous batching.** ✅ Row→subseq map; mixed prefill+decode; multi-subsequence block-table; host/device cache coherence for cache growth and copy-on-write (§4.5); validated scheduling metadata; loud errors for unsupported features (KV cache rotation/eviction scores, sinks, adaptive R-KV, quantized caches). Success: genai `ContinuousBatchingPipeline` and default `LLMPipeline` (prefix caching + dynamic cache growth, chat) on GPT-2 match the CPU plugin token-for-token, including beam search, parallel sampling, chunked prefill, vLLM-mode scheduling and late-arriving requests.
 
 **M3 — Feature completeness.** ALiBi, sliding_window. Success: an ALiBi model and a sliding-window model pass.
 
