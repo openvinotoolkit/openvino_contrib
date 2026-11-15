@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Native PagedAttentionExtension for the OpenVINO NVIDIA (CUDA) Plugin — Implementation Design
 
 Status: M0–M2 implemented; M3–M5 planned
