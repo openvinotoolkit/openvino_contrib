@@ -20,6 +20,8 @@ class FakeIdentityService(
     override val driveAuthorizationState: StateFlow<DriveAuthorizationState> = mutableDriveAuthorization
     var invalidatedAccessTokens: Int = 0
         private set
+    var lastRequestedAccountKey: AccountKey? = null
+        private set
 
     override fun currentAccountKey(): AccountKey? = (authenticationState.value as? AuthenticationState.SignedIn)?.session?.accountKey
 
@@ -31,14 +33,17 @@ class FakeIdentityService(
 
     override suspend fun disconnect(): IdentityOutcome = signOut()
 
-    override suspend fun accessToken(): AccessTokenOutcome =
-        when {
+    override suspend fun accessToken(accountKey: AccountKey): AccessTokenOutcome {
+        lastRequestedAccountKey = accountKey
+        return when {
             currentAccountKey() == null -> AccessTokenOutcome.SignedOut
+            currentAccountKey() != accountKey -> AccessTokenOutcome.Failed("identity.account_mismatch")
             driveAuthorizationState.value != DriveAuthorizationState.AUTHORIZED -> AccessTokenOutcome.NotAuthorized
             else -> AccessTokenOutcome.Available("fake-token")
         }
+    }
 
-    override suspend fun invalidateAccessToken() {
+    override suspend fun invalidateAccessToken(accountKey: AccountKey) {
         invalidatedAccessTokens += 1
     }
 

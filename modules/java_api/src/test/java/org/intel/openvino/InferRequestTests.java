@@ -52,4 +52,14 @@ public class InferRequestTests extends OVTest {
             assertNotNull(e.getMessage());
         }
     }
+
+    @Test
+    public void testGetTensorByUnknownName() {
+        try {
+            inferRequest.get_tensor("unknown_tensor_name");
+            fail("Expected an exception for an unknown tensor name");
+        } catch (Exception e) {
+            assertNotNull(e.getMessage());
+        }
+    }
 }

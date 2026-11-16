@@ -11,6 +11,7 @@ import com.openvino.notes.identity.api.IdentityService
 import com.openvino.notes.identity.api.UserSession
 import com.openvino.notes.identity.api.port.AccessTokenOutcome
 import com.openvino.notes.identity.api.port.AccessTokenProvider
+import com.openvino.notes.kernel.AccountKey
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -68,7 +69,7 @@ internal class GoogleIdentityService :
     AccessTokenProvider {
     private val authentication = MutableStateFlow<AuthenticationState>(AuthenticationState.Initializing)
     private val driveAuthorization = MutableStateFlow(DriveAuthorizationState.NOT_AUTHORIZED)
-    private var cachedAccessToken: String? = null
+    private val cachedTokens = mutableMapOf<AccountKey, String>()
     override val authenticationState: StateFlow<AuthenticationState> = authentication
     override val driveAuthorizationState: StateFlow<DriveAuthorizationState> = driveAuthorization
 
@@ -119,7 +120,7 @@ internal class GoogleIdentityService :
         }
 
     override suspend fun signOut(): IdentityOutcome {
-        invalidateAccessToken()
+        currentAccountKey()?.let { invalidateAccessToken(it) }
         authentication.value = AuthenticationState.SignedOut
         driveAuthorization.value = DriveAuthorizationState.NOT_AUTHORIZED
         return IdentityOutcome.Completed
@@ -127,15 +128,16 @@ internal class GoogleIdentityService :
 
     override suspend fun disconnect(): IdentityOutcome = signOut()
 
-    override suspend fun accessToken(): AccessTokenOutcome =
+    override suspend fun accessToken(accountKey: AccountKey): AccessTokenOutcome =
         when {
             currentAccountKey() == null -> AccessTokenOutcome.SignedOut
+            currentAccountKey() != accountKey -> AccessTokenOutcome.Failed("identity.account_mismatch")
             driveAuthorization.value != DriveAuthorizationState.AUTHORIZED -> AccessTokenOutcome.NotAuthorized
             else -> AccessTokenOutcome.Failed("google.token_provider_not_connected")
         }
 
-    override suspend fun invalidateAccessToken() {
-        cachedAccessToken = null
+    override suspend fun invalidateAccessToken(accountKey: AccountKey) {
+        cachedTokens.remove(accountKey)
     }
 }
 
