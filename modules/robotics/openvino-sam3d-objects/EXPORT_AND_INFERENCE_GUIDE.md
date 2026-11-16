@@ -21,7 +21,7 @@ inference with OpenCL acceleration on Intel GPUs.
 ### Software Requirements
 ```
 Python >= 3.10
-OpenVINO >= 2025.0  (target: 2026.1.0)
+OpenVINO >= 2025.0
 CMake >= 3.18
 OpenCL development headers + Intel GPU driver
 
@@ -193,10 +193,6 @@ exported_models/
 ├── slat_decoder_mesh_upsample_weights/
 └── slat_flexicubes.xml / .bin               # FlexiCubes surface extraction
 ```
-
-> A `model_cache/` directory is also created next to the models on first run.
-> It holds OpenVINO's compiled-blob cache, which makes subsequent runs start
-> much faster. It is safe to delete.
 
 ---
 
