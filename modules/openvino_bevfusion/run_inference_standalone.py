@@ -48,7 +48,7 @@ IMG_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
 POINT_CLOUD_RANGE = np.array([-54.0, -54.0, -5.0, 54.0, 54.0, 3.0])
 VOXEL_SIZE = np.array([0.075, 0.075, 0.2])
-SWEEPS_NUM = 1
+SWEEPS_NUM = 9  # sweeps besides the key frame, as BEVFusion is trained
 
 D = 118
 C = 80
@@ -69,8 +69,8 @@ OUT_SIZE_FACTOR = 8
 POST_CENTER_RANGE = [-61.2, -61.2, -10.0, 61.2, 61.2, 10.0]
 
 # Padding limits for custom ops
-MAX_POINTS = 70000
-MAX_VOXELS = 60000
+MAX_POINTS = 350000
+MAX_VOXELS = 160000
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Data loading

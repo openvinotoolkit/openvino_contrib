@@ -28,7 +28,7 @@
 namespace BEVFusionExtension {
 
 // Fixed architecture constants
-constexpr int64_t SPENC_MAX_N         = 60000;
+constexpr int64_t SPENC_MAX_N         = 160000;
 constexpr int64_t SPENC_NUM_FEATURES  = 5;
 constexpr int64_t SPENC_BEV_C         = 256;
 constexpr int64_t SPENC_BEV_H         = 180;

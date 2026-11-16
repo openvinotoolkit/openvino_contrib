@@ -27,7 +27,7 @@ _EXT_DIR = Path(__file__).resolve().parent.parent / 'openvino_extensions' / 'spa
 _EXT_LIB = _EXT_DIR / 'build' / 'libopenvino_sparse_encoder_extension.so'
 
 # ── Architecture constants ─────────────────────────────────────────────────────
-MAX_N         = 60000
+MAX_N         = 160000  # = voxelize MAX_VOXELS
 NUM_FEATURES  = 5
 BEV_C, BEV_H, BEV_W = 256, 180, 180
 
