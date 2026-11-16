@@ -809,6 +809,10 @@ static void precompute_all_coord_maps(
 // ============================================================
 // Kernel selection state: index into variants array, -1 = not benchmarked
 static int g_best_kernel[4] = {-1, -1, -1, -1}; // per channel width: 16,32,64,128
+// Voxel count of the frame the choice was timed on. A frame with twice as
+// many voxels times the kernels again: the first frame of a sequence can be
+// much smaller than the rest, and the fastest kernel depends on the size.
+static int g_tuned_voxels = 0;
 // 0=standard, 1=slm_1d(slm_v2/slm_v2_w8), 2=slm_1d(old slm kernel), 3=local_2d, 4=mv4
 static int g_best_kernel_type[4] = {};
 static int g_best_kernel_idx[4] = {};
@@ -1036,7 +1040,7 @@ static void run_subm_conv(
     // Benchmark on first call for each channel config
     if (cw_idx >= 0 && g_best_kernel[cw_idx] < 0) {
         double best_ms = 1e30;
-        int best_type = 0, best_idx = 0;
+        int best_type = 0, best_idx = 2;  // lite
         const int WARMUP = 2, RUNS = 4;
 
         auto bench = [&](const char* name, auto dispatch_fn) {
@@ -1057,7 +1061,14 @@ static void run_subm_conv(
             }
         };
 
-        // Standard variants (2D dispatch, no SLM)
+        // Only kernels with the same arithmetic as the fused conv2+residual
+        // kernel compete: FP16 sums over each neighbour's input channels,
+        // added up in FP32 in neighbour order. lite, lite8 and fast give
+        // bit-identical results, so the choice, which depends on timing,
+        // changes only the speed. w8 and w4 sum in FP32 throughout, which
+        // is no closer to spconv (relL2 2.85e-3 vs 2.98e-3 on a 10-sweep
+        // frame) but gives different results, so a timing-dependent pick
+        // made runs differ from process to process.
         struct { cl_kernel k; int div; const char* name; } std_v[] = {
             {g_subm_conv_fp16_kernel, 8, "w8"},
             {g_subm_conv_fp16_w4_kernel, 4, "w4"},
@@ -1065,7 +1076,7 @@ static void run_subm_conv(
             {g_subm_conv_fp16_lite8_kernel, 8, "lite8"},
         };
         int n_std = 4;
-        for (int v = 0; v < n_std; v++) {
+        for (int v = 2; v < n_std; v++) {
             if (!std_v[v].k) continue;
             double ms = bench(std_v[v].name, [&](){
                 dispatch_subm_kernel(std_v[v].k, fin, fout, N, Cin, Cout, relu, layer_idx, std_v[v].div);
@@ -1367,6 +1378,11 @@ bool SparseEncoderOp::evaluate(
 
     // Pre-upload weights once (persistent GPU buffers)
     pre_upload_weights(params, w_offsets, s_offsets, b_offsets);
+
+    if (N >= 2 * g_tuned_voxels) {
+        for (int& k : g_best_kernel) k = -1;
+        g_tuned_voxels = N;
+    }
 
     // ══════════════════════════════════════════════════════════
     // Interleaved CPU precomp + GPU execution
