@@ -157,15 +157,13 @@ bool BEVPool::has_evaluate() const { return true; }
 // ═══════════════════════════════════════════════════════════════════════════
 
 BEVPoolScatter::BEVPoolScatter(
-    const ov::Output<ov::Node>& depth_probs,
-    const ov::Output<ov::Node>& context_feats,
-    const ov::Output<ov::Node>& geom,
+    const ov::OutputVector& inputs,
     int64_t nx, int64_t ny, int64_t nz,
     int64_t num_cams, int64_t depth_bins,
     int64_t channels, int64_t feat_h, int64_t feat_w,
     float x_min, float y_min, float z_min,
     float x_step, float y_step, float z_step)
-    : Op({depth_probs, context_feats, geom}),
+    : Op(inputs),
       m_nx(nx), m_ny(ny), m_nz(nz),
       m_num_cams(num_cams), m_depth_bins(depth_bins),
       m_channels(channels), m_feat_h(feat_h), m_feat_w(feat_w),
@@ -176,17 +174,25 @@ BEVPoolScatter::BEVPoolScatter(
 }
 
 void BEVPoolScatter::validate_and_infer_types() {
-    // Output: int32 [1, C*NZ, NX, NY]
-    set_output_type(0, ov::element::i32,
-                    ov::PartialShape{1, m_channels * m_nz, m_nx, m_ny});
+    const ov::PartialShape accum_shape{1, m_channels * m_nz, m_nx, m_ny};
+    NODE_VALIDATION_CHECK(this, get_input_size() == 3 || get_input_size() == 4,
+                          "BEVPoolScatter takes 3 inputs, or 4 with the accumulator");
+    if (get_input_size() == 4) {
+        NODE_VALIDATION_CHECK(this, get_input_element_type(3) == ov::element::i32 &&
+                                        get_input_partial_shape(3).compatible(accum_shape),
+                              "BEVPoolScatter input 3 must be an i32 ", accum_shape, " accumulator");
+        set_output_type(0, ov::element::i32, ov::PartialShape{1});
+    } else {
+        set_output_type(0, ov::element::i32, accum_shape);
+    }
 }
 
 std::shared_ptr<ov::Node> BEVPoolScatter::clone_with_new_inputs(
     const ov::OutputVector& new_args) const
 {
-    OPENVINO_ASSERT(new_args.size() == 3, "BEVPoolScatter requires 3 inputs");
+    OPENVINO_ASSERT(new_args.size() == 3 || new_args.size() == 4, "BEVPoolScatter requires 3 or 4 inputs");
     return std::make_shared<BEVPoolScatter>(
-        new_args[0], new_args[1], new_args[2],
+        new_args,
         m_nx, m_ny, m_nz,
         m_num_cams, m_depth_bins, m_channels, m_feat_h, m_feat_w,
         m_x_min, m_y_min, m_z_min,
@@ -229,9 +235,17 @@ bool BEVPoolScatter::evaluate(ov::TensorVector& outputs,
 
     constexpr int FP_SCALE = 8192;
 
-    ov::Shape out_shape{1, size_t(C * nz), size_t(nx), size_t(ny)};
-    outputs[0].set_shape(out_shape);
-    int32_t* out = outputs[0].data<int32_t>();
+    // With the 4-input form the sums go into the accumulator input, which
+    // BEVPoolConvert reads and resets; the output is just an ordering token.
+    int32_t* out;
+    if (inputs.size() == 4) {
+        out = static_cast<int32_t*>(const_cast<void*>(inputs[3].data()));
+        outputs[0].set_shape(ov::Shape{1});
+        outputs[0].data<int32_t>()[0] = 0;
+    } else {
+        outputs[0].set_shape(ov::Shape{1, size_t(C * nz), size_t(nx), size_t(ny)});
+        out = outputs[0].data<int32_t>();
+    }
     std::fill(out, out + output_elems, 0);
 
     for (int p = 0; p < total_pts; ++p) {
@@ -267,21 +281,23 @@ bool BEVPoolScatter::has_evaluate() const { return true; }
 // ═══════════════════════════════════════════════════════════════════════════
 
 BEVPoolConvert::BEVPoolConvert(
-    const ov::Output<ov::Node>& bev_accum, int64_t scale)
-    : Op({bev_accum}), m_scale(scale)
+    const ov::OutputVector& inputs, int64_t scale)
+    : Op(inputs), m_scale(scale)
 {
     constructor_validate_and_infer_types();
 }
 
 void BEVPoolConvert::validate_and_infer_types() {
-    set_output_type(0, ov::element::f32, get_input_partial_shape(0));
+    NODE_VALIDATION_CHECK(this, get_input_size() == 1 || get_input_size() == 2,
+                          "BEVPoolConvert takes the accumulator, or a scatter token and the accumulator");
+    set_output_type(0, ov::element::f32, get_input_partial_shape(get_input_size() - 1));
 }
 
 std::shared_ptr<ov::Node> BEVPoolConvert::clone_with_new_inputs(
     const ov::OutputVector& new_args) const
 {
-    OPENVINO_ASSERT(new_args.size() == 1, "BEVPoolConvert requires 1 input");
-    return std::make_shared<BEVPoolConvert>(new_args[0], m_scale);
+    OPENVINO_ASSERT(new_args.size() == 1 || new_args.size() == 2, "BEVPoolConvert requires 1 or 2 inputs");
+    return std::make_shared<BEVPoolConvert>(new_args, m_scale);
 }
 
 bool BEVPoolConvert::visit_attributes(ov::AttributeVisitor& visitor) {
@@ -292,14 +308,17 @@ bool BEVPoolConvert::visit_attributes(ov::AttributeVisitor& visitor) {
 bool BEVPoolConvert::evaluate(ov::TensorVector& outputs,
                               const ov::TensorVector& inputs) const
 {
-    auto shape = inputs[0].get_shape();
-    outputs[0].set_shape(shape);
-    const int32_t* in = inputs[0].data<int32_t>();
+    const ov::Tensor& accum = inputs.back();
+    outputs[0].set_shape(accum.get_shape());
+    int32_t* in = static_cast<int32_t*>(const_cast<void*>(accum.data()));
     float* out = outputs[0].data<float>();
-    size_t n = inputs[0].get_size();
+    size_t n = accum.get_size();
     float inv = 1.0f / float(m_scale);
     for (size_t i = 0; i < n; ++i)
         out[i] = float(in[i]) * inv;
+    // The 4-input scatter adds into this accumulator: leave it zeroed for the next inference.
+    if (inputs.size() == 2)
+        std::fill(in, in + n, 0);
     return true;
 }
 

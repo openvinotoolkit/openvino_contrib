@@ -406,6 +406,9 @@ class BEVFusionInference:
         self.requests = {
             name: cm.create_infer_request() for name, cm in self.models.items()
         }
+        if 'bev_pool' in self.requests:
+            from bevfusion.bev_pool_extension import bind_bev_accumulator
+            bind_bev_accumulator(self.requests['bev_pool'])
 
         # Set up RemoteTensor GPU buffer sharing between models
         self._setup_gpu_sharing()

@@ -65,7 +65,13 @@ __kernel void bevpool_scatter(
     __global const INPUT0_TYPE* depth_probs,    /* [N, D, H, W] (softmax) */
     __global const INPUT1_TYPE* context_feats,  /* [N, C, H, W] */
     __global const INPUT2_TYPE* geom,           /* [N*D*H*W, 3] */
-    __global OUTPUT0_TYPE* output               /* [1, C*NZ, NX, NY] int32 */
+    /* [1, C*NZ, NX, NY] int32 accumulator: a model input that holds zeros on
+     * entry (bevpool_convert resets it after reading). It is not this
+     * kernel's output because the GPU plugin may hand an output a reused
+     * pool buffer that still holds another layer's data, and this kernel only
+     * adds into it. */
+    __global INPUT3_TYPE* output,
+    __global OUTPUT0_TYPE* token                /* [1] int32, orders bevpool_convert after this kernel */
 ) {
     const int D  = DEPTH_BINS;   /* 118 */
     const int H  = FEAT_H;      /* 32  */
