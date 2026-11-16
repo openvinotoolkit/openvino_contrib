@@ -1572,8 +1572,15 @@ bool SparseEncoderOp::evaluate(
                 int src_N = levels[si].N;
                 const int* src_coords = levels[si].coords_ptr;
                 
+                // Dense output-cell table, -1 = not yet emitted. It is
+                // 720x720x21 ints (44 MB) at the first level, so allocating
+                // and filling it every frame cost about 20 ms; keep one per
+                // level and reset only the cells this frame touched.
                 size_t oh_entries = (size_t)X_out * Y_out * Z_out;
-                std::vector<int> h_out_hash(oh_entries, -1);
+                static std::vector<int> s_out_hash[4];
+                std::vector<int>& h_out_hash = s_out_hash[si];
+                if (h_out_hash.size() != oh_entries)
+                    h_out_hash.assign(oh_entries, -1);
                 std::vector<int> out_coords;
                 out_coords.reserve(src_N * 4);
                 int next_idx = 0;
@@ -1604,6 +1611,8 @@ bool SparseEncoderOp::evaluate(
                             }
                 }
                 int N_out = (int)out_coords.size() / 4;
+                for (int i = 0; i < N_out; i++)
+                    h_out_hash[((int64_t)out_coords[i*4+1] * Y_out + out_coords[i*4+2]) * Z_out + out_coords[i*4+3]] = -1;
                 
                 // Morton-sort output coordinates for cache locality
                 if (use_morton) {
