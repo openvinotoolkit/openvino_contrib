@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 
 The OpenVINO samples are simple console applications that show how to utilize specific OpenVINO API capabilities within an application. The following samples are available
 - [Face Detection Java samples](#face-detection-java-samples)
+- [Face Detection Java Async sample](#face-detection-java-async-sample)
 - [Face Detection Kotlin sample](./face_detection_kotlin_sample/README.md)
 - [Hello Query Device](#hello-query-device-sample)
 
@@ -158,6 +159,69 @@ To run these samples, you need to specify a model and image. To perform inferenc
 
 ### For ```face_detection_java_sample```
 The application will show the image with detected objects enclosed in rectangles in new window. It outputs the confidence value and the coordinates of the rectangle to the standard output stream.
+
+# Face Detection Java Async Sample
+
+## How It Works
+
+`face_detection_java_async_sample` demonstrates OpenVINO asynchronous inference with the Java API 2.0.
+It keeps a pool of `InferRequest` objects and overlaps video capture with inference using
+`start_async()` / `wait_async()`. While the device is busy, the application can prepare the next frame.
+
+Supported inputs:
+- video file path
+- camera index (for example `0`)
+- image path (processed as a single-frame video)
+
+## Build
+
+```bash
+export OpenCV_DIR=/path/to/opencv/
+export INTEL_OPENVINO_DIR=/path/to/openvino_install
+cd openvino_contrib/modules/java_api
+gradle build -Pbuild_java_samples=true
+```
+
+## Running
+
+```bash
+export OV_JAVA_DIR=/path/to/openvino_contrib/modules/java_api/build/libs
+export LD_LIBRARY_PATH=${OpenCV_DIR}/lib:${LD_LIBRARY_PATH}
+
+java -cp ".:${OV_JAVA_DIR}/openvino-*.jar:${OpenCV_DIR}/bin/*:samples/face_detection_java_async_sample/build/libs/face_detection_java_async_sample.jar" \
+  Main -m face-detection-adas-0001.xml -i video.mp4 -d CPU -nireq 2
+```
+
+Headless mode (no GUI window):
+
+```bash
+java -cp ".:${OV_JAVA_DIR}/openvino-*.jar:${OpenCV_DIR}/bin/*:samples/face_detection_java_async_sample/build/libs/face_detection_java_async_sample.jar" \
+  Main -m face-detection-adas-0001.xml -i video.mp4 -no_show true
+```
+
+## Running in Idea IntelliJ
+
+- Import the project in IntelliJ IDEA. See [here](../README.md#import-to-intellij-idea) for instructions.
+- Add a Gradle run configuration named `FaceDetectionAsyncSample` with:
+
+```bash
+:samples:face_detection_java_async_sample:run --args='-m <path-to-model> -i <path-to-video> -no_show true' -Pbuild_java_samples=true
+```
+
+- Set environment variables:
+
+  `INTEL_OPENVINO_DIR=<path-to-openvino_install>`
+
+  `OpenCV_DIR=<path-to-opencv>`
+
+## Sample Output
+
+The application prints detections per frame and a summary such as:
+
+```text
+[frame 12, det 1] prob = 0.98    (120,80)-(340,360)
+Async sample finished. processed_frames=250 detections=180 device=CPU nireq=2
+```
 
 
 # Hello Query Device Sample

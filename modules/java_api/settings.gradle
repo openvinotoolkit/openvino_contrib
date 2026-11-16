@@ -5,6 +5,7 @@ rootProject.name = 'openvino'
 
 if (build_java_samples.toBoolean()) {
     include 'samples:face_detection_java_sample'
+    include 'samples:face_detection_java_async_sample'
 }
 if (build_kotlin_samples.toBoolean()) {
     include 'samples:face_detection_kotlin_sample'
