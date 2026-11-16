@@ -38,6 +38,7 @@ import argparse
 import json
 import os
 import pickle
+import re
 import sys
 from pathlib import Path
 
@@ -117,9 +118,19 @@ class WindowAttention(nn.Module):
         self.register_buffer("relative_position_index", relative_position_index)
 
     def forward(self, x, mask=None):
+        # Written without 5-D tensors, which the OpenVINO GPU plugin runs
+        # through slow reference permute/reorder kernels, and without a
+        # strided split of the qkv output. The arithmetic is the reference's,
+        # so the outputs are bit-identical; this takes the camera encoder
+        # from about 25 ms to 17 ms on an Intel Arc Pro B60.
         B_, N, C = x.shape
-        qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        h, d = self.num_heads, C // self.num_heads
+        # q, k and v are row blocks of the qkv weight: the reference's
+        # reshape(B_, N, 3, h, d) reads the output channel as s * C + head * d + j.
+        w, b = self.qkv.weight, self.qkv.bias
+        q = F.linear(x, w[:C], b[:C]).reshape(B_, N, h, d).transpose(1, 2)
+        k = F.linear(x, w[C:2 * C], b[C:2 * C]).reshape(B_, N, h, d).transpose(1, 2)
+        v = F.linear(x, w[2 * C:], b[2 * C:]).reshape(B_, N, h, d).transpose(1, 2)
         q = q * self.scale
         attn = q @ k.transpose(-2, -1)
         rpb = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
@@ -127,9 +138,11 @@ class WindowAttention(nn.Module):
         rpb = rpb.permute(2, 0, 1).contiguous()
         attn = attn + rpb.unsqueeze(0)
         if mask is not None:
+            # The reference's view(B_ // nW, nW, h, N, N) + mask[None, :, None],
+            # with the head and query dimensions merged to stay 4-D.
             nW = mask.shape[0]
-            attn = attn.view(B_ // nW, nW, self.num_heads, N, N) + mask.unsqueeze(1).unsqueeze(0)
-            attn = attn.view(-1, self.num_heads, N, N)
+            m = mask.unsqueeze(1).expand(nW, h, N, N).reshape(nW, h * N, N)
+            attn = (attn.reshape(B_ // nW, nW, h * N, N) + m).reshape(B_, h, N, N)
         attn = attn.softmax(dim=-1)
         x = (attn @ v).transpose(1, 2).reshape(B_, N, C)
         x = self.proj(x)
@@ -215,19 +228,35 @@ class PatchMerging(nn.Module):
         self.norm = nn.LayerNorm(4 * in_channels)
 
     def forward(self, x, H, W):
+        """Merge 2x2 neighbourhoods, in mmcv PatchMerging's channel order.
+
+        mmcv implements this with nn.Unfold(kernel_size=2, stride=2), whose
+        output channel index is ``c * 4 + ky * 2 + kx`` -- the four merged
+        positions are interleaved *within* each input channel. The original
+        Swin implementation instead concatenates whole channel blocks per
+        offset (``cat([x[0::2,0::2], x[1::2,0::2], x[0::2,1::2], x[1::2,1::2]])``).
+        The checkpoint was trained through mmcv (convert_weights=True), so its
+        ``reduction`` Linear expects the Unfold order; using the original order
+        permutes every input to that layer.
+
+        Reproduced with slice+stack rather than nn.Unfold, which has poor
+        ONNX/OpenVINO support, and channels-last, which needs no permute to
+        B, C, H, W and back.
+        """
         B, L, C = x.shape
         x = x.view(B, H, W, C)
-        pad_h = H % 2
-        pad_w = W % 2
-        if pad_h or pad_w:
-            x = F.pad(x, (0, 0, 0, pad_w, 0, pad_h))
-        x0 = x[:, 0::2, 0::2, :]
-        x1 = x[:, 1::2, 0::2, :]
-        x2 = x[:, 0::2, 1::2, :]
-        x3 = x[:, 1::2, 1::2, :]
-        x = torch.cat([x0, x1, x2, x3], -1)
-        _, new_H, new_W, _ = x.shape
-        x = x.view(B, -1, 4 * C)
+        if H % 2 or W % 2:
+            # mmcv's AdaptivePadding uses padding='corner' (bottom/right).
+            x = F.pad(x, (0, 0, 0, W % 2, 0, H % 2))
+        new_H, new_W = x.shape[1] // 2, x.shape[2] // 2
+
+        x = torch.stack([x[:, 0::2, 0::2, :],           # ky=0, kx=0
+                         x[:, 0::2, 1::2, :],           # ky=0, kx=1
+                         x[:, 1::2, 0::2, :],           # ky=1, kx=0
+                         x[:, 1::2, 1::2, :]],          # ky=1, kx=1
+                        dim=-1)                         # B, new_H, new_W, C, 4
+        x = x.reshape(B, new_H * new_W, 4 * C)          # channel = c*4 + ky*2 + kx
+
         x = self.norm(x)
         x = self.reduction(x)
         return x, new_H, new_W
@@ -318,17 +347,44 @@ class GeneralizedLSSFPN(nn.Module):
             }),
         ])
 
+    def _lateral(self, i, x):
+        return F.relu(self.lateral_convs[i]['bn'](self.lateral_convs[i]['conv'](x)))
+
+    def _fpn(self, i, x):
+        return F.relu(self.fpn_convs[i]['bn'](self.fpn_convs[i]['conv'](x)))
+
     def forward(self, inputs):
+        """Top-down: upsample -> cat -> conv1x1 -> conv3x3, per level.
+
+        Follows GeneralizedLSSFPN.forward in the reference implementation. Two
+        details matter and were previously wrong:
+          * level 1 is upsampled into level 0 *after* its fpn_conv, not before
+            (the reference overwrites laterals[i] with the fpn_conv output, and
+            the next iteration reads that same slot);
+          * align_corners is **False**. The GeneralizedLSSFPN class default is
+            True, but the lidar-cam config explicitly overrides `upsample_cfg`
+            to `dict(mode='bilinear', align_corners=False)`, and that is what
+            the checkpoint was trained with. Reading the class default instead
+            of the config costs relL2 0.087 on output[0].
+        Both feed output[0], which is the only output the view transform uses,
+        so getting them wrong corrupts the whole camera branch.
+
+        Verified bit-exact against mmdet's own source by tools/compare_swin.py.
+        """
         assert len(inputs) == 3
-        up3 = F.interpolate(inputs[2], size=inputs[1].shape[2:], mode='bilinear', align_corners=False)
-        cat1 = torch.cat([inputs[1], up3], dim=1)
-        lat1 = F.relu(self.lateral_convs[1]['bn'](self.lateral_convs[1]['conv'](cat1)))
-        up1 = F.interpolate(lat1, size=inputs[0].shape[2:], mode='bilinear', align_corners=False)
-        cat0 = torch.cat([inputs[0], up1], dim=1)
-        lat0 = F.relu(self.lateral_convs[0]['bn'](self.lateral_convs[0]['conv'](cat0)))
-        out0 = F.relu(self.fpn_convs[0]['bn'](self.fpn_convs[0]['conv'](lat0)))
-        out1 = F.relu(self.fpn_convs[1]['bn'](self.fpn_convs[1]['conv'](lat1)))
-        return [out0, out1]
+        laterals = list(inputs)
+
+        # i = 1: cat level 2 (upsampled) onto level 1
+        x = F.interpolate(laterals[2], size=laterals[1].shape[2:],
+                          mode='bilinear', align_corners=False)
+        laterals[1] = self._fpn(1, self._lateral(1, torch.cat([laterals[1], x], dim=1)))
+
+        # i = 0: cat level 1 (upsampled, post-fpn_conv) onto level 0
+        x = F.interpolate(laterals[1], size=laterals[0].shape[2:],
+                          mode='bilinear', align_corners=False)
+        laterals[0] = self._fpn(0, self._lateral(0, torch.cat([laterals[0], x], dim=1)))
+
+        return [laterals[0], laterals[1]]
 
 
 class CameraBackboneNeck(nn.Module):
@@ -644,6 +700,32 @@ def build_decoder(state_dict, prefixes):
 # 6. TransFusion Detection Head
 # ============================================================================
 
+# Buffers computed at construction time rather than read from the checkpoint.
+TRANSFUSION_COMPUTED_BUFFERS = {'bev_pos'}
+
+# The checkpoint stores the decoder layer with mmcv BaseTransformerLayer naming
+# (mmdet's DetrTransformerDecoderLayer), while the module below is written with
+# plain torch.nn names. Without this mapping every decoder tensor is skipped.
+TRANSFUSION_KEY_PATTERNS = (
+    (r'^decoder\.(\d+)\.self_attn\.attn\.', r'decoder.\1.self_attn.'),
+    (r'^decoder\.(\d+)\.cross_attn\.attn\.', r'decoder.\1.multihead_attn.'),
+    (r'^decoder\.(\d+)\.ffn\.layers\.0\.0\.', r'decoder.\1.linear1.'),
+    (r'^decoder\.(\d+)\.ffn\.layers\.1\.', r'decoder.\1.linear2.'),
+    (r'^decoder\.(\d+)\.norms\.0\.', r'decoder.\1.norm1.'),
+    (r'^decoder\.(\d+)\.norms\.1\.', r'decoder.\1.norm2.'),
+    (r'^decoder\.(\d+)\.norms\.2\.', r'decoder.\1.norm3.'),
+)
+
+
+def remap_transfusion_key(key):
+    """Translate a checkpoint head key into this module's parameter name."""
+    for pattern, replacement in TRANSFUSION_KEY_PATTERNS:
+        new_key, count = re.subn(pattern, replacement, key)
+        if count:
+            return new_key
+    return key
+
+
 def build_transfusion_head(state_dict, prefixes):
     """Build TransFusion detection head from checkpoint weights."""
 
@@ -672,14 +754,18 @@ def build_transfusion_head(state_dict, prefixes):
         def forward(self, query, key, query_pos, key_pos):
             qpe = self.self_posembed(query_pos)
             kpe = self.cross_posembed(key_pos)
+            # Unlike a standard DETR decoder layer, TransFusion also encodes
+            # the *value* with the positional embedding -- see the explicit
+            # notes in projects/BEVFusion/bevfusion/transformer.py, which pass
+            # `value=query + query_pos` and `value=key + key_pos`.
             q = (query + qpe).permute(2, 0, 1)
-            v_s = query.permute(2, 0, 1)
+            v_s = (query + qpe).permute(2, 0, 1)
             q2, _ = self.self_attn(q, q, v_s)
             query2 = query + q2.permute(1, 2, 0)
             query2 = self.norm1(query2.permute(0, 2, 1)).permute(0, 2, 1)
             q = (query2 + qpe).permute(2, 0, 1)
             k = (key + kpe).permute(2, 0, 1)
-            v = key.permute(2, 0, 1)
+            v = (key + kpe).permute(2, 0, 1)
             q2, _ = self.multihead_attn(q, k, v)
             query2 = query2 + q2.permute(1, 2, 0)
             query2 = self.norm2(query2.permute(0, 2, 1)).permute(0, 2, 1)
@@ -791,13 +877,25 @@ def build_transfusion_head(state_dict, prefixes):
     loaded = 0
     for k, v in state_dict.items():
         if k.startswith(prefix):
-            mk = k[len(prefix):]
+            mk = remap_transfusion_key(k[len(prefix):])
             if mk in model_dict and model_dict[mk].shape == v.shape:
                 model_dict[mk] = v
                 loaded += 1
     head.load_state_dict(model_dict)
     head.eval()
     print(f"  TransFusion head: loaded {loaded} weights")
+
+    # Every parameter must come from the checkpoint. Anything left behind keeps
+    # its random init and silently destroys accuracy -- which is exactly how the
+    # decoder layer went unnoticed (all 18 of its tensors are named differently
+    # in the checkpoint), leaving the head unable to score above ~0.001.
+    assigned = {remap_transfusion_key(k[len(prefix):])
+                for k in state_dict if k.startswith(prefix)}
+    missing = sorted(set(model_dict) - assigned - TRANSFUSION_COMPUTED_BUFFERS)
+    if missing:
+        raise RuntimeError(
+            f"TransFusion head: {len(missing)} parameters were not found in the "
+            f"checkpoint and would keep their random initialization: {missing}")
     return head
 
 
@@ -825,7 +923,12 @@ class CameraEncoderMerged(nn.Module):
     def forward(self, images, depth_maps):
         cam_feats = self.backbone_neck(images)       # [B,256,32,88]
         depth_feats = self.dtransform(depth_maps)     # [B,64,32,88]
-        combined = torch.cat([cam_feats, depth_feats], dim=1)  # [B,320,32,88]
+        # Depth features come FIRST: depthnet's leading conv is trained with
+        # input channels [0:64] = dtransform output and [64:320] = image
+        # features. See DepthLSSTransform.get_cam_feats in the reference
+        # implementation, which does torch.cat([d, x], dim=1). Swapping these
+        # scrambles every input channel and flattens the depth softmax.
+        combined = torch.cat([depth_feats, cam_feats], dim=1)  # [B,320,32,88]
         daf = self.depthnet(combined)                 # [B,198,32,88]
         depth_logits = daf[:, :D_BINS]                # [B,118,32,88]
         context_feats = daf[:, D_BINS:]               # [B,80,32,88]
@@ -1082,7 +1185,7 @@ def optimize_full_detection_topk(output_dir: Path):
     full_detection_original.xml.
     """
     import openvino as ov
-    from openvino.runtime import opset13 as opset
+    from openvino import opset13 as opset
 
     xml_path = output_dir / 'full_detection.xml'
     if not xml_path.exists():
@@ -1280,7 +1383,11 @@ def main():
     else:
         print(f"\n[A1] Camera Backbone + Neck (SwinT + FPN)")
         cam_model = CameraBackboneNeck()
-        load_camera_backbone_neck_weights(cam_model, state, prefixes)
+        if not load_camera_backbone_neck_weights(cam_model, state, prefixes):
+            raise RuntimeError(
+                "Camera backbone+neck has parameters missing from the checkpoint; "
+                "they would keep their random initialization (see the missing/"
+                "unexpected counts above)")
         cam_model.eval()
 
     dummy_img = torch.randn(1, 3, 256, 704)

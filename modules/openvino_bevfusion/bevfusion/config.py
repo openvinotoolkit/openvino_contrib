@@ -34,7 +34,7 @@ VOXEL_SIZE = np.array([0.075, 0.075, 0.2])
 SPARSE_SHAPE = np.array([1440, 1440, 41])  # [X, Y, Z]
 
 # Number of LiDAR sweeps to accumulate (fewer = faster, more = denser)
-SWEEPS_NUM = 1
+SWEEPS_NUM = 9
 
 # ── BEV / Depth ───────────────────────────────────────────────────────────────
 D = 118   # depth bins

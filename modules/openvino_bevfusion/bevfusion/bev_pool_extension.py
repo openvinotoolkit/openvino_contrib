@@ -48,9 +48,14 @@ def _make_bevpool_ir() -> str:
       3. BEVPoolConvert (custom) — int32 fixed-point → float32
 
     Inputs:
-      0: depth_logits  [6, 118, 32, 88]  FP32 (pre-softmax)
-      1: context_feats [6,  80, 32, 88]  FP32
-      2: geom          [1993728, 3]       FP32
+      0: depth_logits    [6, 118, 32, 88]   FP32 (pre-softmax)
+      1: context_feats   [6,  80, 32, 88]   FP32
+      2: geom            [1993728, 3]        FP32
+      3: bev_accumulator [1, 80, 360, 360]  I32, zeros. BEVPoolScatter adds into
+         it and BEVPoolConvert resets it after reading, so bind one tensor
+         (zeroed once) and keep it for every inference. It is an input rather
+         than the scatter's output because the GPU plugin may give an output a
+         reused pool buffer that still holds another layer's data.
 
     Output:
       0: bev           [1, 80, 360, 360]  FP32
@@ -86,6 +91,12 @@ def _make_bevpool_ir() -> str:
         <dim>{total_pts}</dim><dim>3</dim>
       </port></output>
     </layer>
+    <layer id="7" name="bev_accumulator" type="Parameter" version="opset1">
+      <data shape="1,{out_c},{NX},{NY}" element_type="i32"/>
+      <output><port id="0" precision="I32" names="bev_accumulator">
+        <dim>1</dim><dim>{out_c}</dim><dim>{NX}</dim><dim>{NY}</dim>
+      </port></output>
+    </layer>
 
     <!-- ─── Layer 1: Built-in Softmax on depth axis ─── -->
     <layer id="3" name="depth_softmax" type="Softmax" version="opset8">
@@ -98,7 +109,7 @@ def _make_bevpool_ir() -> str:
       </port></output>
     </layer>
 
-    <!-- ─── Layer 2: Int32 atomic scatter ─── -->
+    <!-- ─── Layer 2: Int32 atomic scatter into bev_accumulator ─── -->
     <layer id="4" name="bev_scatter" type="BEVPoolScatter" version="bevfusion"
            nx="{NX}" ny="{NY}" nz="{NZ}"
            num_cams="{num_cams}" depth_bins="{depth_bins}"
@@ -109,19 +120,21 @@ def _make_bevpool_ir() -> str:
         <port id="0"><dim>{num_cams}</dim><dim>{depth_bins}</dim><dim>{feat_h}</dim><dim>{feat_w}</dim></port>
         <port id="1"><dim>{num_cams}</dim><dim>{channels}</dim><dim>{feat_h}</dim><dim>{feat_w}</dim></port>
         <port id="2"><dim>{total_pts}</dim><dim>3</dim></port>
+        <port id="3"><dim>1</dim><dim>{out_c}</dim><dim>{NX}</dim><dim>{NY}</dim></port>
       </input>
-      <output><port id="3" precision="I32">
-        <dim>1</dim><dim>{out_c}</dim><dim>{NX}</dim><dim>{NY}</dim>
+      <output><port id="4" precision="I32">
+        <dim>1</dim>
       </port></output>
     </layer>
 
-    <!-- ─── Layer 3: Int32 → Float32 conversion ─── -->
+    <!-- ─── Layer 3: Int32 → Float32 conversion; resets bev_accumulator ─── -->
     <layer id="5" name="bev_convert" type="BEVPoolConvert" version="bevfusion"
            scale="8192">
-      <input><port id="0">
-        <dim>1</dim><dim>{out_c}</dim><dim>{NX}</dim><dim>{NY}</dim>
-      </port></input>
-      <output><port id="1" precision="FP32" names="bev_features">
+      <input>
+        <port id="0"><dim>1</dim></port>
+        <port id="1"><dim>1</dim><dim>{out_c}</dim><dim>{NX}</dim><dim>{NY}</dim></port>
+      </input>
+      <output><port id="2" precision="FP32" names="bev_features">
         <dim>1</dim><dim>{out_c}</dim><dim>{NX}</dim><dim>{NY}</dim>
       </port></output>
     </layer>
@@ -138,11 +151,25 @@ def _make_bevpool_ir() -> str:
     <edge from-layer="3" from-port="1" to-layer="4" to-port="0"/>
     <edge from-layer="1" from-port="0" to-layer="4" to-port="1"/>
     <edge from-layer="2" from-port="0" to-layer="4" to-port="2"/>
-    <edge from-layer="4" from-port="3" to-layer="5" to-port="0"/>
-    <edge from-layer="5" from-port="1" to-layer="6" to-port="0"/>
+    <edge from-layer="7" from-port="0" to-layer="4" to-port="3"/>
+    <edge from-layer="4" from-port="4" to-layer="5" to-port="0"/>
+    <edge from-layer="7" from-port="0" to-layer="5" to-port="1"/>
+    <edge from-layer="5" from-port="2" to-layer="6" to-port="0"/>
   </edges>
 </net>
 """
+
+
+def bind_bev_accumulator(request: ov.InferRequest) -> None:
+    """Bind a zeroed bev_accumulator to a bev_pool request, if its model has one.
+
+    BEVPoolScatter adds into this tensor and BEVPoolConvert resets it after
+    reading, so it is bound once and reused for every inference.
+    """
+    inputs = request.get_compiled_model().inputs
+    if any('bev_accumulator' in port.get_names() for port in inputs):
+        shape = request.get_compiled_model().input('bev_accumulator').get_shape()
+        request.set_tensor('bev_accumulator', ov.Tensor(np.zeros(shape, dtype=np.int32)))
 
 
 class BEVPoolExtension:
@@ -193,6 +220,7 @@ class BEVPoolExtension:
 
         self._compiled = self._core.compile_model(model, self._device, gpu_config)
         self._request = self._compiled.create_infer_request()
+        bind_bev_accumulator(self._request)
         print(f"[bev_pool_extension] Compiled BEVPool model on {self._device}")
 
     def run(self,

@@ -66,9 +66,17 @@ private:
  *   0: depth_probs   - [N, D, H, W]  softmax probabilities (FP32)
  *   1: context_feats - [N, C, H, W]  context features      (FP32)
  *   2: geom          - [N*D*H*W, 3]  world-space coords    (FP32)
+ *   3: bev_accum     - [1, C*NZ, NX, NY] int32 accumulator (optional)
  *
  * Outputs:
- *   0: bev_accum     - [1, C*NZ, NX, NY] int32 fixed-point accumulator
+ *   with input 3: a [1] int32 token that orders BEVPoolConvert after the
+ *                 scatter. The scatter adds into input 3 in place, which
+ *                 must hold zeros; BEVPoolConvert resets it after reading.
+ *   without:      0: bev_accum - [1, C*NZ, NX, NY] int32 accumulator. The
+ *                 GPU kernel only adds into it and never zeroes it, so this
+ *                 form is only correct on memory that happens to be zero.
+ *                 The GPU plugin can hand the op a reused pool buffer, so
+ *                 prefer the 4-input form.
  */
 class BEVPoolScatter : public ov::op::Op {
 public:
@@ -76,9 +84,7 @@ public:
 
     BEVPoolScatter() = default;
 
-    BEVPoolScatter(const ov::Output<ov::Node>& depth_probs,
-                   const ov::Output<ov::Node>& context_feats,
-                   const ov::Output<ov::Node>& geom,
+    BEVPoolScatter(const ov::OutputVector& inputs,
                    int64_t nx = 360, int64_t ny = 360, int64_t nz = 1,
                    int64_t num_cams = 6, int64_t depth_bins = 118,
                    int64_t channels = 80, int64_t feat_h = 32, int64_t feat_w = 88,
@@ -109,8 +115,10 @@ private:
  * Converts int32 fixed-point accumulator to float32.
  * Simple element-wise: output[i] = (float)input[i] / SCALE
  *
- * Inputs:
+ * Inputs, one of:
  *   0: bev_accum - [1, C, NX, NY] int32 fixed-point
+ *   0: token     - [1] int32 from the 4-input BEVPoolScatter (orders this op after it)
+ *   1: bev_accum - [1, C, NX, NY] int32 fixed-point; reset to zero once read
  *
  * Outputs:
  *   0: bev_float - [1, C, NX, NY] float32
@@ -121,7 +129,7 @@ public:
 
     BEVPoolConvert() = default;
 
-    BEVPoolConvert(const ov::Output<ov::Node>& bev_accum,
+    BEVPoolConvert(const ov::OutputVector& inputs,
                    int64_t scale = 8192);
 
     void validate_and_infer_types() override;

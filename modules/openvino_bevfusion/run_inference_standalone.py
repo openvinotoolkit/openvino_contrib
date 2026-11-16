@@ -48,7 +48,7 @@ IMG_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
 POINT_CLOUD_RANGE = np.array([-54.0, -54.0, -5.0, 54.0, 54.0, 3.0])
 VOXEL_SIZE = np.array([0.075, 0.075, 0.2])
-SWEEPS_NUM = 1
+SWEEPS_NUM = 9  # sweeps besides the key frame, as BEVFusion is trained
 
 D = 118
 C = 80
@@ -69,8 +69,8 @@ OUT_SIZE_FACTOR = 8
 POST_CENTER_RANGE = [-61.2, -61.2, -10.0, 61.2, 61.2, 10.0]
 
 # Padding limits for custom ops
-MAX_POINTS = 70000
-MAX_VOXELS = 60000
+MAX_POINTS = 350000
+MAX_VOXELS = 160000
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Data loading
@@ -406,6 +406,9 @@ class BEVFusionInference:
         self.requests = {
             name: cm.create_infer_request() for name, cm in self.models.items()
         }
+        if 'bev_pool' in self.requests:
+            from bevfusion.bev_pool_extension import bind_bev_accumulator
+            bind_bev_accumulator(self.requests['bev_pool'])
 
         # Set up RemoteTensor GPU buffer sharing between models
         self._setup_gpu_sharing()
@@ -643,7 +646,7 @@ class BEVFusionInference:
             if has_b6_dt and has_b6_dn:
                 dt_res = self._infer('vtransform_dtransform_b6', [depth_maps])
                 df = list(dt_res.values())[0]
-                combined = np.concatenate([cam_feats, df], axis=1)
+                combined = np.concatenate([df, cam_feats], axis=1)
                 dn_res = self._infer('vtransform_depthnet_b6', [combined])
                 daf = list(dn_res.values())[0]
                 dl, cf = daf[:, :D], daf[:, D:]
@@ -652,7 +655,7 @@ class BEVFusionInference:
                 for i in range(6):
                     dt_res = self._infer('vtransform_dtransform', [depth_maps[i:i+1]])
                     df = list(dt_res.values())[0]
-                    combined = np.concatenate([cam_feats[i:i+1], df], axis=1)
+                    combined = np.concatenate([df, cam_feats[i:i+1]], axis=1)
                     dn_res = self._infer('vtransform_depthnet', [combined])
                     daf = list(dn_res.values())[0]
                     dl_l.append(daf[0, :D])

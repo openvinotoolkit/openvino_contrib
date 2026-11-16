@@ -19,17 +19,17 @@
 namespace BEVFusionExtension {
 
 // ── Constants (BEVFusion defaults) ───────────────────────────────────────────
-constexpr int64_t VOXEL_MAX_POINTS   = 70000;   // max input point count
-constexpr int64_t VOXEL_MAX_VOXELS   = 60000;   // max output voxel count
+constexpr int64_t VOXEL_MAX_POINTS   = 350000;  // max input point count (10 nuScenes turns)
+constexpr int64_t VOXEL_MAX_VOXELS   = 160000;  // max output voxel count
 constexpr int64_t VOXEL_MAX_PTS_PER  = 10;      // max points per voxel
 constexpr int64_t VOXEL_NUM_FEATURES = 5;       // x, y, z, intensity, timestamp
-constexpr int64_t VOXEL_HASH_SIZE    = 131072;  // 2^17, open-address hash table
+constexpr int64_t VOXEL_HASH_SIZE    = 262144;  // 2^18, open-address hash table
 constexpr int64_t VOXEL_FP_SCALE     = 4096;    // fixed-point scale
 
 // Hash table entry stride (inline: key, feat*5, count, batch, x, y, z)
 constexpr int64_t VOXEL_ENTRY_STRIDE     = 11;
 constexpr int64_t VOXEL_HT_OFFSET        = 1;
-constexpr int64_t VOXEL_WORKSPACE_SIZE   = 1 + VOXEL_HASH_SIZE * VOXEL_ENTRY_STRIDE; // 1441793
+constexpr int64_t VOXEL_WORKSPACE_SIZE   = 1 + VOXEL_HASH_SIZE * VOXEL_ENTRY_STRIDE; // 2883585
 
 // Grid dimensions
 constexpr int VOXEL_GRID_X = 1440;
