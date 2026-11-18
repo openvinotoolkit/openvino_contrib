@@ -66,12 +66,8 @@ public final class NativeLibrary {
             while ((file = r.readLine()) != null) {
                 // Check that file name is valid
                 if (!file.chars()
-                        .allMatch(
-                                c ->
-                                        Character.isLetterOrDigit(c)
-                                                || c == '.'
-                                                || c == '_'
-                                                || c == '-')) {
+                        .allMatch(c ->
+                                Character.isLetterOrDigit(c) || c == '.' || c == '_' || c == '-')) {
                     throw new IOException("Invalid file path: " + file);
                 }
 
