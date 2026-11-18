@@ -11,12 +11,15 @@ if(POLICY CMP0104)
   cmake_policy(SET CMP0104 NEW)
 endif()
 
-set(CMAKE_CXX_STANDARD 17)
+if(NOT DEFINED CMAKE_CXX_STANDARD)
+    set(CMAKE_CXX_STANDARD 20)
+endif()
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
-# CMAKE_CUDA_STANDARD set after CUDA toolkit detection below,
-# so the value can depend on CUDAToolkit_VERSION_MAJOR (NVCC 10.x has no C++17).
+# CMAKE_CUDA_STANDARD set after CUDA toolkit detection below: NVCC < 12.0 cannot compile
+# C++20 device code, so a hard floor on CUDAToolkit_VERSION_MAJOR is enforced there
+# instead of silently degrading to an older CUDA/C++ standard.
 
 if (CUDA_KERNEL_PRINT_LOG)
     add_definitions(-DCUDA_KERNEL_PRINT_LOG)
@@ -87,11 +90,13 @@ else()
 endif()
 
 if(NOT CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    if(CUDAToolkit_VERSION_MAJOR LESS_EQUAL 10)
-        set(CMAKE_CUDA_STANDARD 14)
-    else()
-        set(CMAKE_CUDA_STANDARD 17)
+    if(CUDAToolkit_VERSION_MAJOR LESS 12)
+        message(FATAL_ERROR
+            "CUDAToolkit ${CUDAToolkit_VERSION_MAJOR}.${CUDAToolkit_VERSION_MINOR} was found, but "
+            "nvidia_plugin requires CUDAToolkit >= 12.0: NVCC below 12.0 cannot compile C++20 device "
+            "code, and OpenVINO no longer supports building with C++17.")
     endif()
+    set(CMAKE_CUDA_STANDARD 20)
     set(CMAKE_CUDA_STANDARD_REQUIRED TRUE)
 endif()
 
@@ -103,17 +108,18 @@ find_library(CUDNN_PATH
 
 if(CUDAToolkit_VERSION_MAJOR LESS_EQUAL 10)
     set(CUTENSOR_LIB_DIRS lib/10.2 libcutensor/10.2)
-elseif(CUDAToolkit_VERSION_MAJOR GREATER_EQUAL 11 AND CUDAToolkit_VERSION_MINOR LESS_EQUAL 0)
+elseif(CUDAToolkit_VERSION_MAJOR EQUAL 11 AND CUDAToolkit_VERSION_MINOR LESS_EQUAL 0)
     set(CUTENSOR_LIB_DIRS lib/11.0 libcutensor/11.0)
-elseif(CUDAToolkit_VERSION_MAJOR GREATER_EQUAL 11 AND CUDAToolkit_VERSION_MINOR GREATER_EQUAL 1)
+elseif(CUDAToolkit_VERSION_MAJOR EQUAL 11 AND CUDAToolkit_VERSION_MINOR GREATER_EQUAL 1)
     set(CUTENSOR_LIB_DIRS lib/11 libcutensor/11)
 else()
     set(CUTENSOR_LIB_DIRS lib/${CUDAToolkit_VERSION_MAJOR} libcutensor/${CUDAToolkit_VERSION_MAJOR})
 endif()
+
 find_library(CUTENSOR_PATH
              NAMES cutensor
              ${HAS_REQUIRED}
-             HINTS "$ENV{CUTENSOR_PATH}" "${CUDA_TOOLKIT_ROOT_DIR}" "${CUDA_PATH}" "$ENV{CUDA_PATH}" 
+             HINTS "$ENV{CUTENSOR_PATH}" "${CUDA_TOOLKIT_ROOT_DIR}" "${CUDA_PATH}" "$ENV{CUDA_PATH}"
              PATH_SUFFIXES nvidia/current lib64 lib/x64 lib ${CUTENSOR_LIB_DIRS})
 get_filename_component(CUTENSOR_INCLUDE_DIR "${CUTENSOR_PATH}" DIRECTORY)
 get_filename_component(CUTENSOR_INCLUDE_DIR "${CUTENSOR_INCLUDE_DIR}/../../include" REALPATH)
@@ -165,7 +171,7 @@ if(CMAKE_VERSION VERSION_LESS 3.14.0)
 else()
     FetchContent_MakeAvailable(GSL)
 endif()
-# it contains c++14 requirement, which overrides c++17 setting in CMAKE_CUDA_FLAGS
+# it contains c++14 requirement, which overrides c++20 setting in CMAKE_CUDA_FLAGS
 set_property(TARGET GSL PROPERTY INTERFACE_COMPILE_FEATURES)
 
 FetchContent_Declare(fmt-header-only
@@ -181,7 +187,7 @@ if(CMAKE_VERSION VERSION_LESS 3.14.0)
 else()
     FetchContent_MakeAvailable(fmt-header-only)
 endif()
-# it contains c++11 requirement, which overrides c++17 setting in CMAKE_CUDA_FLAGS
+# it contains c++11 requirement, which overrides c++20 setting in CMAKE_CUDA_FLAGS
 set_property(TARGET fmt-header-only PROPERTY INTERFACE_COMPILE_FEATURES)
 
 add_subdirectory(src)

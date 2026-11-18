@@ -25,25 +25,25 @@ OpenVINO™ NVIDIA GPU plugin is not included into Intel® Distribution of OpenV
 
 NVIDIA GPU plugin uses the following dependencies to be downloaded and installed separately. Upon downloading them the user should agree with license of each component:
 
-1. Install one of the following compilers with support of **C++17**:
-- Install **gcc-7** compiler
+1. Install one of the following compilers with support of **C++20**:
+- Install **gcc-11** compiler
 ```bash
 sudo apt-get update
-sudo apt-get install gcc-7 g++7
+sudo apt-get install gcc-11 g++-11
 ```
-- Install **clang-8** compiler
+- Install **clang-14** compiler
 ```bash
 sudo apt-get update
-sudo apt-get install clang-8 clang++8
+sudo apt-get install clang-14
 ```
 
 2. Install suitable **NVIDIA driver** from [NVIDIA download drivers](http://www.nvidia.com/Download/index.aspx?lang=en-us)
-3. Install **CUDA 11.8** from [How to install CUDA](https://docs.nvidia.com/cuda/cuda-quick-start-guide/index.html)
+3. Install **CUDA 12.0 or newer** (CI uses 12.2; CUDA 11.x is not supported) from [How to install CUDA](https://docs.nvidia.com/cuda/cuda-quick-start-guide/index.html)
 
    Do not forget to add `<path_to_cuda>/bin/` in **PATH** variable for example `export PATH="<path_to_cuda>/bin:$PATH"`
 
-4. Install **cuDNN 8.6.0** from [How to install cuDNN](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html)
-5. Install **cuTENSOR 1.6.1** from [How to install cuTENSOR](https://docs.nvidia.com/cuda/cutensor/getting_started.html#installation-and-compilation)
+4. Install **cuDNN 8.9.x** built for CUDA 12 from [How to install cuDNN](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html)
+5. Install **cuTENSOR 1.7.0** from [How to install cuTENSOR](https://docs.nvidia.com/cuda/cutensor/getting_started.html#installation-and-compilation)
 
 ### Build with cmake
 
@@ -110,12 +110,12 @@ cd openvino_contrib/modules/nvidia_plugin
 ```
 3. Setup `CUDACXX` environment variable to point to the CUDA _nvcc_ compiler like the next (use yours path)
 ```bash
-export CUDACXX=/usr/local/cuda-11.8/bin/nvcc
+export CUDACXX=/usr/local/cuda-12.2/bin/nvcc
 ```
 
 4. Add the path to the cuda libraries to the `LD_LIBRARY_PATH` environment variable like the next (use yours path)
 ```bash
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda-11.8/bin/nvcc
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda-12.2/lib64
 ```
 
 5. Run setup.py build command as follows.
@@ -183,7 +183,7 @@ Please refer to OpenVINO documentation for details.
 * `ov::nvidia_gpu::use_cuda_graph` - specifies if NVIDIA plugin attempts to use CUDA Graph feature to speed up sequential network inferences (`true` by default)
 
 All parameters must be set before calling `ov::Core::compile_model()` in order to take effect.
- 
+
 ### Plugin specific properties
 * `ov::nvidia_gpu::number_of_cuda_graphs` - Read-only property showing the number of CUDA Graphs, used for the current model
 

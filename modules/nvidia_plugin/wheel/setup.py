@@ -98,7 +98,7 @@ def get_arch_tag():
 
 def get_platform_tag():
     arch = get_arch_tag()
-    
+
     if sys.platform.startswith("win"):
         platform_tag = f"win_{arch}"
     if sys.platform == "linux":
@@ -117,7 +117,7 @@ def get_platform_tag():
         mac_ver, _, _ = platform.mac_ver()
         mac_ver = mac_ver.replace(".", "_")
         platform_tag = f"macosx_{mac_ver}_{arch}"
-    
+
     return platform_tag
 
 
@@ -171,7 +171,7 @@ def is_tool(name):
     except OSError as error:
         if error.errno == errno.ENOENT:
             return False
-    
+
     return True
 
 
@@ -190,7 +190,7 @@ def set_rpath(rpath, executable):
             if file.read(1) != b'\x7f':
                 log.warn(f'WARNING: {executable}: missed ELF header')
                 return
-        
+
         rpath_tool = 'patchelf'
         cmd = [rpath_tool, '--set-rpath', rpath, executable]
     elif sys.platform == 'darwin':
@@ -202,7 +202,7 @@ def set_rpath(rpath, executable):
     if is_tool(rpath_tool):
         if sys.platform == 'darwin':
             remove_rpath(executable)
-        
+
         ret_info = subprocess.run(cmd, check=True, shell=False)  # nosec
         if ret_info.returncode != 0:
             sys.exit(f'Could not set rpath: {rpath} for {executable}')
@@ -483,7 +483,7 @@ class BuildCLib(build_clib):
 class InstallLib(install_lib):
     def finalize_options(self):
         install_lib.finalize_options(self)
-        
+
         self.git_exec = shutil.which("git")
         self.force = None
         self.set_undefined_options('install', ('force', 'force'))
@@ -492,7 +492,7 @@ class InstallLib(install_lib):
     def run(self):
         self.build()
         self.install()
-        
+
         try:
             if self.force:
                 self.install_openvino_package()
@@ -547,7 +547,7 @@ class InstallLib(install_lib):
             tree = ET.fromstring(plugins_xml_src)
         else:
             tree = ET.parse(xml_file).getroot()
-        
+
         plugins = tree.find("plugins")
         if all(plugin.get('name') != 'NVIDIA' for plugin in plugins.iter('plugin')):
             plugins.append(Element('plugin', {'name': 'NVIDIA', 'location': openvino_nvidia_gpu_library}))
@@ -628,7 +628,7 @@ class InstallLib(install_lib):
             if not self.force:
                 recommendations_msg = 'Try to uninstall the openvino package and run "setup.py install --force" ' \
                                       'to build OpenVINO libraries also. ' \
-                                      'NVIDIA plugin requires OpenVINO to be built with C++17 compatible compiler'
+                                      'NVIDIA plugin requires OpenVINO to be built with C++20 compatible compiler'
             raise RuntimeError('The NVIDIA GPU plugin loading test was failed. '
                                'The NVIDIA GPU plugin library is not compatible with OpenVINO libraries. '
                                f'Possible ABI version mismatch. {recommendations_msg}') from e

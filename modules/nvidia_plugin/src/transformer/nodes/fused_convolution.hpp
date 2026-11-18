@@ -16,7 +16,7 @@ namespace ov::nvidia_gpu::nodes {
 namespace {
 
 template <typename TBaseConvolution>
-inline constexpr const char* conv_name;
+inline constexpr const char* conv_name = nullptr;
 
 template <>
 inline constexpr const char* conv_name<ov::op::v1::Convolution> = "FusedConvolution";
