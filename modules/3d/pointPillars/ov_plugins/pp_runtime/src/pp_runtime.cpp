@@ -245,11 +245,15 @@ PointPillarsRuntime::~PointPillarsRuntime() {
 
 void PointPillarsRuntime::forward_on_device(const float* points, int point_count) {
     Impl& self = *impl_;
+    if (point_count < 0) throw std::invalid_argument("point_count must not be negative");
     if (point_count > PP_MAX_POINTS) point_count = static_cast<int>(PP_MAX_POINTS);
 
+    // An empty cloud may pass a NULL pointer, which clEnqueueMemcpyINTEL rejects.
     const size_t point_bytes = static_cast<size_t>(point_count) * PP_NUM_POINT_FEATURES * sizeof(float);
-    check_status(self.enqueue_memcpy(self.queue, CL_FALSE, self.point_buffer, points, point_bytes, 0, nullptr, nullptr),
-                 "clEnqueueMemcpyINTEL points");
+    if (point_bytes > 0)
+        check_status(self.enqueue_memcpy(self.queue, CL_FALSE, self.point_buffer, points, point_bytes, 0, nullptr,
+                                         nullptr),
+                     "clEnqueueMemcpyINTEL points");
     check_status(self.enqueue_memcpy(self.queue, CL_FALSE, self.point_count_buffer, &point_count, sizeof(point_count),
                                      0, nullptr, nullptr),
                  "clEnqueueMemcpyINTEL count");
