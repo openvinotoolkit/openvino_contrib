@@ -27,20 +27,11 @@ use NumPy and OpenVINO.
 
 ## Checkpoint
 
-The exporter requires the trained PyTorch checkpoint at
-`pretrained/epoch_160.pth`, relative to this PointPillars module directory.
-Example: A sample checkpoint is available in the
-[zhulf0804/PointPillars repository](https://github.com/zhulf0804/PointPillars/blob/main/pretrained/epoch_160.pth):
-
-```bash
-mkdir -p pretrained
-curl -L \
-  https://github.com/zhulf0804/PointPillars/raw/refs/heads/main/pretrained/epoch_160.pth \
-  -o pretrained/epoch_160.pth
-```
-
-To use a checkpoint stored elsewhere, pass its path with `--ckpt` when running
-`ov_export.py`.
+The exporter requires the trained PyTorch checkpoint inside
+`pretrained/`, relative to this PointPillars module directory. Create the
+directory first if it does not exist. The default path is
+`pretrained/epoch_160.pth`. To use a checkpoint stored elsewhere, pass its
+path with `--ckpt` when running `ov_export.py`.
 
 ## Export
 
