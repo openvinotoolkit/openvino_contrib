@@ -6,8 +6,10 @@
 #include <cstdio>
 #include <fstream>
 #include <initializer_list>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
+#include <type_traits>
 
 #include "pp_postprocess.hpp"
 #include "pp_tuning_config_generated.hpp"
@@ -40,22 +42,36 @@ std::string with_rounding_option(const char* options) {
     return std::string(options) + " " + kFp32RoundingOption;
 }
 
+// OpenCL handle wrappers, released by the unique_ptr deleter.
+template <typename Handle, cl_int (*Release)(Handle)>
+struct ClReleaser {
+    void operator()(Handle handle) const { Release(handle); }
+};
+
+template <typename Handle, cl_int (*Release)(Handle)>
+using ClHandle = std::unique_ptr<typename std::remove_pointer<Handle>::type, ClReleaser<Handle, Release>>;
+
+using ContextPtr = ClHandle<cl_context, clReleaseContext>;
+using QueuePtr = ClHandle<cl_command_queue, clReleaseCommandQueue>;
+using ProgramPtr = ClHandle<cl_program, clReleaseProgram>;
+using KernelPtr = ClHandle<cl_kernel, clReleaseKernel>;
+
 }  // namespace
 
 struct PointPillarsRuntime::Impl {
-    // OpenCL resources.
-    cl_context context = nullptr;
+    // Declared before the OpenVINO members below so they outlive them; OpenVINO holds its own references.
+    ContextPtr context;
     cl_device_id device = nullptr;
-    cl_command_queue queue = nullptr;
-    std::vector<cl_program> kernel_programs;
+    QueuePtr queue;
+    std::vector<ProgramPtr> kernel_programs;
 
-    cl_kernel scatter_kernel = nullptr;
-    cl_kernel finalize_kernel = nullptr;
-    cl_kernel cells_kernel = nullptr;
-    cl_kernel scores_kernel = nullptr;
-    cl_kernel candidates_kernel = nullptr;
-    cl_kernel nms_kernel = nullptr;
-    cl_kernel gather_kernel = nullptr;
+    KernelPtr scatter_kernel;
+    KernelPtr finalize_kernel;
+    KernelPtr cells_kernel;
+    KernelPtr scores_kernel;
+    KernelPtr candidates_kernel;
+    KernelPtr nms_kernel;
+    KernelPtr gather_kernel;
 
     // Unified shared memory entry points.
     clSetKernelArgMemPointerINTEL_fn set_kernel_arg_mem_pointer = nullptr;
@@ -92,12 +108,12 @@ struct PointPillarsRuntime::Impl {
 
     void* bind_tensor(const std::string& port, const ov::Output<const ov::Node>& tensor_info) {
         owned_tensors.push_back(remote_context->create_usm_device_tensor(tensor_info.get_element_type(),
-                                                                           tensor_info.get_shape()));
+                                                                        tensor_info.get_shape()));
         infer_request.set_tensor(port, owned_tensors.back());
         return owned_tensors.back().get();
     }
 
-    cl_kernel build_kernel(const std::vector<std::string>& files, const char* entry,
+    KernelPtr build_kernel(const std::vector<std::string>& files, const char* entry,
                            const std::string& options) {
         std::vector<std::string> texts;
         std::vector<const char*> pointers;
@@ -109,31 +125,32 @@ struct PointPillarsRuntime::Impl {
         }
 
         cl_int status = CL_SUCCESS;
-        cl_program program = clCreateProgramWithSource(context, static_cast<cl_uint>(pointers.size()),
-                                                       pointers.data(), lengths.data(), &status);
+        ProgramPtr program(clCreateProgramWithSource(context.get(), static_cast<cl_uint>(pointers.size()),
+                                                     pointers.data(), lengths.data(), &status));
         check_status(status, "clCreateProgramWithSource");
-        if (clBuildProgram(program, kSingleDevice, &device, options.c_str(), nullptr, nullptr) != CL_SUCCESS) {
+        kernel_programs.push_back(std::move(program));
+        cl_program raw_program = kernel_programs.back().get();
+        if (clBuildProgram(raw_program, kSingleDevice, &device, options.c_str(), nullptr, nullptr) != CL_SUCCESS) {
             size_t size = 0;
-            clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 0, nullptr, &size);
+            clGetProgramBuildInfo(raw_program, device, CL_PROGRAM_BUILD_LOG, 0, nullptr, &size);
             std::string log(size, '\0');
-            clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, size, log.data(), nullptr);
+            clGetProgramBuildInfo(raw_program, device, CL_PROGRAM_BUILD_LOG, size, log.data(), nullptr);
             throw std::runtime_error(std::string("building ") + entry + ":\n" + log);
         }
-        kernel_programs.push_back(program);
 
-        cl_kernel kernel = clCreateKernel(program, entry, &status);
+        KernelPtr kernel(clCreateKernel(raw_program, entry, &status));
         check_status(status, "clCreateKernel");
         return kernel;
     }
 
-    void launch_kernel(cl_kernel kernel, std::initializer_list<void*> arguments, size_t global_size,
+    void launch_kernel(const KernelPtr& kernel, std::initializer_list<void*> arguments, size_t global_size,
                        size_t local_size) {
         cl_uint argument_index = 0;
         for (void* argument : arguments)
-            check_status(set_kernel_arg_mem_pointer(kernel, argument_index++, argument),
+            check_status(set_kernel_arg_mem_pointer(kernel.get(), argument_index++, argument),
                          "clSetKernelArgMemPointerINTEL");
         const size_t* local_size_ptr = local_size ? &local_size : nullptr;
-        check_status(clEnqueueNDRangeKernel(queue, kernel, kOpenClWorkDimensions, nullptr, &global_size,
+        check_status(clEnqueueNDRangeKernel(queue.get(), kernel.get(), kOpenClWorkDimensions, nullptr, &global_size,
                                             local_size_ptr, 0, nullptr, nullptr),
                      "clEnqueueNDRangeKernel");
     }
@@ -149,16 +166,17 @@ PointPillarsRuntime::PointPillarsRuntime(const std::string& model_xml, const std
     cl_uint platform_count = 0;
     check_status(clGetPlatformIDs(kPlatformCapacity, platforms, &platform_count), "clGetPlatformIDs");
     cl_platform_id platform = nullptr;
-    for (cl_uint i = 0; i < platform_count && !self.device; ++i) {
-        if (clGetDeviceIDs(platforms[i], CL_DEVICE_TYPE_GPU, 1, &self.device, nullptr) == CL_SUCCESS)
-            platform = platforms[i];
+    for (cl_uint platform_index = 0; platform_index < platform_count && !self.device; ++platform_index) {
+        if (clGetDeviceIDs(platforms[platform_index], CL_DEVICE_TYPE_GPU, kSingleDevice, &self.device, nullptr) ==
+            CL_SUCCESS)
+            platform = platforms[platform_index];
     }
     if (!self.device) throw std::runtime_error("no OpenCL GPU device found");
 
     cl_int status = CL_SUCCESS;
-    self.context = clCreateContext(nullptr, kSingleDevice, &self.device, nullptr, nullptr, &status);
+    self.context.reset(clCreateContext(nullptr, kSingleDevice, &self.device, nullptr, nullptr, &status));
     check_status(status, "clCreateContext");
-    self.queue = clCreateCommandQueueWithProperties(self.context, self.device, nullptr, &status);
+    self.queue.reset(clCreateCommandQueueWithProperties(self.context.get(), self.device, nullptr, &status));
     check_status(status, "clCreateCommandQueueWithProperties");
 
     self.set_kernel_arg_mem_pointer = reinterpret_cast<clSetKernelArgMemPointerINTEL_fn>(
@@ -168,7 +186,7 @@ PointPillarsRuntime::PointPillarsRuntime(const std::string& model_xml, const std
     if (!self.set_kernel_arg_mem_pointer || !self.enqueue_memcpy)
         throw std::runtime_error("driver does not expose unified shared memory");
 
-    self.remote_context.reset(new ov::intel_gpu::ocl::ClContext(self.core, self.queue));
+    self.remote_context.reset(new ov::intel_gpu::ocl::ClContext(self.core, self.queue.get()));
     self.compiled_model = self.core.compile_model(self.core.read_model(model_xml), *self.remote_context,
                                                   {ov::hint::execution_mode(ov::hint::ExecutionMode::ACCURACY)});
     self.infer_request = self.compiled_model.create_infer_request();
@@ -206,10 +224,11 @@ PointPillarsRuntime::PointPillarsRuntime(const std::string& model_xml, const std
                                             "pp_voxelization_scatter",
                                             with_rounding_option("-DINPUT0_TYPE=float -DINPUT1_TYPE=int "
                                                                  "-DOUTPUT0_TYPE=float"));
-    self.finalize_kernel = self.build_kernel({pillar_config, tuning_config, voxel_common, "pp_voxelization_features.cl"},
-                                             "pp_voxelization_finalize",
-                                             with_rounding_option("-DINPUT0_TYPE=float -DINPUT1_TYPE=float "
-                                                                  "-DOUTPUT0_TYPE=half"));
+    self.finalize_kernel =
+        self.build_kernel({pillar_config, tuning_config, voxel_common, "pp_voxelization_features.cl"},
+                          "pp_voxelization_finalize",
+                          with_rounding_option("-DINPUT0_TYPE=float -DINPUT1_TYPE=float "
+                                               "-DOUTPUT0_TYPE=half"));
     self.cells_kernel = self.build_kernel({pillar_config, tuning_config, voxel_common, "pp_voxelization_cells.cl"},
                                            "pp_voxelization_cells",
                                            "-DINPUT0_TYPE=float -DOUTPUT0_TYPE=int");
@@ -232,16 +251,7 @@ PointPillarsRuntime::PointPillarsRuntime(const std::string& model_xml, const std
                                            kFp32RoundingOption);
 }
 
-PointPillarsRuntime::~PointPillarsRuntime() {
-    Impl& self = *impl_;
-    for (cl_kernel kernel : {self.scatter_kernel, self.finalize_kernel, self.cells_kernel, self.scores_kernel,
-                             self.candidates_kernel, self.nms_kernel, self.gather_kernel})
-        if (kernel) clReleaseKernel(kernel);
-    for (cl_program program : self.kernel_programs) clReleaseProgram(program);
-    self.owned_tensors.clear();
-    if (self.queue) clReleaseCommandQueue(self.queue);
-    if (self.context) clReleaseContext(self.context);
-}
+PointPillarsRuntime::~PointPillarsRuntime() = default;
 
 void PointPillarsRuntime::forward_on_device(const float* points, int point_count) {
     Impl& self = *impl_;
@@ -251,11 +261,11 @@ void PointPillarsRuntime::forward_on_device(const float* points, int point_count
     // An empty cloud may pass a NULL pointer, which clEnqueueMemcpyINTEL rejects.
     const size_t point_bytes = static_cast<size_t>(point_count) * PP_NUM_POINT_FEATURES * sizeof(float);
     if (point_bytes > 0)
-        check_status(self.enqueue_memcpy(self.queue, CL_FALSE, self.point_buffer, points, point_bytes, 0, nullptr,
-                                         nullptr),
+        check_status(self.enqueue_memcpy(self.queue.get(), CL_FALSE, self.point_buffer, points, point_bytes, 0,
+                                         nullptr, nullptr),
                      "clEnqueueMemcpyINTEL points");
-    check_status(self.enqueue_memcpy(self.queue, CL_FALSE, self.point_count_buffer, &point_count, sizeof(point_count),
-                                     0, nullptr, nullptr),
+    check_status(self.enqueue_memcpy(self.queue.get(), CL_FALSE, self.point_count_buffer, &point_count,
+                                     sizeof(point_count), 0, nullptr, nullptr),
                  "clEnqueueMemcpyINTEL count");
 
     self.launch_kernel(self.scatter_kernel, {self.point_buffer, self.point_count_buffer, self.metadata_buffer},
@@ -282,7 +292,7 @@ void PointPillarsRuntime::forward_on_device(const float* points, int point_count
 const float* PointPillarsRuntime::forward(const float* points, int point_count) {
     Impl& self = *impl_;
     forward_on_device(points, point_count);
-    check_status(self.enqueue_memcpy(self.queue, CL_TRUE, self.host_detections.data(), self.detections,
+    check_status(self.enqueue_memcpy(self.queue.get(), CL_TRUE, self.host_detections.data(), self.detections,
                                      self.host_detections.size() * sizeof(float), 0, nullptr, nullptr),
                  "clEnqueueMemcpyINTEL detections");
     return self.host_detections.data();
