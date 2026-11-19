@@ -18,6 +18,9 @@
 namespace PpExtension {
 namespace {
 
+static_assert(PP_NMS_GROUPS >= 1,
+              "nms_groups in ov_config.toml must be >= 1: with no work-groups the NMS mask stays empty");
+
 constexpr const char* kFp32RoundingOption = "-cl-fp32-correctly-rounded-divide-sqrt";
 constexpr cl_uint kPlatformCapacity = 8;
 constexpr cl_uint kOpenClWorkDimensions = 1;

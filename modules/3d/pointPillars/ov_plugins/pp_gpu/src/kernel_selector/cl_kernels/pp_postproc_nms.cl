@@ -7,6 +7,10 @@
 // Tiles cover the upper block triangle. Each work-item evaluates one box pair,
 // and each row is combined into a bitmask in local memory.
 
+#if NMS_GROUPS < 1
+#error "nms_groups in ov_config.toml must be >= 1: with no work-groups the NMS mask stays empty"
+#endif
+
 // x, y, z, w, l, h, yaw + circumradius.
 #define NMS_CACHE_STRIDE (PP_NUM_BOX_VALUES + 1)
 
@@ -43,16 +47,21 @@ void pp_postproc_nms(__global const float* candidates, __global int* mask) {
 
         // Synchronize before reusing the local tile caches.
         barrier(CLK_LOCAL_MEM_FENCE);
-        if (lid < PP_NMS_BLOCK) {
-            row_bits[lid] = 0;
-            if (lid < row_size)
-                pp_nms_cache(row_cache + lid * NMS_CACHE_STRIDE,
-                             boxes + (long)(row_start * PP_NMS_BLOCK + lid) * PP_DET_CHANNELS);
-        } else if (lid < 2 * PP_NMS_BLOCK) {
-            const int slot = lid - PP_NMS_BLOCK;
-            if (slot < col_size)
-                pp_nms_cache(col_cache + slot * NMS_CACHE_STRIDE,
-                             boxes + (long)(col_start * PP_NMS_BLOCK + slot) * PP_DET_CHANNELS);
+        // Strided, so a tile smaller than 2 * PP_NMS_BLOCK work-items still loads both caches.
+        for (int i = lid; i < 2 * PP_NMS_BLOCK; i += PP_NMS_TILE_WG) {
+            if (i < PP_NMS_BLOCK) {
+                row_bits[i] = 0;
+                if (i < row_size) {
+                    pp_nms_cache(row_cache + i * NMS_CACHE_STRIDE,
+                                boxes + (long)(row_start * PP_NMS_BLOCK + i) * PP_DET_CHANNELS);
+                }
+            } else {
+                const int slot = i - PP_NMS_BLOCK;
+                if (slot < col_size) {
+                    pp_nms_cache(col_cache + slot * NMS_CACHE_STRIDE,
+                                 boxes + (long)(col_start * PP_NMS_BLOCK + slot) * PP_DET_CHANNELS);
+                }
+            }
         }
         barrier(CLK_LOCAL_MEM_FENCE);
 

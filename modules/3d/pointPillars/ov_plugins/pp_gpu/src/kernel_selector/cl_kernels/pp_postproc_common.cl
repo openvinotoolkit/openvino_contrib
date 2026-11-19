@@ -30,6 +30,10 @@
 
 #pragma OPENCL FP_CONTRACT OFF
 
+#if PP_NMS_BLOCK < 1 || PP_NMS_BLOCK > 32
+#error "nms_block in ov_config.toml must be 1..32: one bit per candidate in a 32-bit NMS mask word"
+#endif
+
 // Shared helpers for detection-head postprocessing.
 //
 // The pipeline contains score filtering, candidate decoding and sorting,

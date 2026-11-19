@@ -83,10 +83,12 @@ scores_wg = 128
 # Work-items in the candidate compaction/decode/sort work-group.
 candidates_wg = 1024
 
-# Number of candidates represented by one NMS mask word. This also determines
-# the side length of each NMS tile.
+# Number of candidates per 32-bit NMS mask word, and the side length of each
+# NMS tile. One NMS work-group has nms_block^2 work-items. Must be 1..32, and
+# nms_block^2 must not exceed the device's maximum work-group size.
 nms_block = 32
-# Number of work-groups in the NMS tile pool.
+# Number of NMS work-groups. Each one loops over the IoU tiles, so any value
+# >= 1 gives the same result and only changes speed. Must be >= 1.
 nms_groups = 64
 # Required subgroup width for the NMS kernel on the target device.
 nms_simd = 16

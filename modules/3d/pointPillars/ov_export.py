@@ -422,7 +422,7 @@ def _decoder_constants(config, decoder, tuning):
         # Derived.
         "PP_ANCHOR_COUNT": config.anchor_count,
         "PP_SELECT_WORDS": config.select_words,
-        "PP_NMS_COL_BLOCKS": decoder.max_candidates // tuning.nms_block,
+        "PP_NMS_COL_BLOCKS": (decoder.max_candidates + tuning.nms_block - 1) // tuning.nms_block,
         "PP_NMS_TILE_WG": tuning.nms_tile_wg,
     }
     reals = {
@@ -825,7 +825,7 @@ def main():
     # The embedded graph requires the GPU custom-layer configuration.
     gpu = {"EXECUTION_MODE_HINT": "ACCURACY"}
     if args.embed_custom_ops:
-        gpu["CONFIG_FILE"] = str(root / "ov_plugins" / "pp_gpu" / "pp_custom_gpu_kernels.xml")
+        gpu["CONFIG_FILE"] = str((args.plugin_dir / "pp_gpu" / "pp_custom_gpu_kernels.xml").resolve())
     config_path = args.output_dir / "bench_gpu_config.json"
     config_path.write_text(json.dumps({"GPU": gpu}) + "\n")
 

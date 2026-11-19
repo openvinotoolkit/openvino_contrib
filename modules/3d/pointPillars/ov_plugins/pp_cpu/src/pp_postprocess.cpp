@@ -85,6 +85,9 @@ constexpr int kIntersectionPointCapacity = 16;
 constexpr int kCandidateHeaderRows = 1;
 constexpr int kSkipCurrentCandidate = 1;
 
+static_assert(PP_NMS_BLOCK >= 1 && PP_NMS_BLOCK <= 32,
+              "nms_block in ov_config.toml must be 1..32: one bit per candidate in a 32-bit NMS mask word");
+
 enum ScoresInputPort : int {
     kScoresClassificationInput = 0,
 };
