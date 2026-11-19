@@ -48,7 +48,7 @@ sudo apt-get install clang-14
 
 ### Build with cmake
 
-In order to build the plugin, you must prebuild OpenVINO™ package from source using [this guideline](https://github.com/openvinotoolkit/openvino/wiki/BuildingCode#building-for-different-oses).
+In order to build the plugin, you must prebuild OpenVINO™ package from source using [this guideline](https://github.com/openvinotoolkit/openvino/wiki/BuildingCode#building-for-different-oses). The plugin requires an OpenVINO version that builds with C++20 by default (OpenVINO 2027.0 or newer, or current `master`); earlier releases such as 2025.3.0 are not supported.
 
 Afterwards plugin build procedure is as following:
 

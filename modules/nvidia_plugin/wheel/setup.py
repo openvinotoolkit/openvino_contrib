@@ -136,7 +136,8 @@ LIBS_RPATH = '$ORIGIN' if sys.platform == 'linux' else '@loader_path'
 
 OPENVINO_SRC_DIR = config('OPENVINO_HOME', None)
 OPENVINO_REPO_URL = config('OPENVINO_REPO_DOWNLOAD_URL', 'git@github.com:openvinotoolkit/openvino.git')
-OPENVINO_REPO_TAG = config('OPENVINO_REPO_TAG', "2025.3.0")
+# Builds OpenVINO master; set OPENVINO_REPO_TAG to a release tag (C++20 default, 2027.0) for a reproducible build.
+OPENVINO_REPO_TAG = config('OPENVINO_REPO_TAG', "master")
 OPENVINO_INSTALL_BUILD_DEPS_SCRIPT = "install_build_dependencies.sh"
 
 OPENVINO_NVIDIA_PLUGIN_SRC_DIR = Path(__file__).resolve().parent
@@ -148,7 +149,7 @@ OPENVINO_NVIDIA_PACKAGE_DIR = OPENVINO_NVIDIA_PLUGIN_SRC_DIR / f"packages/{OPENV
 OPENVINO_NVIDIA_PACKAGE_LIB_DIR = OPENVINO_NVIDIA_PACKAGE_DIR / "lib"
 
 WHEEL_NAME = config('WHEEL_NAME', 'openvino-nvidia')
-WHEEL_VERSION = config('WHEEL_VERSION', OPENVINO_REPO_TAG)
+WHEEL_VERSION = config('WHEEL_VERSION', "2027.0.0")
 WHEEL_AUTHOR = config('WHEEL_AUTHOR', 'Intel Corporation')
 WHEEL_AUTHOR_EMAIL = config('WHEEL_AUTHOR_EMAIL', "openvino_pushbot@intel.com")
 WHEEL_LICENCE_TYPE = config('WHEEL_LICENCE_TYPE', 'OSI Approved :: Apache Software License')

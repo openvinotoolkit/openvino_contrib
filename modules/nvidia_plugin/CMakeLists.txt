@@ -4,6 +4,13 @@
 
 # 3.25.2 is the first release whose NVIDIA compiler module supports CUDA20
 cmake_minimum_required(VERSION 3.25.2)
+
+# With CMP0104 NEW, project() initializes CMAKE_CUDA_ARCHITECTURES itself, so the default must be set before it.
+# Explicit -DCMAKE_CUDA_ARCHITECTURES and the CUDAARCHS environment variable still take precedence.
+if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES AND NOT DEFINED ENV{CUDAARCHS})
+    set(CMAKE_CUDA_ARCHITECTURES "50;60-virtual;61;70-virtual;75;86;89-virtual;90-virtual")
+endif()
+
 project(OpenVINONVIDIAGpuPlugin CXX CUDA)
 
 # Initialize CMAKE_CUDA_ARCHITECTURES when CMAKE_CUDA_COMPILER_ID is NVIDIA.
@@ -158,17 +165,6 @@ add_library(CUDA::cutensor SHARED IMPORTED)
 set_target_properties(CUDA::cutensor PROPERTIES IMPORTED_LOCATION "${CUTENSOR_PATH}")
 set_target_properties(CUDA::cutensor PROPERTIES IMPORTED_IMPLIB "${CUTENSOR_PATH}")
 
-if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-    if(CUDAToolkit_VERSION_MAJOR LESS_EQUAL 10)
-        set(CMAKE_CUDA_ARCHITECTURES "30;35;50;60;72")
-    elseif(CUDAToolkit_VERSION_MAJOR EQUAL 11 AND CUDAToolkit_VERSION_MINOR LESS_EQUAL 7)
-        set(CMAKE_CUDA_ARCHITECTURES "35;50;60-virtual;61;70-virtual;75;86")
-    elseif(CUDAToolkit_VERSION_MAJOR EQUAL 11 AND CUDAToolkit_VERSION_MINOR EQUAL 8)
-        set(CMAKE_CUDA_ARCHITECTURES "35;50;60-virtual;61;70-virtual;75;86;89-virtual;90-virtual")
-    else()
-        set(CMAKE_CUDA_ARCHITECTURES "50;60-virtual;61;70-virtual;75;86;89-virtual;90-virtual")
-    endif()
-endif()
 message("-- [nvidia_gpu] CMAKE_CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES}")
 
 include(FetchContent)
