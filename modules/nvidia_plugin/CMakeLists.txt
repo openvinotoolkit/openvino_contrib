@@ -119,10 +119,8 @@ if(CUDAToolkit_VERSION_MAJOR LESS 12)
         "code, and OpenVINO no longer supports building with C++17.")
 endif()
 
-if(NOT CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    set(CMAKE_CUDA_STANDARD 20)
-    set(CMAKE_CUDA_STANDARD_REQUIRED TRUE)
-endif()
+set(CMAKE_CUDA_STANDARD 20)
+set(CMAKE_CUDA_STANDARD_REQUIRED TRUE)
 
 find_library(CUDNN_PATH
              NAMES cudnn
