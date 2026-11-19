@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <type_traits>
+#include <concepts>
 
 #include "activation_type.hpp"
 #include "openvino/core/except.hpp"
@@ -13,25 +13,20 @@
 
 namespace ov::nvidia_gpu::nodes {
 
+template <typename T>
+concept FusedConvolutionBase =
+    std::same_as<T, ov::op::v1::Convolution> || std::same_as<T, ov::op::v1::GroupConvolution>;
+
 namespace {
 
-template <typename TBaseConvolution>
-inline constexpr const char* conv_name = nullptr;
-
-template <>
-inline constexpr const char* conv_name<ov::op::v1::Convolution> = "FusedConvolution";
-
-template <>
-inline constexpr const char* conv_name<ov::op::v1::GroupConvolution> = "FusedGroupConvolution";
+template <FusedConvolutionBase TBaseConvolution>
+inline constexpr const char* conv_name =
+    std::same_as<TBaseConvolution, ov::op::v1::Convolution> ? "FusedConvolution" : "FusedGroupConvolution";
 
 }  // namespace
 
-template <typename TBaseConvolution>
+template <FusedConvolutionBase TBaseConvolution>
 class BasicFusedConvolution : public TBaseConvolution {
-    static_assert(std::is_same_v<TBaseConvolution, ov::op::v1::Convolution> ||
-                      std::is_same_v<TBaseConvolution, ov::op::v1::GroupConvolution>,
-                  "TBaseConvolution should be either ov::op::v1::Convolution or ov::op::v1::GroupConvolution");
-
 public:
     using BaseConvolution = TBaseConvolution;
 
