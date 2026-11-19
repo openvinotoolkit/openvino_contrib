@@ -72,9 +72,9 @@ else
 fi
 
 # --- Detect optional build dependencies and runtime paths ---
-CMAKE_EXTRA_ARGS=""
+CMAKE_EXTRA_ARGS=()
 if [[ -n "$OV_CMAKE_DIR" ]]; then
-    CMAKE_EXTRA_ARGS="-DOpenVINO_DIR=${OV_CMAKE_DIR}"
+    CMAKE_EXTRA_ARGS+=("-DOpenVINO_DIR=${OV_CMAKE_DIR}")
 fi
 
 # The OpenCL loader usually ships with the same environment as OpenVINO, but
@@ -83,7 +83,7 @@ OPENCL_LIB=""
 if ! OPENCL_LIB="$(python3 -c "import glob, sys; print(next(iter(sorted(glob.glob(sys.prefix + '/lib/libOpenCL.so*')) + sorted(glob.glob('/usr/lib/*/libOpenCL.so*'))), ''))" 2>/dev/null)"; then
     echo "[build.sh] WARNING: Failed to detect the OpenCL loader; continuing without -DOpenCL_LIBRARY."
 elif [[ -n "$OPENCL_LIB" ]]; then
-    CMAKE_EXTRA_ARGS="${CMAKE_EXTRA_ARGS} -DOpenCL_LIBRARY=${OPENCL_LIB}"
+    CMAKE_EXTRA_ARGS+=("-DOpenCL_LIBRARY=${OPENCL_LIB}")
 else
     echo "[build.sh] WARNING: OpenCL loader not found; CMake may skip the runtime helper targets."
 fi
@@ -92,7 +92,7 @@ RUNTIME_RPATH=""
 if ! RUNTIME_RPATH="$(python3 -c "import openvino, os, sys; print(os.path.dirname(openvino.__file__) + '/libs:' + sys.prefix + '/lib')" 2>/dev/null)"; then
     echo "[build.sh] WARNING: Failed to determine the OpenVINO runtime RPATH; continuing without -DPP_RUNTIME_RPATH."
 elif [[ -n "$RUNTIME_RPATH" ]]; then
-    CMAKE_EXTRA_ARGS="${CMAKE_EXTRA_ARGS} -DPP_RUNTIME_RPATH=${RUNTIME_RPATH}"
+    CMAKE_EXTRA_ARGS+=("-DPP_RUNTIME_RPATH=${RUNTIME_RPATH}")
 else
     echo "[build.sh] WARNING: OpenVINO runtime RPATH is empty; continuing without -DPP_RUNTIME_RPATH."
 fi
@@ -123,7 +123,7 @@ python3 "${SCRIPT_DIR}/../ov_export.py" --config-only --plugin-dir "${SCRIPT_DIR
 echo "[build.sh] Configuring ..."
 cmake -S "${SCRIPT_DIR}" -B "${BUILD_DIR}" \
     -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}" \
-    ${CMAKE_EXTRA_ARGS} \
+    "${CMAKE_EXTRA_ARGS[@]}" \
     2>&1
 
 # --- Build ---
