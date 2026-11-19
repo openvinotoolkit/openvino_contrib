@@ -14,7 +14,7 @@ OpenVINO™ NVIDIA GPU plugin is supported and validated on the following platfo
 
 OS                     | GPU                   | Driver               |
 ---------------------- | --------------------- |--------------------- |
-Ubuntu* 22.04 (64-bit) | NVIDIA Quadro RTX 4000| 520.61.05            |
+Ubuntu* 22.04 (64-bit) | NVIDIA Quadro RTX 4000| >= 535.54.03 (CUDA 12.2) |
 
 ## Distribution
 OpenVINO™ NVIDIA GPU plugin is not included into Intel® Distribution of OpenVINO™. To use the plugin, it should be built from source code.
@@ -25,35 +25,36 @@ OpenVINO™ NVIDIA GPU plugin is not included into Intel® Distribution of OpenV
 
 NVIDIA GPU plugin uses the following dependencies to be downloaded and installed separately. Upon downloading them the user should agree with license of each component:
 
-1. Install one of the following compilers with support of **C++17**:
-- Install **gcc-7** compiler
+1. Install one of the following compilers with support of **C++20**:
+- Install **gcc-11** compiler
 ```bash
 sudo apt-get update
-sudo apt-get install gcc-7 g++7
+sudo apt-get install gcc-11 g++-11
 ```
-- Install **clang-8** compiler
+- Install **clang-14** compiler
 ```bash
 sudo apt-get update
-sudo apt-get install clang-8 clang++8
+sudo apt-get install clang-14
 ```
 
-2. Install suitable **NVIDIA driver** from [NVIDIA download drivers](http://www.nvidia.com/Download/index.aspx?lang=en-us)
-3. Install **CUDA 11.8** from [How to install CUDA](https://docs.nvidia.com/cuda/cuda-quick-start-guide/index.html)
+2. Install suitable **NVIDIA driver** from [NVIDIA download drivers](http://www.nvidia.com/Download/index.aspx?lang=en-us). The driver must support the installed CUDA toolkit, because kernels built for virtual architectures are JIT-compiled from PTX (at least **535.54.03** for CUDA 12.2)
+3. Install **CUDA 12.0 or newer** (CI uses 12.2; CUDA 11.x is not supported) from [How to install CUDA](https://docs.nvidia.com/cuda/cuda-quick-start-guide/index.html)
 
    Do not forget to add `<path_to_cuda>/bin/` in **PATH** variable for example `export PATH="<path_to_cuda>/bin:$PATH"`
 
-4. Install **cuDNN 8.6.0** from [How to install cuDNN](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html)
-5. Install **cuTENSOR 1.6.1** from [How to install cuTENSOR](https://docs.nvidia.com/cuda/cutensor/getting_started.html#installation-and-compilation)
+4. Install **cuDNN 8.9.x** built for CUDA 12 from [How to install cuDNN](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html)
+5. Install **cuTENSOR 1.7.0** from [How to install cuTENSOR](https://docs.nvidia.com/cuda/cutensor/getting_started.html#installation-and-compilation)
+6. Install **CMake 3.26 or newer** (the same minimum as OpenVINO)
 
 ### Build with cmake
 
-In order to build the plugin, you must prebuild OpenVINO™ package from source using [this guideline](https://github.com/openvinotoolkit/openvino/wiki/BuildingCode#building-for-different-oses).
+In order to build the plugin, you must prebuild OpenVINO™ package from source using [this guideline](https://github.com/openvinotoolkit/openvino/wiki/BuildingCode#building-for-different-oses). The plugin requires an OpenVINO version that builds with C++20 by default (OpenVINO 2027.0 or newer, or current `master`); earlier releases such as 2025.3.0 are not supported.
 
 Afterwards plugin build procedure is as following:
 
 1. Clone `openvino_contrib` repository:
 ```bash
-git clone --recurse-submodules --single-branch --branch=2024.1.0 https://github.com/openvinotoolkit/openvino_contrib.git
+git clone --recurse-submodules --single-branch --branch=master https://github.com/openvinotoolkit/openvino_contrib.git
 ```
 2. Go to plugin directory:
 ```bash
@@ -65,7 +66,7 @@ mkdir build && cd build
 ```
 4. Build plugin
 
-    First of all, switch OpenVINO™ to tag _2024.1.0_ and then build it according the instruction [How to build](https://github.com/openvinotoolkit/openvino/wiki#how-to-build)
+    First of all, switch OpenVINO™ to `master` (or tag _2027.0_ once released) and then build it according the instruction [How to build](https://github.com/openvinotoolkit/openvino/wiki#how-to-build)
 
     Then build CUDA Plugin with one of 2 options:
 - Using `build.sh`
@@ -102,7 +103,7 @@ If python available the CUDA Plugin could be compiled with setup.py script as fo
 
 1. Clone `openvino_contrib` repository:
 ```bash
-git clone --recurse-submodules --single-branch --branch=2024.1.0 https://github.com/openvinotoolkit/openvino_contrib.git
+git clone --recurse-submodules --single-branch --branch=master https://github.com/openvinotoolkit/openvino_contrib.git
 ```
 2. Go to plugin directory:
 ```bash
@@ -110,12 +111,12 @@ cd openvino_contrib/modules/nvidia_plugin
 ```
 3. Setup `CUDACXX` environment variable to point to the CUDA _nvcc_ compiler like the next (use yours path)
 ```bash
-export CUDACXX=/usr/local/cuda-11.8/bin/nvcc
+export CUDACXX=/usr/local/cuda-12.2/bin/nvcc
 ```
 
 4. Add the path to the cuda libraries to the `LD_LIBRARY_PATH` environment variable like the next (use yours path)
 ```bash
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda-11.8/bin/nvcc
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda-12.2/lib64
 ```
 
 5. Run setup.py build command as follows.
@@ -183,7 +184,7 @@ Please refer to OpenVINO documentation for details.
 * `ov::nvidia_gpu::use_cuda_graph` - specifies if NVIDIA plugin attempts to use CUDA Graph feature to speed up sequential network inferences (`true` by default)
 
 All parameters must be set before calling `ov::Core::compile_model()` in order to take effect.
- 
+
 ### Plugin specific properties
 * `ov::nvidia_gpu::number_of_cuda_graphs` - Read-only property showing the number of CUDA Graphs, used for the current model
 

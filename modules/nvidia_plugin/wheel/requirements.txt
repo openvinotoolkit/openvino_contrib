@@ -1,4 +1,7 @@
 # Copyright (C) 2018-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-openvino==2026.3.1
+# Tracks OpenVINO master nightly builds until 2027.0 is released
+--pre
+--extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly
+openvino
