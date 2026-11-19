@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-cmake_minimum_required(VERSION 3.13)
+# 3.25.2 is the first release whose NVIDIA compiler module supports CUDA20
+cmake_minimum_required(VERSION 3.25.2)
 project(OpenVINONVIDIAGpuPlugin CXX CUDA)
 
 # Initialize CMAKE_CUDA_ARCHITECTURES when CMAKE_CUDA_COMPILER_ID is NVIDIA.
@@ -13,23 +14,27 @@ endif()
 
 if(NOT DEFINED CMAKE_CXX_STANDARD)
     set(CMAKE_CXX_STANDARD 20)
+elseif(CMAKE_CXX_STANDARD LESS 20)
+    message(FATAL_ERROR "nvidia_plugin requires CMAKE_CXX_STANDARD >= 20, but ${CMAKE_CXX_STANDARD} was set: "
+        "CUDA code is always built as C++20 and must match the host code.")
 endif()
+
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
 # CMAKE_CUDA_STANDARD set after CUDA toolkit detection below: NVCC < 12.0 cannot compile
 # C++20 device code, so a hard floor on CUDAToolkit_VERSION_MAJOR is enforced there
 # instead of silently degrading to an older CUDA/C++ standard.
-
-if (CUDA_KERNEL_PRINT_LOG)
+if(CUDA_KERNEL_PRINT_LOG)
     add_definitions(-DCUDA_KERNEL_PRINT_LOG)
 endif()
-if (ENABLE_CUDNN_BACKEND_API)
+
+if(ENABLE_CUDNN_BACKEND_API)
     add_definitions(-DENABLE_CUDNN_BACKEND_API)
 endif()
 
 find_package(OpenVINODeveloperPackage REQUIRED
-             PATHS "${InferenceEngineDeveloperPackage_DIR}")
+    PATHS "${InferenceEngineDeveloperPackage_DIR}")
 
 include(cmake/features.cmake)
 
@@ -41,61 +46,73 @@ if(CMAKE_VERSION VERSION_LESS 3.17.0)
     set(CUDAToolkit_VERSION_MAJOR ${CUDA_VERSION_MAJOR})
     set(CUDAToolkit_VERSION_MINOR ${CUDA_VERSION_MINOR})
     set(CUDAToolkit_INCLUDE_DIRS ${CUDA_INCLUDE_DIRS})
+
     foreach(LIB IN LISTS CUDA_LIBRARIES)
-        if (LIB MATCHES ".*cudart.*")
+        if(LIB MATCHES ".*cudart.*")
             if(WIN32)
                 add_library(cudart STATIC IMPORTED GLOBAL)
-                # Even though we're linking against a .dll, in Windows you statically link against
-                # the .lib file found under lib/x64. The .dll will be loaded at runtime automatically
-                # from the PATH search.
+
+            # Even though we're linking against a .dll, in Windows you statically link against
+            # the .lib file found under lib/x64. The .dll will be loaded at runtime automatically
+            # from the PATH search.
             else()
                 add_library(cudart SHARED IMPORTED GLOBAL)
             endif()
+
             set_target_properties(cudart PROPERTIES IMPORTED_LOCATION ${LIB})
+
             if(NOT WIN32)
                 # list contains /usr/local/cuda-10.2/lib64/libcudart_static.a;-pthread;dl;/usr/lib/x86_64-linux-gnu/librt.so
                 # and rt is not added via other ways when build contains no *.cu files
                 # and dl is not added via other ways when build contains no *.cu files in some other cases
                 target_link_libraries(cudart INTERFACE rt dl)
             endif()
+
             add_library(CUDA::cudart ALIAS cudart)
         endif()
     endforeach()
+
     # Search for CUDA Driver Library
     find_library(CUDA_DRIVER_PATH
-                 NAMES cuda
-                 HINTS "${CUDA_TOOLKIT_ROOT_DIR}" "$ENV{CUDA_PATH}"
-                 PATH_SUFFIXES nvidia/current lib64 lib/x64 lib)
+        NAMES cuda
+        HINTS "${CUDA_TOOLKIT_ROOT_DIR}" "$ENV{CUDA_PATH}"
+        PATH_SUFFIXES nvidia/current lib64 lib/x64 lib)
+
     if(WIN32)
         add_library(cuda_driver STATIC IMPORTED GLOBAL)
     else()
         add_library(cuda_driver SHARED IMPORTED GLOBAL)
     endif()
+
     set_target_properties(cuda_driver PROPERTIES IMPORTED_LOCATION "${CUDA_DRIVER_PATH}")
     add_library(CUDA::cuda_driver ALIAS cuda_driver)
+
     # Search for CUBLAS Library
     find_library(CUBLAS_PATH
-                 NAMES cublas
-                 HINTS "${CUDA_TOOLKIT_ROOT_DIR}" "$ENV{CUDA_PATH}"
-                 PATH_SUFFIXES nvidia/current lib64 lib/x64 lib)
+        NAMES cublas
+        HINTS "${CUDA_TOOLKIT_ROOT_DIR}" "$ENV{CUDA_PATH}"
+        PATH_SUFFIXES nvidia/current lib64 lib/x64 lib)
+
     if(WIN32)
         add_library(cublas STATIC IMPORTED GLOBAL)
     else()
         add_library(cublas SHARED IMPORTED GLOBAL)
     endif()
+
     set_target_properties(cublas PROPERTIES IMPORTED_LOCATION "${CUBLAS_PATH}")
     add_library(CUDA::cublas ALIAS cublas)
 else()
     find_package(CUDAToolkit REQUIRED)
 endif()
 
+if(CUDAToolkit_VERSION_MAJOR LESS 12)
+    message(FATAL_ERROR
+        "CUDAToolkit ${CUDAToolkit_VERSION_MAJOR}.${CUDAToolkit_VERSION_MINOR} was found, but "
+        "nvidia_plugin requires CUDAToolkit >= 12.0: NVCC below 12.0 cannot compile C++20 device "
+        "code, and OpenVINO no longer supports building with C++17.")
+endif()
+
 if(NOT CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    if(CUDAToolkit_VERSION_MAJOR LESS 12)
-        message(FATAL_ERROR
-            "CUDAToolkit ${CUDAToolkit_VERSION_MAJOR}.${CUDAToolkit_VERSION_MINOR} was found, but "
-            "nvidia_plugin requires CUDAToolkit >= 12.0: NVCC below 12.0 cannot compile C++20 device "
-            "code, and OpenVINO no longer supports building with C++17.")
-    endif()
     set(CMAKE_CUDA_STANDARD 20)
     set(CMAKE_CUDA_STANDARD_REQUIRED TRUE)
 endif()
