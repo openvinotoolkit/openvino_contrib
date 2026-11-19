@@ -93,8 +93,9 @@ if(NVIDIA_GPU_DEFAULT_CUDA_ARCHITECTURES)
         set(NVIDIA_GPU_CUDA_ARCHITECTURES "75;86;89-virtual;90-virtual")
     endif()
 
-    # Cached so that a re-configure keeps the plugin default instead of the compiler default
-    set(CMAKE_CUDA_ARCHITECTURES "${NVIDIA_GPU_CUDA_ARCHITECTURES}" CACHE STRING "CUDA architectures" FORCE)
+    # Drop the compiler default cached by project() so the plugin default stays local to this directory
+    unset(CMAKE_CUDA_ARCHITECTURES CACHE)
+    set(CMAKE_CUDA_ARCHITECTURES "${NVIDIA_GPU_CUDA_ARCHITECTURES}")
 endif()
 
 message("-- [nvidia_gpu] CMAKE_CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES}")
