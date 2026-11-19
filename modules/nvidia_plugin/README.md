@@ -14,7 +14,7 @@ OpenVINO™ NVIDIA GPU plugin is supported and validated on the following platfo
 
 OS                     | GPU                   | Driver               |
 ---------------------- | --------------------- |--------------------- |
-Ubuntu* 22.04 (64-bit) | NVIDIA Quadro RTX 4000| >= 525.60.13 (CUDA 12) |
+Ubuntu* 22.04 (64-bit) | NVIDIA Quadro RTX 4000| >= 535.54.03 (CUDA 12.2) |
 
 ## Distribution
 OpenVINO™ NVIDIA GPU plugin is not included into Intel® Distribution of OpenVINO™. To use the plugin, it should be built from source code.
@@ -37,14 +37,14 @@ sudo apt-get update
 sudo apt-get install clang-14
 ```
 
-2. Install suitable **NVIDIA driver** (at least **525.60.13**, the minimum for CUDA 12.x) from [NVIDIA download drivers](http://www.nvidia.com/Download/index.aspx?lang=en-us)
+2. Install suitable **NVIDIA driver** from [NVIDIA download drivers](http://www.nvidia.com/Download/index.aspx?lang=en-us). The driver must support the installed CUDA toolkit, because kernels built for virtual architectures are JIT-compiled from PTX (at least **535.54.03** for CUDA 12.2)
 3. Install **CUDA 12.0 or newer** (CI uses 12.2; CUDA 11.x is not supported) from [How to install CUDA](https://docs.nvidia.com/cuda/cuda-quick-start-guide/index.html)
 
    Do not forget to add `<path_to_cuda>/bin/` in **PATH** variable for example `export PATH="<path_to_cuda>/bin:$PATH"`
 
 4. Install **cuDNN 8.9.x** built for CUDA 12 from [How to install cuDNN](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html)
 5. Install **cuTENSOR 1.7.0** from [How to install cuTENSOR](https://docs.nvidia.com/cuda/cutensor/getting_started.html#installation-and-compilation)
-6. Install **CMake 3.25.2 or newer** (required for CUDA C++20 support)
+6. Install **CMake 3.26 or newer** (the same minimum as OpenVINO)
 
 ### Build with cmake
 
@@ -54,7 +54,7 @@ Afterwards plugin build procedure is as following:
 
 1. Clone `openvino_contrib` repository:
 ```bash
-git clone --recurse-submodules --single-branch --branch=2024.1.0 https://github.com/openvinotoolkit/openvino_contrib.git
+git clone --recurse-submodules --single-branch --branch=master https://github.com/openvinotoolkit/openvino_contrib.git
 ```
 2. Go to plugin directory:
 ```bash
@@ -66,7 +66,7 @@ mkdir build && cd build
 ```
 4. Build plugin
 
-    First of all, switch OpenVINO™ to tag _2024.1.0_ and then build it according the instruction [How to build](https://github.com/openvinotoolkit/openvino/wiki#how-to-build)
+    First of all, switch OpenVINO™ to `master` (or tag _2027.0_ once released) and then build it according the instruction [How to build](https://github.com/openvinotoolkit/openvino/wiki#how-to-build)
 
     Then build CUDA Plugin with one of 2 options:
 - Using `build.sh`
@@ -103,7 +103,7 @@ If python available the CUDA Plugin could be compiled with setup.py script as fo
 
 1. Clone `openvino_contrib` repository:
 ```bash
-git clone --recurse-submodules --single-branch --branch=2024.1.0 https://github.com/openvinotoolkit/openvino_contrib.git
+git clone --recurse-submodules --single-branch --branch=master https://github.com/openvinotoolkit/openvino_contrib.git
 ```
 2. Go to plugin directory:
 ```bash
