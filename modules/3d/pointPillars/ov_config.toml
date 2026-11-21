@@ -95,3 +95,11 @@ nms_simd = 16
 
 # Work-items in the greedy-suppression work-group.
 gather_wg = 64
+
+# What to keep when more anchors pass score_threshold than max_candidates.
+# true:  the max_candidates best scores, ties by anchor index. Identical on
+#        CPU and GPU and on every run.
+# false: the GPU keeps the first atomic arrivals and can change run to run;
+#        the CPU keeps the first anchors in index order. A high score can be
+#        dropped.
+deterministic_candidates = true

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "pp_voxelization.hpp"
+#include "pp_extension.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -9,6 +10,8 @@
 
 namespace PpExtension {
 namespace {
+
+constexpr size_t kPointValueCount = PP_MAX_POINTS * PP_NUM_POINT_FEATURES;
 
 // Convert a float to IEEE 754 half-precision bits.
 uint16_t float_to_half_bits(float value) {
@@ -30,8 +33,11 @@ uint16_t float_to_half_bits(float value) {
     }
 
     if (exp >= 31) {
-        if (mant == 0) return static_cast<uint16_t>(sign | 0x7c00u);
-        return static_cast<uint16_t>(sign | 0x7c00u | (mant >> 13) | 1u);
+        // f32 NaN stays NaN; f32 Inf and finite overflows round to f16 infinity.
+        if (((bits >> 23) & 0xffu) == 0xffu && mant != 0) {
+            return static_cast<uint16_t>(sign | 0x7e00u | (mant >> 13));
+        }
+        return static_cast<uint16_t>(sign | 0x7c00u);
     }
 
     uint32_t half_mant = mant >> 13;
@@ -86,6 +92,11 @@ float voxel_center(float voxel_size, int grid, float min_range) {
 // Stage 1: scatter points and compact pillars.
 // ---------------------------------------------------------------------------
 
+enum ScatterInputPort : int {
+    kScatterPointsInput = 0,
+    kScatterPointCountInput,
+};
+
 PPVoxelizationScatter::PPVoxelizationScatter(const ov::Output<ov::Node>& points,
                                              const ov::Output<ov::Node>& point_count)
     : Op({points, point_count}) {
@@ -93,6 +104,8 @@ PPVoxelizationScatter::PPVoxelizationScatter(const ov::Output<ov::Node>& points,
 }
 
 void PPVoxelizationScatter::validate_and_infer_types() {
+    validate_input(this, kScatterPointsInput, {ov::element::f32}, kPointValueCount);
+    validate_input(this, kScatterPointCountInput, {ov::element::i32}, 1);
     set_output_type(0, ov::element::f32, ov::PartialShape{1, 1, 1, PP_META_SIZE});
 }
 
@@ -111,6 +124,8 @@ bool PPVoxelizationScatter::has_evaluate() const {
 
 bool PPVoxelizationScatter::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
     OPENVINO_ASSERT(inputs.size() == 2 && outputs.size() == 1, "PPVoxelizationScatter expects 2 inputs and 1 output");
+    check_input(this, inputs, kScatterPointsInput, {ov::element::f32}, kPointValueCount);
+    check_input(this, inputs, kScatterPointCountInput, {ov::element::i32}, 1);
     outputs[0].set_shape({1, 1, 1, PP_META_SIZE});
     auto* metadata = reinterpret_cast<int32_t*>(outputs[0].data<float>());
     const float* points = inputs[0].data<const float>();
@@ -155,6 +170,11 @@ bool PPVoxelizationScatter::evaluate(ov::TensorVector& outputs, const ov::Tensor
 // Stage 2: generate pillar features.
 // ---------------------------------------------------------------------------
 
+enum FinalizeInputPort : int {
+    kFinalizeMetadataInput = 0,
+    kFinalizePointsInput,
+};
+
 PPVoxelizationFinalize::PPVoxelizationFinalize(const ov::Output<ov::Node>& metadata,
                                                const ov::Output<ov::Node>& points)
     : Op({metadata, points}) {
@@ -162,6 +182,8 @@ PPVoxelizationFinalize::PPVoxelizationFinalize(const ov::Output<ov::Node>& metad
 }
 
 void PPVoxelizationFinalize::validate_and_infer_types() {
+    validate_input(this, kFinalizeMetadataInput, {ov::element::f32}, PP_META_SIZE);
+    validate_input(this, kFinalizePointsInput, {ov::element::f32}, kPointValueCount);
     set_output_type(0, ov::element::f16,
                     ov::PartialShape{PP_MAX_VOXELS, PP_MAX_POINTS_PER_VOXEL, PP_NUM_OUTPUT_FEATURES});
 }
@@ -181,6 +203,8 @@ bool PPVoxelizationFinalize::has_evaluate() const {
 
 bool PPVoxelizationFinalize::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
     OPENVINO_ASSERT(inputs.size() == 2 && outputs.size() == 1, "PPVoxelizationFinalize expects 2 inputs and 1 output");
+    check_input(this, inputs, kFinalizeMetadataInput, {ov::element::f32}, PP_META_SIZE);
+    check_input(this, inputs, kFinalizePointsInput, {ov::element::f32}, kPointValueCount);
     outputs[0].set_shape({PP_MAX_VOXELS, PP_MAX_POINTS_PER_VOXEL, PP_NUM_OUTPUT_FEATURES});
     const auto* metadata = reinterpret_cast<const int32_t*>(inputs[0].data<const float>());
     const float* points = inputs[1].data<const float>();
@@ -243,12 +267,17 @@ bool PPVoxelizationFinalize::evaluate(ov::TensorVector& outputs, const ov::Tenso
 // Stage 3: emit pillar coordinates.
 // ---------------------------------------------------------------------------
 
+enum CoordinatesInputPort : int {
+    kCoordinatesMetadataInput = 0,
+};
+
 PPVoxelizationCoords::PPVoxelizationCoords(const ov::Output<ov::Node>& metadata)
     : Op({metadata}) {
     constructor_validate_and_infer_types();
 }
 
 void PPVoxelizationCoords::validate_and_infer_types() {
+    validate_input(this, kCoordinatesMetadataInput, {ov::element::f32}, PP_META_SIZE);
     set_output_type(0, ov::element::f32, ov::PartialShape{PP_MAX_VOXELS, PP_COORD_VALUES});
 }
 
@@ -267,6 +296,7 @@ bool PPVoxelizationCoords::has_evaluate() const {
 
 bool PPVoxelizationCoords::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
     OPENVINO_ASSERT(inputs.size() == 1 && outputs.size() == 1, "PPVoxelizationCoords expects 1 input and 1 output");
+    check_input(this, inputs, kCoordinatesMetadataInput, {ov::element::f32}, PP_META_SIZE);
     outputs[0].set_shape({PP_MAX_VOXELS, PP_COORD_VALUES});
     const auto* metadata = reinterpret_cast<const int32_t*>(inputs[0].data<const float>());
     auto* coords = outputs[0].data<float>();
@@ -285,12 +315,17 @@ bool PPVoxelizationCoords::evaluate(ov::TensorVector& outputs, const ov::TensorV
 // Stage 4: emit the pillar count.
 // ---------------------------------------------------------------------------
 
+enum ParamsInputPort : int {
+    kParamsMetadataInput = 0,
+};
+
 PPVoxelizationParams::PPVoxelizationParams(const ov::Output<ov::Node>& metadata)
     : Op({metadata}) {
     constructor_validate_and_infer_types();
 }
 
 void PPVoxelizationParams::validate_and_infer_types() {
+    validate_input(this, kParamsMetadataInput, {ov::element::f32}, PP_META_SIZE);
     set_output_type(0, ov::element::f32, ov::PartialShape{1});
 }
 
@@ -309,6 +344,7 @@ bool PPVoxelizationParams::has_evaluate() const {
 
 bool PPVoxelizationParams::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
     OPENVINO_ASSERT(inputs.size() == 1 && outputs.size() == 1, "PPVoxelizationParams expects 1 input and 1 output");
+    check_input(this, inputs, kParamsMetadataInput, {ov::element::f32}, PP_META_SIZE);
     outputs[0].set_shape({1});
     const auto* metadata = reinterpret_cast<const int32_t*>(inputs[0].data<const float>());
     outputs[0].data<float>()[0] = static_cast<float>(std::min<int32_t>(metadata[PP_META_COUNTER], PP_MAX_VOXELS));
@@ -319,12 +355,17 @@ bool PPVoxelizationParams::evaluate(ov::TensorVector& outputs, const ov::TensorV
 // Stage 5: emit the cell-to-pillar lookup.
 // ---------------------------------------------------------------------------
 
+enum CellPillarInputPort : int {
+    kCellPillarMetadataInput = 0,
+};
+
 PPVoxelizationCellPillar::PPVoxelizationCellPillar(const ov::Output<ov::Node>& metadata)
     : Op({metadata}) {
     constructor_validate_and_infer_types();
 }
 
 void PPVoxelizationCellPillar::validate_and_infer_types() {
+    validate_input(this, kCellPillarMetadataInput, {ov::element::f32}, PP_META_SIZE);
     set_output_type(0, ov::element::i32, ov::PartialShape{PP_GRID_SIZE});
 }
 
@@ -344,6 +385,7 @@ bool PPVoxelizationCellPillar::has_evaluate() const {
 bool PPVoxelizationCellPillar::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
     OPENVINO_ASSERT(inputs.size() == 1 && outputs.size() == 1,
                     "PPVoxelizationCellPillar expects 1 input and 1 output");
+    check_input(this, inputs, kCellPillarMetadataInput, {ov::element::f32}, PP_META_SIZE);
     outputs[0].set_shape({PP_GRID_SIZE});
     const auto* metadata = reinterpret_cast<const int32_t*>(inputs[0].data<const float>());
     auto* table = outputs[0].data<int32_t>();

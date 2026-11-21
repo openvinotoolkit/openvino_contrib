@@ -64,7 +64,7 @@ inline float pp_anchor_score(__global const float* cls, int anchor, int* class_i
     return best;
 }
 
-// Anchor deltas -> {x, y, z, w, l, h, yaw, class_id bits, score}.
+// Anchor deltas -> {x, y, z, length, width, height, yaw, class_id bits, score}.
 inline void pp_decode(__global const float* box, __global const float* dir, int anchor, int class_id,
                       float score, float* out) {
     const int loc = anchor / PP_NUM_ANCHORS;
@@ -76,20 +76,20 @@ inline void pp_decode(__global const float* box, __global const float* dir, int 
     const float x_offset = PP_MIN_X + (col + 0.5f) * (PP_MAX_X - PP_MIN_X) / PP_FEATURE_X;
     const float y_offset = PP_MIN_Y + (row + 0.5f) * (PP_MAX_Y - PP_MIN_Y) / PP_FEATURE_Y;
 
-    const float dxa = PP_ANCHORS[ith * PP_ANCHOR_VALUES + 0];
-    const float dya = PP_ANCHORS[ith * PP_ANCHOR_VALUES + 1];
-    const float dza = PP_ANCHORS[ith * PP_ANCHOR_VALUES + 2];
+    const float la = PP_ANCHORS[ith * PP_ANCHOR_VALUES + 0];
+    const float wa = PP_ANCHORS[ith * PP_ANCHOR_VALUES + 1];
+    const float ha = PP_ANCHORS[ith * PP_ANCHOR_VALUES + 2];
     const float ra = PP_ANCHORS[ith * PP_ANCHOR_VALUES + 3];
-    const float za = dza / 2 + PP_ANCHOR_BOTTOM_HEIGHTS[ith / PP_NUM_ROTATIONS];
-    const float diagonal = sqrt(dxa * dxa + dya * dya);
+    const float za = ha / 2 + PP_ANCHOR_BOTTOM_HEIGHTS[ith / PP_NUM_ROTATIONS];
+    const float diagonal = sqrt(la * la + wa * wa);
 
     __global const float* e = box + (long)anchor * PP_NUM_BOX_VALUES;
     const float bx = e[0] * diagonal + x_offset;
     const float by = e[1] * diagonal + y_offset;
-    const float bz = e[2] * dza + za;
-    const float bw = exp(e[3]) * dxa;
-    const float bl = exp(e[4]) * dya;
-    const float bh = exp(e[5]) * dza;
+    const float bz = e[2] * ha + za;
+    const float bl = exp(e[3]) * la;
+    const float bw = exp(e[4]) * wa;
+    const float bh = exp(e[5]) * ha;
     const float br = e[6] + ra;
 
     __global const float* d = dir + (long)anchor * PP_NUM_DIR_VALUES;
@@ -108,8 +108,8 @@ inline void pp_decode(__global const float* box, __global const float* dir, int 
     out[0] = bx;
     out[1] = by;
     out[2] = bz;
-    out[3] = bw;
-    out[4] = bl;
+    out[3] = bl;
+    out[4] = bw;
     out[5] = bh;
     out[6] = yaw;
     out[PP_CLASS_INDEX] = as_float(class_id);
@@ -127,11 +127,11 @@ inline int pp_check_box2d(const float* box, float2 p) {
     const float MARGIN = 1e-2f;
     const float center_x = box[0];
     const float center_y = box[1];
-    const float angle_cos = cos(-box[6]);
-    const float angle_sin = sin(-box[6]);
+    const float angle_cos = cos(box[6]);
+    const float angle_sin = sin(box[6]);
     const float rot_x = (p.x - center_x) * angle_cos + (p.y - center_y) * (-angle_sin);
     const float rot_y = (p.x - center_x) * angle_sin + (p.y - center_y) * angle_cos;
-    return fabs(rot_x) < box[3] / 2 + MARGIN && fabs(rot_y) < box[4] / 2 + MARGIN;
+    return fabs(rot_x) < box[4] / 2 + MARGIN && fabs(rot_y) < box[3] / 2 + MARGIN;
 }
 
 inline bool pp_intersection(float2 p1, float2 p0, float2 q1, float2 q0, float2* ans) {
@@ -166,11 +166,12 @@ inline float2 pp_rotate_around_center(float2 center, float angle_cos, float angl
 }
 
 // Return the circumradius of a box for the current length and width.
-inline float pp_box_reach(float w, float l) { return 0.5f * sqrt(w * w + l * l); }
+inline float pp_box_reach(float length, float width) { return 0.5f * sqrt(length * length + width * width); }
 
 inline float pp_rotated_iou(const float* box_a, const float* box_b) {
-    const float a_dx_half = box_a[3] / 2, b_dx_half = box_b[3] / 2;
-    const float a_dy_half = box_a[4] / 2, b_dy_half = box_b[4] / 2;
+    // Box frame: width along x, length along y, rotated by -yaw.
+    const float a_dx_half = box_a[4] / 2, b_dx_half = box_b[4] / 2;
+    const float a_dy_half = box_a[3] / 2, b_dy_half = box_b[3] / 2;
     const float a_x1 = box_a[0] - a_dx_half, a_y1 = box_a[1] - a_dy_half;
     const float a_x2 = box_a[0] + a_dx_half, a_y2 = box_a[1] + a_dy_half;
     const float b_x1 = box_b[0] - b_dx_half, b_y1 = box_b[1] - b_dy_half;
@@ -196,8 +197,8 @@ inline float pp_rotated_iou(const float* box_a, const float* box_b) {
     box_b_corners[2] = (float2)(b_x2, b_y2);
     box_b_corners[3] = (float2)(b_x1, b_y2);
 
-    const float a_angle_cos = cos(box_a[6]), a_angle_sin = sin(box_a[6]);
-    const float b_angle_cos = cos(box_b[6]), b_angle_sin = sin(box_b[6]);
+    const float a_angle_cos = cos(box_a[6]), a_angle_sin = -sin(box_a[6]);
+    const float b_angle_cos = cos(box_b[6]), b_angle_sin = -sin(box_b[6]);
     for (int k = 0; k < 4; k++) {
         box_a_corners[k] = pp_rotate_around_center(center_a, a_angle_cos, a_angle_sin, box_a_corners[k]);
         box_b_corners[k] = pp_rotate_around_center(center_b, b_angle_cos, b_angle_sin, box_b_corners[k]);

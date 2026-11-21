@@ -31,6 +31,8 @@
 // CPU implementation of detection-head postprocessing.
 
 #include "pp_postprocess.hpp"
+#include "pp_extension.hpp"
+#include "pp_tuning_config_generated.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -41,9 +43,9 @@ namespace PpExtension {
 namespace {
 
 enum AnchorField : int {
-    kAnchorDx = 0,
-    kAnchorDy,
-    kAnchorDz,
+    kAnchorLength = 0,
+    kAnchorWidth,
+    kAnchorHeight,
     kAnchorRotation,
 };
 
@@ -115,6 +117,12 @@ constexpr size_t kCandidatesInputCount = 4;
 constexpr size_t kNmsInputCount = 1;
 constexpr size_t kGatherInputCount = 2;
 
+constexpr size_t kClassLogitCount = PP_ANCHOR_COUNT * PP_NUM_CLASSES;
+constexpr size_t kBoxValueCount = PP_ANCHOR_COUNT * PP_NUM_BOX_VALUES;
+constexpr size_t kDirectionValueCount = PP_ANCHOR_COUNT * PP_NUM_DIR_VALUES;
+constexpr size_t kCandidateValueCount = (PP_MAX_CANDIDATES + kCandidateHeaderRows) * PP_DET_CHANNELS;
+constexpr size_t kNmsMaskCount = PP_MAX_CANDIDATES * PP_NMS_COL_BLOCKS;
+
 float sigmoid(float x) { return 1.0f / (1.0f + std::exp(-x)); }
 
 // Return the largest class sigmoid and its class index for one anchor.
@@ -146,21 +154,21 @@ void decode_anchor(const float* box_regression, const float* direction_logits, i
     const float y_offset = PP_MIN_Y + (row + kHalfExtent) * (PP_MAX_Y - PP_MIN_Y) / PP_FEATURE_Y;
 
     const float* anchor_ptr = PP_ANCHORS + ith * PP_ANCHOR_VALUES;
-    const float z_offset = anchor_ptr[kAnchorDz] * kHalfExtent + PP_ANCHOR_BOTTOM_HEIGHTS[ith / PP_NUM_ROTATIONS];
+    const float z_offset = anchor_ptr[kAnchorHeight] * kHalfExtent + PP_ANCHOR_BOTTOM_HEIGHTS[ith / PP_NUM_ROTATIONS];
 
-    const float anchor_dx = anchor_ptr[kAnchorDx];
-    const float anchor_dy = anchor_ptr[kAnchorDy];
-    const float anchor_dz = anchor_ptr[kAnchorDz];
+    const float anchor_length = anchor_ptr[kAnchorLength];
+    const float anchor_width = anchor_ptr[kAnchorWidth];
+    const float anchor_height = anchor_ptr[kAnchorHeight];
     const float anchor_rotation = anchor_ptr[kAnchorRotation];
-    const float diagonal = std::sqrt(anchor_dx * anchor_dx + anchor_dy * anchor_dy);
+    const float diagonal = std::sqrt(anchor_length * anchor_length + anchor_width * anchor_width);
 
     const float* e = box_regression + anchor * PP_NUM_BOX_VALUES;
     const float bx = e[kBoxX] * diagonal + x_offset;
     const float by = e[kBoxY] * diagonal + y_offset;
-    const float bz = e[kBoxZ] * anchor_dz + z_offset;
-    const float bl = std::exp(e[kBoxLength]) * anchor_dx;
-    const float bw = std::exp(e[kBoxWidth]) * anchor_dy;
-    const float bh = std::exp(e[kBoxHeight]) * anchor_dz;
+    const float bz = e[kBoxZ] * anchor_height + z_offset;
+    const float bl = std::exp(e[kBoxLength]) * anchor_length;
+    const float bw = std::exp(e[kBoxWidth]) * anchor_width;
+    const float bh = std::exp(e[kBoxHeight]) * anchor_height;
     const float br = e[kBoxYaw] + anchor_rotation;
 
     const float* direction_scores = direction_logits + anchor * PP_NUM_DIR_VALUES;
@@ -197,14 +205,14 @@ float cross(const Point2D& p1, const Point2D& p2, const Point2D& p0) {
 int check_box2d(const float* detection_record, const Point2D& point) {
     const float center_x = detection_record[kDetectionX];
     const float center_y = detection_record[kDetectionY];
-    const float angle_cos = std::cos(-detection_record[kDetectionYaw]);
-    const float angle_sin = std::sin(-detection_record[kDetectionYaw]);
+    const float angle_cos = std::cos(detection_record[kDetectionYaw]);
+    const float angle_sin = std::sin(detection_record[kDetectionYaw]);
     const float rot_x = (point.x - center_x) * angle_cos + (point.y - center_y) * (-angle_sin);
     const float rot_y = (point.x - center_x) * angle_sin + (point.y - center_y) * angle_cos;
     const float half_length = detection_record[kDetectionLength] * kHalfExtent;
     const float half_width = detection_record[kDetectionWidth] * kHalfExtent;
-    return std::fabs(rot_x) < half_length + kBoxContainmentMargin &&
-           std::fabs(rot_y) < half_width + kBoxContainmentMargin;
+    return std::fabs(rot_x) < half_width + kBoxContainmentMargin &&
+           std::fabs(rot_y) < half_length + kBoxContainmentMargin;
 }
 
 bool intersection(const Point2D& p1, const Point2D& p0, const Point2D& q1, const Point2D& q0, Point2D& ans) {
@@ -241,19 +249,20 @@ void rotate_around_center(const Point2D& center, float angle_cos, float angle_si
 }
 
 float rotated_iou(const float* box_a, const float* box_b) {
+    // Box frame: width along x, length along y, rotated by -yaw.
     const float a_angle = box_a[kDetectionYaw], b_angle = box_b[kDetectionYaw];
     const float a_length_half = box_a[kDetectionLength] * kHalfExtent;
     const float b_length_half = box_b[kDetectionLength] * kHalfExtent;
     const float a_width_half = box_a[kDetectionWidth] * kHalfExtent;
     const float b_width_half = box_b[kDetectionWidth] * kHalfExtent;
-    const float a_x1 = box_a[kDetectionX] - a_length_half;
-    const float a_y1 = box_a[kDetectionY] - a_width_half;
-    const float a_x2 = box_a[kDetectionX] + a_length_half;
-    const float a_y2 = box_a[kDetectionY] + a_width_half;
-    const float b_x1 = box_b[kDetectionX] - b_length_half;
-    const float b_y1 = box_b[kDetectionY] - b_width_half;
-    const float b_x2 = box_b[kDetectionX] + b_length_half;
-    const float b_y2 = box_b[kDetectionY] + b_width_half;
+    const float a_x1 = box_a[kDetectionX] - a_width_half;
+    const float a_y1 = box_a[kDetectionY] - a_length_half;
+    const float a_x2 = box_a[kDetectionX] + a_width_half;
+    const float a_y2 = box_a[kDetectionY] + a_length_half;
+    const float b_x1 = box_b[kDetectionX] - b_width_half;
+    const float b_y1 = box_b[kDetectionY] - b_length_half;
+    const float b_x2 = box_b[kDetectionX] + b_width_half;
+    const float b_y2 = box_b[kDetectionY] + b_length_half;
 
     const Point2D center_a{box_a[kDetectionX], box_a[kDetectionY]};
     const Point2D center_b{box_b[kDetectionX], box_b[kDetectionY]};
@@ -267,8 +276,8 @@ float rotated_iou(const float* box_a, const float* box_b) {
     Point2D box_b_corners[kClosedRectangleCornerCount] = {
         {b_x1, b_y1}, {b_x2, b_y1}, {b_x2, b_y2}, {b_x1, b_y2}, {}};
 
-    const float a_angle_cos = std::cos(a_angle), a_angle_sin = std::sin(a_angle);
-    const float b_angle_cos = std::cos(b_angle), b_angle_sin = std::sin(b_angle);
+    const float a_angle_cos = std::cos(a_angle), a_angle_sin = -std::sin(a_angle);
+    const float b_angle_cos = std::cos(b_angle), b_angle_sin = -std::sin(b_angle);
     for (int corner_index = 0; corner_index < kRectangleCornerCount; ++corner_index) {
         rotate_around_center(center_a, a_angle_cos, a_angle_sin, box_a_corners[corner_index]);
         rotate_around_center(center_b, b_angle_cos, b_angle_sin, box_b_corners[corner_index]);
@@ -350,6 +359,7 @@ PPPostprocScores::PPPostprocScores(const ov::Output<ov::Node>& classification_lo
 }
 
 void PPPostprocScores::validate_and_infer_types() {
+    validate_input(this, kScoresClassificationInput, {ov::element::f32}, kClassLogitCount);
     set_output_type(kOutputPort, ov::element::i32, ov::PartialShape{PP_SELECT_WORDS});
 }
 
@@ -365,6 +375,7 @@ bool PPPostprocScores::has_evaluate() const { return true; }
 bool PPPostprocScores::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
     OPENVINO_ASSERT(inputs.size() == kScoresInputCount && outputs.size() == kOutputCount,
                     "PPPostprocScores expects 1 input and 1 output");
+    check_input(this, inputs, kScoresClassificationInput, {ov::element::f32}, kClassLogitCount);
     outputs[kOutputPort].set_shape({static_cast<size_t>(PP_SELECT_WORDS)});
 
     const float* classification_logits = inputs[kScoresClassificationInput].data<const float>();
@@ -393,6 +404,10 @@ PPPostprocCandidates::PPPostprocCandidates(const ov::Output<ov::Node>& selection
 }
 
 void PPPostprocCandidates::validate_and_infer_types() {
+    validate_input(this, kCandidatesSelectionInput, {ov::element::i32}, PP_SELECT_WORDS);
+    validate_input(this, kCandidatesClassificationInput, {ov::element::f32}, kClassLogitCount);
+    validate_input(this, kCandidatesBoxInput, {ov::element::f32}, kBoxValueCount);
+    validate_input(this, kCandidatesDirectionInput, {ov::element::f32}, kDirectionValueCount);
     set_output_type(kOutputPort, ov::element::f32,
                     ov::PartialShape{PP_MAX_CANDIDATES + kCandidateHeaderRows, PP_DET_CHANNELS});
 }
@@ -412,6 +427,10 @@ bool PPPostprocCandidates::has_evaluate() const { return true; }
 bool PPPostprocCandidates::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
     OPENVINO_ASSERT(inputs.size() == kCandidatesInputCount && outputs.size() == kOutputCount,
                     "PPPostprocCandidates expects 4 inputs and 1 output");
+    check_input(this, inputs, kCandidatesSelectionInput, {ov::element::i32}, PP_SELECT_WORDS);
+    check_input(this, inputs, kCandidatesClassificationInput, {ov::element::f32}, kClassLogitCount);
+    check_input(this, inputs, kCandidatesBoxInput, {ov::element::f32}, kBoxValueCount);
+    check_input(this, inputs, kCandidatesDirectionInput, {ov::element::f32}, kDirectionValueCount);
     outputs[kOutputPort].set_shape(
         {static_cast<size_t>(PP_MAX_CANDIDATES + kCandidateHeaderRows), static_cast<size_t>(PP_DET_CHANNELS)});
 
@@ -423,41 +442,48 @@ bool PPPostprocCandidates::evaluate(ov::TensorVector& outputs, const ov::TensorV
     float* candidate_records = outputs[kOutputPort].data<float>();
     std::memset(candidate_records, 0, outputs[kOutputPort].get_byte_size());
 
-    // Ascending anchor order here; the sort below is stable, so ties end up
-    // ordered by anchor index.
-    std::vector<int64_t> surviving_anchor_indices;
-    for (int64_t word = 0; word < PP_SELECT_WORDS; ++word) {
-        uint32_t bits = selection_words[word];
-        while (bits) {
-            const int bit = __builtin_ctz(bits);
-            bits &= bits - 1;
-            surviving_anchor_indices.push_back(word * PP_SELECT_BITS + bit);
+    // Deterministic mode ranks all survivors by (score desc, anchor asc) before
+    // the capacity; otherwise the first survivors in anchor order are kept.
+    struct Survivor {
+        float score;
+        int class_id;
+        int64_t anchor;
+    };
+    size_t survivor_count = 0;
+    for (int64_t word_index = 0; word_index < PP_SELECT_WORDS; ++word_index) {
+        survivor_count += __builtin_popcount(selection_words[word_index]);
+    }
+    const size_t candidate_count = std::min<size_t>(survivor_count, static_cast<size_t>(PP_MAX_CANDIDATES));
+
+    std::vector<Survivor> ranked_survivors(PP_CAND_DETERMINISTIC ? survivor_count : candidate_count);
+    size_t filled_count = 0;
+    for (int64_t word_index = 0; word_index < PP_SELECT_WORDS && filled_count < ranked_survivors.size();
+         ++word_index) {
+        uint32_t word_bits = selection_words[word_index];
+        while (word_bits && filled_count < ranked_survivors.size()) {
+            const int bit_index = __builtin_ctz(word_bits);
+            word_bits &= word_bits - 1;
+            Survivor& current_survivor = ranked_survivors[filled_count++];
+            current_survivor.anchor = word_index * PP_SELECT_BITS + bit_index;
+            current_survivor.score =
+                anchor_score(classification_logits, current_survivor.anchor, &current_survivor.class_id);
         }
     }
 
-    const size_t candidate_count =
-        std::min<size_t>(surviving_anchor_indices.size(), static_cast<size_t>(PP_MAX_CANDIDATES));
-    std::vector<float> decoded_records(candidate_count * PP_DET_CHANNELS);
-    for (size_t i = 0; i < candidate_count; ++i) {
-        int class_id = 0;
-        const float score = anchor_score(classification_logits, surviving_anchor_indices[i], &class_id);
-        decode_anchor(box_regression, direction_logits, surviving_anchor_indices[i], class_id, score,
-                      decoded_records.data() + i * PP_DET_CHANNELS);
-    }
-
-    std::vector<size_t> order(candidate_count);
-    for (size_t i = 0; i < candidate_count; ++i) order[i] = i;
-    std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
-        return decoded_records[a * PP_DET_CHANNELS + PP_SCORE_INDEX] >
-               decoded_records[b * PP_DET_CHANNELS + PP_SCORE_INDEX];
-    });
+    std::partial_sort(ranked_survivors.begin(), ranked_survivors.begin() + candidate_count, ranked_survivors.end(),
+                      [](const Survivor& left_survivor, const Survivor& right_survivor) {
+                          return left_survivor.score > right_survivor.score ||
+                                 (left_survivor.score == right_survivor.score &&
+                                  left_survivor.anchor < right_survivor.anchor);
+                      });
 
     const int32_t candidate_count_i32 = static_cast<int32_t>(candidate_count);
     std::memcpy(candidate_records, &candidate_count_i32, sizeof(int32_t));
-    for (size_t i = 0; i < candidate_count; ++i) {
-        std::memcpy(candidate_records + (i + kCandidateHeaderRows) * PP_DET_CHANNELS,
-                    decoded_records.data() + order[i] * PP_DET_CHANNELS,
-                    PP_DET_CHANNELS * sizeof(float));
+    for (size_t candidate_index = 0; candidate_index < candidate_count; ++candidate_index) {
+        const Survivor& kept_survivor = ranked_survivors[candidate_index];
+        decode_anchor(box_regression, direction_logits, kept_survivor.anchor, kept_survivor.class_id,
+                      kept_survivor.score,
+                      candidate_records + (candidate_index + kCandidateHeaderRows) * PP_DET_CHANNELS);
     }
     return true;
 }
@@ -470,6 +496,7 @@ PPPostprocNms::PPPostprocNms(const ov::Output<ov::Node>& candidate_records) : Op
 }
 
 void PPPostprocNms::validate_and_infer_types() {
+    validate_input(this, kNmsCandidatesInput, {ov::element::f32}, kCandidateValueCount);
     set_output_type(kOutputPort, ov::element::i32, ov::PartialShape{PP_MAX_CANDIDATES, PP_NMS_COL_BLOCKS});
 }
 
@@ -485,6 +512,7 @@ bool PPPostprocNms::has_evaluate() const { return true; }
 bool PPPostprocNms::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
     OPENVINO_ASSERT(inputs.size() == kNmsInputCount && outputs.size() == kOutputCount,
                     "PPPostprocNms expects 1 input and 1 output");
+    check_input(this, inputs, kNmsCandidatesInput, {ov::element::f32}, kCandidateValueCount);
     outputs[kOutputPort].set_shape({static_cast<size_t>(PP_MAX_CANDIDATES), static_cast<size_t>(PP_NMS_COL_BLOCKS)});
 
     const float* candidate_records =
@@ -525,6 +553,8 @@ PPPostprocGather::PPPostprocGather(const ov::Output<ov::Node>& candidate_records
 }
 
 void PPPostprocGather::validate_and_infer_types() {
+    validate_input(this, kGatherCandidatesInput, {ov::element::f32}, kCandidateValueCount);
+    validate_input(this, kGatherNmsMaskInput, {ov::element::i32}, kNmsMaskCount);
     set_output_type(kOutputPort, ov::element::f32, ov::PartialShape{PP_MAX_DETECTIONS, PP_DET_CHANNELS});
 }
 
@@ -540,6 +570,8 @@ bool PPPostprocGather::has_evaluate() const { return true; }
 bool PPPostprocGather::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
     OPENVINO_ASSERT(inputs.size() == kGatherInputCount && outputs.size() == kOutputCount,
                     "PPPostprocGather expects 2 inputs and 1 output");
+    check_input(this, inputs, kGatherCandidatesInput, {ov::element::f32}, kCandidateValueCount);
+    check_input(this, inputs, kGatherNmsMaskInput, {ov::element::i32}, kNmsMaskCount);
     outputs[kOutputPort].set_shape({static_cast<size_t>(PP_MAX_DETECTIONS), static_cast<size_t>(PP_DET_CHANNELS)});
 
     const float* candidate_records =

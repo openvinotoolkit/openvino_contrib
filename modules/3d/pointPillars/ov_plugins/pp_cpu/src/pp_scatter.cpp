@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "pp_scatter.hpp"
+#include "pp_extension.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -20,6 +21,9 @@ enum InputPort : size_t {
 constexpr size_t kOutputPort = 0;
 constexpr size_t kOutputCount = 1;
 constexpr size_t kScalarValueIndex = 0;
+
+constexpr size_t kFeatureValueCount = PP_MAX_VOXELS * PP_PFN_CHANNELS;
+constexpr size_t kCoordinateValueCount = PP_MAX_VOXELS * PP_COORD_VALUES;
 
 // Number of feature channels carried by the scatter input.
 int64_t feature_channel_count(const ov::PartialShape& shape) {
@@ -47,6 +51,9 @@ PPScatterBEV::PPScatterBEV(const ov::Output<ov::Node>& pillar_features,
 }
 
 void PPScatterBEV::validate_and_infer_types() {
+    validate_input(this, kPillarFeaturesInput, {ov::element::f32, ov::element::f16}, kFeatureValueCount);
+    validate_input(this, kPillarCoordinatesInput, {ov::element::i32, ov::element::f32}, kCoordinateValueCount);
+    validate_input(this, kPillarCountInput, {ov::element::i32, ov::element::f32}, 1);
     const int64_t feature_channels = feature_channel_count(get_input_partial_shape(kPillarFeaturesInput));
     set_output_type(kOutputPort, get_input_element_type(kPillarFeaturesInput),
                     ov::PartialShape{1, feature_channels, PP_GRID_Y, PP_GRID_X});
@@ -68,6 +75,9 @@ bool PPScatterBEV::has_evaluate() const {
 bool PPScatterBEV::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
     OPENVINO_ASSERT(inputs.size() == kInputCount && outputs.size() == kOutputCount,
                     "PPScatterBEV expects 3 inputs and 1 output");
+    check_input(this, inputs, kPillarFeaturesInput, {ov::element::f32, ov::element::f16}, kFeatureValueCount);
+    check_input(this, inputs, kPillarCoordinatesInput, {ov::element::i32, ov::element::f32}, kCoordinateValueCount);
+    check_input(this, inputs, kPillarCountInput, {ov::element::i32, ov::element::f32}, 1);
 
     const auto& pillar_features_shape = inputs[kPillarFeaturesInput].get_shape();
     const int64_t feature_channels = pillar_features_shape.empty()

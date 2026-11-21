@@ -11,7 +11,7 @@
 #error "nms_groups in ov_config.toml must be >= 1: with no work-groups the NMS mask stays empty"
 #endif
 
-// x, y, z, w, l, h, yaw + circumradius.
+// x, y, z, length, width, height, yaw + circumradius.
 #define NMS_CACHE_STRIDE (PP_NUM_BOX_VALUES + 1)
 
 inline void pp_nms_cache(__local float* dst, __global const float* src) {

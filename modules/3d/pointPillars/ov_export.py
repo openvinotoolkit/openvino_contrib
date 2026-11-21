@@ -65,7 +65,7 @@ DIRECTION_VALUES = ("forward", "backward")
 DETECTION_RECORD = DECODER_BOX_VALUES + ("class_id", "score")
 
 # Values stored for one anchor and one pillar coordinate record.
-ANCHOR_VALUES = ("dx", "dy", "dz", "rotation")
+ANCHOR_VALUES = ("length", "width", "height", "rotation")
 COORD_RECORD = ("batch", "z", "y", "x")
 
 # Number of anchors stored in one survivor-bitmap word.
@@ -208,6 +208,7 @@ class TuningConfig:
     nms_groups: int = _setting("tuning", "nms_groups")
     nms_simd: int = _setting("tuning", "nms_simd")
     gather_wg: int = _setting("tuning", "gather_wg")
+    deterministic_candidates: bool = _setting("tuning", "deterministic_candidates")
 
     @property
     def nms_tile_wg(self):
@@ -487,6 +488,7 @@ def _tuning_values(tuning):
         "NMS_GROUPS": tuning.nms_groups,
         "NMS_SIMD": tuning.nms_simd,
         "GATHER_WG": tuning.gather_wg,
+        "CAND_DETERMINISTIC": int(tuning.deterministic_candidates),
     }
 
 
