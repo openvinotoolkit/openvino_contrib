@@ -6,15 +6,15 @@ version: 2
 updates:
   - package-ecosystem: "pip"
     directories:
-      - "/modules/3d/CDPN"
-      - "/modules/3d/pointPillars"
       - "/modules/custom_operations/tests"
       - "/modules/genai_optimizations"
       - "/modules/nvidia_plugin/tests/functional/shared_tests_instances/single_layer_tests/generator"
       - "/modules/nvidia_plugin/utils/shape-extractor"
       - "/modules/nvidia_plugin/wheel"
-      - "/modules/openvino_bevfusion"
       - "/modules/openvino_training_kit"
+      - "/modules/robotics/BEVFusion"
+      - "/modules/robotics/CDPN"
+      - "/modules/robotics/PointPillars"
       - "/modules/token_merging"
     schedule:
       interval: "weekly"
@@ -107,9 +107,9 @@ updates:
 
   - package-ecosystem: "docker"
     directories:
-      - "/modules/3d/pointPillars/devops"
       - "/modules/nvidia_plugin"
       - "/modules/ollama_openvino"
+      - "/modules/robotics/PointPillars/devops"
     schedule:
       interval: "weekly"
       day: "tuesday"

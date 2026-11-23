@@ -15,21 +15,9 @@
     - '.licenserc.yaml'
     - '.readthedocs.yaml'
 
-'category: 3D':
-- changed-files:
-  - any-glob-to-any-file: 'modules/3d/**/*'
-
 'category: android demos':
 - changed-files:
   - any-glob-to-any-file: 'modules/android_demos/**/*'
-
-'category: BEVFusion':
-- changed-files:
-  - any-glob-to-any-file: 'modules/openvino_bevfusion/**/*'
-
-'category: FlashOCC':
-- changed-files:
-  - any-glob-to-any-file: 'modules/openvino_flashocc/**/*'
 
 'category: custom operations':
 - changed-files:
@@ -62,6 +50,10 @@
 'category: Ollama':
 - changed-files:
   - any-glob-to-any-file: 'modules/ollama_openvino/**/*'
+
+'category: robotics':
+- changed-files:
+  - any-glob-to-any-file: 'modules/robotics/**/*'
 
 'category: Token Merging':
 - changed-files:
