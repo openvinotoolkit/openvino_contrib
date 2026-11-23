@@ -28,7 +28,3 @@ ov_add_test_target(
         LABELS
            CUDA
 )
-
-if(ENABLE_PROXY)
-    target_compile_definitions(${TARGET_NAME} PUBLIC PROXY_PLUGIN_ENABLED)
-endif()
