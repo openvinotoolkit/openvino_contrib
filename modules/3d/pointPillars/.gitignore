@@ -7,3 +7,4 @@ pretrained/
 # Ignore generated files
 *_generated.*
 pp_custom_gpu_kernels.xml
+__pycache__/

@@ -29,6 +29,7 @@ public:
 };
 
 // Stage 2: compact, decode and sort.
+// One record per candidate (anchor, class) pair; see [decoder] multi_class_nms.
 // Inputs:
 //   selection bitmap [PP_SELECT_WORDS] i32
 //   classification logits [PP_ANCHOR_COUNT * PP_NUM_CLASSES] f32
@@ -53,7 +54,7 @@ public:
     bool has_evaluate() const override;
 };
 
-// Stage 3: rotated-BEV IoU bitmask.
+// Stage 3: rotated-BEV IoU bitmask; per class with [decoder] multi_class_nms.
 // Input: candidate records [PP_MAX_CANDIDATES + 1, PP_DET_CHANNELS] f32.
 // Output: NMS mask [PP_MAX_CANDIDATES, PP_NMS_COL_BLOCKS] i32.
 class PPPostprocNms : public ov::op::Op {

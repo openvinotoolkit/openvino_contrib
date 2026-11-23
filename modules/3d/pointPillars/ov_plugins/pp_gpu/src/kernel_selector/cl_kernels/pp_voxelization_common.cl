@@ -23,3 +23,25 @@ inline bool point_grid(float x, float y, float z, int* ix, int* iy, int* iz) {
 
 // Flatten the horizontal grid coordinates into a cell index.
 inline int cell_index(int ix, int iy) { return iy * GRID_X + ix; }
+
+// Sort the first count point indices ascending (odd-even transposition sort).
+// count rounds are enough: the larger indices after them never move.
+inline void sort_point_ids(int* point_ids, int count) {
+    if (count < 2) {
+        return;
+    }
+    for (int round = 0; round < count; round += 2) {
+        __attribute__((opencl_unroll_hint))
+        for (int index = 0; index + 1 < POINTS_PER_VOXEL; index += 2) {
+            const int lower = min(point_ids[index], point_ids[index + 1]);
+            point_ids[index + 1] = max(point_ids[index], point_ids[index + 1]);
+            point_ids[index] = lower;
+        }
+        __attribute__((opencl_unroll_hint))
+        for (int index = 1; index + 1 < POINTS_PER_VOXEL; index += 2) {
+            const int lower = min(point_ids[index], point_ids[index + 1]);
+            point_ids[index + 1] = max(point_ids[index], point_ids[index + 1]);
+            point_ids[index] = lower;
+        }
+    }
+}

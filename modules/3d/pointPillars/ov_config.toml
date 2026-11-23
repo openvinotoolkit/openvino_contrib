@@ -51,7 +51,8 @@ anchor_bottom_heights = [-0.6, -0.6, -1.78]
 # Anchor yaw values in radians. Each class receives one anchor per rotation.
 rotations = [0.0, 1.57]
 
-# Minimum sigmoid class score required to keep an anchor as a candidate.
+# Minimum sigmoid class score required to keep an (anchor, class) pair as a
+# candidate.
 score_threshold = 0.1
 # Minimum rotated BEV IoU used to suppress a candidate during NMS.
 nms_threshold = 0.01
@@ -61,6 +62,14 @@ dir_offset = 0.0
 # Output capacities: candidates after score filtering and detections after NMS.
 max_candidates = 2048
 max_detections = 256
+
+# How candidates and NMS treat the classes.
+# true:  every class whose score passes score_threshold gives a candidate, so
+#        one anchor can give more than one; only boxes of the same class
+#        suppress each other.
+# false: each anchor gives at most one candidate, for its best class; boxes
+#        suppress each other across classes.
+multi_class_nms = true
 
 [tuning]
 # Device-specific OpenCL launch settings. These affect execution shape and
@@ -96,10 +105,19 @@ nms_simd = 16
 # Work-items in the greedy-suppression work-group.
 gather_wg = 64
 
-# What to keep when more anchors pass score_threshold than max_candidates.
-# true:  the max_candidates best scores, ties by anchor index. Identical on
+# What to keep when more (anchor, class) pairs pass score_threshold than
+# max_candidates.
+# true:  the max_candidates best scores, ties by pair index. Identical on
 #        CPU and GPU and on every run.
 # false: the GPU keeps the first atomic arrivals and can change run to run;
-#        the CPU keeps the first anchors in index order. A high score can be
+#        the CPU keeps the first pairs in index order. A high score can be
 #        dropped.
 deterministic_candidates = true
+
+# What voxelization keeps when a pillar gets more than max_points_per_pillar
+# points, or the cloud has more than max_pillars pillars.
+# true:  the first points and pillars in input order, the same as the CPU and
+#        the same on every run.
+# false: the GPU keeps the first atomic arrivals and can change run to run;
+#        the CPU keeps the first points and pillars in input order.
+deterministic_voxelization = true

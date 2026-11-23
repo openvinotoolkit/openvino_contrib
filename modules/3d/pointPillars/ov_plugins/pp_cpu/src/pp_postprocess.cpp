@@ -141,6 +141,24 @@ float anchor_score(const float* classification_logits, int64_t anchor, int* clas
     return best;
 }
 
+static_assert(PP_NUM_CLASSES <= 32, "num_classes in ov_config.toml must be <= 32: one bit per class");
+
+// Bit c is set when (anchor, c) is a candidate. PP_MULTI_CLASS_NMS: every class
+// that passes the threshold. Otherwise: only the best class of the anchor.
+uint32_t candidate_classes(const float* classification_logits, int64_t anchor) {
+    if (PP_MULTI_CLASS_NMS) {
+        uint32_t classes = 0;
+        for (int class_index = kFirstClassIndex; class_index < PP_NUM_CLASSES; ++class_index) {
+            if (sigmoid(classification_logits[anchor * PP_NUM_CLASSES + class_index]) >= PP_SCORE_THRESH) {
+                classes |= 1u << class_index;
+            }
+        }
+        return classes;
+    }
+    int best_id = kFirstClassIndex;
+    return anchor_score(classification_logits, anchor, &best_id) >= PP_SCORE_THRESH ? 1u << best_id : 0u;
+}
+
 // Decode one surviving anchor into a detection record.
 void decode_anchor(const float* box_regression, const float* direction_logits, int64_t anchor, int class_id,
                    float score, float* detection_record) {
@@ -348,6 +366,12 @@ int32_t header_count(const ov::Tensor& candidate_records) {
     return std::clamp<int32_t>(count, 0, static_cast<int32_t>(PP_MAX_CANDIDATES));
 }
 
+int32_t record_class(const float* detection_record) {
+    int32_t class_id = 0;
+    std::memcpy(&class_id, &detection_record[PP_CLASS_INDEX], sizeof(class_id));
+    return class_id;
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -442,16 +466,22 @@ bool PPPostprocCandidates::evaluate(ov::TensorVector& outputs, const ov::TensorV
     float* candidate_records = outputs[kOutputPort].data<float>();
     std::memset(candidate_records, 0, outputs[kOutputPort].get_byte_size());
 
-    // Deterministic mode ranks all survivors by (score desc, anchor asc) before
-    // the capacity; otherwise the first survivors in anchor order are kept.
+    // One survivor per candidate (anchor, class) pair (see candidate_classes);
+    // pair = anchor * PP_NUM_CLASSES + class. Deterministic mode ranks all
+    // survivors by (score desc, pair asc) before the capacity; otherwise the
+    // first survivors in pair order are kept.
     struct Survivor {
         float score;
-        int class_id;
-        int64_t anchor;
+        int64_t pair;
     };
     size_t survivor_count = 0;
     for (int64_t word_index = 0; word_index < PP_SELECT_WORDS; ++word_index) {
-        survivor_count += __builtin_popcount(selection_words[word_index]);
+        uint32_t word_bits = selection_words[word_index];
+        while (word_bits) {
+            const int64_t anchor = word_index * PP_SELECT_BITS + __builtin_ctz(word_bits);
+            word_bits &= word_bits - 1;
+            survivor_count += __builtin_popcount(candidate_classes(classification_logits, anchor));
+        }
     }
     const size_t candidate_count = std::min<size_t>(survivor_count, static_cast<size_t>(PP_MAX_CANDIDATES));
 
@@ -461,12 +491,14 @@ bool PPPostprocCandidates::evaluate(ov::TensorVector& outputs, const ov::TensorV
          ++word_index) {
         uint32_t word_bits = selection_words[word_index];
         while (word_bits && filled_count < ranked_survivors.size()) {
-            const int bit_index = __builtin_ctz(word_bits);
+            const int64_t anchor = word_index * PP_SELECT_BITS + __builtin_ctz(word_bits);
             word_bits &= word_bits - 1;
-            Survivor& current_survivor = ranked_survivors[filled_count++];
-            current_survivor.anchor = word_index * PP_SELECT_BITS + bit_index;
-            current_survivor.score =
-                anchor_score(classification_logits, current_survivor.anchor, &current_survivor.class_id);
+            uint32_t classes = candidate_classes(classification_logits, anchor);
+            while (classes && filled_count < ranked_survivors.size()) {
+                const int64_t pair = anchor * PP_NUM_CLASSES + __builtin_ctz(classes);
+                classes &= classes - 1;
+                ranked_survivors[filled_count++] = Survivor{sigmoid(classification_logits[pair]), pair};
+            }
         }
     }
 
@@ -474,15 +506,15 @@ bool PPPostprocCandidates::evaluate(ov::TensorVector& outputs, const ov::TensorV
                       [](const Survivor& left_survivor, const Survivor& right_survivor) {
                           return left_survivor.score > right_survivor.score ||
                                  (left_survivor.score == right_survivor.score &&
-                                  left_survivor.anchor < right_survivor.anchor);
+                                  left_survivor.pair < right_survivor.pair);
                       });
 
     const int32_t candidate_count_i32 = static_cast<int32_t>(candidate_count);
     std::memcpy(candidate_records, &candidate_count_i32, sizeof(int32_t));
     for (size_t candidate_index = 0; candidate_index < candidate_count; ++candidate_index) {
         const Survivor& kept_survivor = ranked_survivors[candidate_index];
-        decode_anchor(box_regression, direction_logits, kept_survivor.anchor, kept_survivor.class_id,
-                      kept_survivor.score,
+        decode_anchor(box_regression, direction_logits, kept_survivor.pair / PP_NUM_CLASSES,
+                      static_cast<int>(kept_survivor.pair % PP_NUM_CLASSES), kept_survivor.score,
                       candidate_records + (candidate_index + kCandidateHeaderRows) * PP_DET_CHANNELS);
     }
     return true;
@@ -523,6 +555,7 @@ bool PPPostprocNms::evaluate(ov::TensorVector& outputs, const ov::TensorVector& 
     const int32_t candidate_count = header_count(inputs[kNmsCandidatesInput]);
     for (int32_t row = 0; row < candidate_count; ++row) {
         const float* current_candidate = candidate_records + static_cast<int64_t>(row) * PP_DET_CHANNELS;
+        const int32_t current_class = record_class(current_candidate);
         for (int32_t col_block = row / PP_NMS_BLOCK;
              col_block < (candidate_count + PP_NMS_BLOCK - kSkipCurrentCandidate) / PP_NMS_BLOCK;
              ++col_block) {
@@ -535,7 +568,11 @@ bool PPPostprocNms::evaluate(ov::TensorVector& outputs, const ov::TensorVector& 
             for (int32_t i = begin; i < block_size; ++i) {
                 const float* other_candidate =
                     candidate_records + static_cast<int64_t>(col_block * PP_NMS_BLOCK + i) * PP_DET_CHANNELS;
-                if (rotated_iou(current_candidate, other_candidate) >= PP_NMS_THRESH) bits |= 1u << i;
+                // With PP_MULTI_CLASS_NMS, only boxes of the same class suppress each other.
+                if ((!PP_MULTI_CLASS_NMS || record_class(other_candidate) == current_class) &&
+                    rotated_iou(current_candidate, other_candidate) >= PP_NMS_THRESH) {
+                    bits |= 1u << i;
+                }
             }
             nms_mask[static_cast<int64_t>(row) * PP_NMS_COL_BLOCKS + col_block] = bits;
         }

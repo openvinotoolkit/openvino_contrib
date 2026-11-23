@@ -5,18 +5,21 @@
 // Postprocess stage 3: rotated-BEV IoU bitmask.
 // ---------------------------------------------------------------------------
 // Tiles cover the upper block triangle. Each work-item evaluates one box pair,
-// and each row is combined into a bitmask in local memory.
+// and each row is combined into a bitmask in local memory. With
+// PP_MULTI_CLASS_NMS, only boxes of the same class suppress each other.
 
 #if NMS_GROUPS < 1
 #error "nms_groups in ov_config.toml must be >= 1: with no work-groups the NMS mask stays empty"
 #endif
 
-// x, y, z, length, width, height, yaw + circumradius.
-#define NMS_CACHE_STRIDE (PP_NUM_BOX_VALUES + 1)
+// x, y, z, length, width, height, yaw + circumradius + class_id bits.
+#define NMS_CACHE_STRIDE (PP_NUM_BOX_VALUES + 2)
+#define NMS_CACHE_CLASS (PP_NUM_BOX_VALUES + 1)
 
 inline void pp_nms_cache(__local float* dst, __global const float* src) {
     for (int i = 0; i < PP_NUM_BOX_VALUES; ++i) dst[i] = src[i];
     dst[PP_NUM_BOX_VALUES] = pp_box_reach(src[3], src[4]);
+    ((__local int*)dst)[NMS_CACHE_CLASS] = ((__global const int*)src)[PP_CLASS_INDEX];
 }
 
 __kernel __attribute__((reqd_work_group_size(PP_NMS_TILE_WG, 1, 1)))
@@ -72,7 +75,9 @@ void pp_postproc_nms(__global const float* candidates, __global int* mask) {
             __local const float* b = col_cache + col * NMS_CACHE_STRIDE;
             // Skip pairs whose centers are farther apart than their box reach.
             const float reach = a[PP_NUM_BOX_VALUES] + b[PP_NUM_BOX_VALUES] + 2e-2f;
-            if (fabs(b[0] - a[0]) <= reach && fabs(b[1] - a[1]) <= reach) {
+            const bool same_class =
+                ((__local const int*)a)[NMS_CACHE_CLASS] == ((__local const int*)b)[NMS_CACHE_CLASS];
+            if ((same_class || !PP_MULTI_CLASS_NMS) && fabs(b[0] - a[0]) <= reach && fabs(b[1] - a[1]) <= reach) {
                 float box_a[PP_NUM_BOX_VALUES];
                 float box_b[PP_NUM_BOX_VALUES];
                 for (int i = 0; i < PP_NUM_BOX_VALUES; ++i) {

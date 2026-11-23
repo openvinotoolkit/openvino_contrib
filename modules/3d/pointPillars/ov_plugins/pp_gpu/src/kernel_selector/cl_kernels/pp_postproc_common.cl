@@ -64,6 +64,32 @@ inline float pp_anchor_score(__global const float* cls, int anchor, int* class_i
     return best;
 }
 
+#if PP_NUM_CLASSES > 32
+#error "num_classes in ov_config.toml must be <= 32: one bit per class in pp_candidate_classes"
+#endif
+
+// Candidates are (anchor, class) pairs: pair = anchor * PP_NUM_CLASSES + class.
+#define PP_PAIR_COUNT (PP_ANCHOR_COUNT * PP_NUM_CLASSES)
+
+inline float pp_pair_score(__global const float* cls, int pair) { return pp_sigmoid(cls[pair]); }
+
+// Bit c is set when (anchor, c) is a candidate. PP_MULTI_CLASS_NMS: every class
+// that passes the threshold. Otherwise: only the best class of the anchor.
+inline uint pp_candidate_classes(__global const float* cls, int anchor) {
+#if PP_MULTI_CLASS_NMS
+    uint classes = 0;
+    for (int class_id = 0; class_id < PP_NUM_CLASSES; ++class_id) {
+        if (pp_pair_score(cls, anchor * PP_NUM_CLASSES + class_id) >= PP_SCORE_THRESH) {
+            classes |= 1u << class_id;
+        }
+    }
+    return classes;
+#else
+    int best_id = 0;
+    return pp_anchor_score(cls, anchor, &best_id) >= PP_SCORE_THRESH ? 1u << best_id : 0u;
+#endif
+}
+
 // Anchor deltas -> {x, y, z, length, width, height, yaw, class_id bits, score}.
 inline void pp_decode(__global const float* box, __global const float* dir, int anchor, int class_id,
                       float score, float* out) {

@@ -193,6 +193,7 @@ class DecoderConfig:
     dir_offset: float = _setting("decoder", "dir_offset")
     max_candidates: int = _setting("decoder", "max_candidates")
     max_detections: int = _setting("decoder", "max_detections")
+    multi_class_nms: bool = _setting("decoder", "multi_class_nms")
 
 
 @dataclass(frozen=True)
@@ -209,6 +210,7 @@ class TuningConfig:
     nms_simd: int = _setting("tuning", "nms_simd")
     gather_wg: int = _setting("tuning", "gather_wg")
     deterministic_candidates: bool = _setting("tuning", "deterministic_candidates")
+    deterministic_voxelization: bool = _setting("tuning", "deterministic_voxelization")
 
     @property
     def nms_tile_wg(self):
@@ -420,6 +422,7 @@ def _decoder_constants(config, decoder, tuning):
         "PP_SCORE_INDEX": DETECTION_RECORD.index("score"),
         "PP_SELECT_BITS": SELECT_WORD_BITS,
         "PP_NMS_BLOCK": tuning.nms_block,
+        "PP_MULTI_CLASS_NMS": int(decoder.multi_class_nms),
         # Derived.
         "PP_ANCHOR_COUNT": config.anchor_count,
         "PP_SELECT_WORDS": config.select_words,
@@ -489,6 +492,7 @@ def _tuning_values(tuning):
         "NMS_SIMD": tuning.nms_simd,
         "GATHER_WG": tuning.gather_wg,
         "CAND_DETERMINISTIC": int(tuning.deterministic_candidates),
+        "VOX_DETERMINISTIC": int(tuning.deterministic_voxelization),
     }
 
 

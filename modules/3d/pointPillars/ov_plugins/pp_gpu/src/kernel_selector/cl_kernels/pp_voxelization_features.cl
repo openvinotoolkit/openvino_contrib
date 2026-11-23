@@ -7,6 +7,10 @@
 // One work-item processes each pillar. Features contain raw values, offsets
 // from the pillar mean, and offsets from the voxel center.
 
+#ifndef VOX_DETERMINISTIC
+#error "VOX_DETERMINISTIC must come from pp_tuning_config_generated.cl"
+#endif
+
 inline void write_feature(__global OUTPUT0_TYPE* features, int pillar, int point, int channel, float value) {
     const int index = (pillar * POINTS_PER_VOXEL + point) * OUT_FEATURES + channel;
     features[index] = convert_half_rte(value);
@@ -37,11 +41,23 @@ __kernel void pp_voxelization_finalize(__global const INPUT0_TYPE* meta_storage,
     // meta stores the source point index per slot; gather raw features from the
     // points input (kept off the dense buffer to shrink it).
     const int idx0 = META_RAW + pillar * META_RAW_STRIDE;
+#if VOX_DETERMINISTIC
+    // Sorted indices give input order, as on the CPU.
+    int point_ids[POINTS_PER_VOXEL];
+    for (int point = 0; point < POINTS_PER_VOXEL; point++) {
+        point_ids[point] = INT_MAX;
+        if (point < count) point_ids[point] = meta[idx0 + point];
+    }
+    sort_point_ids(point_ids, count);
+#define POINT_ID(point) point_ids[point]
+#else
+#define POINT_ID(point) meta[idx0 + (point)]
+#endif
     float mean_x = 0.0f;
     float mean_y = 0.0f;
     float mean_z = 0.0f;
     for (int point = 0; point < count; point++) {
-        const int base = meta[idx0 + point] * POINT_FEATURES;
+        const int base = POINT_ID(point) * POINT_FEATURES;
         mean_x += (float)points[base + 0];
         mean_y += (float)points[base + 1];
         mean_z += (float)points[base + 2];
@@ -62,7 +78,7 @@ __kernel void pp_voxelization_finalize(__global const INPUT0_TYPE* meta_storage,
             for (int channel = 0; channel < OUT_FEATURES; channel++) write_feature(features, pillar, point, channel, 0.0f);
             continue;
         }
-        const int base = meta[idx0 + point] * POINT_FEATURES;
+        const int base = POINT_ID(point) * POINT_FEATURES;
         const float x = (float)points[base + 0];
         const float y = (float)points[base + 1];
         const float z = (float)points[base + 2];
@@ -79,4 +95,5 @@ __kernel void pp_voxelization_finalize(__global const INPUT0_TYPE* meta_storage,
         write_feature(features, pillar, point, 8, y - center_y);
         write_feature(features, pillar, point, 9, z - center_z);
     }
+#undef POINT_ID
 }
