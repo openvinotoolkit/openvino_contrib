@@ -2,98 +2,55 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-cmake_minimum_required(VERSION 3.13)
-project(OpenVINONVIDIAGpuPlugin CXX CUDA)
+# Same minimum as OpenVINO
+cmake_minimum_required(VERSION 3.26)
 
-# Initialize CMAKE_CUDA_ARCHITECTURES when CMAKE_CUDA_COMPILER_ID is NVIDIA.
-# Raise an error if CUDA_ARCHITECTURES is empty.
-if(POLICY CMP0104)
-  cmake_policy(SET CMP0104 NEW)
+# With CMP0104 NEW, project() fills CMAKE_CUDA_ARCHITECTURES with the compiler default (and checks any value set
+# before it against nvcc), so only remember here whether the user chose one; the plugin default is set after project().
+if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES AND "$ENV{CUDAARCHS}" STREQUAL "")
+    set(NVIDIA_GPU_DEFAULT_CUDA_ARCHITECTURES ON)
 endif()
 
-set(CMAKE_CXX_STANDARD 17)
+project(OpenVINONVIDIAGpuPlugin CXX CUDA)
+
+if(NOT DEFINED CMAKE_CXX_STANDARD)
+    set(CMAKE_CXX_STANDARD 20)
+elseif(CMAKE_CXX_STANDARD LESS 20)
+    message(FATAL_ERROR "nvidia_plugin requires CMAKE_CXX_STANDARD >= 20, but ${CMAKE_CXX_STANDARD} was set: "
+        "CUDA code is always built as C++20 and must match the host code.")
+endif()
+
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
-# CMAKE_CUDA_STANDARD set after CUDA toolkit detection below,
-# so the value can depend on CUDAToolkit_VERSION_MAJOR (NVCC 10.x has no C++17).
-
-if (CUDA_KERNEL_PRINT_LOG)
+# CMAKE_CUDA_STANDARD set after CUDA toolkit detection below: NVCC < 12.0 cannot compile
+# C++20 device code, so a hard floor on CUDAToolkit_VERSION_MAJOR is enforced there
+# instead of silently degrading to an older CUDA/C++ standard.
+if(CUDA_KERNEL_PRINT_LOG)
     add_definitions(-DCUDA_KERNEL_PRINT_LOG)
 endif()
-if (ENABLE_CUDNN_BACKEND_API)
+
+if(ENABLE_CUDNN_BACKEND_API)
     add_definitions(-DENABLE_CUDNN_BACKEND_API)
 endif()
 
 find_package(OpenVINODeveloperPackage REQUIRED
-             PATHS "${InferenceEngineDeveloperPackage_DIR}")
+    PATHS "${InferenceEngineDeveloperPackage_DIR}")
 
 include(cmake/features.cmake)
 
 set(HAS_REQUIRED REQUIRED)
 
-if(CMAKE_VERSION VERSION_LESS 3.17.0)
-    set(HAS_REQUIRED)
-    find_package(CUDA REQUIRED)
-    set(CUDAToolkit_VERSION_MAJOR ${CUDA_VERSION_MAJOR})
-    set(CUDAToolkit_VERSION_MINOR ${CUDA_VERSION_MINOR})
-    set(CUDAToolkit_INCLUDE_DIRS ${CUDA_INCLUDE_DIRS})
-    foreach(LIB IN LISTS CUDA_LIBRARIES)
-        if (LIB MATCHES ".*cudart.*")
-            if(WIN32)
-                add_library(cudart STATIC IMPORTED GLOBAL)
-                # Even though we're linking against a .dll, in Windows you statically link against
-                # the .lib file found under lib/x64. The .dll will be loaded at runtime automatically
-                # from the PATH search.
-            else()
-                add_library(cudart SHARED IMPORTED GLOBAL)
-            endif()
-            set_target_properties(cudart PROPERTIES IMPORTED_LOCATION ${LIB})
-            if(NOT WIN32)
-                # list contains /usr/local/cuda-10.2/lib64/libcudart_static.a;-pthread;dl;/usr/lib/x86_64-linux-gnu/librt.so
-                # and rt is not added via other ways when build contains no *.cu files
-                # and dl is not added via other ways when build contains no *.cu files in some other cases
-                target_link_libraries(cudart INTERFACE rt dl)
-            endif()
-            add_library(CUDA::cudart ALIAS cudart)
-        endif()
-    endforeach()
-    # Search for CUDA Driver Library
-    find_library(CUDA_DRIVER_PATH
-                 NAMES cuda
-                 HINTS "${CUDA_TOOLKIT_ROOT_DIR}" "$ENV{CUDA_PATH}"
-                 PATH_SUFFIXES nvidia/current lib64 lib/x64 lib)
-    if(WIN32)
-        add_library(cuda_driver STATIC IMPORTED GLOBAL)
-    else()
-        add_library(cuda_driver SHARED IMPORTED GLOBAL)
-    endif()
-    set_target_properties(cuda_driver PROPERTIES IMPORTED_LOCATION "${CUDA_DRIVER_PATH}")
-    add_library(CUDA::cuda_driver ALIAS cuda_driver)
-    # Search for CUBLAS Library
-    find_library(CUBLAS_PATH
-                 NAMES cublas
-                 HINTS "${CUDA_TOOLKIT_ROOT_DIR}" "$ENV{CUDA_PATH}"
-                 PATH_SUFFIXES nvidia/current lib64 lib/x64 lib)
-    if(WIN32)
-        add_library(cublas STATIC IMPORTED GLOBAL)
-    else()
-        add_library(cublas SHARED IMPORTED GLOBAL)
-    endif()
-    set_target_properties(cublas PROPERTIES IMPORTED_LOCATION "${CUBLAS_PATH}")
-    add_library(CUDA::cublas ALIAS cublas)
-else()
-    find_package(CUDAToolkit REQUIRED)
+find_package(CUDAToolkit REQUIRED)
+
+if(CUDAToolkit_VERSION_MAJOR LESS 12)
+    message(FATAL_ERROR
+        "CUDAToolkit ${CUDAToolkit_VERSION_MAJOR}.${CUDAToolkit_VERSION_MINOR} was found, but "
+        "nvidia_plugin requires CUDAToolkit >= 12.0: NVCC below 12.0 cannot compile C++20 device code.")
 endif()
 
-if(NOT CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    if(CUDAToolkit_VERSION_MAJOR LESS_EQUAL 10)
-        set(CMAKE_CUDA_STANDARD 14)
-    else()
-        set(CMAKE_CUDA_STANDARD 17)
-    endif()
-    set(CMAKE_CUDA_STANDARD_REQUIRED TRUE)
-endif()
+set(CMAKE_CUDA_STANDARD 20)
+set(CMAKE_CUDA_STANDARD_REQUIRED TRUE)
 
 find_library(CUDNN_PATH
              NAMES cudnn
@@ -101,20 +58,13 @@ find_library(CUDNN_PATH
              HINTS "$ENV{CUDNN_PATH}" "${CUDA_TOOLKIT_ROOT_DIR}" "${CUDA_PATH}" "$ENV{CUDA_PATH}"
              PATH_SUFFIXES nvidia/current lib64 lib/x64 lib)
 
-if(CUDAToolkit_VERSION_MAJOR LESS_EQUAL 10)
-    set(CUTENSOR_LIB_DIRS lib/10.2 libcutensor/10.2)
-elseif(CUDAToolkit_VERSION_MAJOR GREATER_EQUAL 11 AND CUDAToolkit_VERSION_MINOR LESS_EQUAL 0)
-    set(CUTENSOR_LIB_DIRS lib/11.0 libcutensor/11.0)
-elseif(CUDAToolkit_VERSION_MAJOR GREATER_EQUAL 11 AND CUDAToolkit_VERSION_MINOR GREATER_EQUAL 1)
-    set(CUTENSOR_LIB_DIRS lib/11 libcutensor/11)
-else()
-    set(CUTENSOR_LIB_DIRS lib/${CUDAToolkit_VERSION_MAJOR} libcutensor/${CUDAToolkit_VERSION_MAJOR})
-endif()
+set(CUTENSOR_LIB_DIRS lib/${CUDAToolkit_VERSION_MAJOR} libcutensor/${CUDAToolkit_VERSION_MAJOR})
+
 find_library(CUTENSOR_PATH
-             NAMES cutensor
-             ${HAS_REQUIRED}
-             HINTS "$ENV{CUTENSOR_PATH}" "${CUDA_TOOLKIT_ROOT_DIR}" "${CUDA_PATH}" "$ENV{CUDA_PATH}" 
-             PATH_SUFFIXES nvidia/current lib64 lib/x64 lib ${CUTENSOR_LIB_DIRS})
+    NAMES cutensor
+    ${HAS_REQUIRED}
+    HINTS "$ENV{CUTENSOR_PATH}" "${CUDA_TOOLKIT_ROOT_DIR}" "${CUDA_PATH}" "$ENV{CUDA_PATH}"
+    PATH_SUFFIXES nvidia/current lib64 lib/x64 lib ${CUTENSOR_LIB_DIRS})
 get_filename_component(CUTENSOR_INCLUDE_DIR "${CUTENSOR_PATH}" DIRECTORY)
 get_filename_component(CUTENSOR_INCLUDE_DIR "${CUTENSOR_INCLUDE_DIR}/../../include" REALPATH)
 
@@ -135,17 +85,19 @@ add_library(CUDA::cutensor SHARED IMPORTED)
 set_target_properties(CUDA::cutensor PROPERTIES IMPORTED_LOCATION "${CUTENSOR_PATH}")
 set_target_properties(CUDA::cutensor PROPERTIES IMPORTED_IMPLIB "${CUTENSOR_PATH}")
 
-if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-    if(CUDAToolkit_VERSION_MAJOR LESS_EQUAL 10)
-        set(CMAKE_CUDA_ARCHITECTURES "30;35;50;60;72")
-    elseif(CUDAToolkit_VERSION_MAJOR EQUAL 11 AND CUDAToolkit_VERSION_MINOR LESS_EQUAL 7)
-        set(CMAKE_CUDA_ARCHITECTURES "35;50;60-virtual;61;70-virtual;75;86")
-    elseif(CUDAToolkit_VERSION_MAJOR EQUAL 11 AND CUDAToolkit_VERSION_MINOR EQUAL 8)
-        set(CMAKE_CUDA_ARCHITECTURES "35;50;60-virtual;61;70-virtual;75;86;89-virtual;90-virtual")
+if(NVIDIA_GPU_DEFAULT_CUDA_ARCHITECTURES)
+    if(CUDAToolkit_VERSION_MAJOR LESS 13)
+        set(NVIDIA_GPU_CUDA_ARCHITECTURES "50;60-virtual;61;70-virtual;75;86;89-virtual;90-virtual")
     else()
-        set(CMAKE_CUDA_ARCHITECTURES "50;60-virtual;61;70-virtual;75;86;89-virtual;90-virtual")
+        # CUDA 13 dropped targets older than sm_75
+        set(NVIDIA_GPU_CUDA_ARCHITECTURES "75;86;89-virtual;90-virtual")
     endif()
+
+    # Drop the compiler default cached by project() so the plugin default stays local to this directory
+    unset(CMAKE_CUDA_ARCHITECTURES CACHE)
+    set(CMAKE_CUDA_ARCHITECTURES "${NVIDIA_GPU_CUDA_ARCHITECTURES}")
 endif()
+
 message("-- [nvidia_gpu] CMAKE_CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES}")
 
 include(FetchContent)
@@ -153,35 +105,17 @@ include(FetchContent)
 # In this example we are picking a specific tag.
 # You can also pick a specific commit, if you need to.
 FetchContent_Declare(GSL
-                     GIT_REPOSITORY "https://github.com/microsoft/GSL"
-                     GIT_TAG "v3.1.0")
-if(CMAKE_VERSION VERSION_LESS 3.14.0)
-    FetchContent_GetProperties(GSL)
-    if(NOT GSL_POPULATED)
-        FetchContent_Populate(GSL)
-        message(STATUS "gsl_SOURCE_DIR is ${gsl_SOURCE_DIR}")
-        add_subdirectory(${gsl_SOURCE_DIR} ${gsl_BINARY_DIR})
-    endif()
-else()
-    FetchContent_MakeAvailable(GSL)
-endif()
-# it contains c++14 requirement, which overrides c++17 setting in CMAKE_CUDA_FLAGS
+    GIT_REPOSITORY "https://github.com/microsoft/GSL"
+    GIT_TAG "v3.1.0")
+FetchContent_MakeAvailable(GSL)
+# it contains c++14 requirement, which overrides c++20 setting in CMAKE_CUDA_FLAGS
 set_property(TARGET GSL PROPERTY INTERFACE_COMPILE_FEATURES)
 
 FetchContent_Declare(fmt-header-only
-                     GIT_REPOSITORY "https://github.com/fmtlib/fmt"
-                     GIT_TAG "7.1.3")
-if(CMAKE_VERSION VERSION_LESS 3.14.0)
-    FetchContent_GetProperties(fmt-header-only)
-    if(NOT fmt-header-only_POPULATED)
-        FetchContent_Populate(fmt-header-only)
-        message(STATUS "fmt-header-only_SOURCE_DIR is ${fmt-header-only_SOURCE_DIR}")
-        add_subdirectory(${fmt-header-only_SOURCE_DIR} ${fmt-header-only_BINARY_DIR})
-    endif()
-else()
-    FetchContent_MakeAvailable(fmt-header-only)
-endif()
-# it contains c++11 requirement, which overrides c++17 setting in CMAKE_CUDA_FLAGS
+    GIT_REPOSITORY "https://github.com/fmtlib/fmt"
+    GIT_TAG "7.1.3")
+FetchContent_MakeAvailable(fmt-header-only)
+# it contains c++11 requirement, which overrides c++20 setting in CMAKE_CUDA_FLAGS
 set_property(TARGET fmt-header-only PROPERTY INTERFACE_COMPILE_FEATURES)
 
 add_subdirectory(src)

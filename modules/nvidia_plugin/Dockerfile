@@ -1,7 +1,7 @@
 # Copyright (C) 2018-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-FROM nvidia/cuda:13.3.0-runtime-ubuntu22.04
+FROM nvidia/cuda:12.2.2-runtime-ubuntu22.04
 
 ARG enable_tensorrt
 ADD https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-ubuntu2204.pin /etc/apt/preferences.d/cuda-repository-pin-600
@@ -29,8 +29,8 @@ RUN set -exuo pipefail ; \
 		build-essential \
 		ca-certificates \
 		clang-format-9 \
-		cuda-runtime-11-8 \
-		cuda-11-8 \
+		cuda-runtime-12-2 \
+		cuda-12-2 \
 		curl \
 		g++-multilib \
 		gcc-multilib \
@@ -41,8 +41,8 @@ RUN set -exuo pipefail ; \
 		libavformat-dev \
 		libboost-regex-dev \
 		libcairo2-dev \
-		libcutensor1=1.6.1.5-1 \
-		libcutensor-dev=1.6.1.5-1 \
+		libcutensor1=1.7.0.1-1 \
+		libcutensor-dev=1.7.0.1-1 \
 		libglib2.0-dev \
 		libgstreamer1.0-0 \
 		libgtk2.0-dev \
@@ -61,13 +61,13 @@ RUN set -exuo pipefail ; \
 		time \
 		unzip \
 		wget \
-		cuda-drivers=520.61.05-1\
+		cuda-drivers=535.* \
 	; \
 	pip3 install cython ; \
 	curl -L https://github.com/Kitware/ninja/releases/download/v1.10.0.gfb670.kitware.jobserver-1/ninja-1.10.0.gfb670.kitware.jobserver-1_x86_64-linux-gnu.tar.gz | tar xzv --strip-components=1 -C /usr/local/bin ; \
 	curl https://github.com/mozilla/sccache/releases/download/v0.2.15/sccache-v0.2.15-x86_64-unknown-linux-musl.tar.gz -L | tar xvzC /usr/local/bin --strip-components=1 --wildcards '*/sccache' ; \
 	chmod a+x /usr/local/bin/sccache ; \
-	curl https://github.com/Kitware/CMake/releases/download/v3.24.0/cmake-3.24.0-linux-x86_64.tar.gz -L | tar xzvC /usr/local --exclude={doc,man} --strip-components=1 ; \
+	curl https://github.com/Kitware/CMake/releases/download/v3.26.4/cmake-3.26.4-linux-x86_64.tar.gz -L | tar xzvC /usr/local --exclude={doc,man} --strip-components=1 ; \
 	curl -L https://github.com/ccache/ccache/releases/download/v4.3/ccache-4.3.tar.xz | tar xJv ; \
 	cd ccache-4.3 ; \
 	mkdir build ; \

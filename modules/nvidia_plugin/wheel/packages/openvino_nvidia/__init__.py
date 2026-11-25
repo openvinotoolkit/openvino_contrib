@@ -61,4 +61,4 @@ def __getattr__(name):
 _register_nvidia_plugin()
 
 
-__version__ = "2025.3.0"
+__version__ = "2027.0.0"

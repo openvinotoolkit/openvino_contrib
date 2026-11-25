@@ -3,6 +3,10 @@
 
 project(inference_engine_java_api)
 
+if(NOT DEFINED CMAKE_CXX_STANDARD)
+    set(CMAKE_CXX_STANDARD 20)
+endif()
+
 if (NOT CMAKE_CROSSCOMPILING)
     set(JAVA_AWT_LIBRARY NotNeeded)
     set(JAVA_JVM_LIBRARY NotNeeded)

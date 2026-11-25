@@ -232,7 +232,7 @@ jobs:
         shell: bash
     runs-on: ubuntu-22.04-16-cores
     container:
-      image: nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
+      image: nvidia/cuda:12.2.2-cudnn8-runtime-ubuntu22.04
     env:
       CMAKE_BUILD_TYPE: 'Release'
       CMAKE_GENERATOR: 'Ninja Multi-Config'
@@ -322,14 +322,14 @@ jobs:
           apt update
           apt install -y --allow-downgrades --allow-change-held-packages \
             linux-headers-5.15.0-25-generic \
-            libcudnn8=8.9.4.*-1+cuda11.8 \
-            libcudnn8-dev=8.9.4.*-1+cuda11.8 \
-            libcudnn8-samples=8.9.4.*-1+cuda11.8 \
-            cuda-runtime-11-8 \
-            cuda-11-8 \
+            libcudnn8=8.9.7.*-1+cuda12.2 \
+            libcudnn8-dev=8.9.7.*-1+cuda12.2 \
+            libcudnn8-samples=8.9.7.*-1+cuda12.2 \
+            cuda-runtime-12-2 \
+            cuda-12-2 \
             libcutensor1=1.7.0.1-1 \
             libcutensor-dev=1.7.0.1-1 \
-            cuda-drivers=520.61.05-1
+            cuda-drivers=535.*
 
       #
       # Build
