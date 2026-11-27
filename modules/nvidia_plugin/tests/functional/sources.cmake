@@ -1,0 +1,48 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+
+set(OV_NVIDIA_FUNC_TEST_SOURCES
+    ${CMAKE_CURRENT_LIST_DIR}/core_config.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/behavior/ov_executable_network/ov_exec_net_import_export.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/behavior/ov_executable_network/properties.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/behavior/ov_infer_request/batched_tensors.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/behavior/ov_infer_request/callback.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/behavior/ov_infer_request/cancellation.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/behavior/ov_infer_request/infer_request_dynamic.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/behavior/ov_infer_request/inference.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/behavior/ov_infer_request/inference_chaining.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/behavior/ov_infer_request/io_tensor.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/behavior/ov_infer_request/multithreading.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/behavior/ov_infer_request/wait.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/behavior/ov_plugin/caching_tests.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/behavior/ov_plugin/core_integration.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/behavior/ov_plugin/life_time.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/behavior/ov_plugin/properties_tests.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/set_device_name.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/single_layer_tests/activation.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/single_layer_tests/bitwise.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/single_layer_tests/broadcast.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/single_layer_tests/comparison.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/single_layer_tests/concat.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/single_layer_tests/convert.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/single_layer_tests/convert_color_common.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/single_layer_tests/convert_color_i420.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/single_layer_tests/convert_color_nv12.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/single_layer_tests/convolution.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/single_layer_tests/detection_output.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/single_layer_tests/group_convolution.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/single_layer_tests/logical_test.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/single_layer_tests/ov_average_finder.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/single_layer_tests/ov_benchmark.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/single_layer_tests/ov_finite_comparer.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/single_layer_tests/ov_finite_comparer.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/single_layer_tests/ov_unsymmetrical_comparer.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/single_layer_tests/read_value_assign.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/single_layer_tests/scaled_dot_product_attention.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/single_layer_tests/shape_of.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/single_layer_tests/split.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/single_layer_tests/transpose_test.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/shared_tests_instances/single_layer_tests/variadic_split.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/skip_tests_config.cpp
+)

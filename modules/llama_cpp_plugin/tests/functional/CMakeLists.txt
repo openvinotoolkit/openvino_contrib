@@ -3,9 +3,11 @@
 
 set(TARGET_NAME llama_cpp_func_tests)
 
+include(sources.cmake)
+
 ov_add_test_target(
     NAME ${TARGET_NAME}
-    ROOT ${CMAKE_CURRENT_SOURCE_DIR}
+    SOURCES ${LLAMA_CPP_FUNC_TEST_SOURCES}
     DEPENDENCIES
     llama_cpp_plugin
     LINK_LIBRARIES
@@ -17,6 +19,7 @@ ov_add_test_target(
     "${LlamaCppPlugin_SOURCE_DIR}/include"
     "${LlamaCppPlugin_SOURCE_DIR}/tests/common/include"
     ADD_CLANG_FORMAT
+    CHECK_SOURCES_LISTED
     LABELS
     OV UNIT LLAMA_CPP
     )
