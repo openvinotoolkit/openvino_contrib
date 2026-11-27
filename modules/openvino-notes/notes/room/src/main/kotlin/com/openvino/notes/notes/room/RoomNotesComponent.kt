@@ -24,15 +24,17 @@ import com.openvino.notes.notes.api.Note
 import com.openvino.notes.notes.api.NoteId
 import com.openvino.notes.notes.api.NoteTag
 import com.openvino.notes.notes.api.port.AttachmentContentPort
-import com.openvino.notes.notes.api.port.LocalChangeKind
-import com.openvino.notes.notes.api.port.LocalNoteChange
 import com.openvino.notes.notes.api.port.FolderRepository
 import com.openvino.notes.notes.api.port.FolderSyncPort
+import com.openvino.notes.notes.api.port.LocalChangeKind
+import com.openvino.notes.notes.api.port.LocalNoteChange
 import com.openvino.notes.notes.api.port.NotesRepository
 import com.openvino.notes.notes.api.port.NotesSyncPort
 import com.openvino.notes.notes.api.port.RemoteApplyResult
 import com.openvino.notes.notes.api.port.RemoteNoteChange
 import com.openvino.notes.notes.api.port.RemoteRevision
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
@@ -40,8 +42,6 @@ import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.util.Base64
 import java.util.UUID
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 
 @Entity(tableName = "notes", primaryKeys = ["accountKey", "id"])
 internal data class NoteEntity(
@@ -89,10 +89,16 @@ internal interface NotesDao {
     fun observe(accountKey: String): Flow<List<NoteEntity>>
 
     @Query("SELECT * FROM notes WHERE accountKey = :accountKey AND id = :id")
-    suspend fun find(accountKey: String, id: String): NoteEntity?
+    suspend fun find(
+        accountKey: String,
+        id: String,
+    ): NoteEntity?
 
     @Query("SELECT COUNT(*) FROM notes WHERE accountKey = :accountKey AND folderId = :folderId")
-    suspend fun countInFolder(accountKey: String, folderId: String): Int
+    suspend fun countInFolder(
+        accountKey: String,
+        folderId: String,
+    ): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: NoteEntity)
@@ -104,35 +110,60 @@ internal interface NotesDao {
     suspend fun saveRevision(entity: RemoteRevisionEntity)
 
     @Query("SELECT * FROM note_remote_revision WHERE accountKey = :accountKey AND noteId = :noteId")
-    suspend fun revision(accountKey: String, noteId: String): RemoteRevisionEntity?
+    suspend fun revision(
+        accountKey: String,
+        noteId: String,
+    ): RemoteRevisionEntity?
 
     @Query("DELETE FROM notes WHERE accountKey = :accountKey AND id = :id")
-    suspend fun deleteNote(accountKey: String, id: String): Int
+    suspend fun deleteNote(
+        accountKey: String,
+        id: String,
+    ): Int
 
     @Query("SELECT COUNT(*) FROM note_outbox WHERE accountKey = :accountKey AND noteId = :noteId")
-    suspend fun pendingCount(accountKey: String, noteId: String): Int
+    suspend fun pendingCount(
+        accountKey: String,
+        noteId: String,
+    ): Int
 
     @Query("SELECT * FROM note_outbox WHERE accountKey = :accountKey ORDER BY changedAtMillis LIMIT :limit")
-    suspend fun pending(accountKey: String, limit: Int): List<OutboxEntity>
+    suspend fun pending(
+        accountKey: String,
+        limit: Int,
+    ): List<OutboxEntity>
 
     @Query("DELETE FROM note_outbox WHERE accountKey = :accountKey AND changeId IN (:changeIds)")
-    suspend fun acknowledge(accountKey: String, changeIds: Set<String>)
+    suspend fun acknowledge(
+        accountKey: String,
+        changeIds: Set<String>,
+    )
 
     @Transaction
-    suspend fun saveLocally(note: NoteEntity, outbox: OutboxEntity) {
+    suspend fun saveLocally(
+        note: NoteEntity,
+        outbox: OutboxEntity,
+    ) {
         upsert(note)
         addOutbox(outbox.copy(baseRevision = revision(note.accountKey, note.id)?.revision))
     }
 
     @Transaction
-    suspend fun deleteLocally(accountKey: String, id: String, outbox: OutboxEntity): Boolean {
+    suspend fun deleteLocally(
+        accountKey: String,
+        id: String,
+        outbox: OutboxEntity,
+    ): Boolean {
         val removed = deleteNote(accountKey, id) > 0
         if (removed) addOutbox(outbox.copy(baseRevision = revision(accountKey, id)?.revision))
         return removed
     }
 
     @Transaction
-    suspend fun applyRemoteUpsert(note: NoteEntity, remoteRevision: String): Boolean {
+    suspend fun applyRemoteUpsert(
+        note: NoteEntity,
+        remoteRevision: String,
+    ): Boolean {
         if (pendingCount(note.accountKey, note.id) > 0) return false
         upsert(note)
         saveRevision(RemoteRevisionEntity(note.accountKey, note.id, remoteRevision))
@@ -140,7 +171,11 @@ internal interface NotesDao {
     }
 
     @Transaction
-    suspend fun applyRemoteTombstone(accountKey: String, noteId: String, remoteRevision: String): Boolean {
+    suspend fun applyRemoteTombstone(
+        accountKey: String,
+        noteId: String,
+        remoteRevision: String,
+    ): Boolean {
         if (pendingCount(accountKey, noteId) > 0) return false
         deleteNote(accountKey, noteId)
         saveRevision(RemoteRevisionEntity(accountKey, noteId, remoteRevision))
@@ -162,85 +197,114 @@ internal interface NotesDao {
 )
 internal abstract class NotesDatabase : RoomDatabase() {
     abstract fun notesDao(): NotesDao
+
     abstract fun folderDao(): FolderDao
 }
 
 internal class RoomNotesRepository(
     private val dao: NotesDao,
     private val attachmentContent: AttachmentContentPort,
-) : NotesRepository, NotesSyncPort {
+) : NotesRepository,
+    NotesSyncPort {
     override fun observe(accountKey: AccountKey): Flow<List<Note>> =
         dao.observe(accountKey.value).map { entities -> entities.map(NoteEntity::toApi) }
 
-    override suspend fun find(accountKey: AccountKey, id: NoteId): Note? =
-        dao.find(accountKey.value, id.value)?.toApi()
+    override suspend fun find(
+        accountKey: AccountKey,
+        id: NoteId,
+    ): Note? = dao.find(accountKey.value, id.value)?.toApi()
 
-    override suspend fun countInFolder(accountKey: AccountKey, folderId: FolderId): Int =
-        dao.countInFolder(accountKey.value, folderId.value)
+    override suspend fun countInFolder(
+        accountKey: AccountKey,
+        folderId: FolderId,
+    ): Int = dao.countInFolder(accountKey.value, folderId.value)
 
     override suspend fun save(note: Note) {
         val previous = dao.find(note.accountKey.value, note.id.value)?.toApi()
         dao.saveLocally(note.toEntity(), note.toOutbox(LocalChangeKind.UPSERT))
-        previous?.attachments
+        previous
+            ?.attachments
             ?.map(AttachmentMetadata::id)
             ?.filter { previousId -> note.attachments.none { it.id == previousId } }
             ?.forEach { attachmentContent.delete(note.accountKey, it) }
     }
 
-    override suspend fun delete(accountKey: AccountKey, id: NoteId): Boolean {
+    override suspend fun delete(
+        accountKey: AccountKey,
+        id: NoteId,
+    ): Boolean {
         val previous = dao.find(accountKey.value, id.value)?.toApi()
-        val removed = dao.deleteLocally(
-            accountKey.value,
-            id.value,
-            OutboxEntity(
-                accountKey = accountKey.value,
-                changeId = UUID.randomUUID().toString(),
-                noteId = id.value,
-                kind = LocalChangeKind.DELETE.name,
-                baseRevision = null,
-                changedAtMillis = System.currentTimeMillis(),
-                title = null,
-                contentItems = null,
-                attachments = null,
-                folderId = null,
-                tags = null,
-                isFavorite = null,
-                summary = null,
-                createdAtMillis = null,
-            ),
-        )
+        val removed =
+            dao.deleteLocally(
+                accountKey.value,
+                id.value,
+                OutboxEntity(
+                    accountKey = accountKey.value,
+                    changeId = UUID.randomUUID().toString(),
+                    noteId = id.value,
+                    kind = LocalChangeKind.DELETE.name,
+                    baseRevision = null,
+                    changedAtMillis = System.currentTimeMillis(),
+                    title = null,
+                    contentItems = null,
+                    attachments = null,
+                    folderId = null,
+                    tags = null,
+                    isFavorite = null,
+                    summary = null,
+                    createdAtMillis = null,
+                ),
+            )
         if (removed) previous?.attachments?.forEach { attachmentContent.delete(accountKey, it.id) }
         return removed
     }
 
-    override suspend fun pendingChanges(accountKey: AccountKey, limit: Int): List<LocalNoteChange> =
-        dao.pending(accountKey.value, limit).map(OutboxEntity::toApi)
+    override suspend fun pendingChanges(
+        accountKey: AccountKey,
+        limit: Int,
+    ): List<LocalNoteChange> = dao.pending(accountKey.value, limit).map(OutboxEntity::toApi)
 
-    override suspend fun acknowledge(accountKey: AccountKey, changeIds: Set<String>) {
+    override suspend fun acknowledge(
+        accountKey: AccountKey,
+        changeIds: Set<String>,
+    ) {
         if (changeIds.isNotEmpty()) dao.acknowledge(accountKey.value, changeIds)
     }
 
     override suspend fun applyRemote(
         accountKey: AccountKey,
         changes: List<RemoteNoteChange>,
-    ): List<RemoteApplyResult> = changes.map { change ->
-        when (change) {
-            is RemoteNoteChange.Malformed -> RemoteApplyResult.RejectedMalformed(
-                change.noteId,
-                change.diagnosticCode,
-            )
-            is RemoteNoteChange.Upsert -> applyUpsert(accountKey, change)
-            is RemoteNoteChange.Tombstone -> applyTombstone(accountKey, change)
-        }
-    }
+    ): List<RemoteApplyResult> =
+        changes.map { change ->
+            when (change) {
+                is RemoteNoteChange.Malformed -> {
+                    RemoteApplyResult.RejectedMalformed(
+                        change.noteId,
+                        change.diagnosticCode,
+                    )
+                }
 
-    private suspend fun applyUpsert(accountKey: AccountKey, change: RemoteNoteChange.Upsert): RemoteApplyResult {
+                is RemoteNoteChange.Upsert -> {
+                    applyUpsert(accountKey, change)
+                }
+
+                is RemoteNoteChange.Tombstone -> {
+                    applyTombstone(accountKey, change)
+                }
+            }
+        }
+
+    private suspend fun applyUpsert(
+        accountKey: AccountKey,
+        change: RemoteNoteChange.Upsert,
+    ): RemoteApplyResult {
         if (change.note.accountKey != accountKey) {
             return RemoteApplyResult.RejectedMalformed(change.note.id, "notes.remote.account_mismatch")
         }
         val previous = dao.find(accountKey.value, change.note.id.value)?.toApi()
         return if (dao.applyRemoteUpsert(change.note.toEntity(), change.revision.value)) {
-            previous?.attachments
+            previous
+                ?.attachments
                 ?.map(AttachmentMetadata::id)
                 ?.filter { previousId -> change.note.attachments.none { it.id == previousId } }
                 ?.forEach { attachmentContent.delete(accountKey, it) }
@@ -263,8 +327,10 @@ internal class RoomNotesRepository(
         }
     }
 
-    private suspend fun localRevision(accountKey: AccountKey, noteId: NoteId): RemoteRevision? =
-        dao.revision(accountKey.value, noteId.value)?.revision?.let(::RemoteRevision)
+    private suspend fun localRevision(
+        accountKey: AccountKey,
+        noteId: NoteId,
+    ): RemoteRevision? = dao.revision(accountKey.value, noteId.value)?.revision?.let(::RemoteRevision)
 }
 
 class RoomNotesComponent private constructor(
@@ -284,10 +350,11 @@ class RoomNotesComponent private constructor(
             dispatchers: AppDispatchers = AppDispatchers.production(),
         ): RoomNotesComponent {
             val database = Room.databaseBuilder(context.applicationContext, NotesDatabase::class.java, databaseName).build()
-            val attachmentContent = FileAttachmentContentStore(
-                File(context.applicationContext.filesDir, "notes-media"),
-                dispatchers,
-            )
+            val attachmentContent =
+                FileAttachmentContentStore(
+                    File(context.applicationContext.filesDir, "notes-media"),
+                    dispatchers,
+                )
             val notes = RoomNotesRepository(database.notesDao(), attachmentContent)
             val folders = RoomFolderRepository(database.folderDao())
             return RoomNotesComponent(database, notes, notes, folders, folders, attachmentContent)
@@ -295,70 +362,74 @@ class RoomNotesComponent private constructor(
     }
 }
 
-private fun Note.toEntity() = NoteEntity(
-    accountKey = accountKey.value,
-    id = id.value,
-    title = title,
-    contentItems = WireCodec.encodeContent(contentItems),
-    attachments = WireCodec.encodeAttachments(attachments),
-    folderId = folderId?.value,
-    tags = WireCodec.encodeTags(tags),
-    isFavorite = isFavorite,
-    summary = summary,
-    createdAtMillis = createdAt.toEpochMilli(),
-    updatedAtMillis = updatedAt.toEpochMilli(),
-)
+private fun Note.toEntity() =
+    NoteEntity(
+        accountKey = accountKey.value,
+        id = id.value,
+        title = title,
+        contentItems = WireCodec.encodeContent(contentItems),
+        attachments = WireCodec.encodeAttachments(attachments),
+        folderId = folderId?.value,
+        tags = WireCodec.encodeTags(tags),
+        isFavorite = isFavorite,
+        summary = summary,
+        createdAtMillis = createdAt.toEpochMilli(),
+        updatedAtMillis = updatedAt.toEpochMilli(),
+    )
 
-private fun NoteEntity.toApi() = Note(
-    id = NoteId(id),
-    accountKey = AccountKey(accountKey),
-    title = title,
-    contentItems = WireCodec.decodeContent(contentItems),
-    attachments = WireCodec.decodeAttachments(attachments),
-    folderId = folderId?.let(::FolderId),
-    tags = WireCodec.decodeTags(tags),
-    isFavorite = isFavorite,
-    summary = summary,
-    createdAt = Instant.ofEpochMilli(createdAtMillis),
-    updatedAt = Instant.ofEpochMilli(updatedAtMillis),
-)
+private fun NoteEntity.toApi() =
+    Note(
+        id = NoteId(id),
+        accountKey = AccountKey(accountKey),
+        title = title,
+        contentItems = WireCodec.decodeContent(contentItems),
+        attachments = WireCodec.decodeAttachments(attachments),
+        folderId = folderId?.let(::FolderId),
+        tags = WireCodec.decodeTags(tags),
+        isFavorite = isFavorite,
+        summary = summary,
+        createdAt = Instant.ofEpochMilli(createdAtMillis),
+        updatedAt = Instant.ofEpochMilli(updatedAtMillis),
+    )
 
-private fun Note.toOutbox(kind: LocalChangeKind) = OutboxEntity(
-    accountKey = accountKey.value,
-    changeId = UUID.randomUUID().toString(),
-    noteId = id.value,
-    kind = kind.name,
-    baseRevision = null,
-    changedAtMillis = updatedAt.toEpochMilli(),
-    title = title,
-    contentItems = WireCodec.encodeContent(contentItems),
-    attachments = WireCodec.encodeAttachments(attachments),
-    folderId = folderId?.value,
-    tags = WireCodec.encodeTags(tags),
-    isFavorite = isFavorite,
-    summary = summary,
-    createdAtMillis = createdAt.toEpochMilli(),
-)
+private fun Note.toOutbox(kind: LocalChangeKind) =
+    OutboxEntity(
+        accountKey = accountKey.value,
+        changeId = UUID.randomUUID().toString(),
+        noteId = id.value,
+        kind = kind.name,
+        baseRevision = null,
+        changedAtMillis = updatedAt.toEpochMilli(),
+        title = title,
+        contentItems = WireCodec.encodeContent(contentItems),
+        attachments = WireCodec.encodeAttachments(attachments),
+        folderId = folderId?.value,
+        tags = WireCodec.encodeTags(tags),
+        isFavorite = isFavorite,
+        summary = summary,
+        createdAtMillis = createdAt.toEpochMilli(),
+    )
 
 private fun OutboxEntity.toApi(): LocalNoteChange {
     val changeKind = LocalChangeKind.valueOf(kind)
-    val note = if (changeKind == LocalChangeKind.UPSERT) {
-        Note(
-            id = NoteId(noteId),
-            accountKey = AccountKey(accountKey),
-            title = requireNotNull(title),
-            contentItems = WireCodec.decodeContent(requireNotNull(contentItems)),
-            attachments = WireCodec.decodeAttachments(requireNotNull(attachments)),
-            folderId = folderId?.let(::FolderId),
-            tags = WireCodec.decodeTags(requireNotNull(tags)),
-            isFavorite = requireNotNull(isFavorite),
-            summary = summary,
-            createdAt = Instant.ofEpochMilli(requireNotNull(createdAtMillis)),
-            updatedAt = Instant.ofEpochMilli(changedAtMillis),
-        )
-    } else {
-        null
-    }
+    val note =
+        if (changeKind == LocalChangeKind.UPSERT) {
+            Note(
+                id = NoteId(noteId),
+                accountKey = AccountKey(accountKey),
+                title = requireNotNull(title),
+                contentItems = WireCodec.decodeContent(requireNotNull(contentItems)),
+                attachments = WireCodec.decodeAttachments(requireNotNull(attachments)),
+                folderId = folderId?.let(::FolderId),
+                tags = WireCodec.decodeTags(requireNotNull(tags)),
+                isFavorite = requireNotNull(isFavorite),
+                summary = summary,
+                createdAt = Instant.ofEpochMilli(requireNotNull(createdAtMillis)),
+                updatedAt = Instant.ofEpochMilli(changedAtMillis),
+            )
+        } else {
+            null
+        }
     return LocalNoteChange(
         changeId = changeId,
         accountKey = AccountKey(accountKey),
@@ -549,22 +620,18 @@ private object WireCodec {
         }
     }
 
-    fun decodeTags(value: String): Set<NoteTag> =
-        if (isVersion2(value)) decodeTagsV2(value) else decodeTagsV1(value)
+    fun decodeTags(value: String): Set<NoteTag> = if (isVersion2(value)) decodeTagsV2(value) else decodeTagsV1(value)
 
-    private fun decodeTagsV1(value: String): Set<NoteTag> =
-        lines(value).map { NoteTag(decode(it)) }.toSet()
+    private fun decodeTagsV1(value: String): Set<NoteTag> = lines(value).map { NoteTag(decode(it)) }.toSet()
 
     private fun decodeTagsV2(value: String): Set<NoteTag> =
         linesAfterMarker(value)
             .map { NoteTag(decodeString(it)) }
             .toSet()
 
-    private fun isVersion2(value: String): Boolean =
-        value == VERSION_2_MARKER || value.startsWith("$VERSION_2_MARKER\n")
+    private fun isVersion2(value: String): Boolean = value == VERSION_2_MARKER || value.startsWith("$VERSION_2_MARKER\n")
 
-    private fun lines(value: String): List<String> =
-        if (value.isEmpty()) emptyList() else value.split('\n')
+    private fun lines(value: String): List<String> = if (value.isEmpty()) emptyList() else value.split('\n')
 
     private fun linesAfterMarker(value: String): List<String> {
         if (value == VERSION_2_MARKER || value == "$VERSION_2_MARKER\n") {
@@ -615,8 +682,7 @@ private object WireCodec {
     private fun encode(value: String): String =
         encoder.encodeToString(value.toByteArray(StandardCharsets.UTF_8))
 
-    private fun decode(value: String): String =
-        String(decoder.decode(value), StandardCharsets.UTF_8)
+    private fun decode(value: String): String = String(decoder.decode(value), StandardCharsets.UTF_8)
 
     private fun decodeNullable(value: String): String? =
         if (value == "-") null else decode(value.removePrefix("+"))

@@ -10,13 +10,19 @@ import com.openvino.notes.ai.image.api.ImageTagger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
-internal class OpenVinoImageTagger(private val modelDirectory: String?) : ImageTagger {
+internal class OpenVinoImageTagger(
+    private val modelDirectory: String?,
+) : ImageTagger {
     private val mutableState = MutableStateFlow(ImageModelState.UNAVAILABLE)
     override val state: StateFlow<ImageModelState> = mutableState
 
     override suspend fun load(): ImageOutcome {
         mutableState.value = ImageModelState.UNAVAILABLE
-        return ImageOutcome.NotConfigured(modelDirectory?.let { "OpenVINO runtime artifact is not connected" } ?: "Image model directory is not configured")
+        return ImageOutcome.NotConfigured(
+            modelDirectory?.let {
+                "OpenVINO runtime artifact is not connected"
+            } ?: "Image model directory is not configured",
+        )
     }
 
     override suspend fun tag(input: ImageInput): ImageOutcome {
@@ -29,10 +35,14 @@ internal class OpenVinoImageTagger(private val modelDirectory: String?) : ImageT
         }
     }
 
-    override fun close() { mutableState.value = ImageModelState.CLOSED }
+    override fun close() {
+        mutableState.value = ImageModelState.CLOSED
+    }
 }
 
-data class OpenVinoImageComponent(val tagger: ImageTagger) {
+data class OpenVinoImageComponent(
+    val tagger: ImageTagger,
+) {
     companion object {
         fun create(modelDirectory: String? = null): OpenVinoImageComponent = OpenVinoImageComponent(OpenVinoImageTagger(modelDirectory))
     }

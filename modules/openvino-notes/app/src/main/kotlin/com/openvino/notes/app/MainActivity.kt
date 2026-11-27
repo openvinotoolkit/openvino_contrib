@@ -12,8 +12,8 @@ import com.openvino.notes.view.app.AppUiEffect
 import com.openvino.notes.view.app.OpenVinoNotesRoot
 import com.openvino.notes.view.assistant.AssistantViewModel
 import com.openvino.notes.view.identity.signin.IdentityViewModel
-import com.openvino.notes.view.notes.list.NotesListViewModel
 import com.openvino.notes.view.notes.folders.FoldersViewModel
+import com.openvino.notes.view.notes.list.NotesListViewModel
 import com.openvino.notes.view.settings.SettingsViewModel
 import com.openvino.notes.view.sync.SyncStatusViewModel
 import org.koin.compose.viewmodel.koinViewModel
@@ -36,15 +36,22 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(identity) {
                 identity.effects.collect { effect ->
                     when (effect) {
-                        AppUiEffect.LaunchGoogleSignIn ->
+                        AppUiEffect.LaunchGoogleSignIn -> {
                             identity.onActivityResult(identityController.signIn())
-                        AppUiEffect.LaunchGoogleDriveAuthorization ->
+                        }
+
+                        AppUiEffect.LaunchGoogleDriveAuthorization -> {
                             identity.onActivityResult(identityController.authorizeDrive())
-                        is AppUiEffect.Message -> Toast.makeText(
-                            this@MainActivity,
-                            effect.text,
-                            Toast.LENGTH_SHORT,
-                        ).show()
+                        }
+
+                        is AppUiEffect.Message -> {
+                            Toast
+                                .makeText(
+                                    this@MainActivity,
+                                    effect.text,
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                        }
                     }
                 }
             }

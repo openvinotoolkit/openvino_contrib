@@ -12,7 +12,21 @@ plugins {
     alias(libs.plugins.android.library) apply false
     alias(libs.plugins.kotlin.jvm) apply false
     alias(libs.plugins.kotlin.compose) apply false
+    alias(libs.plugins.ktlint)
     alias(libs.plugins.ksp) apply false
+}
+
+val ktlintVersion = libs.versions.ktlint.get()
+extensions.configure<org.jlleitschuh.gradle.ktlint.KtlintExtension> {
+    version.set(ktlintVersion)
+    filter {
+        exclude("**/*.gradle.kts")
+    }
+}
+tasks.matching {
+    it.name == "ktlintKotlinScriptCheck" || it.name == "ktlintKotlinScriptFormat"
+}.configureEach {
+    enabled = false
 }
 
 val workspaceBuildRoot = (
@@ -22,6 +36,19 @@ val workspaceBuildRoot = (
 layout.buildDirectory.set(workspaceBuildRoot.resolve("root"))
 
 subprojects {
+    apply(plugin = "org.jlleitschuh.gradle.ktlint")
+    extensions.configure<org.jlleitschuh.gradle.ktlint.KtlintExtension> {
+        version.set(ktlintVersion)
+        filter {
+            exclude("**/*.gradle.kts")
+        }
+    }
+    tasks.matching {
+        it.name == "ktlintKotlinScriptCheck" || it.name == "ktlintKotlinScriptFormat"
+    }.configureEach {
+        enabled = false
+    }
+
     val relativeProjectPath = path.removePrefix(":").replace(':', '/')
     layout.buildDirectory.set(workspaceBuildRoot.resolve(relativeProjectPath))
 
@@ -80,10 +107,16 @@ val allowedEdges = setOf(
 
 fun architectureProjects() = subprojects.filter { it.buildFile.isFile }
 
+fun isProductionDependencyConfiguration(name: String): Boolean {
+    val normalizedName = name.lowercase()
+    return !normalizedName.contains("test") &&
+        listOf("api", "implementation", "compileonly", "runtimeonly").any(normalizedName::endsWith)
+}
+
 fun productionEdges(): Set<String> =
     architectureProjects().flatMap { project ->
-        listOf("api", "implementation", "compileOnly").flatMap { configurationName ->
-            project.configurations.findByName(configurationName)?.dependencies.orEmpty().mapNotNull { dependency ->
+        project.configurations.filter { isProductionDependencyConfiguration(it.name) }.flatMap { configuration ->
+            configuration.dependencies.mapNotNull { dependency ->
                 (dependency as? ProjectDependency)?.path?.let { target -> "${project.path}->$target" }
             }
         }
@@ -91,6 +124,7 @@ fun productionEdges(): Set<String> =
 
 val graphMarkdown = layout.buildDirectory.file("reports/architecture/module-graph.md")
 val graphJson = layout.buildDirectory.file("reports/architecture/module-graph.json")
+val androidImportPattern = Regex("""^import\s+(?:static\s+)?androidx?\.""", RegexOption.MULTILINE)
 val infrastructurePortPattern = Regex("""\bcom\.openvino\.notes\.[A-Za-z0-9_.]+\.api\.port\.""")
 
 val generateModuleGraph by tasks.registering {
@@ -150,15 +184,19 @@ tasks.register("checkArchitecture") {
                 it in setOf(":notes:core", ":sync:core", ":assistant:core", ":cloud:drive")
         }
         neutralModules.forEach { modulePath ->
-            project(modulePath).fileTree("src/main").matching { include("**/*.kt") }.files.forEach { source ->
+            project(modulePath).fileTree("src/main").matching {
+                include("**/*.kt", "**/*.java")
+            }.files.forEach { source ->
                 val text = source.readText()
-                check(!Regex("^import androidx?\\.", RegexOption.MULTILINE).containsMatchIn(text)) {
+                check(!androidImportPattern.containsMatchIn(text)) {
                     "Platform import in $modulePath: ${source.relativeTo(rootDir)}"
                 }
             }
         }
 
-        project(":view").fileTree("src/main").matching { include("**/*.kt") }.files.forEach { source ->
+        project(":view").fileTree("src/main").matching {
+            include("**/*.kt", "**/*.java")
+        }.files.forEach { source ->
             val text = source.readText()
             val forbidden = listOf("androidx.room", "androidx.work", "org.intel.openvino", ".notes.room", ".cloud.drive")
             check(forbidden.none(text::contains)) { "Implementation import in :view: ${source.relativeTo(rootDir)}" }
@@ -168,15 +206,17 @@ tasks.register("checkArchitecture") {
         }
 
         architectureProjects().filter { it.path != ":app" }.forEach { module ->
-            module.fileTree("src/main").matching { include("**/*.kt") }.files.forEach { source ->
+            module.fileTree("src/main").matching {
+                include("**/*.kt", "**/*.java")
+            }.files.forEach { source ->
                 check(!source.readText().contains("org.koin")) {
                     "Koin is only allowed in :app: ${source.relativeTo(rootDir)}"
                 }
             }
-            listOf("api", "implementation", "compileOnly", "runtimeOnly").forEach { configurationName ->
-                module.configurations.findByName(configurationName)?.dependencies.orEmpty().forEach { dependency ->
+            module.configurations.filter { isProductionDependencyConfiguration(it.name) }.forEach { configuration ->
+                configuration.dependencies.forEach { dependency ->
                     check(dependency.group != "io.insert-koin") {
-                        "Koin dependency is only allowed in :app: ${module.path} -> ${dependency.group}:${dependency.name}"
+                        "Koin dependency is only allowed in :app: ${module.path} -> ${configuration.name} -> ${dependency.group}:${dependency.name}"
                     }
                 }
             }
@@ -184,12 +224,19 @@ tasks.register("checkArchitecture") {
 
         val productionAndConfig = files(
             fileTree(rootDir) {
-                include("**/src/main/**", "*.gradle.kts", "settings.gradle.kts", "gradle/libs.versions.toml")
+                include("**/src/main/**", "**/*.gradle.kts", "settings.gradle.kts", "gradle/libs.versions.toml")
                 exclude("**/build/**")
             },
         )
+        val scannedConfigurationFiles = productionAndConfig.files
+        val unscannedBuildFiles = (listOf(rootProject.buildFile) + architectureProjects().map { it.buildFile })
+            .filterNot(scannedConfigurationFiles::contains)
+        check(unscannedBuildFiles.isEmpty()) {
+            "Gradle build scripts outside Firebase or Google Services scan: " +
+                unscannedBuildFiles.joinToString { it.relativeTo(rootDir).path }
+        }
         val forbiddenConfigurationTokens = listOf("com.google." + "firebase", "google" + "-services")
-        productionAndConfig.files.filter { it.isFile }.forEach { source ->
+        scannedConfigurationFiles.filter { it.isFile }.forEach { source ->
             val text = source.readText()
             check(forbiddenConfigurationTokens.none(text::contains)) {
                 "Firebase or Google Services reference: ${source.relativeTo(rootDir)}"
@@ -216,6 +263,18 @@ tasks.register("checkArchitectureRules") {
     group = "verification"
     description = "Self-tests subset semantics used by the architecture dependency gate."
     doLast {
+        listOf("api", "implementation", "compileOnly", "runtimeOnly", "debugImplementation", "freeReleaseRuntimeOnly")
+            .forEach { configurationName ->
+                check(isProductionDependencyConfiguration(configurationName)) {
+                    "Production dependency configuration must be checked: $configurationName"
+                }
+            }
+        listOf("testImplementation", "androidTestRuntimeOnly", "debugUnitTestImplementation", "testFixturesApi")
+            .forEach { configurationName ->
+                check(!isProductionDependencyConfiguration(configurationName)) {
+                    "Test dependency configuration must not enter the production graph: $configurationName"
+                }
+            }
         val permittedSubset = allowedEdges.take(1).toSet()
         check((permittedSubset - allowedEdges).isEmpty()) { "An allowed optional edge subset must pass" }
         val futureCloudComposition = setOf(":app->:cloud:api", ":app->:cloud:drive")
@@ -234,6 +293,15 @@ tasks.register("checkArchitectureRules") {
         }
         check(!infrastructurePortPattern.containsMatchIn("import com.openvino.notes.notes.api.NotesService")) {
             "Consumer service imports must remain allowed"
+        }
+        check(androidImportPattern.containsMatchIn("import android.content.Context")) {
+            "Android imports must be recognized"
+        }
+        check(androidImportPattern.containsMatchIn("import static android.os.Build.VERSION.SDK_INT;")) {
+            "Java static Android imports must be recognized"
+        }
+        check(!androidImportPattern.containsMatchIn("import com.android.test.FakeAndroid")) {
+            "Non-Android imports must remain allowed"
         }
     }
 }

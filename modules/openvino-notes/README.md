@@ -78,7 +78,7 @@ java -classpath gradle/wrapper/gradle-wrapper.jar \
   --project-cache-dir "$OPENVINO_NOTES_STATE_ROOT/project-cache" \
   -PopenvinoNotesBuildRoot="$OPENVINO_NOTES_STATE_ROOT/gradle" \
   -Pkotlin.project.persistent.dir="$OPENVINO_NOTES_STATE_ROOT/kotlin-project" \
-  checkArchitecture test testDebugUnitTest :app:assembleDebug
+  checkArchitecture lint ktlintCheck test testDebugUnitTest :app:assembleDebug
 ```
 
 The default ABI is `arm64-v8a`. For an x86_64 emulator or the CI-equivalent
@@ -93,6 +93,23 @@ Install it on a connected target with:
 ```sh
 "$ANDROID_SDK_ROOT/platform-tools/adb" install -r \
   "$OPENVINO_NOTES_STATE_ROOT/gradle/app/outputs/apk/debug/app-debug.apk"
+```
+
+## Gradle Dependency Verification
+
+Gradle verifies SHA-256 hashes in `gradle/verification-metadata.xml`. Regenerate
+and review them after dependency changes. Use the CI task set so Gradle resolves
+build-time dependencies as well as the plugin classpath:
+
+```sh
+java -classpath gradle/wrapper/gradle-wrapper.jar \
+  org.gradle.wrapper.GradleWrapperMain \
+  --project-cache-dir "$OPENVINO_NOTES_STATE_ROOT/project-cache" \
+  -PopenvinoNotesBuildRoot="$OPENVINO_NOTES_STATE_ROOT/gradle" \
+  -Pkotlin.project.persistent.dir="$OPENVINO_NOTES_STATE_ROOT/kotlin-project" \
+  --write-verification-metadata sha256 \
+  checkArchitecture lint ktlintCheck test testDebugUnitTest :app:assembleDebug \
+  -PopenvinoAndroidAbi=x86_64
 ```
 
 ## Development Rules

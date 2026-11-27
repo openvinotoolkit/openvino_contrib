@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 .gradle/
+.idea/
 local.properties
 **/build/
 captures/

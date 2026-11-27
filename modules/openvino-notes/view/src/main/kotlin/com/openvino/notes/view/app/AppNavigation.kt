@@ -11,7 +11,10 @@ import androidx.compose.runtime.Composable
 internal enum class Destination { NOTES, FOLDERS, SYNC, SETTINGS, ASSISTANT }
 
 @Composable
-internal fun AppNavigation(selected: Destination, onSelected: (Destination) -> Unit) {
+internal fun AppNavigation(
+    selected: Destination,
+    onSelected: (Destination) -> Unit,
+) {
     NavigationBar {
         Destination.entries.forEach { item ->
             NavigationBarItem(

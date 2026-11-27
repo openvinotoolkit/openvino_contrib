@@ -15,11 +15,20 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-data class AssistantUiState(val running: Boolean = false, val status: String = "Select an AI operation")
+data class AssistantUiState(
+    val running: Boolean = false,
+    val status: String = "Select an AI operation",
+)
 
 sealed interface AssistantUiAction {
-    data class Summarize(val noteId: NoteId) : AssistantUiAction
-    data class SuggestTextTags(val noteId: NoteId) : AssistantUiAction
+    data class Summarize(
+        val noteId: NoteId,
+    ) : AssistantUiAction
+
+    data class SuggestTextTags(
+        val noteId: NoteId,
+    ) : AssistantUiAction
+
     data class Rewrite(
         val noteId: NoteId,
         val contentItemId: ContentItemId,
@@ -27,27 +36,31 @@ sealed interface AssistantUiAction {
     ) : AssistantUiAction
 }
 
-class AssistantViewModel(private val assistant: NoteAssistant) : ViewModel() {
+class AssistantViewModel(
+    private val assistant: NoteAssistant,
+) : ViewModel() {
     private val mutableState = MutableStateFlow(AssistantUiState())
     val state: StateFlow<AssistantUiState> = mutableState.asStateFlow()
 
     fun onAction(action: AssistantUiAction) {
         viewModelScope.launch {
             mutableState.value = AssistantUiState(running = true, status = "Running")
-            val outcome = when (action) {
-                is AssistantUiAction.Summarize -> assistant.summarize(action.noteId)
-                is AssistantUiAction.SuggestTextTags -> assistant.suggestTextTags(action.noteId)
-                is AssistantUiAction.Rewrite -> assistant.rewrite(action.noteId, action.contentItemId, action.style)
-            }
+            val outcome =
+                when (action) {
+                    is AssistantUiAction.Summarize -> assistant.summarize(action.noteId)
+                    is AssistantUiAction.SuggestTextTags -> assistant.suggestTextTags(action.noteId)
+                    is AssistantUiAction.Rewrite -> assistant.rewrite(action.noteId, action.contentItemId, action.style)
+                }
             mutableState.value = AssistantUiState(status = outcome.displayText())
         }
     }
 }
 
-private fun SuggestionOutcome.displayText(): String = when (this) {
-    is SuggestionOutcome.Ready -> "Suggestion ready"
-    SuggestionOutcome.NoteNotFound -> "Note not found"
-    is SuggestionOutcome.InvalidTarget -> reason
-    is SuggestionOutcome.Unavailable -> reason
-    is SuggestionOutcome.Failed -> "Assistant failed: $code"
-}
+private fun SuggestionOutcome.displayText(): String =
+    when (this) {
+        is SuggestionOutcome.Ready -> "Suggestion ready"
+        SuggestionOutcome.NoteNotFound -> "Note not found"
+        is SuggestionOutcome.InvalidTarget -> reason
+        is SuggestionOutcome.Unavailable -> reason
+        is SuggestionOutcome.Failed -> "Assistant failed: $code"
+    }

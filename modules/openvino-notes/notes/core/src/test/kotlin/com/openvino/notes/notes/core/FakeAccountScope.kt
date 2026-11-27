@@ -7,8 +7,14 @@ import com.openvino.notes.kernel.AccountKey
 import com.openvino.notes.kernel.AccountScope
 import kotlinx.coroutines.flow.MutableStateFlow
 
-internal class FakeAccountScope(initial: AccountKey? = null) : AccountScope {
+internal class FakeAccountScope(
+    initial: AccountKey? = null,
+) : AccountScope {
     override val activeAccountKey = MutableStateFlow(initial)
+
     override fun currentAccountKey(): AccountKey? = activeAccountKey.value
-    fun set(accountKey: AccountKey?) { activeAccountKey.value = accountKey }
+
+    fun set(accountKey: AccountKey?) {
+        activeAccountKey.value = accountKey
+    }
 }

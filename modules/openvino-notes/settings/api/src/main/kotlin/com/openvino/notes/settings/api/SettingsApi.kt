@@ -14,6 +14,8 @@ data class AppSettings(
 
 interface SettingsService {
     val settings: Flow<AppSettings>
+
     suspend fun setThemeMode(mode: ThemeMode)
+
     suspend fun setDynamicColor(enabled: Boolean)
 }

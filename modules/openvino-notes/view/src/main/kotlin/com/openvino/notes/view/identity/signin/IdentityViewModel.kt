@@ -26,31 +26,46 @@ data class IdentityUiState(
 
 sealed interface IdentityUiAction {
     data object SignIn : IdentityUiAction
+
     data object AuthorizeDrive : IdentityUiAction
+
     data object SignOut : IdentityUiAction
 }
 
-class IdentityViewModel(private val identity: IdentityService) : ViewModel() {
+class IdentityViewModel(
+    private val identity: IdentityService,
+) : ViewModel() {
     private val effectChannel = Channel<AppUiEffect>(Channel.BUFFERED)
     val effects: Flow<AppUiEffect> = effectChannel.receiveAsFlow()
     val state: StateFlow<AuthenticationState> = identity.authenticationState
-    val uiState: StateFlow<IdentityUiState> = state.map { authentication ->
-        when (authentication) {
-            AuthenticationState.Initializing -> IdentityUiState()
-            AuthenticationState.SignedOut -> IdentityUiState(initializing = false)
-            is AuthenticationState.SignedIn -> IdentityUiState(
-                initializing = false,
-                signedIn = true,
-                displayName = authentication.session.displayName,
-            )
-        }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), IdentityUiState())
+    val uiState: StateFlow<IdentityUiState> =
+        state
+            .map { authentication ->
+                when (authentication) {
+                    AuthenticationState.Initializing -> {
+                        IdentityUiState()
+                    }
 
-    fun onAction(action: IdentityUiAction) = when (action) {
-        IdentityUiAction.SignIn -> signIn()
-        IdentityUiAction.AuthorizeDrive -> authorizeDrive()
-        IdentityUiAction.SignOut -> signOut()
-    }
+                    AuthenticationState.SignedOut -> {
+                        IdentityUiState(initializing = false)
+                    }
+
+                    is AuthenticationState.SignedIn -> {
+                        IdentityUiState(
+                            initializing = false,
+                            signedIn = true,
+                            displayName = authentication.session.displayName,
+                        )
+                    }
+                }
+            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), IdentityUiState())
+
+    fun onAction(action: IdentityUiAction) =
+        when (action) {
+            IdentityUiAction.SignIn -> signIn()
+            IdentityUiAction.AuthorizeDrive -> authorizeDrive()
+            IdentityUiAction.SignOut -> signOut()
+        }
 
     fun signIn() {
         effectChannel.trySend(AppUiEffect.LaunchGoogleSignIn)
@@ -61,12 +76,13 @@ class IdentityViewModel(private val identity: IdentityService) : ViewModel() {
     }
 
     fun onActivityResult(outcome: IdentityOutcome) {
-        val message = when (outcome) {
-            IdentityOutcome.Completed -> return
-            IdentityOutcome.Cancelled -> "Operation cancelled"
-            is IdentityOutcome.NotConfigured -> outcome.reason
-            is IdentityOutcome.Failed -> "Identity operation failed: ${outcome.code}"
-        }
+        val message =
+            when (outcome) {
+                IdentityOutcome.Completed -> return
+                IdentityOutcome.Cancelled -> "Operation cancelled"
+                is IdentityOutcome.NotConfigured -> outcome.reason
+                is IdentityOutcome.Failed -> "Identity operation failed: ${outcome.code}"
+            }
         effectChannel.trySend(AppUiEffect.Message(message))
     }
 

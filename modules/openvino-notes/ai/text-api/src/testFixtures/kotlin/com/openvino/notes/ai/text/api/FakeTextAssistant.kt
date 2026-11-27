@@ -13,8 +13,14 @@ class FakeTextAssistant : TextAssistant {
     var rewriteOutcome: RewriteOutcome = RewriteOutcome.Generated("fake rewrite")
 
     override suspend fun load(): ModelLoadOutcome = loadOutcome
+
     override suspend fun summarize(request: SummaryRequest): SummaryOutcome = summaryOutcome
+
     override suspend fun suggestTags(request: TextTagsRequest): TextTagsOutcome = tagsOutcome
+
     override suspend fun rewrite(request: RewriteRequest): RewriteOutcome = rewriteOutcome
-    override fun close() { state.value = TextModelState.CLOSED }
+
+    override fun close() {
+        state.value = TextModelState.CLOSED
+    }
 }

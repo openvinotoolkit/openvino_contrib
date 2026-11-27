@@ -8,28 +8,57 @@ import com.openvino.notes.cloud.api.RemoteObjectId
 import com.openvino.notes.cloud.api.RemoteOutcome
 import com.openvino.notes.cloud.api.UploadDescriptor
 import com.openvino.notes.identity.api.FakeIdentityService
+import com.openvino.notes.identity.api.UserSession
+import com.openvino.notes.identity.api.port.AccessTokenOutcome
 import com.openvino.notes.kernel.AccountKey
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class DriveCloudComponentTest {
-    @Test fun `initial discovery and resumable transfer expose typed unavailable outcomes`() = runTest {
-        val component = DriveCloudComponent.create(FakeIdentityService())
-        val accountKey = AccountKey("account")
+    @Test fun `initial discovery and resumable transfer expose typed unavailable outcomes`() =
+        runTest {
+            val component = DriveCloudComponent.create(FakeIdentityService())
+            val accountKey = AccountKey("account")
 
-        assertFailureCode(RemoteErrorCode.SIGNED_OUT, component.objectStore.list(accountKey))
-        assertFailureCode(RemoteErrorCode.SIGNED_OUT, component.changeFeed.startCursor(accountKey))
-        assertFailureCode(
-            RemoteErrorCode.SIGNED_OUT,
-            component.transferClient.startUpload(
-                accountKey,
-                UploadDescriptor(RemoteObjectId("media"), "image.jpg", "image/jpeg", 1024),
-            ),
-        )
-    }
+            assertFailureCode(RemoteErrorCode.SIGNED_OUT, component.objectStore.list(accountKey))
+            assertFailureCode(RemoteErrorCode.SIGNED_OUT, component.changeFeed.startCursor(accountKey))
+            assertFailureCode(
+                RemoteErrorCode.SIGNED_OUT,
+                component.transferClient.startUpload(
+                    accountKey,
+                    UploadDescriptor(RemoteObjectId("media"), "image.jpg", "image/jpeg", 1024),
+                ),
+            )
+        }
 
-    private fun assertFailureCode(expected: RemoteErrorCode, outcome: RemoteOutcome<*>) {
+    @Test fun `drive passes account key to token provider`() =
+        runTest {
+            val fake = FakeIdentityService()
+            val component = DriveCloudComponent.create(fake)
+            val accountKey = AccountKey("account-x")
+
+            component.objectStore.list(accountKey)
+
+            assertEquals(accountKey, fake.lastRequestedAccountKey)
+        }
+
+    @Test fun `request for different account returns account mismatch`() =
+        runTest {
+            val fake = FakeIdentityService()
+            val accountB = AccountKey("account-b")
+            fake.setSession(UserSession(accountB, "B", "b@example.test"))
+            fake.setDriveAuthorized(true)
+
+            val outcome = fake.accessToken(AccountKey("account-a"))
+
+            assertEquals(AccessTokenOutcome.Failed("identity.account_mismatch"), outcome)
+        }
+
+    private fun assertFailureCode(
+        expected: RemoteErrorCode,
+        outcome: RemoteOutcome<*>,
+    ) {
         assertEquals(expected, (outcome as RemoteOutcome.Failure).error.code)
     }
 }

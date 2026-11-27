@@ -11,72 +11,160 @@ import com.openvino.notes.identity.api.IdentityService
 import com.openvino.notes.identity.api.UserSession
 import com.openvino.notes.identity.api.port.AccessTokenOutcome
 import com.openvino.notes.identity.api.port.AccessTokenProvider
+import com.openvino.notes.kernel.AccountKey
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.util.concurrent.atomic.AtomicLong
 
 sealed interface GoogleSignInResult {
-    data class Authenticated(val session: UserSession) : GoogleSignInResult
+    data class Authenticated(
+        val session: UserSession,
+    ) : GoogleSignInResult
+
     data object Cancelled : GoogleSignInResult
-    data class NotConfigured(val reason: String) : GoogleSignInResult
-    data class Failed(val code: String) : GoogleSignInResult
+
+    data class NotConfigured(
+        val reason: String,
+    ) : GoogleSignInResult
+
+    data class Failed(
+        val code: String,
+    ) : GoogleSignInResult
 }
 
 sealed interface GoogleDriveAuthorizationResult {
     data object Authorized : GoogleDriveAuthorizationResult
+
     data object Cancelled : GoogleDriveAuthorizationResult
-    data class NotConfigured(val reason: String) : GoogleDriveAuthorizationResult
-    data class Failed(val code: String) : GoogleDriveAuthorizationResult
+
+    data class NotConfigured(
+        val reason: String,
+    ) : GoogleDriveAuthorizationResult
+
+    data class Failed(
+        val code: String,
+    ) : GoogleDriveAuthorizationResult
 }
 
 /** Activity-scoped launcher boundary implemented by the app once Google Identity is configured. */
 interface GoogleIdentityLauncher {
     suspend fun launchSignIn(): GoogleSignInResult
+
     suspend fun authorizeDrive(): GoogleDriveAuthorizationResult
 }
 
 private class UnconfiguredGoogleIdentityLauncher : GoogleIdentityLauncher {
-    override suspend fun launchSignIn() = GoogleSignInResult.NotConfigured(
-        "Google Identity client is not configured",
-    )
-    override suspend fun authorizeDrive() = GoogleDriveAuthorizationResult.NotConfigured(
-        "Drive OAuth scope is not configured",
-    )
+    override suspend fun launchSignIn() =
+        GoogleSignInResult.NotConfigured(
+            "Google Identity client is not configured",
+        )
+
+    override suspend fun authorizeDrive() =
+        GoogleDriveAuthorizationResult.NotConfigured(
+            "Drive OAuth scope is not configured",
+        )
 }
 
-internal class GoogleIdentityService : IdentityService, AccessTokenProvider {
+internal data class OperationContext(
+    val generation: Long,
+    val accountKey: AccountKey?,
+)
+
+internal class GoogleIdentityService :
+    IdentityService,
+    AccessTokenProvider {
     private val authentication = MutableStateFlow<AuthenticationState>(AuthenticationState.Initializing)
     private val driveAuthorization = MutableStateFlow(DriveAuthorizationState.NOT_AUTHORIZED)
-    private var cachedAccessToken: String? = null
+    private val cachedTokens = mutableMapOf<AccountKey, String>()
+
+    private val sessionGeneration = AtomicLong(0L)
+
     override val authenticationState: StateFlow<AuthenticationState> = authentication
     override val driveAuthorizationState: StateFlow<DriveAuthorizationState> = driveAuthorization
+
     override fun currentAccountKey() = (authentication.value as? AuthenticationState.SignedIn)?.session?.accountKey
 
+    fun captureContext(): OperationContext =
+        OperationContext(
+            generation = sessionGeneration.get(),
+            accountKey = currentAccountKey(),
+        )
+
     fun completeInitialization(session: UserSession?) {
+        sessionGeneration.incrementAndGet()
         authentication.value = session?.let(AuthenticationState::SignedIn) ?: AuthenticationState.SignedOut
     }
 
-    fun accept(result: GoogleSignInResult): IdentityOutcome = when (result) {
-        is GoogleSignInResult.Authenticated -> {
-            authentication.value = AuthenticationState.SignedIn(result.session)
-            IdentityOutcome.Completed
+    fun accept(
+        result: GoogleSignInResult,
+        context: OperationContext,
+    ): IdentityOutcome {
+        // Discard if the session generation has changed (e.g., a logout occurred)
+        if (context.generation != sessionGeneration.get()) {
+            return IdentityOutcome.Failed("identity.stale_operation")
         }
-        GoogleSignInResult.Cancelled -> IdentityOutcome.Cancelled
-        is GoogleSignInResult.NotConfigured -> IdentityOutcome.NotConfigured(result.reason)
-        is GoogleSignInResult.Failed -> IdentityOutcome.Failed(result.code)
+
+        return when (result) {
+            is GoogleSignInResult.Authenticated -> {
+                val accountChanged = currentAccountKey() != result.session.accountKey
+                authentication.value = AuthenticationState.SignedIn(result.session)
+
+                sessionGeneration.incrementAndGet()
+
+                if (accountChanged) {
+                    driveAuthorization.value = DriveAuthorizationState.NOT_AUTHORIZED
+                }
+                IdentityOutcome.Completed
+            }
+
+            GoogleSignInResult.Cancelled -> {
+                IdentityOutcome.Cancelled
+            }
+
+            is GoogleSignInResult.NotConfigured -> {
+                IdentityOutcome.NotConfigured(result.reason)
+            }
+
+            is GoogleSignInResult.Failed -> {
+                IdentityOutcome.Failed(result.code)
+            }
+        }
     }
 
-    fun accept(result: GoogleDriveAuthorizationResult): IdentityOutcome = when (result) {
-        GoogleDriveAuthorizationResult.Authorized -> {
-            driveAuthorization.value = DriveAuthorizationState.AUTHORIZED
-            IdentityOutcome.Completed
+    fun accept(
+        result: GoogleDriveAuthorizationResult,
+        context: OperationContext,
+    ): IdentityOutcome {
+        if (context.generation != sessionGeneration.get() ||
+            context.accountKey == null ||
+            context.accountKey != currentAccountKey()
+        ) {
+            return IdentityOutcome.Failed("identity.stale_operation")
         }
-        GoogleDriveAuthorizationResult.Cancelled -> IdentityOutcome.Cancelled
-        is GoogleDriveAuthorizationResult.NotConfigured -> IdentityOutcome.NotConfigured(result.reason)
-        is GoogleDriveAuthorizationResult.Failed -> IdentityOutcome.Failed(result.code)
+
+        return when (result) {
+            GoogleDriveAuthorizationResult.Authorized -> {
+                driveAuthorization.value = DriveAuthorizationState.AUTHORIZED
+                IdentityOutcome.Completed
+            }
+
+            GoogleDriveAuthorizationResult.Cancelled -> {
+                IdentityOutcome.Cancelled
+            }
+
+            is GoogleDriveAuthorizationResult.NotConfigured -> {
+                IdentityOutcome.NotConfigured(result.reason)
+            }
+
+            is GoogleDriveAuthorizationResult.Failed -> {
+                IdentityOutcome.Failed(result.code)
+            }
+        }
     }
 
     override suspend fun signOut(): IdentityOutcome {
-        invalidateAccessToken()
+        sessionGeneration.incrementAndGet() // Invalidate current operations
+        currentAccountKey()?.let { invalidateAccessToken(it) }
         authentication.value = AuthenticationState.SignedOut
         driveAuthorization.value = DriveAuthorizationState.NOT_AUTHORIZED
         return IdentityOutcome.Completed
@@ -84,14 +172,16 @@ internal class GoogleIdentityService : IdentityService, AccessTokenProvider {
 
     override suspend fun disconnect(): IdentityOutcome = signOut()
 
-    override suspend fun accessToken(): AccessTokenOutcome = when {
-        currentAccountKey() == null -> AccessTokenOutcome.SignedOut
-        driveAuthorization.value != DriveAuthorizationState.AUTHORIZED -> AccessTokenOutcome.NotAuthorized
-        else -> AccessTokenOutcome.Failed("google.token_provider_not_connected")
-    }
+    override suspend fun accessToken(accountKey: AccountKey): AccessTokenOutcome =
+        when {
+            currentAccountKey() == null -> AccessTokenOutcome.SignedOut
+            currentAccountKey() != accountKey -> AccessTokenOutcome.Failed("identity.account_mismatch")
+            driveAuthorization.value != DriveAuthorizationState.AUTHORIZED -> AccessTokenOutcome.NotAuthorized
+            else -> AccessTokenOutcome.Failed("google.token_provider_not_connected")
+        }
 
-    override suspend fun invalidateAccessToken() {
-        cachedAccessToken = null
+    override suspend fun invalidateAccessToken(accountKey: AccountKey) {
+        cachedTokens.remove(accountKey)
     }
 }
 
@@ -99,8 +189,15 @@ class GoogleIdentityUiController internal constructor(
     private val service: GoogleIdentityService,
     private val launcher: GoogleIdentityLauncher,
 ) {
-    suspend fun signIn(): IdentityOutcome = service.accept(launcher.launchSignIn())
-    suspend fun authorizeDrive(): IdentityOutcome = service.accept(launcher.authorizeDrive())
+    suspend fun signIn(): IdentityOutcome {
+        val context = service.captureContext()
+        return service.accept(launcher.launchSignIn(), context)
+    }
+
+    suspend fun authorizeDrive(): IdentityOutcome {
+        val context = service.captureContext()
+        return service.accept(launcher.authorizeDrive(), context)
+    }
 }
 
 class GoogleIdentityComponent private constructor(

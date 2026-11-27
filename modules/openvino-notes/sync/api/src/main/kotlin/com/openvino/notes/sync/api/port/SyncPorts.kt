@@ -9,12 +9,20 @@ import com.openvino.notes.sync.api.SyncReason
 import java.time.Instant
 
 fun interface SyncExecutor {
-    suspend fun execute(accountKey: AccountKey, reason: SyncReason): SyncOutcome
+    suspend fun execute(
+        accountKey: AccountKey,
+        reason: SyncReason,
+    ): SyncOutcome
 }
 
 interface SyncScheduler {
     fun schedulePeriodic(accountKey: AccountKey)
-    fun request(accountKey: AccountKey, reason: SyncReason)
+
+    fun request(
+        accountKey: AccountKey,
+        reason: SyncReason,
+    )
+
     fun cancel(accountKey: AccountKey)
 }
 
@@ -27,11 +35,17 @@ data class SyncCheckpoint(
 )
 
 /** Sensitive Cloud session value persisted opaquely by Sync without depending on Cloud API types. */
-class OpaqueTransferSessionId(val value: String) {
-    init { require(value.isNotBlank()) { "Transfer session ID must not be blank" } }
+class OpaqueTransferSessionId(
+    val value: String,
+) {
+    init {
+        require(value.isNotBlank()) { "Transfer session ID must not be blank" }
+    }
 
     override fun equals(other: Any?): Boolean = other is OpaqueTransferSessionId && value == other.value
+
     override fun hashCode(): Int = value.hashCode()
+
     override fun toString(): String = "OpaqueTransferSessionId(**redacted**)"
 }
 
@@ -51,15 +65,33 @@ data class PendingTransferCheckpoint(
 
 interface SyncCheckpointPort {
     suspend fun read(accountKey: AccountKey): SyncCheckpoint
-    suspend fun write(accountKey: AccountKey, checkpoint: SyncCheckpoint)
+
+    suspend fun write(
+        accountKey: AccountKey,
+        checkpoint: SyncCheckpoint,
+    )
+
     suspend fun clear(accountKey: AccountKey)
 }
 
 /** Durable, account-scoped state required to resume media transfers after process death. */
 interface SyncTransferCheckpointPort {
-    suspend fun read(accountKey: AccountKey, operationId: String): PendingTransferCheckpoint?
+    suspend fun read(
+        accountKey: AccountKey,
+        operationId: String,
+    ): PendingTransferCheckpoint?
+
     suspend fun pending(accountKey: AccountKey): List<PendingTransferCheckpoint>
-    suspend fun write(accountKey: AccountKey, checkpoint: PendingTransferCheckpoint)
-    suspend fun remove(accountKey: AccountKey, operationId: String): Boolean
+
+    suspend fun write(
+        accountKey: AccountKey,
+        checkpoint: PendingTransferCheckpoint,
+    )
+
+    suspend fun remove(
+        accountKey: AccountKey,
+        operationId: String,
+    ): Boolean
+
     suspend fun clear(accountKey: AccountKey)
 }

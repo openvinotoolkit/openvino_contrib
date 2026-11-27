@@ -10,29 +10,57 @@ import com.openvino.notes.notes.api.Folder
 import com.openvino.notes.notes.api.FolderId
 import com.openvino.notes.notes.api.Note
 import com.openvino.notes.notes.api.NoteId
-import java.io.ByteArrayOutputStream
-import java.time.Instant
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
+import java.io.ByteArrayOutputStream
+import java.time.Instant
 
 interface NotesRepository {
     fun observe(accountKey: AccountKey): Flow<List<Note>>
-    suspend fun find(accountKey: AccountKey, id: NoteId): Note?
-    suspend fun countInFolder(accountKey: AccountKey, folderId: FolderId): Int
+
+    suspend fun find(
+        accountKey: AccountKey,
+        id: NoteId,
+    ): Note?
+
+    suspend fun countInFolder(
+        accountKey: AccountKey,
+        folderId: FolderId,
+    ): Int
+
     suspend fun save(note: Note)
-    suspend fun delete(accountKey: AccountKey, id: NoteId): Boolean
+
+    suspend fun delete(
+        accountKey: AccountKey,
+        id: NoteId,
+    ): Boolean
 }
 
 interface FolderRepository {
     fun observe(accountKey: AccountKey): Flow<List<Folder>>
-    suspend fun find(accountKey: AccountKey, id: FolderId): Folder?
-    suspend fun findByName(accountKey: AccountKey, name: String): Folder?
+
+    suspend fun find(
+        accountKey: AccountKey,
+        id: FolderId,
+    ): Folder?
+
+    suspend fun findByName(
+        accountKey: AccountKey,
+        name: String,
+    ): Folder?
+
     suspend fun save(folder: Folder)
-    suspend fun delete(accountKey: AccountKey, id: FolderId): Boolean
+
+    suspend fun delete(
+        accountKey: AccountKey,
+        id: FolderId,
+    ): Boolean
 }
 
-@JvmInline value class RemoteRevision(val value: String)
+@JvmInline value class RemoteRevision(
+    val value: String,
+)
 
 enum class LocalChangeKind { UPSERT, DELETE }
 
@@ -70,15 +98,32 @@ sealed interface RemoteNoteChange {
 
 sealed interface RemoteApplyResult {
     val noteId: NoteId?
-    data class Applied(override val noteId: NoteId, val revision: RemoteRevision) : RemoteApplyResult
-    data class Merged(override val noteId: NoteId, val generatedChangeId: String) : RemoteApplyResult
+
+    data class Applied(
+        override val noteId: NoteId,
+        val revision: RemoteRevision,
+    ) : RemoteApplyResult
+
+    data class Merged(
+        override val noteId: NoteId,
+        val generatedChangeId: String,
+    ) : RemoteApplyResult
+
     data class Conflict(
         override val noteId: NoteId,
         val localRevision: RemoteRevision?,
         val remoteRevision: RemoteRevision,
     ) : RemoteApplyResult
-    data class TombstoneApplied(override val noteId: NoteId, val revision: RemoteRevision) : RemoteApplyResult
-    data class RejectedMalformed(override val noteId: NoteId?, val diagnosticCode: String) : RemoteApplyResult
+
+    data class TombstoneApplied(
+        override val noteId: NoteId,
+        val revision: RemoteRevision,
+    ) : RemoteApplyResult
+
+    data class RejectedMalformed(
+        override val noteId: NoteId?,
+        val diagnosticCode: String,
+    ) : RemoteApplyResult
 }
 
 data class LocalFolderChange(
@@ -115,25 +160,57 @@ sealed interface RemoteFolderChange {
 
 sealed interface FolderRemoteApplyResult {
     val folderId: FolderId?
-    data class Applied(override val folderId: FolderId, val revision: RemoteRevision) : FolderRemoteApplyResult
+
+    data class Applied(
+        override val folderId: FolderId,
+        val revision: RemoteRevision,
+    ) : FolderRemoteApplyResult
+
     data class Conflict(
         override val folderId: FolderId,
         val localRevision: RemoteRevision?,
         val remoteRevision: RemoteRevision,
     ) : FolderRemoteApplyResult
-    data class TombstoneApplied(override val folderId: FolderId, val revision: RemoteRevision) : FolderRemoteApplyResult
-    data class RejectedMalformed(override val folderId: FolderId?, val diagnosticCode: String) : FolderRemoteApplyResult
+
+    data class TombstoneApplied(
+        override val folderId: FolderId,
+        val revision: RemoteRevision,
+    ) : FolderRemoteApplyResult
+
+    data class RejectedMalformed(
+        override val folderId: FolderId?,
+        val diagnosticCode: String,
+    ) : FolderRemoteApplyResult
 }
 
 interface NotesSyncPort {
-    suspend fun pendingChanges(accountKey: AccountKey, limit: Int = 100): List<LocalNoteChange>
-    suspend fun acknowledge(accountKey: AccountKey, changeIds: Set<String>)
-    suspend fun applyRemote(accountKey: AccountKey, changes: List<RemoteNoteChange>): List<RemoteApplyResult>
+    suspend fun pendingChanges(
+        accountKey: AccountKey,
+        limit: Int = 100,
+    ): List<LocalNoteChange>
+
+    suspend fun acknowledge(
+        accountKey: AccountKey,
+        changeIds: Set<String>,
+    )
+
+    suspend fun applyRemote(
+        accountKey: AccountKey,
+        changes: List<RemoteNoteChange>,
+    ): List<RemoteApplyResult>
 }
 
 interface FolderSyncPort {
-    suspend fun pendingFolderChanges(accountKey: AccountKey, limit: Int = 100): List<LocalFolderChange>
-    suspend fun acknowledgeFolderChanges(accountKey: AccountKey, changeIds: Set<String>)
+    suspend fun pendingFolderChanges(
+        accountKey: AccountKey,
+        limit: Int = 100,
+    ): List<LocalFolderChange>
+
+    suspend fun acknowledgeFolderChanges(
+        accountKey: AccountKey,
+        changeIds: Set<String>,
+    )
+
     suspend fun applyRemoteFolders(
         accountKey: AccountKey,
         changes: List<RemoteFolderChange>,
@@ -145,20 +222,36 @@ interface BinarySource {
     val sizeBytes: Long
 
     /** Returns up to [maxBytes] from [offset], or an empty array at end of source. */
-    suspend fun read(offset: Long, maxBytes: Int): ByteArray
+    suspend fun read(
+        offset: Long,
+        maxBytes: Int,
+    ): ByteArray
 }
 
-class AttachmentContentConflictException(val attachmentId: AttachmentId) :
-    IllegalStateException("AttachmentId already identifies different binary content")
+class AttachmentContentConflictException(
+    val attachmentId: AttachmentId,
+) : IllegalStateException("AttachmentId already identifies different binary content")
 
 interface AttachmentContentPort {
     /**
      * Stores immutable content. Repeating an identical write is idempotent; different bytes for the same
      * [AttachmentMetadata.id] must fail with [AttachmentContentConflictException].
      */
-    suspend fun put(accountKey: AccountKey, attachment: AttachmentMetadata, source: BinarySource)
-    suspend fun open(accountKey: AccountKey, attachmentId: AttachmentId): BinarySource?
-    suspend fun delete(accountKey: AccountKey, attachmentId: AttachmentId): Boolean
+    suspend fun put(
+        accountKey: AccountKey,
+        attachment: AttachmentMetadata,
+        source: BinarySource,
+    )
+
+    suspend fun open(
+        accountKey: AccountKey,
+        attachmentId: AttachmentId,
+    ): BinarySource?
+
+    suspend fun delete(
+        accountKey: AccountKey,
+        attachmentId: AttachmentId,
+    ): Boolean
 }
 
 fun binarySourceOf(bytes: ByteArray): BinarySource {
@@ -166,7 +259,10 @@ fun binarySourceOf(bytes: ByteArray): BinarySource {
     return object : BinarySource {
         override val sizeBytes: Long = snapshot.size.toLong()
 
-        override suspend fun read(offset: Long, maxBytes: Int): ByteArray {
+        override suspend fun read(
+            offset: Long,
+            maxBytes: Int,
+        ): ByteArray {
             require(offset >= 0) { "offset must not be negative" }
             require(maxBytes > 0) { "maxBytes must be positive" }
             if (offset >= sizeBytes) return byteArrayOf()
