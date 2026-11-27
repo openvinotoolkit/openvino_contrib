@@ -35,15 +35,9 @@ INSTANTIATE_TEST_SUITE_P(smoke_OVBasicPropertiesTestsP,
                          ::testing::Values(std::make_pair("openvino_nvidia_gpu_plugin",
                                                           ov::test::utils::DEVICE_NVIDIA)));
 
-#ifdef PROXY_PLUGIN_ENABLED
-INSTANTIATE_TEST_SUITE_P(smoke_OVClassGetAvailableDevices,
-                         OVGetAvailableDevicesPropsTest,
-                         ::testing::Values(ov::test::utils::DEVICE_GPU));
-#else
 INSTANTIATE_TEST_SUITE_P(smoke_OVClassGetAvailableDevices,
                          OVGetAvailableDevicesPropsTest,
                          ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
-#endif
 
 //
 // OV Class GetConfig
