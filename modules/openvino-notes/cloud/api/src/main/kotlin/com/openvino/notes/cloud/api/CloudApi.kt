@@ -138,6 +138,20 @@ data class UploadDescriptor(
     }
 }
 
+sealed interface ResumableUploadState {
+    data class Active(
+        val session: UploadSession,
+    ) : ResumableUploadState
+
+    data class Completed(
+        val metadata: RemoteObjectMetadata,
+    ) : ResumableUploadState
+
+    data class Expired(
+        val session: UploadSession,
+    ) : ResumableUploadState
+}
+
 data class UploadSession(
     val id: TransferSessionId,
     val objectId: RemoteObjectId,
@@ -190,7 +204,7 @@ interface ResumableTransferClient {
     suspend fun resumeUpload(
         accountKey: AccountKey,
         sessionId: TransferSessionId,
-    ): RemoteOutcome<UploadSession>
+    ): RemoteOutcome<ResumableUploadState>
 
     suspend fun uploadChunk(
         accountKey: AccountKey,
