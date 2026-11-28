@@ -49,8 +49,8 @@ from __future__ import absolute_import, division, print_function
 import argparse
 import os
 import sys
-import xml.etree.ElementTree as ET
 
+import defusedxml.ElementTree as ET
 import numpy as np
 import torch
 
@@ -969,17 +969,17 @@ def _inject_rt_attribute(xml_path, layer_names, attr_name):
             continue
         rt_info = layer.find('rt_info')
         if rt_info is None:
-            rt_info = ET.Element('rt_info')
+            rt_info = layer.makeelement('rt_info', {})
             output = layer.find('output')
             children = list(layer)
             insert_at = children.index(output) + 1 if output in children else 0
             layer.insert(insert_at, rt_info)
         if any(child.get('name') == attr_name for child in rt_info):
             continue
-        ET.SubElement(rt_info, 'attribute', {
+        rt_info.append(rt_info.makeelement('attribute', {
             'name': attr_name,
             'version': '0',
-        })
+        }))
         marked += 1
 
     tree.write(xml_path, encoding='UTF-8', xml_declaration=True)

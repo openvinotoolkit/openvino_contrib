@@ -9,6 +9,7 @@ scipy==1.18.1
 nncf==3.2.0
 
 # Config & IO
+defusedxml==0.7.1
 PyYAML==6.0.3
 easydict==1.13
 plyfile==1.1.5
