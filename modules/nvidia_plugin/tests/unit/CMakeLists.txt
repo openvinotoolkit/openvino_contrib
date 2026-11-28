@@ -5,14 +5,7 @@
 
 set(TARGET_NAME ov_nvidia_unit_tests)
 
-set(EXCLUDED_SOURCE_PATHS)
-if(${CUDAToolkit_VERSION_MAJOR} EQUAL 10)
-	set(EXCLUDED_SOURCE_PATHS
-		EXCLUDED_SOURCE_PATHS
-		concat.cpp # uses concat.cu
-		operation_registry.cpp # uses saxpy.cu, could use something else
-	)
-endif(${CUDAToolkit_VERSION_MAJOR} EQUAL 10)
+include(sources.cmake)
 
 file(GLOB_RECURSE
 	 CUDA_SOURCES
@@ -23,20 +16,21 @@ file(GLOB_RECURSE
 ov_add_test_target(
         NAME
             ${TARGET_NAME}
-        ROOT
-            ${CMAKE_CURRENT_SOURCE_DIR}
+        SOURCES
+            ${OV_NVIDIA_UNIT_TEST_SOURCES}
         OBJECT_FILES
             ${CUDA_SOURCES}
         LINK_LIBRARIES_WHOLE_ARCHIVE
             openvino_nvidia_gpu_plugin_obj
-        EXCLUDED_SOURCE_PATHS
-            ${EXCLUDED_SOURCE_PATHS}
         LINK_LIBRARIES
             openvino::gtest
             openvino::gtest_main
             openvino::gmock
             openvino::commonTestUtils
         ADD_CLANG_FORMAT
+        CHECK_SOURCES_LISTED
+        CHECK_SOURCES_EXTENSIONS
+            cpp h hpp
         LABELS
             CUDA
 )

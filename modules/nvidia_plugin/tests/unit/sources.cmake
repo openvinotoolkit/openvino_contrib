@@ -1,0 +1,53 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+
+set(OV_NVIDIA_UNIT_TEST_SOURCES
+    ${CMAKE_CURRENT_LIST_DIR}/cancellation_token.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/compile_model.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/concat.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/convert_benchmark.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/cuda/wrappers/graph.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/cuda_graph_compatibility.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/cuda_graph_nodes_test.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/cuda_graph_topology_runner_test.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/cuda_multi_graph_test.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/cuda_multi_graph_ti_test.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/dynamic_shape.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/kernels/insert.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/kernels/reduce_prod_int.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/kernels/scatter_update.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/kernels/slice.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/limits.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/logical_not_benchmark.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/memory_manager/cuda_device_mem_block_test.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/memory_manager/cuda_immutable_memory_block_builder_test.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/memory_manager/cuda_memory_manager_test.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/memory_manager/model/cuda_immutable_memory_model_builder_test.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/memory_manager/model/cuda_memory_model_builder_test.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/memory_manager/model/cuda_memory_model_test.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/memory_manager/model/details/cuda_memory_utils_test.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/memory_pool.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/nodes/parameter_stub_node.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/nodes/result_stub_node.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/op_buffers_extractor_test.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/operation_registry.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/parameter.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/plugin.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/pooling_tests.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/relu.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/result.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/select_benchmark.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/sigmoid_benchmark.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/strided_slice_benchmark.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/test_networks.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/transformations/bidirectional_lstm_sequence_composition.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/transformations/concat_transformation.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/transformations/cuda_transformations_test.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/transformations/detection_output_fix_input_types.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/transformations/fuse_conv_biasadd_activation.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/transformations/fuse_matmul_add.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/transformations/reduce_transformation.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/transformations/remove_redundant_convert_transformation.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/typed_functor.cpp
+)
