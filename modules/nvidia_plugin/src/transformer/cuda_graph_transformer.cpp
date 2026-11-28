@@ -40,6 +40,8 @@
 #include "transformations/op_conversions/convert_subtract.hpp"
 #include "transformations/op_conversions/convert_gelu.hpp"
 #include "transformations/op_conversions/gelu7_downgrade.hpp"
+#include "transformations/op_conversions/group_normalization_decomposition.hpp"
+#include "transformations/op_conversions/log_softmax_decomposition.hpp"
 #include "transformations/op_conversions/mvn6_decomposition.hpp"
 #include "transformations/op_conversions/hswish_decomposition.hpp"
 #include "transformations/common_optimizations/reshape_prelu.hpp"
@@ -81,6 +83,8 @@ void GraphTransformer::transform(const CUDA::Device& device,
 
     pass_config->enable<ov::pass::ConvertInterpolate1ToInterpolate4>();
     pass_config->disable<ov::pass::MVN6Decomposition>();
+    pass_config->disable<ov::pass::GroupNormalizationDecomposition>();
+    pass_config->disable<ov::pass::LogSoftmaxDecomposition>();
     // NOTE: Elementwise decompositions are now disabled because generally their straightforward versions
     // are executed faster on CUDA/cuDNN.
     // However this is not valid for the case with broadcasting of very large shapes (e.g. {{1024, 1024, 384, 2}, {1}})
