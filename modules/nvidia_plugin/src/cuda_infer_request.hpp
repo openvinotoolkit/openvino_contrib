@@ -18,6 +18,7 @@
 #include "cuda_iexecution_delegator.hpp"
 #include "cuda_operation_base.hpp"
 #include "cuda_variable_context.hpp"
+#include "cuda_paged_attention_context.hpp"
 #include "memory_manager/cuda_memory_manager.hpp"
 #include "memory_manager/cuda_memory_pool.hpp"
 #include "openvino/itt.hpp"
@@ -67,6 +68,7 @@ private:
     std::vector<std::shared_ptr<ov::Tensor>> output_tensors_;
     bool is_benchmark_mode_;
     CudaVariableContext variable_context_;
+    PagedAttentionContext paged_attention_context_;
 };
 // ! [infer_request:header]
 

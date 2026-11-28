@@ -5,6 +5,7 @@
 #pragma once
 
 #include <mutex>
+#include <optional>
 
 #include "cuda_creation_context.hpp"
 #include "cuda_operation_base.hpp"
@@ -170,6 +171,8 @@ public:
     }
 
 private:
+    bool computeIsPagedAttentionCache() const;
+
     void executeParameter(const ov::op::v0::Parameter& paramNode,
                           const InferenceRequestContext& context,
                           const CUDA::Stream& stream,
@@ -191,6 +194,14 @@ private:
                        const CUDA::Stream& stream,
                        Inputs inputTensors,
                        DynamicBufferContext& dynBufCtx) const;
+
+    // PagedAttentionExtension: writes new K/V into a per-request persistent device
+    // cache and computes paged attention. Handled here (not via the generic cached
+    // path) so it can key the persistent cache by the real cache-input BufferIDs.
+    void executePagedAttention(const InferenceRequestContext& context,
+                               const CUDA::Stream& stream,
+                               Inputs inputTensors,
+                               DynamicBufferContext& dynBufCtx) const;
 
     // The prepared state of the cached path: the cached static operation, the
     // resolved input pointers, and the freshly allocated output buffers. Built
@@ -245,6 +256,17 @@ private:
     // first Execute is already value-sensitive -- never mutated afterwards, so the
     // shared instance is safe to read concurrently from multiple request threads.
     bool has_dynamic_output_ = false;
+    // A KV cache Parameter consumed only by PagedAttentionExtension (no per-infer upload).
+    bool is_paged_attention_cache_ = false;
+
+    // PagedAttentionExtension inputs 9-11 folded to constants at construction (single-threaded:
+    // constant folding evaluates bounds on the shared model). Empty = runtime value or absent.
+    struct PagedAttentionConstants {
+        std::optional<float> scale;
+        std::optional<int> sliding_window;
+        std::optional<std::vector<float>> alibi_slopes;
+    };
+    PagedAttentionConstants pa_constants_;
 
     // Probe, at construction, whether the output shape is value-dependent.
     bool computeHasDynamicOutput() const;

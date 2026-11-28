@@ -18,8 +18,16 @@
 #include <openvino/op/util/read_value_base.hpp>
 #include <openvino/op/util/variable_extension.hpp>
 
+#include <openvino/op/paged_attention.hpp>
+
+#include <cmath>
+
+#include "ops/converters.hpp"
 #include "cuda_operation_registry.hpp"
 #include "cuda_variable_state.hpp"
+#include "kernels/paged_attention.hpp"
+#include "ops/paged_attention_mapping.hpp"
+#include <openvino/core/validation_util.hpp>
 #include "ops/parameter.hpp"
 #include "ops/result.hpp"
 
@@ -77,6 +85,42 @@ DynamicOperation::DynamicOperation(const CreationContext& context,
       creation_context_{context},
       dynamic_output_ids_{std::move(outputIds)} {
     has_dynamic_output_ = computeHasDynamicOutput();
+    is_paged_attention_cache_ = computeIsPagedAttentionCache();
+    if (ov::is_type<ov::op::PagedAttentionExtension>(node)) {
+        // scale / sliding_window / alibi_slopes: SDPAToPagedAttention may produce them as
+        // constant subgraphs (e.g. the scale from ShapeOf -> ... -> Divide); fold them once here.
+        if (auto c = ov::util::get_constant_from_source(node->input_value(9))) {
+            const auto v = c->cast_vector<float>();
+            if (!v.empty()) pa_constants_.scale = v[0];
+        }
+        if (auto c = ov::util::get_constant_from_source(node->input_value(10))) {
+            const auto v = c->cast_vector<int>();
+            if (!v.empty()) pa_constants_.sliding_window = v[0];
+        }
+        if (auto c = ov::util::get_constant_from_source(node->input_value(11))) {
+            pa_constants_.alibi_slopes = c->cast_vector<float>();
+        }
+        // Outputs 1/2 (token scores, diversity) are produced only for GenAI's cache eviction.
+        for (size_t i = 1; i < node->get_output_size(); ++i) {
+            OPENVINO_ASSERT(node->output(i).get_target_inputs().empty(),
+                            "PagedAttention '", node->get_friendly_name(), "': output ", i,
+                            " (used by KV cache eviction) is not supported by the NVIDIA plugin");
+        }
+    }
+}
+
+bool DynamicOperation::computeIsPagedAttentionCache() const {
+    // A key_cache.N / value_cache.N Parameter consumed only by PagedAttentionExtension
+    // inputs 3/4: PagedAttention binds GenAI's host tensor itself, so uploading the whole
+    // (possibly multi-GB) cache every infer is unnecessary.
+    if (!ov::is_type<ov::op::v0::Parameter>(original_node_)) {
+        return false;
+    }
+    const auto targets = original_node_->output(0).get_target_inputs();
+    return !targets.empty() && std::all_of(targets.begin(), targets.end(), [](const ov::Input<ov::Node>& in) {
+        return ov::is_type<ov::op::PagedAttentionExtension>(in.get_node()) &&
+               (in.get_index() == 3 || in.get_index() == 4);
+    });
 }
 
 bool DynamicOperation::computeHasDynamicOutput() const {
@@ -149,6 +193,11 @@ void DynamicOperation::Execute(const InferenceRequestContext& context,
 
     if (auto assignNode = std::dynamic_pointer_cast<ov::op::util::AssignBase>(original_node_)) {
         executeAssign(*assignNode, context, stream, inputTensors, dynBufCtx);
+        return;
+    }
+
+    if (ov::is_type<ov::op::PagedAttentionExtension>(original_node_)) {
+        executePagedAttention(context, stream, inputTensors, dynBufCtx);
         return;
     }
 
@@ -290,10 +339,16 @@ void DynamicOperation::executeParameter(const ov::op::v0::Parameter& paramNode,
     auto tensor = context.getTensorMappingContext().get_input_tensor(
         ParameterOp::GetInputTensorName(paramNode));
     auto shape = tensor->get_shape();
+    BufferID outBufId = dynamic_output_ids_[0].GetBuffer().GetId();
+    if (is_paged_attention_cache_) {
+        // Register the shape with a placeholder buffer: the consumers' input pointers must
+        // resolve, but PagedAttention reads the cache through its persistent device mirror.
+        dynBufCtx.registerDynamicBuffer(outBufId, stream.malloc(1), shape);
+        return;
+    }
     size_t byte_size = tensor->get_byte_size();
     auto alloc = stream.malloc(std::max(byte_size, size_t{1}));
     stream.upload(CUDA::DevicePointer<void*>{alloc.get()}, tensor->data(), byte_size);
-    BufferID outBufId = dynamic_output_ids_[0].GetBuffer().GetId();
     dynBufCtx.registerDynamicBuffer(outBufId, std::move(alloc), shape);
 }
 
@@ -414,6 +469,193 @@ void DynamicOperation::executeAssign(const ov::op::util::AssignBase& assignNode,
     for (BufferID id : release_ids_) {
         dynBufCtx.releaseDynamicBuffer(id);
     }
+}
+
+void DynamicOperation::executePagedAttention(const InferenceRequestContext& context,
+                                             const CUDA::Stream& stream,
+                                             Inputs inputTensors,
+                                             DynamicBufferContext& dynBufCtx) const {
+    OPENVINO_ASSERT(context.hasPagedAttentionContext(), "PagedAttention requires a PagedAttentionContext");
+    auto& paCtx = const_cast<InferenceRequestContext&>(context).getPagedAttentionContext();
+
+    // Device pointer / shape of input `i` (from the registered dynamic buffer, else
+    // the framework-provided input tensor / the node's static shape).
+    const auto inputPtr = [&](std::size_t i) -> const void* {
+        auto dynBuf = dynBufCtx.getDynamicBuffer(input_ids_[i].GetBuffer().GetId());
+        return dynBuf ? dynBuf->get() : inputTensors[i].get();
+    };
+    const auto inputShape = [&](std::size_t i) -> ov::Shape {
+        const BufferID id = input_ids_[i].GetBuffer().GetId();
+        return dynBufCtx.hasShape(id) ? dynBufCtx.getShape(id) : original_node_->get_input_shape(i);
+    };
+    // A scalar input: the constant folded at construction, otherwise the runtime value read
+    // from the device. An empty input yields `dflt`.
+    const auto scalarInput = [&](std::size_t i, const auto& folded, auto dflt) -> decltype(dflt) {
+        using T = decltype(dflt);
+        if (folded) {
+            return static_cast<T>(*folded);
+        }
+        if (ov::shape_size(inputShape(i)) == 0) {
+            return dflt;
+        }
+        const auto type = original_node_->get_input_element_type(i);
+        std::vector<uint8_t> raw(type.size());
+        stream.download(raw.data(), CUDA::DevicePointer<const void*>{inputPtr(i)}, raw.size());
+        return ov::op::v0::Constant(type, ov::Shape{}, raw.data()).cast_vector<T>()[0];
+    };
+
+    // Head geometry (rt_info) and derived counts.
+    const auto& rt = original_node_->get_rt_info();
+    const int num_kv_heads = static_cast<int>(rt.at("num_k_heads").as<std::size_t>());
+    const int head_size = static_cast<int>(rt.at("k_head_size").as<std::size_t>());
+    const int v_head_size = static_cast<int>(rt.at("v_head_size").as<std::size_t>());
+    const auto q_shape = inputShape(0);  // [num_tokens, num_heads * head_size]
+    const int num_tokens = static_cast<int>(q_shape[0]);
+    const int num_heads = static_cast<int>(q_shape[1] / head_size);
+    constexpr int block_size = 32;
+
+    const auto elem_type = original_node_->get_input_element_type(0);
+    const auto kernel_type = convertDataType<ov::nvidia_gpu::kernel::Type_t>(elem_type);
+
+    // Inputs of features the NVIDIA implementation does not support must be empty:
+    // 14-16 cache-eviction key rotation, 20 attention sinks, 22-24 adaptive R-KV
+    // (21, adaptive_rkv_start_size, is a scalar that is present even when it is disabled).
+    for (std::size_t i : {14, 15, 16, 20, 22, 23, 24}) {
+        if (i < original_node_->get_input_size()) {
+            OPENVINO_ASSERT(ov::shape_size(inputShape(i)) == 0,
+                            "PagedAttention '", GetName(), "': input ", i, " is not empty, but the feature it ",
+                            "enables (KV cache rotation, attention sinks or adaptive R-KV) is not supported");
+        }
+    }
+
+    if (num_tokens == 0) {
+        ov::Shape out_shape{0, static_cast<size_t>(num_heads * v_head_size)};
+        auto alloc = stream.malloc(1);
+        dynBufCtx.registerDynamicBuffer(dynamic_output_ids_[0].GetBuffer().GetId(), std::move(alloc), out_shape);
+        for (BufferID id : release_ids_) dynBufCtx.releaseDynamicBuffer(id);
+        return;
+    }
+
+    // Scheduling metadata (small) — copied to host to build slot_mapping/row_to_subseq.
+    const auto downloadI32 = [&](std::size_t i) {
+        const std::size_t n = ov::shape_size(inputShape(i));
+        std::vector<int32_t> v(n);
+        if (n) stream.download(v.data(), CUDA::DevicePointer<const void*>{inputPtr(i)}, n * sizeof(int32_t));
+        return v;
+    };
+    const auto past_lens = downloadI32(5);
+    const auto subsequence_begins = downloadI32(6);
+    const auto block_indices = downloadI32(7);
+    const auto block_indices_begins = downloadI32(8);
+
+    // The KV caches are bound to GenAI's host tensors, which are the source of truth (see
+    // PagedAttentionContext). The persistent device mirrors are keyed by the cache-input BufferIDs.
+    const auto hostCache = [&](std::size_t i) {
+        const auto param = ov::as_type_ptr<ov::op::v0::Parameter>(original_node_->get_input_node_shared_ptr(i));
+        OPENVINO_ASSERT(param,
+                        "PagedAttention '", GetName(), "': KV cache input ", i, " must be a model Parameter");
+        auto tensor = context.getTensorMappingContext().get_input_tensor(ParameterOp::GetInputTensorName(*param));
+        OPENVINO_ASSERT(tensor, "PagedAttention '", GetName(), "': no tensor bound to KV cache input ", i);
+        OPENVINO_ASSERT(tensor->get_element_type() == elem_type,
+                        "PagedAttention '", GetName(), "': KV cache precision ", tensor->get_element_type(),
+                        " differs from the query precision ", elem_type, "; quantized KV caches are not supported");
+        const auto& cs = tensor->get_shape();
+        OPENVINO_ASSERT(cs.size() == 4 && cs[2] == static_cast<size_t>(block_size),
+                        "PagedAttention '", GetName(), "': expected a [blocks, heads, ", block_size,
+                        ", head_size] KV cache, got ", cs);
+        return tensor;
+    };
+    const auto key_host = hostCache(3);
+    const auto value_host = hostCache(4);
+    OPENVINO_ASSERT(key_host->get_shape()[0] == value_host->get_shape()[0],
+                    "PagedAttention '", GetName(), "': key and value caches have different numbers of blocks");
+
+    const auto mapping = build_paged_attention_mapping(num_tokens,
+                                                       block_size,
+                                                       past_lens,
+                                                       subsequence_begins,
+                                                       block_indices,
+                                                       block_indices_begins,
+                                                       static_cast<int64_t>(key_host->get_shape()[0]));
+
+    const BufferID key_id = input_ids_[3].GetBuffer().GetId();
+    const BufferID value_id = input_ids_[4].GetBuffer().GetId();
+    void* key_cache = paCtx.bind(key_id, *key_host, stream);
+    void* value_cache = paCtx.bind(value_id, *value_host, stream);
+    // Blocks appended to at a non-zero offset may be copy-on-write destinations filled on the host.
+    paCtx.refresh_blocks(key_id, mapping.refresh_blocks, stream);
+    paCtx.refresh_blocks(value_id, mapping.refresh_blocks, stream);
+
+    // Upload slot_mapping / row_to_subseq.
+    const std::size_t idx_bytes = static_cast<std::size_t>(num_tokens) * sizeof(int32_t);
+    auto d_slot = stream.malloc(idx_bytes);
+    auto d_r2s = stream.malloc(idx_bytes);
+    stream.upload(CUDA::DevicePointer<void*>{d_slot.get()}, mapping.slot_mapping.data(), idx_bytes);
+    stream.upload(CUDA::DevicePointer<void*>{d_r2s.get()}, mapping.row_to_subseq.data(), idx_bytes);
+
+    // scale (input 9, default 1/sqrt(head_size)), sliding_window (input 10), alibi (input 11).
+    float scale = scalarInput(9, pa_constants_.scale, 0.0f);
+    if (scale == 0.0f) scale = 1.0f / std::sqrt(static_cast<float>(head_size));
+    const int sliding_window = scalarInput(10, pa_constants_.sliding_window, 0);
+    // alibi_slopes (input 11): a per-head f32 vector, or empty. Allocate unconditionally
+    // (CUDA::Allocation is not default-constructible); the kernel only reads it when
+    // has_alibi is set.
+    auto d_alibi = stream.malloc(std::max(static_cast<std::size_t>(num_heads) * sizeof(float), std::size_t{1}));
+    const float* alibi_ptr = static_cast<const float*>(d_alibi.get());
+    bool has_alibi = false;
+    if (const auto& v = pa_constants_.alibi_slopes) {
+        if (!v->empty()) {
+            OPENVINO_ASSERT(v->size() == static_cast<std::size_t>(num_heads),
+                            "PagedAttention '", GetName(), "': alibi_slopes has ", v->size(),
+                            " values, expected one per head (", num_heads, ")");
+            stream.upload(CUDA::DevicePointer<void*>{d_alibi.get()}, v->data(), v->size() * sizeof(float));
+            has_alibi = true;
+        }
+    } else {
+        OPENVINO_ASSERT(ov::shape_size(inputShape(11)) == 0,
+                        "PagedAttention '", GetName(), "': non-constant alibi_slopes are not supported");
+    }
+
+    // Kernel A: scatter the new K/V (inputs 1/2) into the persistent cache.
+    kernel::reshape_and_cache(stream.get(),
+                              kernel_type,
+                              inputPtr(1),
+                              inputPtr(2),
+                              key_cache,
+                              value_cache,
+                              static_cast<const int32_t*>(d_slot.get()),
+                              num_tokens,
+                              num_kv_heads,
+                              head_size,
+                              v_head_size,
+                              block_size);
+    // Keep the host tensors (the source of truth) up to date; issued after all kernels (flush()).
+    paCtx.write_back(key_id, mapping.write_blocks);
+    paCtx.write_back(value_id, mapping.write_blocks);
+
+    // Output [num_tokens, num_heads * v_head_size].
+    ov::Shape out_shape{static_cast<size_t>(num_tokens), static_cast<size_t>(num_heads * v_head_size)};
+    auto out_alloc = stream.malloc(std::max(ov::shape_size(out_shape) * elem_type.size(), std::size_t{1}));
+
+    const kernel::PagedAttentionParams params{num_heads, num_kv_heads, head_size, v_head_size,
+                                              block_size, scale,       sliding_window, has_alibi};
+    kernel::paged_attention(stream.get(),
+                            kernel_type,
+                            inputPtr(0),
+                            key_cache,
+                            value_cache,
+                            static_cast<const int32_t*>(inputPtr(7)),
+                            static_cast<const int32_t*>(inputPtr(8)),
+                            static_cast<const int32_t*>(inputPtr(5)),
+                            static_cast<const int32_t*>(inputPtr(6)),
+                            static_cast<const int32_t*>(d_r2s.get()),
+                            alibi_ptr,
+                            out_alloc.get(),
+                            params,
+                            num_tokens);
+
+    dynBufCtx.registerDynamicBuffer(dynamic_output_ids_[0].GetBuffer().GetId(), std::move(out_alloc), out_shape);
+    for (BufferID id : release_ids_) dynBufCtx.releaseDynamicBuffer(id);
 }
 
 std::shared_ptr<CachedOperation>
