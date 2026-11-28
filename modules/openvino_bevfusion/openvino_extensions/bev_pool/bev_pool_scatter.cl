@@ -38,14 +38,40 @@
 
 #define FP_SCALE 8192  /* 2^13 fixed-point */
 
-/* Depth bins with probability < threshold are skipped */
-#define DEPTH_THRESHOLD 0.005f
+/* Fixed-point quantization for the int32 atomic accumulator.
+ * Rounding to nearest rather than truncating matters: each pixel/channel
+ * flushes tens of times, and a plain (int) cast truncates toward zero every
+ * time, so the errors are biased in one direction instead of cancelling. That
+ * systematic bias cost ~10% relative L2 on the pooled BEV features. */
+static inline int fp_quantize(float v) {
+    return (int)(v * FP_SCALE + (v >= 0.0f ? 0.5f : -0.5f));
+}
+
+/* Depth bins with softmax probability below this are skipped entirely.
+ *
+ * Set to 0 = no skipping, which is what the reference does: BEVFusion's
+ * bev_pool scatters every frustum point that lands inside the grid, with no
+ * probability cutoff (projects/BEVFusion/bevfusion/ops/bev_pool/bev_pool.py).
+ *
+ * A 0.005f cutoff was tried as a speedup. It is a poor trade here: the depth
+ * softmax is flat (mean top-1 is only 0.16 -- BEVFusion supervises the depth
+ * distribution through the detection loss alone, never directly), so ~82 of
+ * 118 bins clear 0.005 anyway. That bought ~30% of the ray loop while dropping
+ * pooled-BEV agreement with the numpy reference from cos 0.9951 to 0.9909.
+ * Keep it exact; bev_pool's cost needs a structural fix, not a lossy one. */
+#define DEPTH_THRESHOLD 0.0f
 
 __kernel void bevpool_scatter(
     __global const INPUT0_TYPE* depth_probs,    /* [N, D, H, W] (softmax) */
     __global const INPUT1_TYPE* context_feats,  /* [N, C, H, W] */
     __global const INPUT2_TYPE* geom,           /* [N*D*H*W, 3] */
-    __global OUTPUT0_TYPE* output               /* [1, C*NZ, NX, NY] int32 */
+    /* [1, C*NZ, NX, NY] int32 accumulator: a model input that holds zeros on
+     * entry (bevpool_convert resets it after reading). It is not this
+     * kernel's output because the GPU plugin may hand an output a reused
+     * pool buffer that still holds another layer's data, and this kernel only
+     * adds into it. */
+    __global INPUT3_TYPE* output,
+    __global OUTPUT0_TYPE* token                /* [1] int32, orders bevpool_convert after this kernel */
 ) {
     const int D  = DEPTH_BINS;   /* 118 */
     const int H  = FEAT_H;      /* 32  */
@@ -117,7 +143,7 @@ __kernel void bevpool_scatter(
             /* Flush previous accumulation */
             if (prev_grid >= 0) {
                 int oidx = (c * nz) * nx_ny + prev_grid;
-                atomic_add(&output[oidx], (int)(accum * FP_SCALE));
+                atomic_add(&output[oidx], fp_quantize(accum));
             }
             prev_grid = g;
             accum = val;
@@ -126,6 +152,6 @@ __kernel void bevpool_scatter(
     /* Flush final accumulation */
     if (prev_grid >= 0) {
         int oidx = (c * nz) * nx_ny + prev_grid;
-        atomic_add(&output[oidx], (int)(accum * FP_SCALE));
+        atomic_add(&output[oidx], fp_quantize(accum));
     }
 }

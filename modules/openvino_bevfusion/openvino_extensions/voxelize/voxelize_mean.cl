@@ -17,11 +17,11 @@
  * Output: result    [MAX_VOXELS + 1, 9] float32
  */
 
-#define MAX_VOXELS          60000
+#define MAX_VOXELS          160000
 #define MAX_POINTS_PER_VOX  10
 #define NUM_FEATURES        5
 #define FP_SCALE            4096
-#define HASH_SIZE           131072
+#define HASH_SIZE           262144
 #define HT_OFFSET           1
 #define ENTRY_STRIDE        11
 #define WG_SIZE             1024

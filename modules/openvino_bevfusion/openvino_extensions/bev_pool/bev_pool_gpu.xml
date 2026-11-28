@@ -50,7 +50,9 @@ SPDX-License-Identifier: Apache-2.0 -->
         <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
         <Tensor arg-index="1" type="input"  port-index="1" format="BFYX"/>
         <Tensor arg-index="2" type="input"  port-index="2" format="BFYX"/>
-        <Tensor arg-index="3" type="output" port-index="0" format="BFYX"/>
+        <!-- The accumulator is input 3; the output is only an ordering token. -->
+        <Tensor arg-index="3" type="input"  port-index="3" format="BFYX"/>
+        <Tensor arg-index="4" type="output" port-index="0" format="BFYX"/>
     </Buffers>
     <CompilerOptions options="-cl-mad-enable -cl-fast-relaxed-math"/>
     <!--
@@ -68,8 +70,10 @@ SPDX-License-Identifier: Apache-2.0 -->
         <Source filename="bev_pool_convert.cl"/>
     </Kernel>
     <Buffers>
+        <!-- Input 0 is the scatter's token, input 1 the accumulator it filled. -->
         <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
-        <Tensor arg-index="1" type="output" port-index="0" format="BFYX"/>
+        <Tensor arg-index="1" type="input"  port-index="1" format="BFYX"/>
+        <Tensor arg-index="2" type="output" port-index="0" format="BFYX"/>
     </Buffers>
     <CompilerOptions options="-cl-mad-enable"/>
     <!--

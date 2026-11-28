@@ -9,9 +9,9 @@
  * Single work-group approach to avoid stale-buffer issue.
  * GWS = LWS = 1024 (all WIs in one work-group).
  *
- * Phase 1: Zero entire workspace (each WI zeros ~1409 ints).
+ * Phase 1: Zero entire workspace (each WI zeros ~2816 ints).
  * Barrier (CLK_GLOBAL_MEM_FENCE) — valid because single WG.
- * Phase 2: Hash-insert all points (each WI processes ~68 points).
+ * Phase 2: Hash-insert all points (each WI processes up to ~342 points).
  *
  * Workspace layout (int32 flat buffer):
  *   [0]:                        num_voxels counter
@@ -31,15 +31,15 @@
 #define RANGE_Z_MIN -5.0f
 
 /* ── Workspace layout ── */
-#define MAX_VOXELS          60000
+#define MAX_VOXELS          160000
 #define MAX_POINTS_PER_VOX  10
 #define NUM_FEATURES        5
 #define FP_SCALE            4096
-#define HASH_SIZE           131072
-#define HASH_MASK           131071
+#define HASH_SIZE           262144
+#define HASH_MASK           262143
 #define HT_OFFSET           1
 #define ENTRY_STRIDE        11  /* key, feat*5, count, batch, x, y, z */
-#define WORKSPACE_SIZE      1441793
+#define WORKSPACE_SIZE      2883585  /* 1 + HASH_SIZE * ENTRY_STRIDE */
 #define WG_SIZE             1024
 
 

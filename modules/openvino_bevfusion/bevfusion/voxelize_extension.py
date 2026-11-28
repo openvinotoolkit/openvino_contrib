@@ -29,8 +29,11 @@ _EXT_LIB = _EXT_DIR / 'build' / 'libopenvino_voxelize_extension.so'
 _GPU_CFG = _EXT_DIR / 'voxelize_gpu.xml'
 
 # ── Constants (must match GPU kernels and C++ ops) ─────────────────────────────
-MAX_POINTS   = 70000
-MAX_VOXELS   = 60000
+# Ten nuScenes turns (the key frame + 9 sweeps, as BEVFusion is trained) of at
+# most 32 beams x 1086 firings each; 160000 voxels is BEVFusion's test-time max_voxels.
+MAX_POINTS   = 350000
+MAX_VOXELS   = 160000
+HASH_SIZE    = 262144  # 2^18, keeps the table at most ~60% full
 NUM_FEATURES = 5
 
 HAS_VOXELIZE_EXTENSION = _EXT_LIB.exists()
@@ -44,13 +47,13 @@ def _make_voxelize_ir() -> str:
       2. VoxelizeMean    (custom) — workspace → mean features + coords
 
     Inputs:
-      0: points      [70000, 5]  FP32  (padded LiDAR points)
+      0: points      [MAX_POINTS, 5]  FP32  (padded LiDAR points)
       1: num_points   [1]        I32   (actual point count)
 
     Output:
-      0: result       [60001, 9]  FP32  (row 0 = metadata, rest = features+coords)
+      0: result       [MAX_VOXELS + 1, 9]  FP32  (row 0 = metadata, rest = features+coords)
     """
-    ws_size = 1441793  # 1 + 131072*11
+    ws_size = 1 + HASH_SIZE * 11
 
     return f"""\
 <?xml version="1.0"?>
