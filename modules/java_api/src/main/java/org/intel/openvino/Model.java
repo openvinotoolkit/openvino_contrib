@@ -4,6 +4,7 @@
 package org.intel.openvino;
 
 import java.util.ArrayList;
+import java.util.Map;
 
 /** A user-defined model */
 public class Model extends Wrapper {
@@ -52,6 +53,15 @@ public class Model extends Wrapper {
         Reshape(nativeObj, shape);
     }
 
+    /**
+     * Reshape model inputs by tensor or operation name.
+     *
+     * @param partialShapes Map from input name to its new shape.
+     */
+    public void reshape(Map<String, int[]> partialShapes) {
+        ReshapeByName(nativeObj, partialShapes);
+    }
+
     public Output input() {
         return new Output(getInput(nativeObj));
     }
@@ -66,6 +76,8 @@ public class Model extends Wrapper {
     private static native long getOutput(long addr);
 
     private static native void Reshape(long addr, int[] shape);
+
+    private static native void ReshapeByName(long addr, Map<String, int[]> partialShapes);
 
     private static native long getInput(long addr);
 

@@ -8,6 +8,7 @@
 #include "jni_common.hpp"
 
 using namespace ov;
+using NamedPartialShapes = std::map<std::string, PartialShape>;
 
 JNIEXPORT jstring JNICALL Java_org_intel_openvino_Model_getName(JNIEnv *env, jobject, jlong addr)
 {
@@ -78,6 +79,21 @@ JNIEXPORT void JNICALL Java_org_intel_openvino_Model_Reshape(JNIEnv *env, jobjec
             partialShape.push_back(value);
 
         (*model)->reshape(partialShape);
+    )
+}
+
+JNIEXPORT void JNICALL Java_org_intel_openvino_Model_ReshapeByName(JNIEnv *env,
+                                                                  jobject,
+                                                                  jlong addr,
+                                                                  jobject partialShapes)
+{
+    JNI_METHOD("ReshapeByName",
+        std::shared_ptr<Model> *model = reinterpret_cast<std::shared_ptr<Model> *>(addr);
+        NamedPartialShapes shapes;
+        for (const auto& item : javaMapToMap_1(env, partialShapes))
+            shapes.emplace(item.first, PartialShape(item.second));
+
+        (*model)->reshape(shapes);
     )
 }
 

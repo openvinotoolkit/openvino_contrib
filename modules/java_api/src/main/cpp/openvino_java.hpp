@@ -37,6 +37,7 @@ extern "C"
     JNIEXPORT jobject JNICALL Java_org_intel_openvino_Model_getOutputs(JNIEnv *, jobject, jlong);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Model_getOutput(JNIEnv *, jobject, jlong);
     JNIEXPORT void JNICALL Java_org_intel_openvino_Model_Reshape(JNIEnv *, jobject, jlong, jintArray);
+    JNIEXPORT void JNICALL Java_org_intel_openvino_Model_ReshapeByName(JNIEnv *, jobject, jlong, jobject);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Model_getInput(JNIEnv *, jobject, jlong);
     JNIEXPORT void JNICALL Java_org_intel_openvino_Model_delete(JNIEnv *, jobject, jlong);
 
